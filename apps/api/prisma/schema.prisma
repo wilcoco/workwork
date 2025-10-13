@@ -1,0 +1,289 @@
+// Prisma schema for initial OKR/Initiative/Worklog and Org
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CEO
+  EXEC
+  MANAGER
+  INDIVIDUAL
+}
+
+enum ObjectiveStatus {
+  DRAFT
+  ACTIVE
+  LOCKED
+  ARCHIVED
+}
+
+enum InitiativeState {
+  PLANNED
+  ACTIVE
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+model OrgUnit {
+  id        String    @id @default(cuid())
+  name      String
+  type      String
+  parentId  String?
+  parent    OrgUnit?  @relation("OrgHierarchy", fields: [parentId], references: [id])
+  children  OrgUnit[] @relation("OrgHierarchy")
+  managerId String?
+  manager   User?     @relation("OrgManager", fields: [managerId], references: [id])
+  users     User[]
+  objectives Objective[]
+}
+
+model User {
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
+  role       Role
+  orgUnitId  String?
+  orgUnit    OrgUnit? @relation(fields: [orgUnitId], references: [id])
+  objectives Objective[] @relation("ObjectiveOwner")
+  initiatives Initiative[] @relation("InitiativeOwner")
+  managedUnits OrgUnit[] @relation("OrgManager")
+  keyResultsOwned KeyResult[] @relation("KeyResultOwner")
+  worklogsCreated Worklog[] @relation("WorklogCreator")
+  approvalRequestsRequested ApprovalRequest[] @relation("ApprovalRequestedBy")
+  approvalRequestsToApprove ApprovalRequest[] @relation("ApprovalApprover")
+  approvalStepsToApprove ApprovalStep[] @relation("ApprovalStepApprover")
+  shares Share[]
+  feedbacksAuthored Feedback[]
+  helpTicketsRequested HelpTicket[] @relation("HelpRequester")
+  helpTicketsAssigned HelpTicket[] @relation("HelpAssignee")
+  delegationsMade Delegation[] @relation("Delegator")
+  delegationsReceived Delegation[] @relation("Delegatee")
+  notifications Notification[]
+}
+
+model Objective {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  orgUnitId   String
+  orgUnit     OrgUnit   @relation(fields: [orgUnitId], references: [id])
+  ownerId     String
+  owner       User      @relation("ObjectiveOwner", fields: [ownerId], references: [id])
+  parentId    String?
+  parent      Objective? @relation("ObjectiveTree", fields: [parentId], references: [id])
+  children    Objective[] @relation("ObjectiveTree")
+  status      ObjectiveStatus @default(DRAFT)
+  periodStart DateTime
+  periodEnd   DateTime
+  keyResults  KeyResult[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model KeyResult {
+  id           String    @id @default(cuid())
+  objectiveId  String
+  objective    Objective @relation(fields: [objectiveId], references: [id])
+  title        String
+  metric       String
+  target       Float
+  unit         String
+  weight       Float     @default(1)
+  ownerId      String
+  owner        User      @relation("KeyResultOwner", fields: [ownerId], references: [id])
+  initiatives  Initiative[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Initiative {
+  id            String   @id @default(cuid())
+  keyResultId   String
+  keyResult     KeyResult @relation(fields: [keyResultId], references: [id])
+  title         String
+  description   String?
+  state         InitiativeState @default(PLANNED)
+  ownerId       String
+  owner         User     @relation("InitiativeOwner", fields: [ownerId], references: [id])
+  priority      Int      @default(3)
+  slaMinutes    Int?
+  dueAt         DateTime?
+  worklogs      Worklog[]
+  parentId      String?
+  parent        Initiative? @relation("InitiativeTree", fields: [parentId], references: [id])
+  children      Initiative[] @relation("InitiativeTree")
+  delegationsAsChild Delegation[] @relation("DelegationChildInitiative")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Worklog {
+  id                 String   @id @default(cuid())
+  initiativeId       String
+  initiative         Initiative @relation(fields: [initiativeId], references: [id])
+  date               DateTime  @default(now())
+  progressPct        Int       @default(0)
+  timeSpentMinutes   Int       @default(0)
+  blockerCode        String?
+  note               String?
+  createdById        String
+  createdBy          User      @relation("WorklogCreator", fields: [createdById], references: [id])
+  attachments        Json?
+  createdAt          DateTime  @default(now())
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  subjectType String
+  subjectId   String
+  activity    String
+  ts          DateTime @default(now())
+  userId      String?
+  assetId     String?
+  attrs       Json?
+  idx         Int      @default(0)
+}
+
+model Asset {
+  id     String @id @default(cuid())
+  name   String
+  type   String
+  code   String  @unique
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum ShareScope {
+  READ
+  COMMENT
+}
+
+enum FeedbackType {
+  GENERAL
+  RUBRIC
+}
+
+enum HelpStatus {
+  OPEN
+  ACCEPTED
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum DelegationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  ACTIVE
+  BLOCKED
+  DONE
+}
+
+model ApprovalRequest {
+  id             String          @id @default(cuid())
+  subjectType    String
+  subjectId      String
+  status         ApprovalStatus  @default(PENDING)
+  requestedById  String
+  requestedBy    User            @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  approverId     String
+  approver       User            @relation("ApprovalApprover", fields: [approverId], references: [id])
+  dueAt          DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  steps          ApprovalStep[]
+}
+
+model ApprovalStep {
+  id         String          @id @default(cuid())
+  requestId  String
+  request    ApprovalRequest @relation(fields: [requestId], references: [id])
+  stepNo     Int
+  approverId String
+  approver   User            @relation("ApprovalStepApprover", fields: [approverId], references: [id])
+  status     ApprovalStatus  @default(PENDING)
+  comment    String?
+  actedAt    DateTime?
+}
+
+model Share {
+  id          String     @id @default(cuid())
+  subjectType String
+  subjectId   String
+  watcherId   String
+  watcher     User       @relation(fields: [watcherId], references: [id])
+  scope       ShareScope @default(READ)
+  createdAt   DateTime   @default(now())
+}
+
+model Feedback {
+  id          String        @id @default(cuid())
+  subjectType String
+  subjectId   String
+  authorId    String
+  author      User          @relation(fields: [authorId], references: [id])
+  type        FeedbackType  @default(GENERAL)
+  content     String
+  rating      Int?
+  actionRequired Boolean    @default(false)
+  createdAt   DateTime      @default(now())
+}
+
+model HelpTicket {
+  id           String      @id @default(cuid())
+  category     String
+  queue        String?
+  requesterId  String
+  requester    User        @relation("HelpRequester", fields: [requesterId], references: [id])
+  assigneeId   String?
+  assignee     User?       @relation("HelpAssignee", fields: [assigneeId], references: [id])
+  status       HelpStatus  @default(OPEN)
+  slaMinutes   Int?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  resolvedAt   DateTime?
+}
+
+model Delegation {
+  id                 String            @id @default(cuid())
+  parentType         String
+  parentId           String
+  childInitiativeId  String
+  childInitiative    Initiative        @relation("DelegationChildInitiative", fields: [childInitiativeId], references: [id])
+  delegatorId        String
+  delegator          User              @relation("Delegator", fields: [delegatorId], references: [id])
+  delegateeId        String
+  delegatee          User              @relation("Delegatee", fields: [delegateeId], references: [id])
+  status             DelegationStatus  @default(PENDING)
+  dueAt              DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  acceptedAt         DateTime?
+  rejectedAt         DateTime?
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  type        String
+  subjectType String
+  subjectId   String
+  payload     Json?
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+}

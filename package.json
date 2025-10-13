@@ -1,0 +1,19 @@
+{
+  "name": "workwork",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "npm run -w @workwork/api build && npm run -w @workwork/web build",
+    "dev": "concurrently \"npm run -w @workwork/api dev\" \"npm run -w @workwork/web dev\"",
+    "lint": "echo 'add linters later'",
+    "test": "echo 'add tests later'",
+    "prisma:generate": "npm run -w @workwork/api prisma:generate",
+    "prisma:migrate": "npm run -w @workwork/api prisma:migrate:deploy"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "prisma": {
+    "schema": "./apps/api/prisma/schema.prisma"
+  }
+}
