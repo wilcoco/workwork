@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../lib/api';
 
 export function WorklogNew() {
   const nav = useNavigate();
@@ -76,7 +77,7 @@ export function WorklogNew() {
         ];
       }
 
-      const res = await fetch('/api/worklogs', {
+      const res = await apiFetch('/api/worklogs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

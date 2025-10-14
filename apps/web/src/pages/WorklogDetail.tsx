@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { apiFetch } from '../lib/api';
 
 export function WorklogDetail() {
   const { id } = useParams();
@@ -12,7 +13,7 @@ export function WorklogDetail() {
     async function run() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/worklogs/${id}`);
+        const res = await apiFetch(`/api/worklogs/${id}`);
         if (!res.ok) throw new Error(`Failed: ${res.status}`);
         const json = await res.json();
         if (!ignore) setData(json);

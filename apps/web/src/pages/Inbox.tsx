@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../lib/api';
 
 export function Inbox() {
   const [userId, setUserId] = useState('');
@@ -11,7 +12,7 @@ export function Inbox() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/inbox?userId=${encodeURIComponent(userId)}&onlyUnread=false`);
+      const res = await apiFetch(`/api/inbox?userId=${encodeURIComponent(userId)}&onlyUnread=false`);
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const json = await res.json();
       setItems(json.items || []);
@@ -23,7 +24,7 @@ export function Inbox() {
   }
 
   async function markRead(id: string) {
-    await fetch(`/api/notifications/${id}/read`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actorId: userId }) });
+    await apiFetch(`/api/notifications/${id}/read`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actorId: userId }) });
     await load();
   }
 
