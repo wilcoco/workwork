@@ -1,4 +1,5 @@
-export const API_BASE = (import.meta as any)?.env?.VITE_API_BASE || '';
+export const API_BASE =
+  (import.meta as any)?.env?.VITE_API_BASE || 'https://workworkapi-production.up.railway.app';
 
 export function apiUrl(path: string): string {
   if (!API_BASE) return path;
