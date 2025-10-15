@@ -9,6 +9,7 @@ import { NotificationsController } from './notifications.controller';
 import { SharesController } from './shares.controller';
 import { FeedbacksController } from './feedbacks.controller';
 import { WorklogsController } from './worklogs.controller';
+import { AuthController } from './auth.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -21,6 +22,7 @@ import { WorklogsController } from './worklogs.controller';
     SharesController,
     FeedbacksController,
     WorklogsController,
+    AuthController,
   ],
   providers: [PrismaService],
 })

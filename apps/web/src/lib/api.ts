@@ -12,5 +12,20 @@ export function apiUrl(path: string): string {
 
 export function apiFetch(input: string, init?: RequestInit) {
   const url = apiUrl(input);
-  return fetch(url, init);
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const headers = new Headers(init?.headers || {});
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(url, { ...init, headers });
+}
+
+export async function apiJson<T = any>(input: string, init?: RequestInit): Promise<T> {
+  const res = await apiFetch(input, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers as any),
+    },
+  });
+  if (!res.ok) throw new Error(`${res.status}`);
+  return (await res.json()) as T;
 }

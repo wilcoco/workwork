@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { IsArray, IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { IsArray, IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
 class ReportDto {
@@ -104,6 +104,15 @@ class CreateWorklogDto {
 
   @IsOptional()
   delegate?: DelegateItemDto[];
+}
+
+class CreateSimpleWorklogDto {
+  @IsString() @IsNotEmpty() userId!: string;
+  @IsString() @IsNotEmpty() teamName!: string;
+  @IsString() @IsNotEmpty() taskName!: string;
+  @IsString() @IsNotEmpty() title!: string;
+  @IsString() @IsNotEmpty() content!: string;
+  @IsOptional() @IsDateString() date?: string;
 }
 
 @Controller('worklogs')
@@ -299,6 +308,87 @@ export class WorklogsController {
     }
 
     return { worklog: wl, approvalId, shareIds: shares, helpTicketIds: tickets, delegationIds: delegations };
+  }
+
+  @Post('simple')
+  async createSimple(@Body() dto: CreateSimpleWorklogDto) {
+    // 0) Ensure team exists (create if needed)
+    let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
+    if (!team) {
+      team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
+    }
+
+    // 1) If user belongs to different team, allow team change
+    const user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
+
+    // 2) Ensure Objective/KR exist for the team (Auto buckets)
+    const periodStart = new Date();
+    const periodEnd = new Date(periodStart.getTime() + 1000 * 60 * 60 * 24 * 365);
+    let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
+    if (!objective) {
+      objective = await this.prisma.objective.create({
+        data: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id, ownerId: user.id, periodStart, periodEnd, status: 'ACTIVE' as any },
+      });
+    }
+    let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Auto KR', objectiveId: objective.id } });
+    if (!kr) {
+      kr = await this.prisma.keyResult.create({
+        data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
+      });
+    }
+
+    // 3) Ensure Initiative exists for taskName (owner=user)
+    let initiative = await this.prisma.initiative.findFirst({ where: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id } });
+    if (!initiative) {
+      initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+    }
+
+    // 4) Create worklog, encode title + content in note
+    const note = `${dto.title}\n\n${dto.content}`;
+    const wl = await this.prisma.worklog.create({
+      data: { initiativeId: initiative.id, createdById: user.id, note, date: dto.date ? new Date(dto.date) : undefined },
+    });
+    await this.prisma.event.create({ data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { simple: true } } });
+    return { id: wl.id };
+  }
+
+  @Get('search')
+  async search(
+    @Query('team') teamName?: string,
+    @Query('user') userName?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('q') q?: string,
+    @Query('limit') limitStr?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    const limit = Math.min(parseInt(limitStr || '20', 10) || 20, 100);
+    const where: any = {};
+    if (from || to) {
+      where.date = {};
+      if (from) (where.date as any).gte = new Date(from);
+      if (to) (where.date as any).lte = new Date(to);
+    }
+    if (q) where.note = { contains: q, mode: 'insensitive' as any };
+    if (teamName) where.createdBy = { orgUnit: { name: teamName } };
+    if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+
+    const items = await this.prisma.worklog.findMany({
+      where,
+      take: limit,
+      skip: cursor ? 1 : 0,
+      ...(cursor ? { cursor: { id: cursor } } : {}),
+      orderBy: { date: 'desc' },
+      include: { createdBy: { include: { orgUnit: true } }, initiative: true },
+    });
+    const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
+    const mapped = items.map((it) => {
+      const lines = (it.note || '').split(/\n+/);
+      const title = lines[0] || '';
+      const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
+      return { id: it.id, date: it.date, title, excerpt, userName: it.createdBy?.name, teamName: it.createdBy?.orgUnit?.name, taskName: it.initiative?.title };
+    });
+    return { items: mapped, nextCursor };
   }
 
   @Get(':id')

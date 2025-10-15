@@ -66,6 +66,7 @@ model User {
   delegationsMade Delegation[] @relation("Delegator")
   delegationsReceived Delegation[] @relation("Delegatee")
   notifications Notification[]
+  passwordHash String?
 }
 
 model Objective {
