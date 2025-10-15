@@ -26,6 +26,20 @@ export async function apiJson<T = any>(input: string, init?: RequestInit): Promi
       ...(init?.headers as any),
     },
   });
-  if (!res.ok) throw new Error(`${res.status}`);
-  return (await res.json()) as T;
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+  if (!res.ok) {
+    const rawMsg = data?.message ?? text ?? `${res.status}`;
+    const msg = Array.isArray(rawMsg) ? rawMsg.join(', ') : String(rawMsg);
+    const err: any = new Error(msg);
+    err.status = res.status;
+    err.body = data ?? text;
+    throw err;
+  }
+  return data as T;
 }

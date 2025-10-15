@@ -23,8 +23,8 @@ export function Login() {
       localStorage.setItem('userName', res.user.name);
       localStorage.setItem('teamName', res.user.teamName || '');
       nav('/');
-    } catch (err) {
-      setError('로그인 실패');
+    } catch (err: any) {
+      setError(err?.message || '로그인 실패');
     } finally {
       setLoading(false);
     }

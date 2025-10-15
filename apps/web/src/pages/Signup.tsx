@@ -29,7 +29,7 @@ export function Signup() {
       localStorage.setItem('teamName', res.user.teamName || '');
       nav('/');
     } catch (err: any) {
-      setError('가입 실패');
+      setError(err?.message || '가입 실패');
     } finally {
       setLoading(false);
     }
