@@ -113,6 +113,8 @@ class CreateSimpleWorklogDto {
   @IsString() @IsNotEmpty() title!: string;
   @IsString() @IsNotEmpty() content!: string;
   @IsOptional() @IsDateString() date?: string;
+  @IsOptional() @IsString() contentHtml?: string;
+  @IsOptional() attachments?: any;
 }
 
 @Controller('worklogs')
@@ -343,10 +345,24 @@ export class WorklogsController {
       initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
     }
 
-    // 4) Create worklog, encode title + content in note
-    const note = `${dto.title}\n\n${dto.content}`;
+    // 4) Create worklog
+    // Build plain text for search (strip HTML when provided)
+    const plainFromHtml = dto.contentHtml
+      ? dto.contentHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      : '';
+    const contentPlain = dto.content || plainFromHtml || '';
+    const note = `${dto.title}\n\n${contentPlain}`;
+    const attachmentsJson = dto.contentHtml || (dto as any).attachments
+      ? { contentHtml: dto.contentHtml, files: (dto as any).attachments?.files ?? (dto as any).attachments ?? [] }
+      : undefined;
     const wl = await this.prisma.worklog.create({
-      data: { initiativeId: initiative.id, createdById: user.id, note, date: dto.date ? new Date(dto.date) : undefined },
+      data: {
+        initiativeId: initiative.id,
+        createdById: user.id,
+        note,
+        attachments: attachmentsJson as any,
+        date: dto.date ? new Date(dto.date) : undefined,
+      },
     });
     await this.prisma.event.create({ data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { simple: true } } });
     return { id: wl.id };

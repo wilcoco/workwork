@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
+import { uploadFile, uploadFiles, type UploadResp } from '../lib/upload';
 
 export function WorklogQuickNew() {
   const nav = useNavigate();
@@ -8,7 +11,9 @@ export function WorklogQuickNew() {
   const [teamName, setTeamName] = useState<string>('');
   const [taskName, setTaskName] = useState('');
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [contentHtml, setContentHtml] = useState('');
+  const [attachments, setAttachments] = useState<UploadResp[]>([]);
+  const quillRef = useRef<ReactQuill | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,6 +21,12 @@ export function WorklogQuickNew() {
     const stored = localStorage.getItem('teamName') || '';
     if (stored) setTeamName(stored);
   }, []);
+
+  function stripHtml(html: string) {
+    const el = document.createElement('div');
+    el.innerHTML = html || '';
+    return (el.textContent || el.innerText || '').replace(/\s+/g, ' ').trim();
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,7 +39,16 @@ export function WorklogQuickNew() {
         '/api/worklogs/simple',
         {
           method: 'POST',
-          body: JSON.stringify({ userId, teamName, taskName, title, content, date }),
+          body: JSON.stringify({
+            userId,
+            teamName,
+            taskName,
+            title,
+            content: stripHtml(contentHtml),
+            contentHtml,
+            attachments: { files: attachments },
+            date,
+          }),
         }
       );
       nav(`/worklogs/${res.id}`);
@@ -37,6 +57,47 @@ export function WorklogQuickNew() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function onImageUpload() {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const up = await uploadFile(file);
+        const editor = quillRef.current?.getEditor();
+        const range = editor?.getSelection(true);
+        if (range) {
+          editor?.insertEmbed(range.index, 'image', up.url, 'user');
+          editor?.setSelection(range.index + 1, 0, 'user');
+        } else {
+          editor?.insertEmbed(0, 'image', up.url, 'user');
+        }
+        setAttachments((prev) => [...prev, up]);
+      };
+      input.click();
+    } catch (e: any) {
+      setError(e?.message || '이미지 업로드 실패');
+    }
+  }
+
+  async function onAttachFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    try {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      const ups = await uploadFiles(files);
+      setAttachments((prev) => [...prev, ...ups]);
+      e.target.value = '';
+    } catch (e: any) {
+      setError(e?.message || '파일 업로드 실패');
+    }
+  }
+
+  function removeAttachment(idx: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
   }
 
   return (
@@ -54,9 +115,47 @@ export function WorklogQuickNew() {
           </div>
           <input placeholder="과제명" value={taskName} onChange={(e) => setTaskName(e.target.value)} style={input} required />
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
-          <textarea placeholder="업무 내용" value={content} onChange={(e) => setContent(e.target.value)} style={{ ...input, minHeight: 140, resize: 'vertical' }} required />
+          <div>
+            <ReactQuill
+              ref={quillRef}
+              theme="snow"
+              value={contentHtml}
+              onChange={setContentHtml}
+              placeholder="업무 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요."
+              modules={{
+                toolbar: {
+                  container: [
+                    [{ header: [1, 2, 3, false] }],
+                    ['bold', 'italic', 'underline', 'strike'],
+                    [{ list: 'ordered' }, { list: 'bullet' }],
+                    ['link', 'image'],
+                    [{ color: [] }, { background: [] }],
+                    [{ align: [] }],
+                    ['clean'],
+                  ],
+                  handlers: {
+                    image: onImageUpload,
+                  },
+                },
+              }}
+            />
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
+            <input type="file" multiple onChange={onAttachFiles} />
+            {attachments.length > 0 && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {attachments.map((f, i) => (
+                  <div key={f.filename + i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <a href={f.url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{f.name}</a>
+                    <button type="button" style={smallBtn} onClick={() => removeAttachment(i)}>삭제</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" style={ghostBtn} onClick={() => { setTitle(''); setContent(''); }}>
+            <button type="button" style={ghostBtn} onClick={() => { setTitle(''); setContentHtml(''); setAttachments([]); }}>
               초기화
             </button>
             <button style={primaryBtn} disabled={loading}>
@@ -93,4 +192,14 @@ const ghostBtn: React.CSSProperties = {
   borderRadius: 10,
   padding: '10px 14px',
   fontWeight: 600,
+};
+
+const smallBtn: React.CSSProperties = {
+  background: '#ef4444',
+  color: '#fff',
+  border: 'none',
+  borderRadius: 8,
+  padding: '4px 8px',
+  fontSize: 12,
+  cursor: 'pointer',
 };
