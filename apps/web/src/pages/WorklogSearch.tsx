@@ -11,6 +11,10 @@ type Item = {
   taskName?: string;
 };
 
+// NOTE: Trigger redeploy - adding non-functional comments.
+// This page renders SNS-like cards for worklog search results.
+// No functional changes in this commit.
+
 export function WorklogSearch() {
   const [team, setTeam] = useState('');
   const [user, setUser] = useState('');
