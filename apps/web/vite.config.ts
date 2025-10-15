@@ -12,4 +12,8 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    host: true,
+    allowedHosts: ['workworkweb-production.up.railway.app'],
+  },
 });
