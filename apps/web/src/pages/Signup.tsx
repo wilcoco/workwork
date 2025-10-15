@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
+// trigger redeploy: harmless comment
+
 export function Signup() {
   const nav = useNavigate();
   const [username, setUsername] = useState('');
