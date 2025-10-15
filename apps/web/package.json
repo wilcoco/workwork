@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "serve -s -l tcp://0.0.0.0:$PORT dist"
   },
   "dependencies": {
     "react": "^18.2.0",
