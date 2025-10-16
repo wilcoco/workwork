@@ -54,12 +54,27 @@ export function WorklogDetail() {
       {Array.isArray(data.attachments?.files) && data.attachments.files.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <b>첨부:</b>
-          <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
-            {data.attachments.files.map((f: any, i: number) => (
-              <a key={(f.filename || f.url) + i} href={f.url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>
-                {f.name || f.filename || f.url}
-              </a>
-            ))}
+          <div style={{ display: 'grid', gap: 10, marginTop: 6 }}>
+            {data.attachments.files.map((f: any, i: number) => {
+              const url = f.url as string;
+              const name = f.name || f.filename || url;
+              const type = (f.type || '').toString();
+              const isImg = type.startsWith('image') || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url);
+              return (
+                <div key={(f.filename || f.url) + i} style={{ display: 'grid', gap: 6 }}>
+                  {isImg ? (
+                    <div>
+                      <img src={url} alt={name} style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #eee' }} />
+                      <div>
+                        <a href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
+                      </div>
+                    </div>
+                  ) : (
+                    <a href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
