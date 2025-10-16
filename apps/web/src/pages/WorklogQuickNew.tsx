@@ -201,16 +201,16 @@ export function WorklogQuickNew() {
 }
 
 const input: React.CSSProperties = {
-  border: '1px solid #e5e7eb',
-  background: '#fff',
+  border: '1px solid #CBD5E1',
+  background: '#FFFFFF',
   borderRadius: 10,
   padding: '10px 12px',
   outline: 'none',
 };
 
 const primaryBtn: React.CSSProperties = {
-  background: '#111827',
-  color: '#fff',
+  background: '#0F3D73',
+  color: '#FFFFFF',
   border: 'none',
   borderRadius: 10,
   padding: '10px 14px',
@@ -219,16 +219,16 @@ const primaryBtn: React.CSSProperties = {
 
 const ghostBtn: React.CSSProperties = {
   background: 'transparent',
-  color: '#111827',
-  border: '1px solid #e5e7eb',
+  color: '#0F3D73',
+  border: '1px solid #CBD5E1',
   borderRadius: 10,
   padding: '10px 14px',
   fontWeight: 600,
 };
 
 const smallBtn: React.CSSProperties = {
-  background: '#ef4444',
-  color: '#fff',
+  background: '#EF4444',
+  color: '#FFFFFF',
   border: 'none',
   borderRadius: 8,
   padding: '4px 8px',

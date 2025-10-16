@@ -64,8 +64,8 @@ export function WorklogSearch() {
   }
 
   return (
-    <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12 }}>
-      <div style={{ display: 'grid', gap: 8, background: '#fff', border: '1px solid #eee', padding: 12, borderRadius: 12 }}>
+    <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12, background: '#F8FAFC', padding: '12px', borderRadius: 12 }}>
+      <div style={{ display: 'grid', gap: 8, background: '#FFFFFF', border: '1px solid #E5E7EB', padding: 14, borderRadius: 12, boxShadow: '0 2px 10px rgba(16,24,40,0.04)' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
           <input placeholder="팀명" value={team} onChange={(e) => setTeam(e.target.value)} style={input} />
           <input placeholder="이름" value={user} onChange={(e) => setUser(e.target.value)} style={input} />
@@ -80,17 +80,17 @@ export function WorklogSearch() {
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
-      <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gap: 12 }}>
         {items.map((it) => (
           <div key={it.id} style={card}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6b7280', fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
               <div style={avatar}>{(it.userName || '?').slice(0, 1)}</div>
               <div>{it.userName}</div>
               <div>·</div>
               <div>{it.teamName}</div>
-              <div style={{ marginLeft: 'auto' }}>{formatKstDatetime(it.date)}</div>
+              <div style={{ marginLeft: 'auto', background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{formatKstDatetime(it.date)}</div>
             </div>
-            <div style={{ marginTop: 6, fontWeight: 700 }}>{it.title}</div>
+            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{it.title}</div>
             {it.attachments?.contentHtml ? (
               <div
                 style={{ marginTop: 6, color: '#111827', border: '1px solid #eee', borderRadius: 8, padding: 12 }}
@@ -110,7 +110,7 @@ export function WorklogSearch() {
                 })}
               </div>
             )}
-            {it.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#111827', background: '#f3f4f6', display: 'inline-block', padding: '4px 8px', borderRadius: 999 }}>{it.taskName}</div>}
+            {it.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#0F3D73', background: '#E6EEF7', display: 'inline-block', padding: '4px 8px', borderRadius: 999, fontWeight: 600 }}>{it.taskName}</div>}
           </div>
         ))}
       </div>
@@ -138,9 +138,10 @@ const primaryBtn: React.CSSProperties = {
 const card: React.CSSProperties = {
   background: '#FFFFFF',
   border: '1px solid #E5E7EB',
+  borderLeft: '4px solid #0F3D73',
   borderRadius: 12,
   padding: 14,
-  boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
+  boxShadow: '0 2px 10px rgba(16, 24, 40, 0.06)'
 };
 
 const avatar: React.CSSProperties = {

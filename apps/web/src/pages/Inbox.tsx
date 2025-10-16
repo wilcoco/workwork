@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../lib/api';
+import { formatKstDatetime } from '../lib/time';
 
 export function Inbox() {
   const [userId, setUserId] = useState('');
@@ -36,17 +37,17 @@ export function Inbox() {
     <div style={{ display: 'grid', gap: 12 }}>
       <h2>인박스</h2>
       <div style={{ display: 'flex', gap: 12 }}>
-        <input placeholder="내 User ID" value={userId} onChange={(e) => setUserId(e.target.value)} />
-        <button onClick={load} disabled={!userId || loading}>{loading ? '로딩...' : '불러오기'}</button>
+        <input placeholder="내 User ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={input} />
+        <button onClick={load} disabled={!userId || loading} style={primaryBtn}>{loading ? '로딩...' : '불러오기'}</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((n) => (
-          <div key={n.id} style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8, background: n.readAt ? '#fafafa' : 'white' }}>
+          <div key={n.id} style={{ ...card, background: n.readAt ? '#F8FAFC' : '#FFFFFF' }}>
             <div><b>유형:</b> {n.type}</div>
             <div><b>대상:</b> {n.subjectType} / {n.subjectId}</div>
-            <div><b>시간:</b> {n.createdAt}</div>
-            <button onClick={() => markRead(n.id)} disabled={!!n.readAt}>표시: 읽음</button>
+            <div><b>시간:</b> {formatKstDatetime(n.createdAt)}</div>
+            <button onClick={() => markRead(n.id)} disabled={!!n.readAt} style={ghostBtn}>표시: 읽음</button>
           </div>
         ))}
         {!items.length && <div>알림 없음</div>}
@@ -54,3 +55,37 @@ export function Inbox() {
     </div>
   );
 }
+
+const input: React.CSSProperties = {
+  border: '1px solid #CBD5E1',
+  background: '#FFFFFF',
+  borderRadius: 10,
+  padding: '10px 12px',
+  outline: 'none',
+};
+
+const primaryBtn: React.CSSProperties = {
+  background: '#0F3D73',
+  color: '#FFFFFF',
+  border: 'none',
+  borderRadius: 10,
+  padding: '10px 14px',
+  fontWeight: 600,
+};
+
+const ghostBtn: React.CSSProperties = {
+  background: 'transparent',
+  color: '#0F3D73',
+  border: '1px solid #CBD5E1',
+  borderRadius: 10,
+  padding: '6px 10px',
+  fontWeight: 600,
+};
+
+const card: React.CSSProperties = {
+  background: '#FFFFFF',
+  border: '1px solid #E5E7EB',
+  borderRadius: 10,
+  padding: 12,
+  boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
+};
