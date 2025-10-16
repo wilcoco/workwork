@@ -288,3 +288,13 @@ model Notification {
   readAt      DateTime?
   createdAt   DateTime @default(now())
 }
+
+model Upload {
+  id           String   @id @default(cuid())
+  filename     String   @unique
+  originalName String?
+  contentType  String?
+  size         Int
+  data         Bytes
+  createdAt    DateTime @default(now())
+}
