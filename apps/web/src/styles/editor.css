@@ -1,0 +1,13 @@
+.ql-container {
+  min-height: 240px;
+  border: none;
+}
+
+.ql-editor {
+  min-height: 200px;
+}
+
+.ql-toolbar {
+  border: none;
+  border-bottom: 1px solid #e5e7eb;
+}

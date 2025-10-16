@@ -4,6 +4,7 @@ import { apiJson } from '../lib/api';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { uploadFile, uploadFiles, type UploadResp } from '../lib/upload';
+import '../styles/editor.css';
 
 export function WorklogQuickNew() {
   const nav = useNavigate();
@@ -115,13 +116,14 @@ export function WorklogQuickNew() {
           </div>
           <input placeholder="과제명" value={taskName} onChange={(e) => setTaskName(e.target.value)} style={input} required />
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
-          <div>
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4 }}>
             <ReactQuill
               ref={quillRef}
               theme="snow"
               value={contentHtml}
               onChange={setContentHtml}
               placeholder="업무 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요."
+              style={{ height: 260 }}
               modules={{
                 toolbar: {
                   container: [
@@ -140,7 +142,7 @@ export function WorklogQuickNew() {
               }}
             />
           </div>
-          <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
             <input type="file" multiple onChange={onAttachFiles} />
             {attachments.length > 0 && (
