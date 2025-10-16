@@ -6,6 +6,9 @@ export function MeGoals() {
   const [userId, setUserId] = useState('');
   const [items, setItems] = useState<any[]>([]); // initiatives
   const [goals, setGoals] = useState<any[]>([]); // user goals
+  const [myOkrs, setMyOkrs] = useState<any[]>([]);
+  const [parentKrs, setParentKrs] = useState<any[]>([]);
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -28,12 +31,18 @@ export function MeGoals() {
     setLoading(true);
     setError(null);
     try {
-      const [inits, myg] = await Promise.all([
+      const [inits, myg, me, pks, mokrs] = await Promise.all([
         apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(userId)}`),
         apiJson<{ items: any[] }>(`/api/my-goals?userId=${encodeURIComponent(userId)}`),
+        apiJson<{ id: string; name: string; role: string; teamName: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`),
+        apiJson<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`),
+        apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`),
       ]);
       setItems(inits.items || []);
       setGoals(myg.items || []);
+      setMyRole((me.role as any) || '');
+      setParentKrs(pks.items || []);
+      setMyOkrs(mokrs.items || []);
     } catch (e: any) {
       setError(e.message || '로드 실패');
     } finally {
@@ -58,6 +67,20 @@ export function MeGoals() {
   const [gStart, setGStart] = useState('');
   const [gEnd, setGEnd] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // Build my O-KR under a parent KR
+  const [roleSaving, setRoleSaving] = useState(false);
+  const [parentKrId, setParentKrId] = useState('');
+  const [oTitle, setOTitle] = useState('');
+  const [oDesc, setODesc] = useState('');
+  const [oStart, setOStart] = useState('');
+  const [oEnd, setOEnd] = useState('');
+  const [krTitle, setKrTitle] = useState('');
+  const [krMetric, setKrMetric] = useState('');
+  const [krTarget, setKrTarget] = useState<string>('');
+  const [krUnit, setKrUnit] = useState('');
+  const [krType, setKrType] = useState<'PROJECT' | 'OPERATIONAL'>('PROJECT');
+  const [okrCreating, setOkrCreating] = useState(false);
 
   function toYmd(v?: string) {
     if (!v) return '';
@@ -121,6 +144,115 @@ export function MeGoals() {
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
+      <section style={{ display: 'grid', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>내 역할 및 상위 O-KR 선택</h3>
+        <div style={card}>
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
+              <select value={myRole} onChange={async (e) => {
+                const role = e.target.value as any;
+                setMyRole(role);
+                if (!userId) return;
+                try {
+                  setRoleSaving(true);
+                  await apiJson(`/api/users/${encodeURIComponent(userId)}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
+                  const p = await apiJson<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`);
+                  setParentKrs(p.items || []);
+                } finally {
+                  setRoleSaving(false);
+                }
+              }} style={{ ...input, appearance: 'auto' as any }}>
+                <option value="">역할 선택</option>
+                <option value="CEO">대표이사</option>
+                <option value="EXEC">임원</option>
+                <option value="MANAGER">팀장</option>
+                <option value="INDIVIDUAL">직원</option>
+              </select>
+              <select value={parentKrId} onChange={(e) => setParentKrId(e.target.value)} disabled={!myRole || myRole === 'CEO'} style={{ ...input, appearance: 'auto' as any }}>
+                <option value="">상위 O-KR 선택 ({myRole === 'CEO' ? '최상위' : '필수'})</option>
+                {parentKrs.map((kr) => (
+                  <option key={kr.id} value={kr.id}>
+                    [{kr.objective?.orgUnit?.name || '-'}] {kr.objective?.title} / KR: {kr.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>
+              역할 변경 후 상위 O-KR 목록이 갱신됩니다. 대표이사는 상위 선택 없이 최상위 O를 생성합니다.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style={{ display: 'grid', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>나의 O-KR 구성</h3>
+        <div style={card}>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <input value={oTitle} onChange={(e) => setOTitle(e.target.value)} placeholder="나의 Objective 제목" style={input} />
+              <input value={krTitle} onChange={(e) => setKrTitle(e.target.value)} placeholder="첫 Key Result 제목" style={input} />
+            </div>
+            <textarea value={oDesc} onChange={(e) => setODesc(e.target.value)} placeholder="Objective 설명" style={{ ...input, minHeight: 70 }} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <input type="date" value={oStart} onChange={(e) => setOStart(e.target.value)} style={input} />
+              <input type="date" value={oEnd} onChange={(e) => setOEnd(e.target.value)} style={input} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+              <input value={krMetric} onChange={(e) => setKrMetric(e.target.value)} placeholder="KR 메트릭(예: %, 건수)" style={input} />
+              <input type="number" step="any" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} placeholder="KR 목표값" style={input} />
+              <input value={krUnit} onChange={(e) => setKrUnit(e.target.value)} placeholder="KR 단위(예: %, 건)" style={input} />
+            </div>
+            <div>
+              <select value={krType} onChange={(e) => setKrType(e.target.value as any)} style={{ ...input, width: 'auto', appearance: 'auto' as any }}>
+                <option value="PROJECT">프로젝트형 (간트)</option>
+                <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                style={primaryBtn}
+                disabled={okrCreating || !userId || !oTitle || !krTitle || !krMetric || !krTarget || !krUnit || !oStart || !oEnd || (!parentKrId && myRole !== 'CEO')}
+                onClick={async () => {
+                  try {
+                    setOkrCreating(true);
+                    const obj = await apiJson<{ id: string }>(`/api/okrs/objectives`, {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        userId,
+                        title: oTitle,
+                        description: oDesc || undefined,
+                        periodStart: oStart,
+                        periodEnd: oEnd,
+                        alignsToKrId: myRole === 'CEO' ? undefined : (parentKrId || undefined),
+                      }),
+                    });
+                    await apiJson(`/api/okrs/objectives/${encodeURIComponent((obj as any).id)}/krs`, {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        userId,
+                        title: krTitle,
+                        metric: krMetric,
+                        target: Number(krTarget),
+                        unit: krUnit,
+                        type: krType,
+                      }),
+                    });
+                    setOTitle(''); setODesc(''); setOStart(''); setOEnd(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrUnit(''); setKrType('PROJECT');
+                    const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+                    setMyOkrs(mokrs.items || []);
+                  } catch (e: any) {
+                    setError(e.message || 'O-KR 생성 실패');
+                  } finally {
+                    setOkrCreating(false);
+                  }
+                }}
+              >{okrCreating ? '생성중…' : 'O + KR 생성'}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {createOpen && (
         <div style={card}>
           <div style={{ display: 'grid', gap: 8 }}>
@@ -178,6 +310,39 @@ export function MeGoals() {
           </div>
         </div>
       )}
+
+      <section style={{ display: 'grid', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>나의 O-KR 목록</h3>
+        <div style={{ display: 'grid', gap: 8 }}>
+          {myOkrs.map((o) => (
+            <div key={o.id} style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
+                <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
+                  {o.orgUnit?.name || '-'}
+                </div>
+                <div style={{ marginLeft: 'auto' }}>
+                  {(o.periodStart ? formatKstDatetime(o.periodStart) : '-') + ' ~ ' + (o.periodEnd ? formatKstDatetime(o.periodEnd) : '-')}
+                </div>
+              </div>
+              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{o.title}</div>
+              {o.description && <div style={{ marginTop: 6, color: '#374151' }}>{o.description}</div>}
+              {o.alignsToKr && (
+                <div style={{ marginTop: 6, color: '#6b7280', fontSize: 13 }}>
+                  상위: {o.alignsToKr.objective?.title} / KR: {o.alignsToKr.title}
+                </div>
+              )}
+              {o.keyResults?.length > 0 && (
+                <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
+                  {o.keyResults.map((kr: any) => (
+                    <div key={kr.id} style={{ fontSize: 13, color: '#334155' }}>• KR: {kr.title} ({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''}) [{kr.type}]</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {!myOkrs.length && <div style={{ color: '#64748b' }}>아직 나의 O-KR이 없습니다. 상단에서 역할/상위 O-KR을 선택하고 생성하세요.</div>}
+        </div>
+      </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>내 목표 목록</h3>
