@@ -78,6 +78,7 @@ model User {
   delegationsReceived Delegation[] @relation("Delegatee")
   notifications Notification[]
   passwordHash String?
+  checklistTicks ChecklistTick[]
 }
 
 model Objective {
@@ -133,6 +134,7 @@ model Initiative {
   cadence       Cadence?
   cadenceAnchor String?
   worklogs      Worklog[]
+  checklistItems ChecklistItem[]
   parentId      String?
   parent        Initiative? @relation("InitiativeTree", fields: [parentId], references: [id])
   children      Initiative[] @relation("InitiativeTree")
