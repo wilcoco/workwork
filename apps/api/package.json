@@ -5,8 +5,8 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/main.ts",
-    "build": "prisma generate --schema=./prisma/schema.prisma && tsc -p tsconfig.json",
-    "start": "prisma migrate deploy --schema=./prisma/schema.prisma && node dist/main.js",
+    "build": "DATABASE_URL=${DATABASE_URL:-postgresql://user:pass@localhost:5432/db?schema=public} prisma generate --schema=./prisma/schema.prisma && tsc -p tsconfig.json",
+    "start": "prisma migrate deploy --schema=./prisma/schema.prisma && prisma generate --schema=./prisma/schema.prisma && node dist/main.js",
     "prisma:generate": "prisma generate --schema=./prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema=./prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema=./prisma/schema.prisma"
