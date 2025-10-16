@@ -15,6 +15,8 @@ export function WorklogQuickNew() {
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
   const quillRef = useRef<ReactQuill | null>(null);
+  const [plainMode, setPlainMode] = useState(false);
+  const [contentPlain, setContentPlain] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,8 +47,8 @@ export function WorklogQuickNew() {
             teamName,
             taskName,
             title,
-            content: stripHtml(contentHtml),
-            contentHtml: contentHtml || undefined,
+            content: plainMode ? contentPlain : stripHtml(contentHtml),
+            contentHtml: plainMode ? undefined : (contentHtml || undefined),
             attachments: { files: attachments },
             date,
           }),
@@ -69,13 +71,15 @@ export function WorklogQuickNew() {
         const file = input.files?.[0];
         if (!file) return;
         const up = await uploadFile(file);
-        const editor = quillRef.current?.getEditor();
-        const range = editor?.getSelection(true);
+        const editor = !plainMode ? quillRef.current?.getEditor() : null;
+        const range = editor?.getSelection?.(true);
         if (editor && range) {
           editor.insertEmbed(range.index, 'image', up.url, 'user');
           editor.setSelection(range.index + 1, 0, 'user');
         } else if (editor) {
           editor.insertEmbed(0, 'image', up.url, 'user');
+        } else {
+          setContentPlain((prev) => (prev ? prev + '\n' + up.url : up.url));
         }
         setAttachments((prev) => [...prev, up]);
       };
@@ -116,31 +120,48 @@ export function WorklogQuickNew() {
           </div>
           <input placeholder="과제명" value={taskName} onChange={(e) => setTaskName(e.target.value)} style={input} required />
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ fontSize: 13, color: '#6b7280' }}>
+              본문 작성 {plainMode ? '(텍스트 모드)' : '(리치 모드)'}
+            </div>
+            <button type="button" style={smallBtn} onClick={() => setPlainMode((v) => !v)}>
+              {plainMode ? '리치 모드' : '텍스트 모드'}
+            </button>
+          </div>
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4 }}>
-            <ReactQuill
-              ref={quillRef}
-              theme="snow"
-              value={contentHtml}
-              onChange={setContentHtml}
-              placeholder="업무 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요."
-              style={{ height: 260 }}
-              modules={{
-                toolbar: {
-                  container: [
-                    [{ header: [1, 2, 3, false] }],
-                    ['bold', 'italic', 'underline', 'strike'],
-                    [{ list: 'ordered' }, { list: 'bullet' }],
-                    ['link', 'image'],
-                    [{ color: [] }, { background: [] }],
-                    [{ align: [] }],
-                    ['clean'],
-                  ],
-                  handlers: {
-                    image: onImageUpload,
+            {plainMode ? (
+              <textarea
+                value={contentPlain}
+                onChange={(e) => setContentPlain(e.target.value)}
+                placeholder="텍스트로 업무 내용을 입력하세요."
+                style={{ ...input, minHeight: 200, resize: 'vertical' }}
+              />)
+              : (
+              <ReactQuill
+                ref={quillRef}
+                theme="snow"
+                value={contentHtml}
+                onChange={setContentHtml}
+                placeholder="업무 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요."
+                style={{ height: 260 }}
+                modules={{
+                  toolbar: {
+                    container: [
+                      [{ header: [1, 2, 3, false] }],
+                      ['bold', 'italic', 'underline', 'strike'],
+                      [{ list: 'ordered' }, { list: 'bullet' }],
+                      ['link', 'image'],
+                      [{ color: [] }, { background: [] }],
+                      [{ align: [] }],
+                      ['clean'],
+                    ],
+                    handlers: {
+                      image: onImageUpload,
+                    },
                   },
-                },
-              }}
-            />
+                }}
+              />
+            )}
           </div>
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
@@ -157,7 +178,7 @@ export function WorklogQuickNew() {
             )}
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" style={ghostBtn} onClick={() => { setTitle(''); setContentHtml(''); setAttachments([]); }}>
+            <button type="button" style={ghostBtn} onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); }}>
               초기화
             </button>
             <button style={primaryBtn} disabled={loading}>
