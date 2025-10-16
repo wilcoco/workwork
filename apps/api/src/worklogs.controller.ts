@@ -402,7 +402,17 @@ export class WorklogsController {
       const lines = (it.note || '').split(/\n+/);
       const title = lines[0] || '';
       const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
-      return { id: it.id, date: it.date, title, excerpt, userName: it.createdBy?.name, teamName: it.createdBy?.orgUnit?.name, taskName: it.initiative?.title };
+      return {
+        id: it.id,
+        date: it.date,
+        title,
+        excerpt,
+        userName: it.createdBy?.name,
+        teamName: it.createdBy?.orgUnit?.name,
+        taskName: it.initiative?.title,
+        attachments: (it as any).attachments ?? undefined,
+        note: it.note ?? undefined,
+      };
     });
     return { items: mapped, nextCursor };
   }

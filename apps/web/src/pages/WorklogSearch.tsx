@@ -10,6 +10,8 @@ type Item = {
   userName?: string;
   teamName?: string;
   taskName?: string;
+  attachments?: any;
+  note?: string;
 };
 
 // NOTE: Trigger redeploy - adding non-functional comments.
@@ -78,11 +80,39 @@ export function WorklogSearch() {
               <div style={{ marginLeft: 'auto' }}>{new Date(it.date).toLocaleString()}</div>
             </div>
             <div style={{ marginTop: 6, fontWeight: 700 }}>{it.title}</div>
-            <div style={{ marginTop: 6, color: '#374151' }}>{it.excerpt}</div>
-            {it.taskName && <div style={{ marginTop: 8, fontSize: 12, color: '#111827', background: '#f3f4f6', display: 'inline-block', padding: '4px 8px', borderRadius: 999 }}>{it.taskName}</div>}
-            <div style={{ marginTop: 10 }}>
-              <Link to={`/worklogs/${it.id}`} style={{ color: '#2563eb', fontWeight: 600 }}>자세히 보기</Link>
-            </div>
+            {it.attachments?.contentHtml ? (
+              <div
+                style={{ marginTop: 6, color: '#111827', border: '1px solid #eee', borderRadius: 8, padding: 12 }}
+                dangerouslySetInnerHTML={{ __html: it.attachments.contentHtml }}
+              />
+            ) : (
+              <div style={{ marginTop: 6, color: '#374151' }}>{it.excerpt}</div>
+            )}
+            {Array.isArray(it.attachments?.files) && it.attachments.files.length > 0 && (
+              <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                {it.attachments.files.map((f: any, i: number) => {
+                  const url = f.url as string;
+                  const name = f.name || f.filename || url;
+                  const type = (f.type || '').toString();
+                  const isImg = type.startsWith('image') || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url);
+                  return (
+                    <div key={(f.filename || f.url) + i} style={{ display: 'grid', gap: 6 }}>
+                      {isImg ? (
+                        <div>
+                          <img src={url} alt={name} style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #eee' }} />
+                          <div>
+                            <a href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
+                          </div>
+                        </div>
+                      ) : (
+                        <a href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {it.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#111827', background: '#f3f4f6', display: 'inline-block', padding: '4px 8px', borderRadius: 999 }}>{it.taskName}</div>}
           </div>
         ))}
       </div>
