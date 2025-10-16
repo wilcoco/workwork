@@ -59,6 +59,11 @@ enum Cadence {
   MONTHLY
 }
 
+enum KeyResultType {
+  PROJECT
+  OPERATIONAL
+}
+
 model OrgUnit {
   id        String    @id @default(cuid())
   name      String
@@ -113,6 +118,8 @@ model Objective {
   status      ObjectiveStatus @default(DRAFT)
   periodStart DateTime
   periodEnd   DateTime
+  alignsToKrId String?
+  alignsToKr   KeyResult? @relation("ObjectiveAlignedToKR", fields: [alignsToKrId], references: [id])
   keyResults  KeyResult[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -132,6 +139,7 @@ model KeyResult {
   initiatives  Initiative[]
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  type         KeyResultType @default(PROJECT)
 }
 
 model Initiative {

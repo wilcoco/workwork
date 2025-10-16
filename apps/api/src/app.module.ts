@@ -13,6 +13,8 @@ import { AuthController } from './auth.controller';
 import { UploadsController } from './uploads.controller';
 import { InitiativesController } from './initiatives.controller';
 import { MyGoalsController } from './my-goals.controller';
+import { OkrsController } from './okrs.controller';
+import { UsersController } from './users.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -29,6 +31,8 @@ import { MyGoalsController } from './my-goals.controller';
     UploadsController,
     InitiativesController,
     MyGoalsController,
+    OkrsController,
+    UsersController,
   ],
   providers: [PrismaService],
 })
