@@ -12,6 +12,8 @@ export function WorklogQuickNew() {
   const [date, setDate] = useState<string>(() => todayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [taskName, setTaskName] = useState('');
+  const [myInits, setMyInits] = useState<any[]>([]);
+  const [initiativeId, setInitiativeId] = useState<string>('');
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
@@ -25,6 +27,13 @@ export function WorklogQuickNew() {
   useEffect(() => {
     const stored = localStorage.getItem('teamName') || '';
     if (stored) setTeamName(stored);
+    // preload my initiatives
+    const uid = localStorage.getItem('userId') || '';
+    if (uid) {
+      apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`)
+        .then((res) => setMyInits(res.items || []))
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -78,7 +87,8 @@ export function WorklogQuickNew() {
           body: JSON.stringify({
             userId,
             teamName,
-            taskName,
+            taskName: initiativeId ? undefined : taskName,
+            initiativeId: initiativeId || undefined,
             title,
             content: plainMode ? contentPlain : stripHtml(contentHtml),
             contentHtml: plainMode ? undefined : (contentHtml || undefined),
@@ -150,7 +160,20 @@ export function WorklogQuickNew() {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} required />
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
-          <input placeholder="과제명" value={taskName} onChange={(e) => setTaskName(e.target.value)} style={input} required />
+          <div style={{ display: 'grid', gap: 8 }}>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제 선택</label>
+            <select value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
+              <option value="">선택 안 함 (새 과제 입력)</option>
+              {myInits.map((it) => (
+                <option key={it.id} value={it.id}>
+                  [{it.type}] {it.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          {!initiativeId && (
+            <input placeholder="새 과제명" value={taskName} onChange={(e) => setTaskName(e.target.value)} style={input} required />
+          )}
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontSize: 13, color: '#6b7280' }}>

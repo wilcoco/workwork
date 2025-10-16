@@ -7,6 +7,7 @@ import { Signup } from './pages/Signup';
 import { Login } from './pages/Login';
 import { WorklogQuickNew } from './pages/WorklogQuickNew';
 import { WorklogSearch } from './pages/WorklogSearch';
+import { MeGoals } from './pages/MeGoals';
 
 export function App() {
   return (
@@ -14,6 +15,7 @@ export function App() {
       <div style={{ padding: 16, display: 'flex', gap: 16, alignItems: 'center', borderBottom: '1px solid #eee' }}>
         <Link to="/">Home</Link>
         <Link to="/quick">작성</Link>
+        <Link to="/me/goals">내 목표</Link>
         <Link to="/search">조회</Link>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 12 }}>
           <Link to="/login">로그인</Link>
@@ -30,6 +32,7 @@ export function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
+          <Route path="/me/goals" element={<MeGoals />} />
         </Routes>
       </div>
     </BrowserRouter>

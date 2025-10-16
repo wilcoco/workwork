@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { IsArray, IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -109,7 +109,7 @@ class CreateWorklogDto {
 class CreateSimpleWorklogDto {
   @IsString() @IsNotEmpty() userId!: string;
   @IsString() @IsNotEmpty() teamName!: string;
-  @IsString() @IsNotEmpty() taskName!: string;
+  @IsOptional() @IsString() taskName?: string;
   @IsString() @IsNotEmpty() title!: string;
   @IsString() @IsNotEmpty() content!: string;
   @IsOptional() @IsDateString() date?: string;
@@ -319,6 +319,9 @@ export class WorklogsController {
     let user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user) throw new Error('user not found');
     if (!initiativeId) {
+      if (!dto.taskName) {
+        throw new BadRequestException('taskName required when initiativeId is not provided');
+      }
       let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
       if (!team) {
         team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
@@ -355,6 +358,9 @@ export class WorklogsController {
     const attachmentsJson = dto.contentHtml || (dto as any).attachments
       ? { contentHtml: dto.contentHtml, files: (dto as any).attachments?.files ?? (dto as any).attachments ?? [] }
       : undefined;
+    if (!initiativeId) {
+      throw new BadRequestException('initiativeId or taskName required');
+    }
     const wl = await this.prisma.worklog.create({
       data: {
         initiativeId: initiativeId,
