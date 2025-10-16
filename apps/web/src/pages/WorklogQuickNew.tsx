@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import Quill from 'quill';
+import 'quill/dist/quill.snow.css';
 import { uploadFile, uploadFiles, type UploadResp } from '../lib/upload';
 import '../styles/editor.css';
 
@@ -14,7 +14,8 @@ export function WorklogQuickNew() {
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
-  const quillRef = useRef<ReactQuill | null>(null);
+  const quillRef = useRef<Quill | null>(null);
+  const editorEl = useRef<HTMLDivElement | null>(null);
   const [plainMode, setPlainMode] = useState(false);
   const [contentPlain, setContentPlain] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,6 +25,37 @@ export function WorklogQuickNew() {
     const stored = localStorage.getItem('teamName') || '';
     if (stored) setTeamName(stored);
   }, []);
+
+  useEffect(() => {
+    if (plainMode) return; // don't init in plain mode
+    if (!editorEl.current) return;
+    if (quillRef.current) return; // already initialized
+    const toolbar = [
+      [{ header: [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['link', 'image'],
+      [{ color: [] }, { background: [] }],
+      [{ align: [] }],
+      ['clean'],
+    ];
+    const q = new Quill(editorEl.current, {
+      theme: 'snow',
+      modules: {
+        toolbar: {
+          container: toolbar,
+          handlers: {
+            image: onImageUpload,
+          },
+        },
+      },
+      placeholder: '업무 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요.',
+    } as any);
+    q.on('text-change', () => {
+      setContentHtml(q.root.innerHTML);
+    });
+    quillRef.current = q;
+  }, [plainMode]);
 
   function stripHtml(html: string) {
     const el = document.createElement('div');
@@ -71,7 +103,7 @@ export function WorklogQuickNew() {
         const file = input.files?.[0];
         if (!file) return;
         const up = await uploadFile(file);
-        const editor = !plainMode ? quillRef.current?.getEditor() : null;
+        const editor = !plainMode ? quillRef.current : null;
         const range = editor?.getSelection?.(true);
         if (editor && range) {
           editor.insertEmbed(range.index, 'image', up.url, 'user');
@@ -135,32 +167,9 @@ export function WorklogQuickNew() {
                 onChange={(e) => setContentPlain(e.target.value)}
                 placeholder="텍스트로 업무 내용을 입력하세요."
                 style={{ ...input, minHeight: 200, resize: 'vertical' }}
-              />)
-              : (
-              <ReactQuill
-                ref={quillRef}
-                theme="snow"
-                value={contentHtml}
-                onChange={setContentHtml}
-                placeholder="업무 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요."
-                style={{ height: 260 }}
-                modules={{
-                  toolbar: {
-                    container: [
-                      [{ header: [1, 2, 3, false] }],
-                      ['bold', 'italic', 'underline', 'strike'],
-                      [{ list: 'ordered' }, { list: 'bullet' }],
-                      ['link', 'image'],
-                      [{ color: [] }, { background: [] }],
-                      [{ align: [] }],
-                      ['clean'],
-                    ],
-                    handlers: {
-                      image: onImageUpload,
-                    },
-                  },
-                }}
               />
+            ) : (
+              <div ref={editorEl} style={{ minHeight: 260 }} />
             )}
           </div>
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
