@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { apiFetch, apiUrl } from '../lib/api';
+import { formatKstDatetime } from '../lib/time';
 
 export function WorklogDetail() {
   const { id } = useParams();
@@ -70,13 +71,13 @@ export function WorklogDetail() {
               const url = absLink(f.url as string);
               const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
               return (
-                <a key={(f.filename || f.url) + i} href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
+                <a key={(f.filename || f.url) + i} href={url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73' }}>{name}</a>
               );
             })}
           </div>
         </div>
       )}
-      <div><b>작성일:</b> {data.createdAt}</div>
+      <div><b>작성일:</b> {formatKstDatetime(data.createdAt)}</div>
     </div>
   );
 }

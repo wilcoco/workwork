@@ -5,10 +5,11 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { uploadFile, uploadFiles, type UploadResp } from '../lib/upload';
 import '../styles/editor.css';
+import { todayKstYmd } from '../lib/time';
 
 export function WorklogQuickNew() {
   const nav = useNavigate();
-  const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState<string>(() => todayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [taskName, setTaskName] = useState('');
   const [title, setTitle] = useState('');
@@ -178,7 +179,7 @@ export function WorklogQuickNew() {
               <div style={{ display: 'grid', gap: 6 }}>
                 {attachments.map((f, i) => (
                   <div key={f.filename + i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <a href={f.url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{f.name}</a>
+                    <a href={f.url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73' }}>{f.name}</a>
                     <button type="button" style={smallBtn} onClick={() => removeAttachment(i)}>삭제</button>
                   </div>
                 ))}

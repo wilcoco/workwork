@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
+import { formatKstDatetime } from '../lib/time';
 
 type Item = {
   id: string;
@@ -87,7 +88,7 @@ export function WorklogSearch() {
               <div>{it.userName}</div>
               <div>·</div>
               <div>{it.teamName}</div>
-              <div style={{ marginLeft: 'auto' }}>{new Date(it.date).toLocaleString()}</div>
+              <div style={{ marginLeft: 'auto' }}>{formatKstDatetime(it.date)}</div>
             </div>
             <div style={{ marginTop: 6, fontWeight: 700 }}>{it.title}</div>
             {it.attachments?.contentHtml ? (
@@ -104,7 +105,7 @@ export function WorklogSearch() {
                   const url = absLink(f.url as string);
                   const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
                   return (
-                    <a key={(f.filename || f.url) + i} href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
+                    <a key={(f.filename || f.url) + i} href={url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73' }}>{name}</a>
                   );
                 })}
               </div>
@@ -118,16 +119,16 @@ export function WorklogSearch() {
 }
 
 const input: React.CSSProperties = {
-  border: '1px solid #e5e7eb',
-  background: '#fff',
+  border: '1px solid #CBD5E1',
+  background: '#FFFFFF',
   borderRadius: 10,
   padding: '10px 12px',
   outline: 'none',
 };
 
 const primaryBtn: React.CSSProperties = {
-  background: '#111827',
-  color: '#fff',
+  background: '#0F3D73',
+  color: '#FFFFFF',
   border: 'none',
   borderRadius: 10,
   padding: '10px 14px',
@@ -135,18 +136,18 @@ const primaryBtn: React.CSSProperties = {
 };
 
 const card: React.CSSProperties = {
-  background: '#fff',
-  border: '1px solid #eee',
+  background: '#FFFFFF',
+  border: '1px solid #E5E7EB',
   borderRadius: 12,
   padding: 14,
-  boxShadow: '0 2px 10px rgba(0,0,0,0.04)'
+  boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
 };
 
 const avatar: React.CSSProperties = {
   width: 22,
   height: 22,
   borderRadius: 999,
-  background: '#e5e7eb',
+  background: '#E2E8F0',
   display: 'grid',
   placeItems: 'center',
   fontSize: 12,
