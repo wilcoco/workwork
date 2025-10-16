@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
 type Item = {
@@ -79,6 +80,9 @@ export function WorklogSearch() {
             <div style={{ marginTop: 6, fontWeight: 700 }}>{it.title}</div>
             <div style={{ marginTop: 6, color: '#374151' }}>{it.excerpt}</div>
             {it.taskName && <div style={{ marginTop: 8, fontSize: 12, color: '#111827', background: '#f3f4f6', display: 'inline-block', padding: '4px 8px', borderRadius: 999 }}>{it.taskName}</div>}
+            <div style={{ marginTop: 10 }}>
+              <Link to={`/worklogs/${it.id}`} style={{ color: '#2563eb', fontWeight: 600 }}>자세히 보기</Link>
+            </div>
           </div>
         ))}
       </div>
