@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { apiFetch } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export function WorklogDetail() {
   const { id } = useParams();
@@ -33,6 +33,17 @@ export function WorklogDetail() {
   if (error) return <div style={{ color: 'red' }}>{error}</div>;
   if (!data) return <div>데이터 없음</div>;
 
+  function absLink(url: string): string {
+    if (!url) return url;
+    if (/^https?:\/\//i.test(url)) return url;
+    return apiUrl(url);
+  }
+
+  function absolutizeUploads(html: string): string {
+    if (!html) return html;
+    return html.replace(/(src|href)=["'](\/uploads\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
+  }
+
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <h2>업무일지 상세</h2>
@@ -46,7 +57,7 @@ export function WorklogDetail() {
         <div>
           <b>내용(HTML):</b>
           <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 12, marginTop: 6 }}
-               dangerouslySetInnerHTML={{ __html: data.attachments.contentHtml }} />
+               dangerouslySetInnerHTML={{ __html: absolutizeUploads(data.attachments.contentHtml) }} />
         </div>
       ) : (
         <div><b>노트:</b> {data.note || '-'}</div>
@@ -56,8 +67,8 @@ export function WorklogDetail() {
           <b>첨부:</b>
           <div style={{ display: 'grid', gap: 10, marginTop: 6 }}>
             {data.attachments.files.map((f: any, i: number) => {
-              const url = f.url as string;
-              const name = f.name || f.filename || url;
+              const url = absLink(f.url as string);
+              const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
               const type = (f.type || '').toString();
               const isImg = type.startsWith('image') || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url);
               return (

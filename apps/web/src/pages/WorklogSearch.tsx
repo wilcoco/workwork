@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { apiJson } from '../lib/api';
+import { apiJson, apiUrl } from '../lib/api';
 
 type Item = {
   id: string;
@@ -52,6 +51,17 @@ export function WorklogSearch() {
     }
   }
 
+  function absLink(url: string): string {
+    if (!url) return url;
+    if (/^https?:\/\//i.test(url)) return url;
+    return apiUrl(url);
+  }
+
+  function absolutizeUploads(html: string): string {
+    if (!html) return html;
+    return html.replace(/(src|href)=["'](\/uploads\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
+  }
+
   return (
     <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12 }}>
       <div style={{ display: 'grid', gap: 8, background: '#fff', border: '1px solid #eee', padding: 12, borderRadius: 12 }}>
@@ -83,7 +93,7 @@ export function WorklogSearch() {
             {it.attachments?.contentHtml ? (
               <div
                 style={{ marginTop: 6, color: '#111827', border: '1px solid #eee', borderRadius: 8, padding: 12 }}
-                dangerouslySetInnerHTML={{ __html: it.attachments.contentHtml }}
+                dangerouslySetInnerHTML={{ __html: absolutizeUploads(it.attachments.contentHtml) }}
               />
             ) : (
               <div style={{ marginTop: 6, color: '#374151' }}>{it.excerpt}</div>
@@ -91,8 +101,8 @@ export function WorklogSearch() {
             {Array.isArray(it.attachments?.files) && it.attachments.files.length > 0 && (
               <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
                 {it.attachments.files.map((f: any, i: number) => {
-                  const url = f.url as string;
-                  const name = f.name || f.filename || url;
+                  const url = absLink(f.url as string);
+                  const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
                   const type = (f.type || '').toString();
                   const isImg = type.startsWith('image') || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url);
                   return (
