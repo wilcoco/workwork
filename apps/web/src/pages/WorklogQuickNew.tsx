@@ -138,9 +138,9 @@ export function WorklogQuickNew() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto' }}>
-      <div style={{ background: '#fff', border: '1px solid #eee', borderRadius: 12, padding: 16, boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+    <div style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto', background: '#F8FAFC', padding: 12, borderRadius: 12 }}>
+      <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderLeft: '4px solid #0F3D73', borderRadius: 12, padding: 16, boxShadow: '0 2px 10px rgba(16,24,40,0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, color: '#475569' }}>
           <div style={{ width: 36, height: 36, borderRadius: 999, background: '#f3f4f6', display: 'grid', placeItems: 'center', fontWeight: 700 }}>🙂</div>
           <div style={{ color: '#6b7280', fontSize: 14 }}>무엇을 진행하셨나요?</div>
         </div>
