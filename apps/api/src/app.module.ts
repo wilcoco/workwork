@@ -12,6 +12,7 @@ import { WorklogsController } from './worklogs.controller';
 import { AuthController } from './auth.controller';
 import { UploadsController } from './uploads.controller';
 import { InitiativesController } from './initiatives.controller';
+import { MyGoalsController } from './my-goals.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -27,6 +28,7 @@ import { InitiativesController } from './initiatives.controller';
     AuthController,
     UploadsController,
     InitiativesController,
+    MyGoalsController,
   ],
   providers: [PrismaService],
 })

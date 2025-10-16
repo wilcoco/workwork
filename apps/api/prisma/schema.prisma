@@ -4,6 +4,22 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model UserGoal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  description String?
+  kind        GoalKind @default(QUALITATIVE)
+  metric      String?
+  target      Float?
+  unit        String?
+  startAt     DateTime?
+  endAt       DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -79,6 +95,7 @@ model User {
   notifications Notification[]
   passwordHash String?
   checklistTicks ChecklistTick[]
+  userGoals UserGoal[]
 }
 
 model Objective {
@@ -210,6 +227,11 @@ enum DelegationStatus {
   ACTIVE
   BLOCKED
   DONE
+}
+
+enum GoalKind {
+  QUALITATIVE
+  QUANTITATIVE
 }
 
 model ApprovalRequest {
