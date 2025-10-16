@@ -113,7 +113,6 @@ export function WorklogQuickNew() {
         } else {
           setContentPlain((prev) => (prev ? prev + '\n' + up.url : up.url));
         }
-        setAttachments((prev) => [...prev, up]);
       };
       input.click();
     } catch (e: any) {

@@ -99,25 +99,12 @@ export function WorklogSearch() {
               <div style={{ marginTop: 6, color: '#374151' }}>{it.excerpt}</div>
             )}
             {Array.isArray(it.attachments?.files) && it.attachments.files.length > 0 && (
-              <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+              <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
                 {it.attachments.files.map((f: any, i: number) => {
                   const url = absLink(f.url as string);
                   const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-                  const type = (f.type || '').toString();
-                  const isImg = type.startsWith('image') || /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(url);
                   return (
-                    <div key={(f.filename || f.url) + i} style={{ display: 'grid', gap: 6 }}>
-                      {isImg ? (
-                        <div>
-                          <img src={url} alt={name} style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #eee' }} />
-                          <div>
-                            <a href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
-                          </div>
-                        </div>
-                      ) : (
-                        <a href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
-                      )}
-                    </div>
+                    <a key={(f.filename || f.url) + i} href={url} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{name}</a>
                   );
                 })}
               </div>
