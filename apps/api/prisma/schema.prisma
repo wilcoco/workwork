@@ -31,6 +31,17 @@ enum InitiativeState {
   CANCELLED
 }
 
+enum InitiativeType {
+  PROJECT
+  OPERATIONAL
+}
+
+enum Cadence {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
 model OrgUnit {
   id        String    @id @default(cuid())
   name      String
@@ -111,11 +122,16 @@ model Initiative {
   title         String
   description   String?
   state         InitiativeState @default(PLANNED)
+  type          InitiativeType  @default(PROJECT)
   ownerId       String
   owner         User     @relation("InitiativeOwner", fields: [ownerId], references: [id])
   priority      Int      @default(3)
   slaMinutes    Int?
   dueAt         DateTime?
+  startAt       DateTime?
+  endAt         DateTime?
+  cadence       Cadence?
+  cadenceAnchor String?
   worklogs      Worklog[]
   parentId      String?
   parent        Initiative? @relation("InitiativeTree", fields: [parentId], references: [id])
@@ -297,4 +313,26 @@ model Upload {
   size         Int
   data         Bytes
   createdAt    DateTime @default(now())
+}
+
+model ChecklistItem {
+  id            String   @id @default(cuid())
+  initiativeId  String
+  initiative    Initiative @relation(fields: [initiativeId], references: [id])
+  title         String
+  order         Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  ticks         ChecklistTick[]
+}
+
+model ChecklistTick {
+  id              String   @id @default(cuid())
+  checklistItemId String
+  checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id])
+  periodStart     DateTime
+  periodEnd       DateTime
+  checkedAt       DateTime @default(now())
+  actorId         String
+  actor           User     @relation(fields: [actorId], references: [id])
 }

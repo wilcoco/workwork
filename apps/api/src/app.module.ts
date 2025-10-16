@@ -11,6 +11,7 @@ import { FeedbacksController } from './feedbacks.controller';
 import { WorklogsController } from './worklogs.controller';
 import { AuthController } from './auth.controller';
 import { UploadsController } from './uploads.controller';
+import { InitiativesController } from './initiatives.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -25,6 +26,7 @@ import { UploadsController } from './uploads.controller';
     WorklogsController,
     AuthController,
     UploadsController,
+    InitiativesController,
   ],
   providers: [PrismaService],
 })

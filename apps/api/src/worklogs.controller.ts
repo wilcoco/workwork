@@ -115,6 +115,7 @@ class CreateSimpleWorklogDto {
   @IsOptional() @IsDateString() date?: string;
   @IsOptional() @IsString() contentHtml?: string;
   @IsOptional() attachments?: any;
+  @IsOptional() @IsString() initiativeId?: string;
 }
 
 @Controller('worklogs')
@@ -314,35 +315,34 @@ export class WorklogsController {
 
   @Post('simple')
   async createSimple(@Body() dto: CreateSimpleWorklogDto) {
-    // 0) Ensure team exists (create if needed)
-    let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
-    if (!team) {
-      team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
-    }
-
-    // 1) If user belongs to different team, allow team change
-    const user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
-
-    // 2) Ensure Objective/KR exist for the team (Auto buckets)
-    const periodStart = new Date();
-    const periodEnd = new Date(periodStart.getTime() + 1000 * 60 * 60 * 24 * 365);
-    let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
-    if (!objective) {
-      objective = await this.prisma.objective.create({
-        data: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id, ownerId: user.id, periodStart, periodEnd, status: 'ACTIVE' as any },
-      });
-    }
-    let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Auto KR', objectiveId: objective.id } });
-    if (!kr) {
-      kr = await this.prisma.keyResult.create({
-        data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
-      });
-    }
-
-    // 3) Ensure Initiative exists for taskName (owner=user)
-    let initiative = await this.prisma.initiative.findFirst({ where: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id } });
-    if (!initiative) {
-      initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+    let initiativeId = dto.initiativeId;
+    let user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    if (!user) throw new Error('user not found');
+    if (!initiativeId) {
+      let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
+      if (!team) {
+        team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
+      }
+      user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
+      const periodStart = new Date();
+      const periodEnd = new Date(periodStart.getTime() + 1000 * 60 * 60 * 24 * 365);
+      let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
+      if (!objective) {
+        objective = await this.prisma.objective.create({
+          data: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id, ownerId: user.id, periodStart, periodEnd, status: 'ACTIVE' as any },
+        });
+      }
+      let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Auto KR', objectiveId: objective.id } });
+      if (!kr) {
+        kr = await this.prisma.keyResult.create({
+          data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
+        });
+      }
+      let initiative = await this.prisma.initiative.findFirst({ where: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id } });
+      if (!initiative) {
+        initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+      }
+      initiativeId = initiative.id;
     }
 
     // 4) Create worklog
@@ -357,7 +357,7 @@ export class WorklogsController {
       : undefined;
     const wl = await this.prisma.worklog.create({
       data: {
-        initiativeId: initiative.id,
+        initiativeId: initiativeId,
         createdById: user.id,
         note,
         attachments: attachmentsJson as any,
