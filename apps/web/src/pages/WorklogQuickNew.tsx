@@ -13,7 +13,8 @@ export function WorklogQuickNew() {
   const [teamName, setTeamName] = useState<string>('');
   const [taskName, setTaskName] = useState('');
   const [myInits, setMyInits] = useState<any[]>([]);
-  const [initiativeId, setInitiativeId] = useState<string>('');
+  const [myGoals, setMyGoals] = useState<any[]>([]);
+  const [selection, setSelection] = useState<string>(''); // '' | 'init:<id>' | 'goal:<id>'
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
@@ -27,11 +28,14 @@ export function WorklogQuickNew() {
   useEffect(() => {
     const stored = localStorage.getItem('teamName') || '';
     if (stored) setTeamName(stored);
-    // preload my initiatives
+    // preload my initiatives & goals
     const uid = localStorage.getItem('userId') || '';
     if (uid) {
       apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`)
         .then((res) => setMyInits(res.items || []))
+        .catch(() => {});
+      apiJson<{ items: any[] }>(`/api/my-goals?userId=${encodeURIComponent(uid)}`)
+        .then((res) => setMyGoals(res.items || []))
         .catch(() => {});
     }
   }, []);
@@ -87,8 +91,9 @@ export function WorklogQuickNew() {
           body: JSON.stringify({
             userId,
             teamName,
-            taskName: initiativeId ? undefined : taskName,
-            initiativeId: initiativeId || undefined,
+            taskName: selection ? undefined : taskName,
+            initiativeId: selection.startsWith('init:') ? selection.substring(5) : undefined,
+            userGoalId: selection.startsWith('goal:') ? selection.substring(5) : undefined,
             title,
             content: plainMode ? contentPlain : stripHtml(contentHtml),
             contentHtml: plainMode ? undefined : (contentHtml || undefined),
@@ -161,17 +166,26 @@ export function WorklogQuickNew() {
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제 선택</label>
-            <select value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>내 목표/과제 선택</label>
+            <select value={selection} onChange={(e) => setSelection(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
               <option value="">선택 안 함 (새 과제 입력)</option>
-              {myInits.map((it) => (
-                <option key={it.id} value={it.id}>
-                  [{it.type}] {it.title}
-                </option>
-              ))}
+              {myGoals.length > 0 && (
+                <optgroup label="내 목표">
+                  {myGoals.map((g) => (
+                    <option key={g.id} value={`goal:${g.id}`}>[목표] {g.title}</option>
+                  ))}
+                </optgroup>
+              )}
+              {myInits.length > 0 && (
+                <optgroup label="나의 과제">
+                  {myInits.map((it) => (
+                    <option key={it.id} value={`init:${it.id}`}>[과제][{it.type}] {it.title}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
-          {!initiativeId && (
+          {!selection && (
             <input placeholder="새 과제명" value={taskName} onChange={(e) => setTaskName(e.target.value)} style={input} required />
           )}
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />

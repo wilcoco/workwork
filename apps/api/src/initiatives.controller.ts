@@ -12,6 +12,7 @@ class CreateInitiativeDto {
   @IsOptional() @IsDateString() endAt?: string;
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY' } as any) cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
   @IsOptional() @IsString() cadenceAnchor?: string;
+  @IsOptional() @IsString() userGoalId?: string;
 }
 
 class UpdateInitiativeDto {
@@ -22,6 +23,7 @@ class UpdateInitiativeDto {
   @IsOptional() @IsDateString() endAt?: string;
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY' } as any) cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
   @IsOptional() @IsString() cadenceAnchor?: string;
+  @IsOptional() @IsString() userGoalId?: string;
 }
 
 class CreateChecklistItemDto {
@@ -68,6 +70,7 @@ export class InitiativesController {
       endAt: dto.endAt ? new Date(dto.endAt) : undefined,
       cadence: dto.cadence as any,
       cadenceAnchor: dto.cadenceAnchor,
+      userGoalId: dto.userGoalId,
     };
     const rec = await this.prisma.initiative.create({ data });
     return rec;
@@ -83,6 +86,7 @@ export class InitiativesController {
       endAt: dto.endAt ? new Date(dto.endAt) : undefined,
       cadence: dto.cadence as any,
       cadenceAnchor: dto.cadenceAnchor,
+      userGoalId: dto.userGoalId,
     };
     const rec = await this.prisma.initiative.update({ where: { id }, data });
     return rec;

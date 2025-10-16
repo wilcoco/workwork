@@ -116,6 +116,7 @@ class CreateSimpleWorklogDto {
   @IsOptional() @IsString() contentHtml?: string;
   @IsOptional() attachments?: any;
   @IsOptional() @IsString() initiativeId?: string;
+  @IsOptional() @IsString() userGoalId?: string;
 }
 
 @Controller('worklogs')
@@ -319,9 +320,7 @@ export class WorklogsController {
     let user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user) throw new Error('user not found');
     if (!initiativeId) {
-      if (!dto.taskName) {
-        throw new BadRequestException('taskName required when initiativeId is not provided');
-      }
+      // Ensure team & OKR scaffolding exists
       let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
       if (!team) {
         team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
@@ -341,11 +340,29 @@ export class WorklogsController {
           data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
         });
       }
-      let initiative = await this.prisma.initiative.findFirst({ where: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id } });
-      if (!initiative) {
-        initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+
+      if (dto.userGoalId) {
+        const goal = await this.prisma.userGoal.findUnique({ where: { id: dto.userGoalId } });
+        if (!goal || goal.userId !== user.id) {
+          throw new BadRequestException('invalid userGoalId');
+        }
+        let initiative = await this.prisma.initiative.findFirst({ where: { userGoalId: goal.id, ownerId: user.id } });
+        if (!initiative) {
+          initiative = await this.prisma.initiative.create({
+            data: { title: goal.title, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any, userGoalId: goal.id },
+          });
+        }
+        initiativeId = initiative.id;
+      } else {
+        if (!dto.taskName) {
+          throw new BadRequestException('taskName required when initiativeId/userGoalId is not provided');
+        }
+        let initiative = await this.prisma.initiative.findFirst({ where: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id } });
+        if (!initiative) {
+          initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+        }
+        initiativeId = initiative.id;
       }
-      initiativeId = initiative.id;
     }
 
     // 4) Create worklog

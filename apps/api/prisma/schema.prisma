@@ -18,6 +18,7 @@ model UserGoal {
   endAt       DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  initiatives Initiative[]
 }
 
 datasource db {
@@ -152,6 +153,8 @@ model Initiative {
   cadenceAnchor String?
   worklogs      Worklog[]
   checklistItems ChecklistItem[]
+  userGoalId    String?
+  userGoal      UserGoal? @relation(fields: [userGoalId], references: [id])
   parentId      String?
   parent        Initiative? @relation("InitiativeTree", fields: [parentId], references: [id])
   children      Initiative[] @relation("InitiativeTree")
