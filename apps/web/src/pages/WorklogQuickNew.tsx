@@ -46,7 +46,7 @@ export function WorklogQuickNew() {
             taskName,
             title,
             content: stripHtml(contentHtml),
-            contentHtml,
+            contentHtml: contentHtml || undefined,
             attachments: { files: attachments },
             date,
           }),
@@ -71,11 +71,11 @@ export function WorklogQuickNew() {
         const up = await uploadFile(file);
         const editor = quillRef.current?.getEditor();
         const range = editor?.getSelection(true);
-        if (range) {
-          editor?.insertEmbed(range.index, 'image', up.url, 'user');
-          editor?.setSelection(range.index + 1, 0, 'user');
-        } else {
-          editor?.insertEmbed(0, 'image', up.url, 'user');
+        if (editor && range) {
+          editor.insertEmbed(range.index, 'image', up.url, 'user');
+          editor.setSelection(range.index + 1, 0, 'user');
+        } else if (editor) {
+          editor.insertEmbed(0, 'image', up.url, 'user');
         }
         setAttachments((prev) => [...prev, up]);
       };
