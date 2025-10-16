@@ -17,7 +17,9 @@ export async function uploadFile(file: File): Promise<UploadResp> {
   if (!res.ok) throw new Error((data?.message as any) || text || `${res.status}`);
   const out = data as UploadResp;
   if (out && out.url && !/^https?:\/\//i.test(out.url)) {
-    out.url = new URL(out.url, API_BASE).toString();
+    // If server gave '/files/...' without global prefix, fix to '/api/files/...'
+    const path = out.url.startsWith('/files/') ? `/api${out.url}` : out.url;
+    out.url = new URL(path, API_BASE).toString();
   }
   return out;
 }

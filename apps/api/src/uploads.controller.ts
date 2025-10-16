@@ -60,8 +60,10 @@ export class UploadsController {
       } as any,
     });
 
-    // 3) Return DB-backed URL by default
-    const dbUrl = `/files/${encodeURIComponent(rec.id)}`;
+    // 3) Return DB-backed URL by default (respect global prefix 'api')
+    const basePath = process.env.PUBLIC_UPLOAD_BASE || '/api/files/';
+    const prefix = basePath.endsWith('/') ? basePath : basePath + '/';
+    const dbUrl = `${prefix}${encodeURIComponent(rec.id)}`;
     return {
       url: dbUrl,
       name: file.originalname,
