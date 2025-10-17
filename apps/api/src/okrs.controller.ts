@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Delete } from '@nestjs/common';
 import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -159,5 +159,19 @@ export class OkrsController {
       } as any),
     });
     return rec;
+  }
+
+  @Delete('objectives/:id')
+  async deleteObjective(@Param('id') id: string) {
+    const obj = await this.prisma.objective.findUnique({
+      where: { id },
+      include: { _count: { select: { keyResults: true, children: true } } } as any,
+    });
+    if (!obj) throw new Error('objective not found');
+    if ((obj as any)._count.keyResults > 0 || (obj as any)._count.children > 0) {
+      throw new Error('remove key results/child objectives first');
+    }
+    await this.prisma.objective.delete({ where: { id } });
+    return { ok: true };
   }
 }

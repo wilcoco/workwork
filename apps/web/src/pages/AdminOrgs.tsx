@@ -55,6 +55,7 @@ export function AdminOrgs() {
     } finally {
       setLoading(false);
     }
+  }
 
   async function loadObjectives(id: string) {
     try {
@@ -63,13 +64,25 @@ export function AdminOrgs() {
     } catch {
       setObjectives([]);
     }
-
+  }
   async function loadMembers(id: string) {
     try {
       const res = await apiJson<{ items: any[] }>(`/api/orgs/${encodeURIComponent(id)}/members`);
       setMembers(res.items || []);
     } catch {
       setMembers([]);
+    }
+  }
+
+  async function deleteObjective(oid: string) {
+    if (!confirm('해당 목표를 삭제하시겠습니까?\n(키리절트/하위 목표가 없는 경우에만 삭제됩니다)')) return;
+    try {
+      await apiJson(`/api/okrs/objectives/${encodeURIComponent(oid)}`, { method: 'DELETE' });
+      if (selectedId) {
+        await loadObjectives(selectedId);
+      }
+    } catch (e: any) {
+      setError(e.message || '목표 삭제 실패');
     }
   }
 
@@ -178,9 +191,12 @@ export function AdminOrgs() {
                   <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>팀을 삭제하려면 이 팀에 속한 목표를 먼저 다른 조직으로 이동하거나 삭제해야 합니다.</div>
                 )}
                 {objectives.map((o) => (
-                  <div key={o.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                    <div style={{ fontWeight: 600 }}>{o.title}</div>
-                    <div style={{ fontSize: 12, color: '#6b7280' }}>기간: {new Date(o.periodStart).toLocaleDateString()} ~ {new Date(o.periodEnd).toLocaleDateString()} · 상태: {o.status}</div>
+                  <div key={o.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{o.title}</div>
+                      <div style={{ fontSize: 12, color: '#6b7280' }}>기간: {new Date(o.periodStart).toLocaleDateString()} ~ {new Date(o.periodEnd).toLocaleDateString()} · 상태: {o.status}</div>
+                    </div>
+                    <button onClick={() => deleteObjective(o.id)} style={{ background: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>삭제</button>
                   </div>
                 ))}
               </div>
