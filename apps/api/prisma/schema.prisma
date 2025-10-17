@@ -140,6 +140,7 @@ model KeyResult {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   type         KeyResultType @default(PROJECT)
+  alignedObjectives Objective[] @relation("ObjectiveAlignedToKR")
 }
 
 model Initiative {
