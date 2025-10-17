@@ -8,6 +8,7 @@ import { Login } from './pages/Login';
 import { WorklogQuickNew } from './pages/WorklogQuickNew';
 import { WorklogSearch } from './pages/WorklogSearch';
 import { MeGoals } from './pages/MeGoals';
+import { AdminOrgs } from './pages/AdminOrgs';
 
 export function App() {
   return (
@@ -24,6 +25,7 @@ export function App() {
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
           <Route path="/me/goals" element={<MeGoals />} />
+          <Route path="/admin/orgs" element={<AdminOrgs />} />
         </Routes>
       </div>
     </BrowserRouter>
@@ -50,6 +52,7 @@ function HeaderBar() {
       <Link to="/quick">작성</Link>
       <Link to="/me/goals">내 목표</Link>
       <Link to="/search">조회</Link>
+      <Link to="/admin/orgs">조직관리</Link>
       <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
         {token ? (
           <>
