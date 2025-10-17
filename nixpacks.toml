@@ -1,0 +1,12 @@
+[phases.install]
+cmds = [
+  "npm ci"
+]
+
+[phases.build]
+cmds = [
+  "npm run -w @workwork/api build"
+]
+
+[start]
+cmd = "npm run -w @workwork/api start"
