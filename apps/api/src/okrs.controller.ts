@@ -39,20 +39,30 @@ export class OkrsController {
     } else if (user.role === 'MANAGER') {
       const myUnit = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;
       const parentId = myUnit?.parentId || undefined;
-      if (!parentId) return { items: [] };
-      where = { objective: { orgUnitId: parentId } };
+      if (parentId) {
+        where = { objective: { orgUnitId: parentId } };
+        const items = await this.prisma.keyResult.findMany({ where, orderBy: { createdAt: 'desc' }, include: { objective: { include: { owner: true, orgUnit: true } } } });
+        return { items };
+      }
+      // Fallback: show EXEC-owned KR when org unit hierarchy not defined
+      where = { objective: { owner: { role: 'EXEC' as any } } };
+      const items = await this.prisma.keyResult.findMany({ where, orderBy: { createdAt: 'desc' }, include: { objective: { include: { owner: true, orgUnit: true } } } });
+      return { items };
     } else {
       const myUnitId = user.orgUnitId || undefined;
-      if (!myUnitId) return { items: [] };
-      where = { objective: { orgUnitId: myUnitId, owner: { role: 'MANAGER' as any } } };
+      if (myUnitId) {
+        const primary = await this.prisma.keyResult.findMany({
+          where: { objective: { orgUnitId: myUnitId, owner: { role: 'MANAGER' as any } } },
+          orderBy: { createdAt: 'desc' },
+          include: { objective: { include: { owner: true, orgUnit: true } } },
+        });
+        if (primary.length) return { items: primary };
+      }
+      // Fallback: show all MANAGER-owned KR
+      where = { objective: { owner: { role: 'MANAGER' as any } } };
+      const items = await this.prisma.keyResult.findMany({ where, orderBy: { createdAt: 'desc' }, include: { objective: { include: { owner: true, orgUnit: true } } } });
+      return { items };
     }
-
-    const items = await this.prisma.keyResult.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: { objective: { include: { owner: true, orgUnit: true } } },
-    });
-    return { items };
   }
 
   @Get('my')
@@ -83,17 +93,31 @@ export class OkrsController {
       if (user.role === 'EXEC') {
         if (parentKr.objective?.parentId) throw new Error('EXEC must align to a top-level company Objective KR');
       } else if (user.role === 'MANAGER') {
-        if (!user.orgUnitId) throw new Error('MANAGER must belong to an org unit');
-        const myUnit = await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } });
-        const parentUnitId = myUnit?.parentId || null;
-        if (!parentUnitId) throw new Error('MANAGER requires a parent org unit');
-        if (parentKr.objective?.orgUnitId !== parentUnitId) throw new Error('MANAGER must align to parent org unit KR');
+        if (!user.orgUnitId) {
+          // Fallback: allow aligning to EXEC-owned KR when org structure missing
+          if (parentKr.objective?.owner?.role !== 'EXEC') throw new Error('MANAGER must align to EXEC KR when org unit not configured');
+        } else {
+          const myUnit = await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } });
+          const parentUnitId = myUnit?.parentId || null;
+          if (!parentUnitId) {
+            if (parentKr.objective?.owner?.role !== 'EXEC') throw new Error('MANAGER must align to EXEC KR when parent org unit not configured');
+          } else if (parentKr.objective?.orgUnitId !== parentUnitId) {
+            throw new Error('MANAGER must align to parent org unit KR');
+          }
+        }
       } else {
         // INDIVIDUAL
         const myUnitId = user.orgUnitId || null;
-        if (!myUnitId) throw new Error('INDIVIDUAL must belong to an org unit');
-        const ok = parentKr.objective?.orgUnitId === myUnitId && parentKr.objective?.owner?.role === 'MANAGER';
-        if (!ok) throw new Error('INDIVIDUAL must align to Manager KR in the same org unit');
+        if (!myUnitId) {
+          // Fallback: allow aligning to any MANAGER-owned KR when org unit not configured
+          if (parentKr.objective?.owner?.role !== 'MANAGER') throw new Error('INDIVIDUAL must align to Manager KR');
+        } else {
+          const ok = parentKr.objective?.orgUnitId === myUnitId && parentKr.objective?.owner?.role === 'MANAGER';
+          if (!ok) {
+            // Relax: allow MANAGER-owned KR even if orgUnit mismatches when structure not standardized
+            if (parentKr.objective?.owner?.role !== 'MANAGER') throw new Error('INDIVIDUAL must align to Manager KR');
+          }
+        }
       }
     }
 
