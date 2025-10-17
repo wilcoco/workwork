@@ -10,6 +10,7 @@ export function Signup() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [teamName, setTeamName] = useState('');
+  const [role, setRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'>('INDIVIDUAL');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +23,7 @@ export function Signup() {
         '/api/auth/signup',
         {
           method: 'POST',
-          body: JSON.stringify({ username, password, name, teamName }),
+          body: JSON.stringify({ username, password, name, teamName, role }),
         }
       );
       localStorage.setItem('token', res.token);
@@ -48,6 +49,13 @@ export function Signup() {
           <input value={teamName} onChange={(e) => setTeamName(e.target.value)} required />
           <label>이름</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
+          <label>직책</label>
+          <select value={role} onChange={(e) => setRole(e.target.value as any)} required>
+            <option value="CEO">대표이사</option>
+            <option value="EXEC">임원</option>
+            <option value="MANAGER">팀장</option>
+            <option value="INDIVIDUAL">직원</option>
+          </select>
           <label>아이디</label>
           <input value={username} onChange={(e) => setUsername(e.target.value)} required />
           <label>비밀번호</label>

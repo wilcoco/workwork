@@ -1,5 +1,5 @@
 import { Body, Controller, Post, BadRequestException } from '@nestjs/common';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
@@ -9,6 +9,8 @@ class SignupDto {
   @IsString() @IsNotEmpty() password!: string;
   @IsString() @IsNotEmpty() name!: string;
   @IsString() @IsNotEmpty() teamName!: string;
+  @IsEnum({ CEO: 'CEO', EXEC: 'EXEC', MANAGER: 'MANAGER', INDIVIDUAL: 'INDIVIDUAL' } as any)
+  role?: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
 }
 
 class LoginDto {
@@ -35,7 +37,7 @@ export class AuthController {
       data: {
         email: dto.username,
         name: dto.name,
-        role: 'INDIVIDUAL' as any,
+        role: (dto.role as any) || ('INDIVIDUAL' as any),
         orgUnitId: team.id,
         passwordHash,
       },
