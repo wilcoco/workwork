@@ -1,7 +1,6 @@
 import { Body, Controller, Post, BadRequestException } from '@nestjs/common';
 import { IsNotEmpty, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
-import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 
@@ -36,7 +35,7 @@ export class AuthController {
       data: {
         email: dto.username,
         name: dto.name,
-        role: Role.INDIVIDUAL,
+        role: 'INDIVIDUAL' as any,
         orgUnitId: team.id,
         passwordHash,
       },

@@ -342,14 +342,14 @@ export class WorklogsController {
       }
 
       if (dto.userGoalId) {
-        const goal = await this.prisma.userGoal.findUnique({ where: { id: dto.userGoalId } });
+        const goal = await (this.prisma as any).userGoal.findUnique({ where: { id: dto.userGoalId } });
         if (!goal || goal.userId !== user.id) {
           throw new BadRequestException('invalid userGoalId');
         }
-        let initiative = await this.prisma.initiative.findFirst({ where: { userGoalId: goal.id, ownerId: user.id } });
+        let initiative = await this.prisma.initiative.findFirst({ where: { userGoalId: goal.id, ownerId: user.id } as any });
         if (!initiative) {
           initiative = await this.prisma.initiative.create({
-            data: { title: goal.title, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any, userGoalId: goal.id },
+            data: { title: goal.title, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any, userGoalId: goal.id } as any,
           });
         }
         initiativeId = initiative.id;
@@ -421,7 +421,7 @@ export class WorklogsController {
       include: { createdBy: { include: { orgUnit: true } }, initiative: true },
     });
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
-    const mapped = items.map((it) => {
+    const mapped = items.map((it: any) => {
       const lines = (it.note || '').split(/\n+/);
       const title = lines[0] || '';
       const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
