@@ -14,6 +14,10 @@ class UpdateOrgDto {
   @IsOptional() @IsString() parentId?: string | null;
 }
 
+class NukeDto {
+  @IsString() @IsNotEmpty() confirm!: string;
+}
+
 @Controller('orgs')
 export class OrgsController {
   constructor(private prisma: PrismaService) {}
@@ -92,5 +96,35 @@ export class OrgsController {
       select: { id: true, title: true, ownerId: true, periodStart: true, periodEnd: true, status: true },
     });
     return { items };
+  }
+
+  @Post('nuke')
+  async nuke(@Body() dto: NukeDto) {
+    if ((dto.confirm || '').toLowerCase() !== 'delete everything') {
+      throw new BadRequestException("type 'DELETE EVERYTHING' to confirm");
+    }
+
+    // 1) Delete child records in dependency order
+    await this.prisma.checklistTick.deleteMany({});
+    await this.prisma.worklog.deleteMany({});
+    await this.prisma.checklistItem.deleteMany({});
+    await this.prisma.delegation.deleteMany({});
+    // 2) Initiatives
+    await this.prisma.initiative.deleteMany({});
+    // 3) Break Objective -> KR alignment
+    await this.prisma.objective.updateMany({ data: ({ alignsToKrId: null } as any) });
+    // 4) KeyResults
+    await this.prisma.keyResult.deleteMany({});
+    // 5) Objectives (children first)
+    await this.prisma.objective.deleteMany({ where: { parentId: { not: null } } });
+    await this.prisma.objective.deleteMany({});
+    // 6) Optional: UserGoals
+    await (this.prisma as any).userGoal.deleteMany({});
+    // 7) Unlink users from orgs and flatten org tree, then delete orgs
+    await this.prisma.user.updateMany({ data: { orgUnitId: null } });
+    await this.prisma.orgUnit.updateMany({ data: { parentId: null, managerId: null } });
+    await this.prisma.orgUnit.deleteMany({});
+
+    return { ok: true };
   }
 }

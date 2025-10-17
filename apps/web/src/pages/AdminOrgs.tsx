@@ -37,6 +37,8 @@ export function AdminOrgs() {
   const [selectedId, setSelectedId] = useState('');
   const [members, setMembers] = useState<any[]>([]);
   const [objectives, setObjectives] = useState<any[]>([]);
+  const [nukeWord, setNukeWord] = useState('');
+  const [nuking, setNuking] = useState(false);
 
   const [name, setName] = useState('');
   const [type, setType] = useState('TEAM');
@@ -54,6 +56,27 @@ export function AdminOrgs() {
       setError(e.message || '로드 실패');
     } finally {
       setLoading(false);
+    }
+
+  async function nukeAll(e: React.FormEvent) {
+    e.preventDefault();
+    if ((nukeWord || '').toLowerCase() !== 'delete everything') {
+      setError("확인 문구로 'DELETE EVERYTHING' 을 입력해 주세요");
+      return;
+    }
+    if (!confirm('정말 모든 조직/목표/KR/과제/업무일지를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+    try {
+      setNuking(true);
+      await apiJson('/api/orgs/nuke', { method: 'POST', body: JSON.stringify({ confirm: nukeWord }) });
+      setSelectedId('');
+      setMembers([]);
+      setObjectives([]);
+      setNukeWord('');
+      await load();
+    } catch (e: any) {
+      setError(e.message || '전체 삭제 실패');
+    } finally {
+      setNuking(false);
     }
   }
 
@@ -201,6 +224,16 @@ export function AdminOrgs() {
                 ))}
               </div>
             )}
+          </div>
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
+            <h3 style={{ marginTop: 0, color: '#ef4444' }}>Danger Zone</h3>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+              전체 삭제: 조직 트리, 목표, KR, 과제, 업무일지를 모두 삭제합니다. 복구 불가.
+            </div>
+            <form onSubmit={nukeAll} style={{ display: 'grid', gap: 8 }}>
+              <input placeholder="DELETE EVERYTHING" value={nukeWord} onChange={(e) => setNukeWord(e.target.value)} style={input} />
+              <button className="btn" disabled={nuking} style={{ background: '#ef4444', border: 'none' }}>{nuking ? '삭제중…' : '모두 삭제'}</button>
+            </form>
           </div>
         </div>
       </div>
