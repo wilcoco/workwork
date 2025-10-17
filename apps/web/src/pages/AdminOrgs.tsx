@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 
 function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelete: (id: string) => void; onSelect: (id: string) => void; selectedId: string }) {
@@ -29,7 +29,7 @@ function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelet
   );
 }
 
-export function AdminOrgs() {
+export function AdminOrgs(): JSX.Element {
   const [items, setItems] = useState<any[]>([]);
   const [flat, setFlat] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,6 +57,8 @@ export function AdminOrgs() {
     } finally {
       setLoading(false);
     }
+
+  }
 
   async function nukeAll(e: React.FormEvent) {
     e.preventDefault();

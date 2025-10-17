@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
+    "build": "tsc -p tsconfig.json --pretty false && vite build",
     "preview": "vite preview",
     "start": "serve -s -l tcp://0.0.0.0:$PORT dist"
   },
