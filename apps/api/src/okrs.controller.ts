@@ -139,6 +139,18 @@ export class OkrsController {
         status: 'ACTIVE' as any,
       } as any),
     });
+    // Mirror as UserGoal so it appears in worklog goal selection
+    try {
+      await (this.prisma as any).userGoal.create({
+        data: {
+          userId: user.id,
+          title: dto.title,
+          description: dto.description ?? undefined,
+          startAt: dto.periodStart ? new Date(dto.periodStart) : undefined,
+          endAt: dto.periodEnd ? new Date(dto.periodEnd) : undefined,
+        },
+      });
+    } catch {}
     return rec;
   }
 
@@ -173,5 +185,52 @@ export class OkrsController {
     }
     await this.prisma.objective.delete({ where: { id } });
     return { ok: true };
+  }
+
+  @Get('map')
+  async okrMap() {
+    // Load all objectives with their KRs and minimal owner/org info
+    const objectives = await this.prisma.objective.findMany({
+      orderBy: { createdAt: 'asc' },
+      include: ({ keyResults: true, owner: { select: { id: true, name: true, role: true } }, orgUnit: true } as any),
+    });
+    // Build index by KR id -> child objectives aligned to it
+    const byKr: Record<string, any[]> = {};
+    for (const o of objectives) {
+      const krId = (o as any).alignsToKrId as string | null;
+      if (krId) {
+        if (!byKr[krId]) byKr[krId] = [];
+        byKr[krId].push(o);
+      }
+    }
+    const objById: Record<string, any> = {};
+    for (const o of objectives) objById[o.id] = o;
+
+    function mapObjective(o: any): any {
+      const krs = (o.keyResults || []).map((kr: any) => ({
+        id: kr.id,
+        title: kr.title,
+        metric: kr.metric,
+        target: kr.target,
+        unit: kr.unit,
+        type: kr.type,
+        children: (byKr[kr.id] || []).map(mapObjective),
+      }));
+      return {
+        id: o.id,
+        title: o.title,
+        description: o.description,
+        owner: o.owner,
+        orgUnit: o.orgUnit,
+        periodStart: o.periodStart,
+        periodEnd: o.periodEnd,
+        status: o.status,
+        keyResults: krs,
+      };
+    }
+
+    // Roots: objectives that do not align to any KR
+    const roots = objectives.filter((o: any) => !o.alignsToKrId);
+    return { items: roots.map(mapObjective) };
   }
 }

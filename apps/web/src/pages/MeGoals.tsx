@@ -82,6 +82,35 @@ export function MeGoals() {
   const [krType, setKrType] = useState<'PROJECT' | 'OPERATIONAL'>('PROJECT');
   const [okrCreating, setOkrCreating] = useState(false);
 
+  // Per-objective KR create form state
+  const [krForm, setKrForm] = useState<Record<string, { title: string; metric: string; target: string; unit: string; type: 'PROJECT' | 'OPERATIONAL'; saving?: boolean }>>({});
+
+  function setKrField(objId: string, field: keyof (typeof krForm)[string], value: any) {
+    setKrForm((prev) => {
+      const base = prev[objId] ?? { title: '', metric: '', target: '', unit: '', type: 'PROJECT' as const };
+      return { ...prev, [objId]: { ...base, [field]: value } };
+    });
+  }
+
+  async function addKr(objId: string) {
+    const f = krForm[objId] || { title: '', metric: '', target: '', unit: '', type: 'PROJECT' as const };
+    if (!userId || !f.title || !f.metric || !f.target || !f.unit) return;
+    setKrForm((prev) => ({ ...prev, [objId]: { ...(prev[objId] || f), saving: true } }));
+    try {
+      await apiJson(`/api/okrs/objectives/${encodeURIComponent(objId)}/krs`, {
+        method: 'POST',
+        body: JSON.stringify({ userId, title: f.title, metric: f.metric, target: Number(f.target), unit: f.unit, type: f.type }),
+      });
+      const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+      setMyOkrs(mokrs.items || []);
+      setKrForm((prev) => ({ ...prev, [objId]: { title: '', metric: '', target: '', unit: '', type: 'PROJECT' } }));
+    } catch (e: any) {
+      setError(e.message || 'KR 추가 실패');
+    } finally {
+      setKrForm((prev) => ({ ...prev, [objId]: { ...(prev[objId] || f), saving: false } }));
+    }
+  }
+
   function toYmd(v?: string) {
     if (!v) return '';
     const d = new Date(v);
@@ -338,6 +367,25 @@ export function MeGoals() {
                   ))}
                 </div>
               )}
+              {/* Add KR form */}
+              <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <input value={(krForm[o.id]?.title) || ''} onChange={(e) => setKrField(o.id, 'title', e.target.value)} placeholder="추가 KR 제목" style={input} />
+                  <input value={(krForm[o.id]?.metric) || ''} onChange={(e) => setKrField(o.id, 'metric', e.target.value)} placeholder="메트릭(예: %, 건수)" style={input} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <input type="number" step="any" value={(krForm[o.id]?.target) || ''} onChange={(e) => setKrField(o.id, 'target', e.target.value)} placeholder="목표값" style={input} />
+                  <input value={(krForm[o.id]?.unit) || ''} onChange={(e) => setKrField(o.id, 'unit', e.target.value)} placeholder="단위(예: %, 건)" style={input} />
+                  <select value={(krForm[o.id]?.type) || 'PROJECT'} onChange={(e) => setKrField(o.id, 'type', e.target.value as any)} style={{ ...input, appearance: 'auto' as any }}>
+                    <option value="PROJECT">프로젝트형</option>
+                    <option value="OPERATIONAL">오퍼레이션형</option>
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" style={primaryBtn} disabled={!userId || krForm[o.id]?.saving || !krForm[o.id]?.title || !krForm[o.id]?.metric || !krForm[o.id]?.target || !krForm[o.id]?.unit}
+                          onClick={() => addKr(o.id)}>{krForm[o.id]?.saving ? '추가중…' : 'KR 추가'}</button>
+                </div>
+              </div>
             </div>
           ))}
           {!myOkrs.length && <div style={{ color: '#64748b' }}>아직 나의 O-KR이 없습니다. 상단에서 역할/상위 O-KR을 선택하고 생성하세요.</div>}
