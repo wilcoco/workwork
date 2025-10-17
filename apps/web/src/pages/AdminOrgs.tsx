@@ -8,11 +8,11 @@ function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelet
         <button onClick={() => onSelect(node.id)} style={{ background: selectedId === node.id ? '#0F3D73' : '#fff', color: selectedId === node.id ? '#fff' : '#0F3D73', border: '1px solid #0F3D73', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>{selectedId === node.id ? '선택됨' : '선택'}</button>
         <strong>{node.name}</strong>
         <span style={{ fontSize: 12, color: '#6b7280' }}>({node.type})</span>
-        <span style={{ fontSize: 12, color: '#94a3b8' }}>child:{node.children?.length || 0} users:{node.counts?.users || 0}</span>
+        <span style={{ fontSize: 12, color: '#94a3b8' }}>child:{node.children?.length || 0} users:{node.counts?.users || 0} objs:{node.counts?.objectives || 0}</span>
         <button
           onClick={() => onDelete(node.id)}
-          disabled={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0}
-          title={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0 ? '자식/사용자 연결 해제 후 삭제 가능' : '삭제'}
+          disabled={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0 || (node.counts?.objectives || 0) > 0}
+          title={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0 || (node.counts?.objectives || 0) > 0 ? '자식/사용자/목표 해제 후 삭제 가능' : '삭제'}
           style={{ marginLeft: 8, background: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 6, padding: '2px 6px', cursor: 'pointer' }}
         >
           삭제
@@ -36,6 +36,7 @@ export function AdminOrgs() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const [members, setMembers] = useState<any[]>([]);
+  const [objectives, setObjectives] = useState<any[]>([]);
 
   const [name, setName] = useState('');
   const [type, setType] = useState('TEAM');
@@ -55,7 +56,13 @@ export function AdminOrgs() {
       setLoading(false);
     }
 
-  }
+  async function loadObjectives(id: string) {
+    try {
+      const res = await apiJson<{ items: any[] }>(`/api/orgs/${encodeURIComponent(id)}/objectives`);
+      setObjectives(res.items || []);
+    } catch {
+      setObjectives([]);
+    }
 
   async function loadMembers(id: string) {
     try {
@@ -69,6 +76,7 @@ export function AdminOrgs() {
   function onSelect(id: string) {
     setSelectedId(id);
     loadMembers(id);
+    loadObjectives(id);
   }
 
   async function removeMember(uid: string) {
@@ -155,6 +163,24 @@ export function AdminOrgs() {
                       <div style={{ fontSize: 12, color: '#6b7280' }}>{m.email} · {m.role}</div>
                     </div>
                     <button onClick={() => removeMember(m.id)} style={{ background: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>제거</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <h3 style={{ marginTop: 0 }}>목표(Objectives)</h3>
+            {!selectedId && <div style={{ color: '#6b7280', fontSize: 13 }}>왼쪽 트리에서 조직을 선택하세요.</div>}
+            {selectedId && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {objectives.length === 0 && <div style={{ color: '#6b7280', fontSize: 13 }}>목표가 없습니다.</div>}
+                {objectives.length > 0 && (
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>팀을 삭제하려면 이 팀에 속한 목표를 먼저 다른 조직으로 이동하거나 삭제해야 합니다.</div>
+                )}
+                {objectives.map((o) => (
+                  <div key={o.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
+                    <div style={{ fontWeight: 600 }}>{o.title}</div>
+                    <div style={{ fontSize: 12, color: '#6b7280' }}>기간: {new Date(o.periodStart).toLocaleDateString()} ~ {new Date(o.periodEnd).toLocaleDateString()} · 상태: {o.status}</div>
                   </div>
                 ))}
               </div>

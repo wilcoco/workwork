@@ -22,7 +22,7 @@ export class OrgsController {
   async tree() {
     const units = await this.prisma.orgUnit.findMany({
       orderBy: { name: 'asc' },
-      include: { _count: { select: { children: true, users: true } } },
+      include: { _count: { select: { children: true, users: true, objectives: true } } },
     });
     const map: Record<string, any> = {};
     for (const u of units) {
@@ -60,9 +60,11 @@ export class OrgsController {
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
-    const unit = await this.prisma.orgUnit.findUnique({ where: { id }, include: { _count: { select: { children: true, users: true } } } });
+    const unit = await this.prisma.orgUnit.findUnique({ where: { id }, include: { _count: { select: { children: true, users: true, objectives: true } } } });
     if (!unit) throw new BadRequestException('org not found');
-    if (unit._count.children > 0 || unit._count.users > 0) throw new BadRequestException('detach children/users first');
+    if (unit._count.children > 0 || unit._count.users > 0 || (unit as any)._count.objectives > 0) {
+      throw new BadRequestException('detach children/users/objectives first');
+    }
     await this.prisma.orgUnit.delete({ where: { id } });
     return { ok: true };
   }
@@ -80,5 +82,15 @@ export class OrgsController {
     if (user.orgUnitId !== id) throw new BadRequestException('user not in this org');
     await this.prisma.user.update({ where: { id: userId }, data: { orgUnitId: null } });
     return { ok: true };
+  }
+
+  @Get(':id/objectives')
+  async objectives(@Param('id') id: string) {
+    const items = await this.prisma.objective.findMany({
+      where: { orgUnitId: id },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, title: true, ownerId: true, periodStart: true, periodEnd: true, status: true },
+    });
+    return { items };
   }
 }
