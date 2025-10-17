@@ -66,4 +66,19 @@ export class OrgsController {
     await this.prisma.orgUnit.delete({ where: { id } });
     return { ok: true };
   }
+
+  @Get(':id/members')
+  async members(@Param('id') id: string) {
+    const users = await this.prisma.user.findMany({ where: { orgUnitId: id }, orderBy: { name: 'asc' } });
+    return { items: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role })) };
+  }
+
+  @Delete(':id/members/:userId')
+  async removeMember(@Param('id') id: string, @Param('userId') userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new BadRequestException('user not found');
+    if (user.orgUnitId !== id) throw new BadRequestException('user not in this org');
+    await this.prisma.user.update({ where: { id: userId }, data: { orgUnitId: null } });
+    return { ok: true };
+  }
 }
