@@ -55,6 +55,8 @@ export function AdminOrgs() {
       setLoading(false);
     }
 
+  }
+
   async function loadMembers(id: string) {
     try {
       const res = await apiJson<{ items: any[] }>(`/api/orgs/${encodeURIComponent(id)}/members`);
@@ -79,7 +81,6 @@ export function AdminOrgs() {
     } catch (e: any) {
       setError(e.message || '구성원 제거 실패');
     }
-  }
   }
 
   useEffect(() => {
