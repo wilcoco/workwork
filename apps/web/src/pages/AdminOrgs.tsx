@@ -1,18 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 
-function TreeNode({ node }: { node: any }) {
+function TreeNode({ node, onDelete }: { node: any; onDelete: (id: string) => void }) {
   return (
     <li>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <strong>{node.name}</strong>
         <span style={{ fontSize: 12, color: '#6b7280' }}>({node.type})</span>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>child:{node.children?.length || 0} users:{node.counts?.users || 0}</span>
+        <button
+          onClick={() => onDelete(node.id)}
+          disabled={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0}
+          title={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0 ? '자식/사용자 연결 해제 후 삭제 가능' : '삭제'}
+          style={{ marginLeft: 8, background: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 6, padding: '2px 6px', cursor: 'pointer' }}
+        >
+          삭제
+        </button>
       </div>
       {node.children && node.children.length > 0 && (
         <ul>
           {node.children.map((c: any) => (
-            <TreeNode key={c.id} node={c} />
+            <TreeNode key={c.id} node={c} onDelete={onDelete} />
           ))}
         </ul>
       )}
@@ -62,6 +70,16 @@ export function AdminOrgs() {
     }
   }
 
+  async function onDelete(id: string) {
+    if (!confirm('정말 삭제하시겠습니까?\n자식 조직과 사용자 연결이 없는 경우에만 삭제됩니다.')) return;
+    try {
+      await apiJson(`/api/orgs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await load();
+    } catch (e: any) {
+      setError(e.message || '삭제 실패');
+    }
+  }
+
   return (
     <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 16 }}>
       <h2 style={{ margin: 0 }}>조직 구성 관리</h2>
@@ -72,7 +90,7 @@ export function AdminOrgs() {
           {loading ? '로딩중…' : (
             <ul>
               {items.map((n) => (
-                <TreeNode key={n.id} node={n} />
+                <TreeNode key={n.id} node={n} onDelete={onDelete} />
               ))}
             </ul>
           )}
