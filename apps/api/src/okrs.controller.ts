@@ -9,6 +9,9 @@ class CreateObjectiveDto {
   @IsDateString() periodStart!: string;
   @IsDateString() periodEnd!: string;
   @IsOptional() @IsString() alignsToKrId?: string;
+  // Optional: create multiple KRs together
+  // Using any[] for simplicity; validated minimally at runtime
+  @IsOptional() krs?: Array<{ title: string; metric: string; target: number; unit: string; type?: 'PROJECT' | 'OPERATIONAL' }>;
 }
 
 class CreateKeyResultDto {
@@ -127,31 +130,52 @@ export class OkrsController {
       await this.prisma.user.update({ where: { id: user.id }, data: { orgUnitId: team.id } });
       orgUnitId = team.id;
     }
-    const rec = await this.prisma.objective.create({
-      data: ({
-        title: dto.title,
-        description: dto.description,
-        orgUnitId,
-        ownerId: user.id,
-        periodStart: new Date(dto.periodStart),
-        periodEnd: new Date(dto.periodEnd),
-        alignsToKrId: dto.alignsToKrId,
-        status: 'ACTIVE' as any,
-      } as any),
-    });
-    // Mirror as UserGoal so it appears in worklog goal selection
-    try {
-      await (this.prisma as any).userGoal.create({
-        data: {
-          userId: user.id,
+    const result = await this.prisma.$transaction(async (tx) => {
+      const rec = await tx.objective.create({
+        data: ({
           title: dto.title,
-          description: dto.description ?? undefined,
-          startAt: dto.periodStart ? new Date(dto.periodStart) : undefined,
-          endAt: dto.periodEnd ? new Date(dto.periodEnd) : undefined,
-        },
+          description: dto.description,
+          orgUnitId,
+          ownerId: user.id,
+          periodStart: new Date(dto.periodStart),
+          periodEnd: new Date(dto.periodEnd),
+          alignsToKrId: dto.alignsToKrId,
+          status: 'ACTIVE' as any,
+        } as any),
       });
-    } catch {}
-    return rec;
+      // Mirror as UserGoal so it appears in worklog goal selection
+      try {
+        await (tx as any).userGoal.create({
+          data: {
+            userId: user.id,
+            title: dto.title,
+            description: dto.description ?? undefined,
+            startAt: dto.periodStart ? new Date(dto.periodStart) : undefined,
+            endAt: dto.periodEnd ? new Date(dto.periodEnd) : undefined,
+          },
+        });
+      } catch {}
+      // Optional bulk KRs
+      if (Array.isArray(dto.krs) && dto.krs.length > 0) {
+        for (const k of dto.krs) {
+          if (!k || !k.title || !k.metric || typeof k.target !== 'number' || !k.unit) continue;
+          await tx.keyResult.create({
+            data: ({
+              objectiveId: rec.id,
+              title: k.title,
+              metric: k.metric,
+              target: k.target,
+              unit: k.unit,
+              ownerId: user.id,
+              weight: 1,
+              type: (k.type as any) ?? 'PROJECT',
+            } as any),
+          });
+        }
+      }
+      return rec;
+    });
+    return result;
   }
 
   @Post('objectives/:id/krs')

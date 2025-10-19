@@ -81,6 +81,7 @@ export function MeGoals() {
   const [krUnit, setKrUnit] = useState('');
   const [krType, setKrType] = useState<'PROJECT' | 'OPERATIONAL'>('PROJECT');
   const [okrCreating, setOkrCreating] = useState(false);
+  const [extraKrs, setExtraKrs] = useState<Array<{ title: string; metric: string; target: string; unit: string; type: 'PROJECT' | 'OPERATIONAL' }>>([]);
 
   // Per-objective KR create form state
   const [krForm, setKrForm] = useState<Record<string, { title: string; metric: string; target: string; unit: string; type: 'PROJECT' | 'OPERATIONAL'; saving?: boolean }>>({});
@@ -237,6 +238,43 @@ export function MeGoals() {
                 <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
               </select>
             </div>
+            {/* Extra KR rows */}
+            {extraKrs.length > 0 && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {extraKrs.map((row, i) => (
+                  <div key={i} style={{ display: 'grid', gap: 6, border: '1px dashed #e5e7eb', borderRadius: 8, padding: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <input value={row.title} onChange={(e) => {
+                        const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, title: v } : r));
+                      }} placeholder="추가 KR 제목" style={input} />
+                      <input value={row.metric} onChange={(e) => {
+                        const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, metric: v } : r));
+                      }} placeholder="메트릭(예: %, 건수)" style={input} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                      <input type="number" step="any" value={row.target} onChange={(e) => {
+                        const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, target: v } : r));
+                      }} placeholder="목표값" style={input} />
+                      <input value={row.unit} onChange={(e) => {
+                        const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, unit: v } : r));
+                      }} placeholder="단위(예: %, 건)" style={input} />
+                      <select value={row.type} onChange={(e) => {
+                        const v = e.target.value as any; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, type: v } : r));
+                      }} style={{ ...input, appearance: 'auto' as any }}>
+                        <option value="PROJECT">프로젝트형</option>
+                        <option value="OPERATIONAL">오퍼레이션형</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button type="button" style={ghostBtn} onClick={() => setExtraKrs((prev) => prev.filter((_r, idx) => idx !== i))}>행 제거</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" style={ghostBtn} onClick={() => setExtraKrs((prev) => [...prev, { title: '', metric: '', target: '', unit: '', type: 'PROJECT' }])}>KR 행 추가</button>
+            </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
                 type="button"
@@ -245,7 +283,13 @@ export function MeGoals() {
                 onClick={async () => {
                   try {
                     setOkrCreating(true);
-                    const obj = await apiJson<{ id: string }>(`/api/okrs/objectives`, {
+                    const krs = [
+                      { title: krTitle, metric: krMetric, target: Number(krTarget), unit: krUnit, type: krType },
+                      ...extraKrs
+                        .filter((r) => r.title && r.metric && r.target !== '' && r.unit)
+                        .map((r) => ({ title: r.title, metric: r.metric, target: Number(r.target), unit: r.unit, type: r.type })),
+                    ];
+                    await apiJson<{ id: string }>(`/api/okrs/objectives`, {
                       method: 'POST',
                       body: JSON.stringify({
                         userId,
@@ -254,20 +298,11 @@ export function MeGoals() {
                         periodStart: oStart,
                         periodEnd: oEnd,
                         alignsToKrId: myRole === 'CEO' ? undefined : (parentKrId || undefined),
-                      }),
-                    });
-                    await apiJson(`/api/okrs/objectives/${encodeURIComponent((obj as any).id)}/krs`, {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        userId,
-                        title: krTitle,
-                        metric: krMetric,
-                        target: Number(krTarget),
-                        unit: krUnit,
-                        type: krType,
+                        krs,
                       }),
                     });
                     setOTitle(''); setODesc(''); setOStart(''); setOEnd(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrUnit(''); setKrType('PROJECT');
+                    setExtraKrs([]);
                     const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
                     setMyOkrs(mokrs.items || []);
                   } catch (e: any) {
