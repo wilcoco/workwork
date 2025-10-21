@@ -13,8 +13,8 @@ export function WorklogQuickNew() {
   const [teamName, setTeamName] = useState<string>('');
   const [taskName, setTaskName] = useState('');
   const [myInits, setMyInits] = useState<any[]>([]);
-  const [myGoals, setMyGoals] = useState<any[]>([]);
-  const [selection, setSelection] = useState<string>(''); // '' | 'init:<id>' | 'goal:<id>'
+  const [myKrs, setMyKrs] = useState<any[]>([]);
+  const [selection, setSelection] = useState<string>(''); // '' | 'init:<id>' | 'kr:<id>'
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
@@ -34,8 +34,20 @@ export function WorklogQuickNew() {
       apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`)
         .then((res) => setMyInits(res.items || []))
         .catch(() => {});
-      apiJson<{ items: any[] }>(`/api/my-goals?userId=${encodeURIComponent(uid)}`)
-        .then((res) => setMyGoals(res.items || []))
+      apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(uid)}`)
+        .then((res) => {
+          const oks = res.items || [];
+          const krs = oks.flatMap((o: any) => (o.keyResults || []).map((kr: any) => ({
+            id: kr.id,
+            title: kr.title,
+            metric: kr.metric,
+            target: kr.target,
+            unit: kr.unit,
+            type: kr.type,
+            objective: { id: o.id, title: o.title },
+          })));
+          setMyKrs(krs);
+        })
         .catch(() => {});
     }
   }, []);
@@ -91,9 +103,9 @@ export function WorklogQuickNew() {
           body: JSON.stringify({
             userId,
             teamName,
-            taskName: selection ? undefined : taskName,
+            taskName: selection && selection.startsWith('kr:') ? taskName : (!selection ? taskName : undefined),
             initiativeId: selection.startsWith('init:') ? selection.substring(5) : undefined,
-            userGoalId: selection.startsWith('goal:') ? selection.substring(5) : undefined,
+            keyResultId: selection.startsWith('kr:') ? selection.substring(3) : undefined,
             title,
             content: plainMode ? contentPlain : stripHtml(contentHtml),
             contentHtml: plainMode ? undefined : (contentHtml || undefined),
@@ -166,13 +178,13 @@ export function WorklogQuickNew() {
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>내 목표/과제 선택</label>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>내 O-KR/과제 선택</label>
             <select value={selection} onChange={(e) => setSelection(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
               <option value="">선택 안 함 (새 과제 입력)</option>
-              {myGoals.length > 0 && (
-                <optgroup label="내 목표">
-                  {myGoals.map((g) => (
-                    <option key={g.id} value={`goal:${g.id}`}>[목표] {g.title}</option>
+              {myKrs.length > 0 && (
+                <optgroup label="내 O-KR (KR)">
+                  {myKrs.map((kr) => (
+                    <option key={kr.id} value={`kr:${kr.id}`}>[KR] {kr.objective?.title || '-'} / {kr.title}</option>
                   ))}
                 </optgroup>
               )}
@@ -185,7 +197,7 @@ export function WorklogQuickNew() {
               )}
             </select>
           </div>
-          {!selection && (
+          {(!selection || selection.startsWith('kr:')) && (
             <input placeholder="새 과제명" value={taskName} onChange={(e) => setTaskName(e.target.value)} style={input} required />
           )}
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />

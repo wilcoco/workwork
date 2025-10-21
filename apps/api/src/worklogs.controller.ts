@@ -117,6 +117,7 @@ class CreateSimpleWorklogDto {
   @IsOptional() attachments?: any;
   @IsOptional() @IsString() initiativeId?: string;
   @IsOptional() @IsString() userGoalId?: string;
+  @IsOptional() @IsString() keyResultId?: string;
 }
 
 @Controller('worklogs')
@@ -320,48 +321,60 @@ export class WorklogsController {
     let user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user) throw new Error('user not found');
     if (!initiativeId) {
-      // Ensure team & OKR scaffolding exists
-      let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
-      if (!team) {
-        team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
-      }
-      user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
-      const periodStart = new Date();
-      const periodEnd = new Date(periodStart.getTime() + 1000 * 60 * 60 * 24 * 365);
-      let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
-      if (!objective) {
-        objective = await this.prisma.objective.create({
-          data: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id, ownerId: user.id, periodStart, periodEnd, status: 'ACTIVE' as any },
-        });
-      }
-      let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Auto KR', objectiveId: objective.id } });
-      if (!kr) {
-        kr = await this.prisma.keyResult.create({
-          data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
-        });
-      }
-
-      if (dto.userGoalId) {
-        const goal = await (this.prisma as any).userGoal.findUnique({ where: { id: dto.userGoalId } });
-        if (!goal || goal.userId !== user.id) {
-          throw new BadRequestException('invalid userGoalId');
-        }
-        let initiative = await this.prisma.initiative.findFirst({ where: { userGoalId: goal.id, ownerId: user.id } as any });
-        if (!initiative) {
-          initiative = await this.prisma.initiative.create({
-            data: { title: goal.title, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any, userGoalId: goal.id } as any,
-          });
-        }
-        initiativeId = initiative.id;
-      } else {
-        if (!dto.taskName) {
-          throw new BadRequestException('taskName required when initiativeId/userGoalId is not provided');
-        }
+      if (dto.keyResultId) {
+        // Use selected KR to create/reuse an initiative for the task
+        const kr = await this.prisma.keyResult.findUnique({ where: { id: dto.keyResultId } });
+        if (!kr) throw new BadRequestException('invalid keyResultId');
+        if (!dto.taskName) throw new BadRequestException('taskName required when keyResultId is provided');
         let initiative = await this.prisma.initiative.findFirst({ where: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id } });
         if (!initiative) {
           initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
         }
         initiativeId = initiative.id;
+      } else {
+        // Ensure team & OKR scaffolding exists
+        let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
+        if (!team) {
+          team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
+        }
+        user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
+        const periodStart = new Date();
+        const periodEnd = new Date(periodStart.getTime() + 1000 * 60 * 60 * 24 * 365);
+        let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
+        if (!objective) {
+          objective = await this.prisma.objective.create({
+            data: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id, ownerId: user.id, periodStart, periodEnd, status: 'ACTIVE' as any },
+          });
+        }
+        let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Auto KR', objectiveId: objective.id } });
+        if (!kr) {
+          kr = await this.prisma.keyResult.create({
+            data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
+          });
+        }
+
+        if (dto.userGoalId) {
+          const goal = await (this.prisma as any).userGoal.findUnique({ where: { id: dto.userGoalId } });
+          if (!goal || goal.userId !== user.id) {
+            throw new BadRequestException('invalid userGoalId');
+          }
+          let initiative = await this.prisma.initiative.findFirst({ where: { userGoalId: goal.id, ownerId: user.id } as any });
+          if (!initiative) {
+            initiative = await this.prisma.initiative.create({
+              data: { title: goal.title, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any, userGoalId: goal.id } as any,
+            });
+          }
+          initiativeId = initiative.id;
+        } else {
+          if (!dto.taskName) {
+            throw new BadRequestException('taskName required when initiativeId/userGoalId is not provided');
+          }
+          let initiative = await this.prisma.initiative.findFirst({ where: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id } });
+          if (!initiative) {
+            initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+          }
+          initiativeId = initiative.id;
+        }
       }
     }
 

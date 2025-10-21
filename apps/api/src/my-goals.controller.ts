@@ -32,13 +32,13 @@ export class MyGoalsController {
   @Get()
   async list(@Query('userId') userId: string) {
     if (!userId) throw new Error('userId required');
-    const items = await this.prisma.userGoal.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
+    const items = await (this.prisma as any).userGoal.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
     return { items };
   }
 
   @Post()
   async create(@Body() dto: CreateGoalDto) {
-    const rec = await this.prisma.userGoal.create({
+    const rec = await (this.prisma as any).userGoal.create({
       data: {
         userId: dto.userId,
         title: dto.title,
@@ -56,7 +56,7 @@ export class MyGoalsController {
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateGoalDto) {
-    const rec = await this.prisma.userGoal.update({
+    const rec = await (this.prisma as any).userGoal.update({
       where: { id },
       data: {
         title: dto.title,
@@ -74,7 +74,7 @@ export class MyGoalsController {
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
-    await this.prisma.userGoal.delete({ where: { id } });
+    await (this.prisma as any).userGoal.delete({ where: { id } });
     return { ok: true };
   }
 }
