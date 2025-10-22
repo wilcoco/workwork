@@ -24,10 +24,6 @@ export function WorklogSearch() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const t = localStorage.getItem('teamName');
-    if (t) setTeam(t);
-  }, []);
 
   async function search() {
     setLoading(true);

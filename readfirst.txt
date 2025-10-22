@@ -1,0 +1,113 @@
+READ FIRST — Windsurf Project (workwork)
+
+Purpose
+- Capture key decisions and implementations so you can resume development on any machine without prior chat context.
+
+Key Decisions Implemented
+- Use O-KR as the primary planning model. Writing worklogs uses “my O-KR (KR)” instead of “my goals”.
+- Objective creation supports multiple KRs in one request (transactional).
+- OKR Map page added to visualize Objective → KR → child Objective alignment tree.
+- Maintain manual seeding preference. No automated seed scripts for users/org/initiatives.
+- For compatibility, an Objective creation mirrors a UserGoal record (for worklog selection legacy), but quick write now prefers KR selection.
+
+Web App (apps/web)
+- Routing (apps/web/src/App.tsx):
+  - New page/route: /okr-map (link shown in header as “OKR맵”).
+  - My Goals page: /me/goals.
+  - Quick worklog: /quick.
+
+- OKR Map page (apps/web/src/pages/OkrMap.tsx):
+  - Fetches GET /api/okrs/map and renders an O → KR → child O tree.
+
+- My Goals page (apps/web/src/pages/MeGoals.tsx):
+  - Create my Objective + multiple KRs at once under a selected parent KR (role-based):
+    - POST /api/okrs/objectives with body including krs[] array.
+  - Also supports adding extra KRs to an existing Objective:
+    - POST /api/okrs/objectives/:id/krs
+  - Role + parent KR selection provided via GET /api/okrs/parent-krs.
+  - “내 목표 목록” section remains informational. Writing flows now use KR-based selection.
+
+- Worklog Quick New (apps/web/src/pages/WorklogQuickNew.tsx):
+  - Selection uses “내 O-KR (KR)” and “나의 과제” (initiatives). “내 목표” removed from selection.
+  - If a KR is selected, a taskName is required. The API will create/reuse an initiative under that KR.
+  - Calls POST /api/worklogs/simple with optional keyResultId and taskName.
+
+API (apps/api)
+- App-wide prefix: /api (apps/api/src/main.ts). Default port 3000; CORS enabled.
+
+- OKR controller (apps/api/src/okrs.controller.ts):
+  - GET /api/okrs/my?userId=...: return my Objectives with keyResults and metadata.
+  - GET /api/okrs/parent-krs?userId=...: candidate parent KRs filtered by role/hierarchy.
+  - POST /api/okrs/objectives: create Objective. Fields:
+    - userId, title, description?, periodStart, periodEnd, alignsToKrId? (required for non-CEO roles), krs? (array)
+    - Mirrors a UserGoal record (best effort) and creates multiple KRs transactionally when krs[] provided.
+  - POST /api/okrs/objectives/:id/krs: add a KR under an existing Objective.
+  - DELETE /api/okrs/objectives/:id: protective delete; blocked when KRs/children exist.
+  - GET /api/okrs/map: build a tree from Objectives and KRs and return as items[].
+
+- Worklogs controller (apps/api/src/worklogs.controller.ts):
+  - POST /api/worklogs/simple supports keyResultId?. Behavior:
+    - If keyResultId provided: create or reuse an initiative under that KR using taskName; then create the worklog.
+    - If not provided: fallback to team-based scaffold (auto Objective/KR) and userGoalId/taskName pathways.
+
+- My Goals controller (apps/api/src/my-goals.controller.ts):
+  - CRUD for UserGoal (typing uses (this.prisma as any).userGoal to avoid client typing drift).
+
+Data Model (apps/api/prisma/schema.prisma)
+- Core entities: User, OrgUnit, Objective, KeyResult(type: PROJECT|OPERATIONAL), Initiative, Worklog, UserGoal.
+- Relations:
+  - Objective.alignsToKr → KeyResult (child Objective alignment to a parent KR).
+  - KeyResult.alignedObjectives ← Objective (inverse relation name).
+  - Initiative.keyResultId links work to KR. Initiative.userGoalId optional for legacy goal linkage.
+
+Role-Based Alignment Rules (in okrs.controller)
+- CEO: cannot align to a parent KR (creates a top-level Objective).
+- EXEC: must align to a top-level company Objective KR.
+- MANAGER: align to parent org unit’s KR (fallback to EXEC-owned KR when structure missing).
+- INDIVIDUAL: align to Manager KR (with relaxed checks when org structure missing).
+
+Environment & Local Dev
+- Web API base (apps/web/src/lib/api.ts):
+  - API_BASE = import.meta.env.VITE_API_BASE || 'https://workworkapi-production.up.railway.app'
+  - For local API, set apps/web/.env.local:
+    VITE_API_BASE=http://localhost:3000
+
+- Running only Web (using Railway API):
+  - In apps/web/: npm install && npm run dev → http://localhost:5173
+  - Login at /login to set localStorage.token.
+
+- Running API locally:
+  - In apps/api/: set DATABASE_URL env (PostgreSQL). Example:
+    postgresql://postgres:postgres@localhost:5432/workwork?schema=public
+  - npm install
+  - npm run prisma:migrate:dev
+  - npm run dev (default port 3000)
+  - Optional: npm run build && npm start (runs prisma migrate deploy + generate, then dist server)
+
+Local Storage Keys (used by web)
+- token: JWT for Authorization header.
+- userId: user identity used in queries like /api/okrs/my.
+- teamName: used by /quick when scaffolding on server if needed.
+
+Commits (traceability)
+- 9068414: OKR map page/endpoint; MeGoals KR add; mirror UserGoal on Objective create
+- 16ba959: Create Objective with multiple KRs in one request; MeGoals multi-KR UI
+- 4644c06: Quick worklog uses O-KR KR selection; API supports keyResultId
+
+Operational Notes
+- No automated seed scripts (manual input preferred for users/org/initiatives).
+- Worklog writing flow now KR-first. “내 목표 목록” is not used for quick write selection.
+- Auto Objective/KR scaffold may occur in POST /api/worklogs/simple when keyResultId not provided (creates “Auto Objective - <team>”, “Auto KR”).
+
+Common Tasks
+- Create my Objective + multiple KRs: POST /api/okrs/objectives with krs[].
+- Add KR to existing Objective: POST /api/okrs/objectives/:id/krs.
+- View OKR map: GET /api/okrs/map (web at /okr-map).
+- Quick write under a KR: POST /api/worklogs/simple with keyResultId + taskName (web at /quick).
+
+Next Suggestions (optional)
+- Hide or demote “내 목표 목록” in UI if fully replaced by O-KR flow.
+- Add filters/search/fold to OKR map.
+- Strengthen permission checks for editing O/KR based on role.
+
+With this file, you can open the repo on any machine, skim these decisions/endpoints, set envs, and continue development without prior chat context.
