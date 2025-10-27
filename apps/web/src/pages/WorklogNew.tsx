@@ -105,7 +105,7 @@ export function WorklogNew() {
         <input value={createdById} onChange={(e) => setCreatedById(e.target.value)} required />
       </label>
 
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div className="resp-2">
         <label>
           진척(%)
           <input type="number" min={0} max={100} value={progressPct} onChange={(e) => setProgressPct(Number(e.target.value))} />
@@ -144,7 +144,7 @@ export function WorklogNew() {
       </label>
 
       <h3>도움요청 옵션(단일)</h3>
-      <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
+      <div className="resp-2">
         <label>
           카테고리
           <input value={helpCategory} onChange={(e) => setHelpCategory(e.target.value)} />
@@ -164,7 +164,7 @@ export function WorklogNew() {
       </div>
 
       <h3>위임 옵션(단일)</h3>
-      <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
+      <div className="resp-2">
         <label>
           Parent Type
           <input value={parentType} onChange={(e) => setParentType(e.target.value)} />

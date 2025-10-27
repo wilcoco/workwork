@@ -23,6 +23,7 @@ export function WorklogSearch() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
 
 
   async function search() {
@@ -55,10 +56,19 @@ export function WorklogSearch() {
     return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
   }
 
+  function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
+    const target = e.target as HTMLElement | null;
+    if (target && target.tagName === 'IMG') {
+      e.preventDefault();
+      const src = (target as HTMLImageElement).src;
+      if (src) setZoomSrc(src);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12, background: '#F8FAFC', padding: '12px', borderRadius: 12 }}>
       <div style={{ display: 'grid', gap: 8, background: '#FFFFFF', border: '1px solid #E5E7EB', padding: 14, borderRadius: 12, boxShadow: '0 2px 10px rgba(16,24,40,0.04)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+        <div className="resp-3">
           <input placeholder="팀명" value={team} onChange={(e) => setTeam(e.target.value)} style={input} />
           <input placeholder="이름" value={user} onChange={(e) => setUser(e.target.value)} style={input} />
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={input} />
@@ -66,7 +76,7 @@ export function WorklogSearch() {
           <input placeholder="검색어" value={q} onChange={(e) => setQ(e.target.value)} style={input} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button style={primaryBtn} onClick={search} disabled={loading}>{loading ? '검색중…' : '검색'}</button>
+          <button className="btn btn-primary" onClick={search} disabled={loading}>{loading ? '검색중…' : '검색'}</button>
         </div>
       </div>
 
@@ -85,19 +95,28 @@ export function WorklogSearch() {
             <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{it.title}</div>
             {it.attachments?.contentHtml ? (
               <div
+                className="rich-content"
                 style={{ marginTop: 6, color: '#111827', border: '1px solid #eee', borderRadius: 8, padding: 12 }}
+                onClick={onContentClick}
                 dangerouslySetInnerHTML={{ __html: absolutizeUploads(it.attachments.contentHtml) }}
               />
             ) : (
               <div style={{ marginTop: 6, color: '#374151' }}>{it.excerpt}</div>
             )}
             {Array.isArray(it.attachments?.files) && it.attachments.files.length > 0 && (
-              <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+              <div className="attachments" style={{ marginTop: 10 }}>
                 {it.attachments.files.map((f: any, i: number) => {
                   const url = absLink(f.url as string);
                   const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
+                  const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
                   return (
-                    <a key={(f.filename || f.url) + i} href={url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73' }}>{name}</a>
+                    <div className="attachment-item" key={(f.filename || f.url) + i}>
+                      {isImg ? (
+                        <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8, cursor: 'zoom-in' }} onClick={() => setZoomSrc(url)} />
+                      ) : (
+                        <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -106,6 +125,11 @@ export function WorklogSearch() {
           </div>
         ))}
       </div>
+      {zoomSrc && (
+        <div className="image-overlay" onClick={() => setZoomSrc(null)}>
+          <img src={zoomSrc} alt="preview" />
+        </div>
+      )}
     </div>
   );
 }

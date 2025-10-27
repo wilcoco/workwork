@@ -8,6 +8,7 @@ export function WorklogDetail() {
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -45,6 +46,15 @@ export function WorklogDetail() {
     return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
   }
 
+  function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
+    const target = e.target as HTMLElement | null;
+    if (target && target.tagName === 'IMG') {
+      e.preventDefault();
+      const src = (target as HTMLImageElement).src;
+      if (src) setZoomSrc(src);
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <h2>업무일지 상세</h2>
@@ -57,7 +67,8 @@ export function WorklogDetail() {
       {data.attachments?.contentHtml ? (
         <div>
           <b>내용(HTML):</b>
-          <div style={{ border: '1px solid #eee', borderRadius: 8, padding: 12, marginTop: 6 }}
+          <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 12, marginTop: 6 }}
+               onClick={onContentClick}
                dangerouslySetInnerHTML={{ __html: absolutizeUploads(data.attachments.contentHtml) }} />
         </div>
       ) : (
@@ -66,18 +77,30 @@ export function WorklogDetail() {
       {Array.isArray(data.attachments?.files) && data.attachments.files.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <b>첨부:</b>
-          <div style={{ display: 'grid', gap: 10, marginTop: 6 }}>
+          <div className="attachments" style={{ marginTop: 6 }}>
             {data.attachments.files.map((f: any, i: number) => {
               const url = absLink(f.url as string);
               const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
+              const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
               return (
-                <a key={(f.filename || f.url) + i} href={url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73' }}>{name}</a>
+                <div className="attachment-item" key={(f.filename || f.url) + i}>
+                  {isImg ? (
+                    <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8, cursor: 'zoom-in' }} onClick={() => setZoomSrc(url)} />
+                  ) : (
+                    <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
+                  )}
+                </div>
               );
             })}
           </div>
         </div>
       )}
       <div><b>작성일:</b> {formatKstDatetime(data.createdAt)}</div>
+      {zoomSrc && (
+        <div className="image-overlay" onClick={() => setZoomSrc(null)}>
+          <img src={zoomSrc} alt="preview" />
+        </div>
+      )}
     </div>
   );
 }

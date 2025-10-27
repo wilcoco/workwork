@@ -40,7 +40,7 @@ a:hover { text-decoration: underline; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 input, textarea, select, button { font: inherit; }
-input, textarea, select { border: 1px solid #CBD5E1; background: #FFFFFF; border-radius: 10px; padding: 10px 12px; outline: none; width: 100%; }
+input, textarea, select { border: 1px solid #CBD5E1; background: #FFFFFF; border-radius: 10px; padding: 10px 12px; outline: none; width: 100%; min-width: 0; }
 textarea { resize: vertical; }
 
 .btn { display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; padding: 10px 14px; font-weight: 600; border: 1px solid transparent; background: #e2e8f0; color: #0f172a; cursor: pointer; }
@@ -49,6 +49,14 @@ textarea { resize: vertical; }
 .btn-ghost { background: transparent; color: var(--primary); border: 1px solid #CBD5E1; }
 .btn-danger { background: var(--accent); color: #fff; border: none; }
 .btn-sm { border-radius: 8px; padding: 4px 8px; font-size: 12px; }
+
+.rich-content img, .rich-content video, .rich-content iframe { max-width: 100%; height: auto; display: block; border-radius: 8px; }
+.ql-editor img { max-width: 100%; height: auto; }
+.attachments { display: grid; gap: 8px; }
+.attachment-item { display: grid; gap: 6px; }
+.file-link { color: var(--primary); word-break: break-all; overflow-wrap: anywhere; }
+.image-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.image-overlay img { max-width: 96vw; max-height: 90vh; width: auto; height: auto; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
 
 /* Responsive grid helpers */
 .resp-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

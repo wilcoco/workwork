@@ -225,10 +225,10 @@ export function WorklogQuickNew() {
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
             <input type="file" multiple onChange={onAttachFiles} />
             {attachments.length > 0 && (
-              <div style={{ display: 'grid', gap: 6 }}>
+              <div className="attachments">
                 {attachments.map((f, i) => (
-                  <div key={f.filename + i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <a href={f.url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73' }}>{f.name}</a>
+                  <div key={f.filename + i} className="attachment-item" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <a className="file-link" href={f.url} target="_blank" rel="noreferrer">{f.name}</a>
                     <button type="button" className="btn btn-sm btn-danger" onClick={() => removeAttachment(i)}>삭제</button>
                   </div>
                 ))}
