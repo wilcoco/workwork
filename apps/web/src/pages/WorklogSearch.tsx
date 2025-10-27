@@ -86,6 +86,22 @@ export function WorklogSearch() {
     }
   }
 
+  function firstImageUrl(it: Item): string {
+    const anyIt: any = it as any;
+    const files = anyIt?.attachments?.files || [];
+    const fileImg = files.find((f: any) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
+    if (fileImg) {
+      return absLink(fileImg.url as string);
+    }
+    const html = anyIt?.attachments?.contentHtml || '';
+    if (html) {
+      const abs = absolutizeUploads(html);
+      const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (m && m[1]) return m[1];
+    }
+    return '';
+  }
+
   return (
     <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12, background: '#F8FAFC', padding: '12px', borderRadius: 12 }}>
       <div style={{ display: 'grid', gap: 8, background: '#FFFFFF', border: '1px solid #E5E7EB', padding: 14, borderRadius: 12, boxShadow: '0 2px 10px rgba(16,24,40,0.04)' }}>
@@ -109,14 +125,10 @@ export function WorklogSearch() {
       {mode === 'feed' ? (
         <div className="feed-grid">
           {items.map((it) => {
-            const files = (it as any)?.attachments?.files || [];
-            const img = files.find((f: any) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.url || f.name));
-            const imgUrl = img ? absLink(img.url as string) : '';
+            const imgUrl = firstImageUrl(it);
             return (
-              <Link to={`/worklogs/${it.id}`} key={it.id} className="feed-tile">
-                {imgUrl ? (
-                  <img src={imgUrl} alt={it.title} />
-                ) : (
+              <Link to={`/worklogs/${it.id}`} key={it.id} className="feed-tile" style={imgUrl ? { backgroundImage: `url(${imgUrl})` } : undefined}>
+                {!imgUrl && (
                   <div className="feed-fallback">
                     <div className="feed-title">{it.title}</div>
                   </div>
