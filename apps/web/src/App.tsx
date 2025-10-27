@@ -51,7 +51,9 @@ function HeaderBar() {
   return (
     <div className="header">
       <div className="container">
-        <Link to="/">Home</Link>
+        <Link to="/" className="logo" aria-label="아이앤테크(주) 메인">
+          <img src="/logo.png" alt="아이앤테크(주) 로고" />
+        </Link>
         <Link to="/quick">작성</Link>
         <Link to="/me/goals">내 목표</Link>
         <Link to="/search">조회</Link>

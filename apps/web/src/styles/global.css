@@ -26,6 +26,12 @@ a:hover { text-decoration: underline; }
 .header .container { display: flex; align-items: center; gap: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .header a { padding: 8px 10px; border-radius: 8px; color: var(--text); white-space: nowrap; }
 .header a:hover { background: #F1F5F9; }
+.header .logo { padding: 0; display: inline-flex; align-items: center; }
+.header .logo:hover { background: transparent; }
+.header .logo img { height: 26px; width: auto; display: block; }
+@media (min-width: 768px) {
+  .header .logo img { height: 32px; }
+}
 .header .nav-right { margin-left: auto; display: flex; gap: 12px; align-items: center; }
 .header .user-chip { color: #334155; font-size: 14px; }
 
