@@ -22,15 +22,15 @@ a:hover { text-decoration: underline; }
 .container { width: 100%; max-width: 1200px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
 .content { padding-top: 16px; padding-bottom: 16px; }
 
-.header { position: sticky; top: 0; z-index: 50; background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 35%, #f8fafc 65%, #e2e8f0 100%), repeating-linear-gradient(90deg, rgba(255,255,255,0.25) 0, rgba(255,255,255,0.25) 1px, rgba(0,0,0,0.03) 1px, rgba(0,0,0,0.03) 3px); background-blend-mode: overlay; border-bottom: 1px solid rgba(148,163,184,0.35); padding: 10px 0; }
+.header { position: sticky; top: 0; z-index: 50; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); border-bottom: 1px solid #E5E7EB; padding: 12px 0; }
 .header .container { display: flex; align-items: center; gap: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .header a { padding: 8px 10px; border-radius: 8px; color: var(--text); white-space: nowrap; }
 .header a:hover { background: #F1F5F9; }
 .header .logo { padding: 0; display: inline-flex; align-items: center; }
 .header .logo:hover { background: transparent; }
-.header .logo img { height: 26px; width: auto; display: block; }
+.header .logo img { height: 52px; width: auto; display: block; }
 @media (min-width: 768px) {
-  .header .logo img { height: 32px; }
+  .header .logo img { height: 64px; }
 }
 .header .nav-right { margin-left: auto; display: flex; gap: 12px; align-items: center; }
 .header .user-chip { color: #334155; font-size: 14px; }
