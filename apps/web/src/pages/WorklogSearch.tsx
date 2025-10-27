@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
 
@@ -24,6 +25,7 @@ export function WorklogSearch() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
+  const [mode, setMode] = useState<'feed' | 'list'>('feed');
 
 
   async function search() {
@@ -44,6 +46,25 @@ export function WorklogSearch() {
       setLoading(false);
     }
   }
+
+  // default feed load: recent items
+  async function loadRecent() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiJson<{ items: Item[] }>(`/api/worklogs/search?limit=60`);
+      setItems(res.items);
+    } catch (e) {
+      setError('조회 실패');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    setMode('feed');
+    loadRecent();
+  }, []);
 
   function absLink(url: string): string {
     if (!url) return url;
@@ -75,14 +96,38 @@ export function WorklogSearch() {
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={input} />
           <input placeholder="검색어" value={q} onChange={(e) => setQ(e.target.value)} style={input} />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn btn-primary" onClick={search} disabled={loading}>{loading ? '검색중…' : '검색'}</button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          {mode === 'list' ? (
+            <button className="btn" onClick={() => { setTeam(''); setUser(''); setFrom(''); setTo(''); setQ(''); setMode('feed'); loadRecent(); }} type="button">최근 보기</button>
+          ) : null}
+          <button className="btn btn-primary" onClick={() => { setMode('list'); search(); }} disabled={loading}>{loading ? '검색중…' : '검색'}</button>
         </div>
       </div>
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
-      <div style={{ display: 'grid', gap: 12 }}>
+      {mode === 'feed' ? (
+        <div className="feed-grid">
+          {items.map((it) => {
+            const files = (it as any)?.attachments?.files || [];
+            const img = files.find((f: any) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.url || f.name));
+            const imgUrl = img ? absLink(img.url as string) : '';
+            return (
+              <Link to={`/worklogs/${it.id}`} key={it.id} className="feed-tile">
+                {imgUrl ? (
+                  <img src={imgUrl} alt={it.title} />
+                ) : (
+                  <div className="feed-fallback">
+                    <div className="feed-title">{it.title}</div>
+                  </div>
+                )}
+                <div className="feed-caption">{it.userName || ''}</div>
+              </Link>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
         {items.map((it) => (
           <div key={it.id} style={card}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
@@ -124,7 +169,8 @@ export function WorklogSearch() {
             {it.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#0F3D73', background: '#E6EEF7', display: 'inline-block', padding: '4px 8px', borderRadius: 999, fontWeight: 600 }}>{it.taskName}</div>}
           </div>
         ))}
-      </div>
+        </div>
+      )}
       {zoomSrc && (
         <div className="image-overlay" onClick={() => setZoomSrc(null)}>
           <img src={zoomSrc} alt="preview" />
