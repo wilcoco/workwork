@@ -15,7 +15,7 @@ export function App() {
   return (
     <BrowserRouter>
       <HeaderBar />
-      <div style={{ padding: 24 }}>
+      <div className="container page">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/worklogs/new" element={<WorklogNew />} />
@@ -49,26 +49,29 @@ function HeaderBar() {
     nav('/login');
   };
   return (
-    <div style={{ padding: 16, display: 'flex', gap: 16, alignItems: 'center', borderBottom: '1px solid #eee' }}>
-      <Link to="/">Home</Link>
-      <Link to="/quick">작성</Link>
-      <Link to="/me/goals">내 목표</Link>
-      <Link to="/search">조회</Link>
-      <Link to="/okr-map">OKR맵</Link>
-      <Link to="/admin/orgs">조직관리</Link>
-      <span style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
-        {token ? (
-          <>
-            <span style={{ color: '#334155', fontSize: 14 }}>{userName}{teamName ? ` · ${teamName}` : ''}</span>
-            <button onClick={onLogout} style={{ background: 'transparent', color: '#0F3D73', border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', cursor: 'pointer' }}>로그아웃</button>
-          </>
-        ) : (
-          <>
-            <Link to="/login">로그인</Link>
-            <Link to="/signup">회원가입</Link>
-          </>
-        )}
-      </span>
+    <div className="header">
+      <div className="container">
+        <Link to="/">Home</Link>
+        <Link to="/quick">작성</Link>
+        <Link to="/me/goals">내 목표</Link>
+        <Link to="/search">조회</Link>
+        <Link to="/okr-map">OKR맵</Link>
+        <Link to="/admin/orgs">조직관리</Link>
+        <span className="nav-right">
+          {token ? (
+            <>
+              <span className="user-chip">{userName}{teamName ? ` · ${teamName}` : ''}</span>
+              <button onClick={onLogout} className="btn btn-ghost">로그아웃</button>
+            </>
+          ) : (
+            <>
+              <Link to="/login">로그인</Link>
+              <Link to="/signup">회원가입</Link>
+            </>
+          )}
+        </span>
+      </div>
     </div>
   );
 }
+

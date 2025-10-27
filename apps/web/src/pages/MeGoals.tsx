@@ -164,12 +164,12 @@ export function MeGoals() {
   }
 
   return (
-    <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12, background: '#F8FAFC', padding: 12, borderRadius: 12 }}>
+    <div className="content" style={{ display: 'grid', gap: 12, maxWidth: 960, margin: '24px auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>내 목표</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setCreateOpen((v) => !v)} style={ghostBtn}>{createOpen ? '닫기' : '신규 목표'}</button>
-          <button disabled={!userId || loading} onClick={load} style={primaryBtn}>{loading ? '새로고침…' : '새로고침'}</button>
+          <button onClick={() => setCreateOpen((v) => !v)} className="btn btn-ghost">{createOpen ? '닫기' : '신규 목표'}</button>
+          <button disabled={!userId || loading} onClick={load} className="btn btn-primary">{loading ? '새로고침…' : '새로고침'}</button>
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
@@ -177,39 +177,37 @@ export function MeGoals() {
       <section style={{ display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>내 역할 및 상위 O-KR 선택</h3>
         <div style={card}>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 8 }}>
-              <select value={myRole} onChange={async (e) => {
-                const role = e.target.value as any;
-                setMyRole(role);
-                if (!userId) return;
-                try {
-                  setRoleSaving(true);
-                  await apiJson(`/api/users/${encodeURIComponent(userId)}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
-                  const p = await apiJson<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`);
-                  setParentKrs(p.items || []);
-                } finally {
-                  setRoleSaving(false);
-                }
-              }} style={{ ...input, appearance: 'auto' as any }}>
-                <option value="">역할 선택</option>
-                <option value="CEO">대표이사</option>
-                <option value="EXEC">임원</option>
-                <option value="MANAGER">팀장</option>
-                <option value="INDIVIDUAL">직원</option>
-              </select>
-              <select value={parentKrId} onChange={(e) => setParentKrId(e.target.value)} disabled={!myRole || myRole === 'CEO'} style={{ ...input, appearance: 'auto' as any }}>
-                <option value="">상위 O-KR 선택 ({myRole === 'CEO' ? '최상위' : '필수'})</option>
-                {parentKrs.map((kr) => (
-                  <option key={kr.id} value={kr.id}>
-                    [{kr.objective?.orgUnit?.name || '-'}] {kr.objective?.title} / KR: {kr.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>
-              역할 변경 후 상위 O-KR 목록이 갱신됩니다. 대표이사는 상위 선택 없이 최상위 O를 생성합니다.
-            </div>
+          <div className="stack-1-2">
+            <select value={myRole} onChange={async (e) => {
+              const role = e.target.value as any;
+              setMyRole(role);
+              if (!userId) return;
+              try {
+                setRoleSaving(true);
+                await apiJson(`/api/users/${encodeURIComponent(userId)}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
+                const p = await apiJson<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`);
+                setParentKrs(p.items || []);
+              } finally {
+                setRoleSaving(false);
+              }
+            }} style={{ ...input, appearance: 'auto' as any }}>
+              <option value="">역할 선택</option>
+              <option value="CEO">대표이사</option>
+              <option value="EXEC">임원</option>
+              <option value="MANAGER">팀장</option>
+              <option value="INDIVIDUAL">직원</option>
+            </select>
+            <select value={parentKrId} onChange={(e) => setParentKrId(e.target.value)} disabled={!myRole || myRole === 'CEO'} style={{ ...input, appearance: 'auto' as any }}>
+              <option value="">상위 O-KR 선택 ({myRole === 'CEO' ? '최상위' : '필수'})</option>
+              {parentKrs.map((kr) => (
+                <option key={kr.id} value={kr.id}>
+                  [{kr.objective?.orgUnit?.name || '-'}] {kr.objective?.title} / KR: {kr.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280' }}>
+            역할 변경 후 상위 O-KR 목록이 갱신됩니다. 대표이사는 상위 선택 없이 최상위 O를 생성합니다.
           </div>
         </div>
       </section>
@@ -217,33 +215,32 @@ export function MeGoals() {
       <section style={{ display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>나의 O-KR 구성</h3>
         <div style={card}>
-          <div style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input value={oTitle} onChange={(e) => setOTitle(e.target.value)} placeholder="나의 Objective 제목" style={input} />
-              <input value={krTitle} onChange={(e) => setKrTitle(e.target.value)} placeholder="첫 Key Result 제목" style={input} />
-            </div>
-            <textarea value={oDesc} onChange={(e) => setODesc(e.target.value)} placeholder="Objective 설명" style={{ ...input, minHeight: 70 }} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input type="date" value={oStart} onChange={(e) => setOStart(e.target.value)} style={input} />
-              <input type="date" value={oEnd} onChange={(e) => setOEnd(e.target.value)} style={input} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-              <input value={krMetric} onChange={(e) => setKrMetric(e.target.value)} placeholder="KR 메트릭(예: %, 건수)" style={input} />
-              <input type="number" step="any" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} placeholder="KR 목표값" style={input} />
-              <input value={krUnit} onChange={(e) => setKrUnit(e.target.value)} placeholder="KR 단위(예: %, 건)" style={input} />
-            </div>
-            <div>
-              <select value={krType} onChange={(e) => setKrType(e.target.value as any)} style={{ ...input, width: 'auto', appearance: 'auto' as any }}>
-                <option value="PROJECT">프로젝트형 (간트)</option>
-                <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
-              </select>
-            </div>
+          <div className="stack-1-2">
+            <input value={oTitle} onChange={(e) => setOTitle(e.target.value)} placeholder="나의 Objective 제목" style={input} />
+            <input value={krTitle} onChange={(e) => setKrTitle(e.target.value)} placeholder="첫 Key Result 제목" style={input} />
+          </div>
+          <textarea value={oDesc} onChange={(e) => setODesc(e.target.value)} placeholder="Objective 설명" style={{ ...input, minHeight: 70 }} />
+          <div className="stack-1-2">
+            <input type="date" value={oStart} onChange={(e) => setOStart(e.target.value)} style={input} />
+            <input type="date" value={oEnd} onChange={(e) => setOEnd(e.target.value)} style={input} />
+          </div>
+          <div className="stack-3">
+            <input value={krMetric} onChange={(e) => setKrMetric(e.target.value)} placeholder="KR 메트릭(예: %, 건수)" style={input} />
+            <input type="number" step="any" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} placeholder="KR 목표값" style={input} />
+            <input value={krUnit} onChange={(e) => setKrUnit(e.target.value)} placeholder="KR 단위(예: %, 건)" style={input} />
+          </div>
+          <div>
+            <select value={krType} onChange={(e) => setKrType(e.target.value as any)} style={{ ...input, width: 'auto', appearance: 'auto' as any }}>
+              <option value="PROJECT">프로젝트형 (간트)</option>
+              <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
+            </select>
+          </div>
             {/* Extra KR rows */}
             {extraKrs.length > 0 && (
               <div style={{ display: 'grid', gap: 6 }}>
                 {extraKrs.map((row, i) => (
                   <div key={i} style={{ display: 'grid', gap: 6, border: '1px dashed #e5e7eb', borderRadius: 8, padding: 8 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div className="resp-2">
                       <input value={row.title} onChange={(e) => {
                         const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, title: v } : r));
                       }} placeholder="추가 KR 제목" style={input} />
@@ -251,7 +248,7 @@ export function MeGoals() {
                         const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, metric: v } : r));
                       }} placeholder="메트릭(예: %, 건수)" style={input} />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                    <div className="resp-3">
                       <input type="number" step="any" value={row.target} onChange={(e) => {
                         const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, target: v } : r));
                       }} placeholder="목표값" style={input} />
@@ -266,19 +263,19 @@ export function MeGoals() {
                       </select>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <button type="button" style={ghostBtn} onClick={() => setExtraKrs((prev) => prev.filter((_r, idx) => idx !== i))}>행 제거</button>
+                      <button type="button" className="btn btn-ghost" onClick={() => setExtraKrs((prev) => prev.filter((_r, idx) => idx !== i))}>행 제거</button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" style={ghostBtn} onClick={() => setExtraKrs((prev) => [...prev, { title: '', metric: '', target: '', unit: '', type: 'PROJECT' }])}>KR 행 추가</button>
+              <button type="button" className="btn btn-ghost" onClick={() => setExtraKrs((prev) => [...prev, { title: '', metric: '', target: '', unit: '', type: 'PROJECT' }])}>KR 행 추가</button>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
                 type="button"
-                style={primaryBtn}
+                className="btn btn-primary"
                 disabled={okrCreating || !userId || !oTitle || !krTitle || !krMetric || !krTarget || !krUnit || !oStart || !oEnd || (!parentKrId && myRole !== 'CEO')}
                 onClick={async () => {
                   try {
@@ -314,7 +311,6 @@ export function MeGoals() {
               >{okrCreating ? '생성중…' : 'O + KR 생성'}</button>
             </div>
           </div>
-        </div>
       </section>
 
       {createOpen && (
@@ -404,11 +400,11 @@ export function MeGoals() {
               )}
               {/* Add KR form */}
               <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div className="resp-2">
                   <input value={(krForm[o.id]?.title) || ''} onChange={(e) => setKrField(o.id, 'title', e.target.value)} placeholder="추가 KR 제목" style={input} />
                   <input value={(krForm[o.id]?.metric) || ''} onChange={(e) => setKrField(o.id, 'metric', e.target.value)} placeholder="메트릭(예: %, 건수)" style={input} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                <div className="resp-3">
                   <input type="number" step="any" value={(krForm[o.id]?.target) || ''} onChange={(e) => setKrField(o.id, 'target', e.target.value)} placeholder="목표값" style={input} />
                   <input value={(krForm[o.id]?.unit) || ''} onChange={(e) => setKrField(o.id, 'unit', e.target.value)} placeholder="단위(예: %, 건)" style={input} />
                   <select value={(krForm[o.id]?.type) || 'PROJECT'} onChange={(e) => setKrField(o.id, 'type', e.target.value as any)} style={{ ...input, appearance: 'auto' as any }}>
@@ -417,7 +413,7 @@ export function MeGoals() {
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button type="button" style={primaryBtn} disabled={!userId || krForm[o.id]?.saving || !krForm[o.id]?.title || !krForm[o.id]?.metric || !krForm[o.id]?.target || !krForm[o.id]?.unit}
+                  <button type="button" className="btn btn-primary" disabled={!userId || krForm[o.id]?.saving || !krForm[o.id]?.title || !krForm[o.id]?.metric || !krForm[o.id]?.target || !krForm[o.id]?.unit}
                           onClick={() => addKr(o.id)}>{krForm[o.id]?.saving ? '추가중…' : 'KR 추가'}</button>
                 </div>
               </div>

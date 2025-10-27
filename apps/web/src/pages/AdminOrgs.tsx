@@ -5,7 +5,7 @@ function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelet
   return (
     <li>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button onClick={() => onSelect(node.id)} style={{ background: selectedId === node.id ? '#0F3D73' : '#fff', color: selectedId === node.id ? '#fff' : '#0F3D73', border: '1px solid #0F3D73', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>{selectedId === node.id ? '선택됨' : '선택'}</button>
+        <button onClick={() => onSelect(node.id)} className={selectedId === node.id ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}>{selectedId === node.id ? '선택됨' : '선택'}</button>
         <strong>{node.name}</strong>
         <span style={{ fontSize: 12, color: '#6b7280' }}>({node.type})</span>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>child:{node.children?.length || 0} users:{node.counts?.users || 0} objs:{node.counts?.objectives || 0}</span>
@@ -13,7 +13,7 @@ function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelet
           onClick={() => onDelete(node.id)}
           disabled={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0 || (node.counts?.objectives || 0) > 0}
           title={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0 || (node.counts?.objectives || 0) > 0 ? '자식/사용자/목표 해제 후 삭제 가능' : '삭제'}
-          style={{ marginLeft: 8, background: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 6, padding: '2px 6px', cursor: 'pointer' }}
+          className="btn btn-danger btn-sm"
         >
           삭제
         </button>
@@ -157,11 +157,11 @@ export function AdminOrgs(): JSX.Element {
   }
 
   return (
-    <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 16 }}>
+    <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 960, margin: '24px auto' }}>
       <h2 style={{ margin: 0 }}>조직 구성 관리</h2>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+      <div className="resp-2">
+        <div className="card" style={{ padding: 12 }}>
           <h3 style={{ marginTop: 0 }}>조직 트리</h3>
           {loading ? '로딩중…' : (
             <ul>
@@ -171,7 +171,7 @@ export function AdminOrgs(): JSX.Element {
             </ul>
           )}
         </div>
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, display: 'grid', gap: 12 }}>
+        <div className="card" style={{ padding: 12, display: 'grid', gap: 12 }}>
           <h3 style={{ marginTop: 0 }}>조직 추가</h3>
           <form onSubmit={createOrg} style={{ display: 'grid', gap: 8 }}>
             <input placeholder="조직명" value={name} onChange={(e) => setName(e.target.value)} required style={input} />
@@ -186,7 +186,7 @@ export function AdminOrgs(): JSX.Element {
                 <option key={u.id} value={u.id}>{u.name} ({u.type})</option>
               ))}
             </select>
-            <button className="btn">생성</button>
+            <button className="btn btn-primary">생성</button>
           </form>
           <div>
             <h3 style={{ marginTop: 0 }}>구성원</h3>
@@ -200,7 +200,7 @@ export function AdminOrgs(): JSX.Element {
                       <div style={{ fontWeight: 600 }}>{m.name}</div>
                       <div style={{ fontSize: 12, color: '#6b7280' }}>{m.email} · {m.role}</div>
                     </div>
-                    <button onClick={() => removeMember(m.id)} style={{ background: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>제거</button>
+                    <button onClick={() => removeMember(m.id)} className="btn btn-danger btn-sm">제거</button>
                   </div>
                 ))}
               </div>
@@ -221,7 +221,7 @@ export function AdminOrgs(): JSX.Element {
                       <div style={{ fontWeight: 600 }}>{o.title}</div>
                       <div style={{ fontSize: 12, color: '#6b7280' }}>기간: {new Date(o.periodStart).toLocaleDateString()} ~ {new Date(o.periodEnd).toLocaleDateString()} · 상태: {o.status}</div>
                     </div>
-                    <button onClick={() => deleteObjective(o.id)} style={{ background: '#fff', color: '#ef4444', border: '1px solid #ef4444', borderRadius: 6, padding: '6px 10px', cursor: 'pointer' }}>삭제</button>
+                    <button onClick={() => deleteObjective(o.id)} className="btn btn-danger btn-sm">삭제</button>
                   </div>
                 ))}
               </div>
@@ -234,7 +234,7 @@ export function AdminOrgs(): JSX.Element {
             </div>
             <form onSubmit={nukeAll} style={{ display: 'grid', gap: 8 }}>
               <input placeholder="DELETE EVERYTHING" value={nukeWord} onChange={(e) => setNukeWord(e.target.value)} style={input} />
-              <button className="btn" disabled={nuking} style={{ background: '#ef4444', border: 'none' }}>{nuking ? '삭제중…' : '모두 삭제'}</button>
+              <button className="btn btn-danger" disabled={nuking}>{nuking ? '삭제중…' : '모두 삭제'}</button>
             </form>
           </div>
         </div>

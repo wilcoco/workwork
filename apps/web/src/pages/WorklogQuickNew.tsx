@@ -165,15 +165,15 @@ export function WorklogQuickNew() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto', background: '#F8FAFC', padding: 12, borderRadius: 12 }}>
-      <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderLeft: '4px solid #0F3D73', borderRadius: 12, padding: 16, boxShadow: '0 2px 10px rgba(16,24,40,0.06)' }}>
+    <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto' }}>
+      <div className="card elevated accent">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, color: '#475569' }}>
           <div style={{ width: 36, height: 36, borderRadius: 999, background: '#f3f4f6', display: 'grid', placeItems: 'center', fontWeight: 700 }}>🙂</div>
           <div style={{ color: '#6b7280', fontSize: 14 }}>무엇을 진행하셨나요?</div>
         </div>
         {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         <form onSubmit={submit} style={{ display: 'grid', gap: 10 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="resp-2">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} required />
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
@@ -205,7 +205,7 @@ export function WorklogQuickNew() {
             <div style={{ fontSize: 13, color: '#6b7280' }}>
               본문 작성 {plainMode ? '(텍스트 모드)' : '(리치 모드)'}
             </div>
-            <button type="button" style={smallBtn} onClick={() => setPlainMode((v) => !v)}>
+            <button type="button" className="btn btn-sm" onClick={() => setPlainMode((v) => !v)}>
               {plainMode ? '리치 모드' : '텍스트 모드'}
             </button>
           </div>
@@ -229,17 +229,17 @@ export function WorklogQuickNew() {
                 {attachments.map((f, i) => (
                   <div key={f.filename + i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <a href={f.url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73' }}>{f.name}</a>
-                    <button type="button" style={smallBtn} onClick={() => removeAttachment(i)}>삭제</button>
+                    <button type="button" className="btn btn-sm btn-danger" onClick={() => removeAttachment(i)}>삭제</button>
                   </div>
                 ))}
               </div>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" style={ghostBtn} onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); }}>
+            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); }}>
               초기화
             </button>
-            <button style={primaryBtn} disabled={loading}>
+            <button className="btn btn-primary" disabled={loading}>
               {loading ? '작성중…' : '작성'}
             </button>
           </div>
@@ -257,30 +257,4 @@ const input: React.CSSProperties = {
   outline: 'none',
 };
 
-const primaryBtn: React.CSSProperties = {
-  background: '#0F3D73',
-  color: '#FFFFFF',
-  border: 'none',
-  borderRadius: 10,
-  padding: '10px 14px',
-  fontWeight: 600,
-};
-
-const ghostBtn: React.CSSProperties = {
-  background: 'transparent',
-  color: '#0F3D73',
-  border: '1px solid #CBD5E1',
-  borderRadius: 10,
-  padding: '10px 14px',
-  fontWeight: 600,
-};
-
-const smallBtn: React.CSSProperties = {
-  background: '#EF4444',
-  color: '#FFFFFF',
-  border: 'none',
-  borderRadius: 8,
-  padding: '4px 8px',
-  fontSize: 12,
-  cursor: 'pointer',
-};
+ 
