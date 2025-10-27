@@ -128,7 +128,11 @@ export function WorklogSearch() {
             const imgUrl = firstImageUrl(it);
             return (
               <Link to={`/worklogs/${it.id}`} key={it.id} className="feed-tile" style={imgUrl ? { backgroundImage: `url(${imgUrl})` } : undefined}>
-                {!imgUrl && (
+                {imgUrl ? (
+                  <div className="feed-titlebar">
+                    <div className="feed-title">{it.title}</div>
+                  </div>
+                ) : (
                   <div className="feed-fallback">
                     <div className="feed-title">{it.title}</div>
                   </div>
