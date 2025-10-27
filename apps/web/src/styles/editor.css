@@ -1,13 +1,22 @@
 .ql-container {
   min-height: 240px;
   border: none;
+  max-width: 100%;
 }
 
 .ql-editor {
   min-height: 200px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ql-toolbar {
   border: none;
   border-bottom: 1px solid #e5e7eb;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
 }
+
+.ql-toolbar .ql-formats { white-space: nowrap; }
