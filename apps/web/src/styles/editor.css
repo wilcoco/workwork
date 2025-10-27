@@ -20,3 +20,19 @@
 }
 
 .ql-toolbar .ql-formats { white-space: nowrap; }
+
+/* Keep toolbar focus ring inside the box to avoid overflow visuals */
+.ql-toolbar button:focus,
+.ql-toolbar button:focus-visible,
+.ql-toolbar .ql-picker-label:focus,
+.ql-toolbar .ql-picker-label:focus-visible,
+.ql-toolbar .ql-picker-item:focus,
+.ql-toolbar .ql-picker-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--primary-50);
+  border-radius: 6px;
+}
+
+/* Smooth rounded corners for toolbar+editor inside the wrapper */
+.quill-box .ql-toolbar { border-radius: 6px 6px 0 0; }
+.quill-box .ql-container { border-radius: 0 0 6px 6px; }

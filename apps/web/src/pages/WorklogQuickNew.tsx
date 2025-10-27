@@ -209,7 +209,7 @@ export function WorklogQuickNew() {
               {plainMode ? '리치 모드' : '텍스트 모드'}
             </button>
           </div>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4 }}>
+          <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden' }}>
             {plainMode ? (
               <textarea
                 value={contentPlain}
@@ -218,7 +218,7 @@ export function WorklogQuickNew() {
                 style={{ ...input, minHeight: 200, resize: 'vertical' }}
               />
             ) : (
-              <div ref={editorEl} style={{ minHeight: 260 }} />
+              <div ref={editorEl} style={{ minHeight: 260, width: '100%' }} />
             )}
           </div>
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
