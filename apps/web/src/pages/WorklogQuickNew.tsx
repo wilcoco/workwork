@@ -114,7 +114,7 @@ export function WorklogQuickNew() {
           }),
         }
       );
-      nav(`/worklogs/${res.id}`);
+      nav('/search?mode=list');
     } catch (err: any) {
       setError(err?.message || '저장 실패');
     } finally {

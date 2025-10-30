@@ -84,7 +84,7 @@ export function WorklogNew() {
       });
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const data = await res.json();
-      nav(`/worklogs/${data.worklog.id}`);
+      nav('/search?mode=list');
     } catch (err: any) {
       setError(err.message || '에러가 발생했습니다');
     } finally {

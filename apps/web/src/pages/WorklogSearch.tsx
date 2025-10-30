@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
 
@@ -26,6 +26,7 @@ export function WorklogSearch() {
   const [error, setError] = useState<string | null>(null);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [mode, setMode] = useState<'feed' | 'list'>('feed');
+  const location = useLocation();
 
 
   async function search() {
@@ -62,9 +63,17 @@ export function WorklogSearch() {
   }
 
   useEffect(() => {
-    setMode('feed');
-    loadRecent();
-  }, []);
+    const sp = new URLSearchParams(location.search);
+    const m = (sp.get('mode') || '').toLowerCase();
+    if (m === 'list') {
+      setMode('list');
+      search();
+    } else {
+      setMode('feed');
+      loadRecent();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
   function absLink(url: string): string {
     if (!url) return url;
@@ -127,7 +136,7 @@ export function WorklogSearch() {
           {items.map((it) => {
             const imgUrl = firstImageUrl(it);
             return (
-              <Link to={`/worklogs/${it.id}`} key={it.id} className="feed-tile" style={imgUrl ? { backgroundImage: `url(${imgUrl})` } : undefined}>
+              <Link to={`/search?mode=list`} key={it.id} className="feed-tile" style={imgUrl ? { backgroundImage: `url(${imgUrl})` } : undefined}>
                 {imgUrl ? (
                   <div className="feed-titlebar">
                     <div className="feed-title">{it.title}</div>
