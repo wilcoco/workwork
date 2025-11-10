@@ -122,12 +122,18 @@ export function ApprovalsSubmit() {
 
   async function submit() {
     const needsDoc = createNewDoc;
-    if (!requestedById) return;
-    if (!needsDoc && (!subjectType || !subjectId)) return;
-    if (!approverId && steps.length === 0) return;
+    if (!requestedById) { setError('로그인이 필요합니다.'); return; }
+    const missing: string[] = [];
     if (needsDoc) {
-      if (!teamName || !title || !stripHtml(contentHtml)) return;
+      if (!teamName) missing.push('팀명');
+      if (!title) missing.push('제목');
+      if (!stripHtml(contentHtml)) missing.push('내용');
+    } else {
+      if (!subjectType) missing.push('대상 종류');
+      if (!subjectId) missing.push('대상 ID');
     }
+    if (!approverId && steps.length === 0) missing.push('결재자');
+    if (missing.length) { setError(`${missing.join(', ')} 입력이 필요합니다.`); return; }
     setLoading(true);
     setError(null);
     setOkMsg('');
@@ -249,7 +255,7 @@ export function ApprovalsSubmit() {
         </div>
         <label>기한(선택)</label>
         <input type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} style={input} />
-        <button onClick={submit} disabled={(createNewDoc ? (!teamName || !title || !stripHtml(contentHtml)) : (!subjectType || !subjectId)) || (!approverId && steps.length === 0) || !requestedById || loading} style={primaryBtn}>
+        <button onClick={submit} disabled={!requestedById || loading} style={primaryBtn}>
           {loading ? '요청중…' : '결재 요청'}
         </button>
       </div>

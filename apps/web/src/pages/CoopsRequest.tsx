@@ -106,8 +106,15 @@ export function CoopsRequest() {
   }
 
   async function submit() {
-    if (!category || !requesterId) return;
-    if (createNewDoc && (!teamName || !title || !stripHtml(contentHtml))) return;
+    if (!requesterId) { setError('로그인이 필요합니다.'); return; }
+    const missing: string[] = [];
+    if (!category) missing.push('카테고리');
+    if (createNewDoc) {
+      if (!teamName) missing.push('팀명');
+      if (!title) missing.push('제목');
+      if (!stripHtml(contentHtml)) missing.push('내용');
+    }
+    if (missing.length) { setError(`${missing.join(', ')} 입력이 필요합니다.`); return; }
     setLoading(true);
     setError(null);
     setOkMsg('');
@@ -204,7 +211,7 @@ export function CoopsRequest() {
         </div>
         <label>SLA 분(선택)</label>
         <input type="number" value={slaMinutes} onChange={(e) => setSlaMinutes(e.target.value)} style={input} />
-        <button onClick={submit} disabled={!category || !requesterId || (createNewDoc && (!teamName || !title || !stripHtml(contentHtml))) || loading} style={primaryBtn}>{loading ? '요청중…' : '협조 요청'}</button>
+        <button onClick={submit} disabled={!requesterId || loading} style={primaryBtn}>{loading ? '요청중…' : '협조 요청'}</button>
       </div>
     </div>
   );
