@@ -1,5 +1,5 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
 class CreateHelpTicketDto {
@@ -35,9 +35,97 @@ class ActDto {
   reason?: string;
 }
 
+class ListQueryDto {
+  @IsOptional() @IsString()
+  status?: 'OPEN' | 'ACCEPTED' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE' | 'CANCELLED';
+
+  @IsOptional() @IsString()
+  requesterId?: string;
+
+  @IsOptional() @IsString()
+  assigneeId?: string;
+
+  @IsOptional() @IsString()
+  queue?: string;
+
+  @IsOptional() @IsDateString()
+  from?: string;
+
+  @IsOptional() @IsDateString()
+  to?: string;
+
+  @IsOptional() @IsString()
+  limit?: string;
+
+  @IsOptional() @IsString()
+  cursor?: string;
+}
+
 @Controller('help-tickets')
 export class HelpTicketsController {
   constructor(private prisma: PrismaService) {}
+
+  @Get()
+  async list(@Query() q: ListQueryDto) {
+    const where: any = {};
+    if (q.status) where.status = q.status;
+    if (q.requesterId) where.requesterId = q.requesterId;
+    if (q.assigneeId) where.assigneeId = q.assigneeId;
+    if (q.queue) where.queue = q.queue;
+    if (q.from || q.to) {
+      where.createdAt = {};
+      if (q.from) (where.createdAt as any).gte = new Date(q.from);
+      if (q.to) (where.createdAt as any).lte = new Date(q.to);
+    }
+    const limit = Math.min(parseInt(q.limit || '20', 10) || 20, 100);
+    const items = await this.prisma.helpTicket.findMany({
+      where,
+      take: limit,
+      skip: q.cursor ? 1 : 0,
+      ...(q.cursor ? { cursor: { id: q.cursor } } : {}),
+      orderBy: { createdAt: 'desc' },
+      include: { requester: true, assignee: true },
+    });
+    const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
+    return {
+      items: items.map((t: any) => ({
+        id: t.id,
+        category: t.category,
+        queue: t.queue || null,
+        status: t.status,
+        requester: t.requester ? { id: t.requester.id, name: t.requester.name } : null,
+        assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null,
+        slaMinutes: t.slaMinutes ?? undefined,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+        resolvedAt: t.resolvedAt || null,
+      })),
+      nextCursor,
+    };
+  }
+
+  @Get('summary')
+  async summary(@Query() q: ListQueryDto) {
+    const where: any = {};
+    if (q.requesterId) where.requesterId = q.requesterId;
+    if (q.assigneeId) where.assigneeId = q.assigneeId;
+    if (q.queue) where.queue = q.queue;
+    if (q.from || q.to) {
+      where.createdAt = {};
+      if (q.from) (where.createdAt as any).gte = new Date(q.from);
+      if (q.to) (where.createdAt as any).lte = new Date(q.to);
+    }
+    const rows = await (this.prisma as any).helpTicket.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+      where,
+    });
+    const out: Record<string, number> = {};
+    for (const r of rows) out[r.status] = r._count._all;
+    // Ensure consistent keys
+    for (const k of ['OPEN','ACCEPTED','IN_PROGRESS','BLOCKED','DONE','CANCELLED']) if (!(k in out)) out[k] = 0;
+    return { counts: out };
+  }
 
   @Post()
   async create(@Body() dto: CreateHelpTicketDto) {
