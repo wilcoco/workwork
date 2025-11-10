@@ -16,7 +16,7 @@ export function CoopsRequest() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState('');
-  const [createNewDoc, setCreateNewDoc] = useState(false);
+  const [createNewDoc, setCreateNewDoc] = useState(true);
   const [teamName, setTeamName] = useState<string>(() => (typeof localStorage !== 'undefined' ? (localStorage.getItem('teamName') || '') : ''));
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
