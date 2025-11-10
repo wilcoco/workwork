@@ -23,6 +23,10 @@ class CreateHelpTicketDto {
   @IsInt()
   @Min(0)
   slaMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  worklogId?: string;
 }
 
 class ActDto {
@@ -144,7 +148,7 @@ export class HelpTicketsController {
         subjectId: ticket.id,
         activity: 'HelpRequested',
         userId: dto.requesterId,
-        attrs: { assigneeId: dto.assigneeId, category: dto.category },
+        attrs: { assigneeId: dto.assigneeId, category: dto.category, worklogId: dto.worklogId },
       },
     });
     if (dto.assigneeId) {
@@ -154,7 +158,7 @@ export class HelpTicketsController {
           type: 'HelpRequested',
           subjectType: 'HelpTicket',
           subjectId: ticket.id,
-          payload: { ticketId: ticket.id },
+          payload: { ticketId: ticket.id, fromWorklogId: dto.worklogId },
         },
       });
     }
