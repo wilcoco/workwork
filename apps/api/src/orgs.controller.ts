@@ -14,6 +14,11 @@ class UpdateOrgDto {
   @IsOptional() @IsString() parentId?: string | null;
 }
 
+class AddMemberDto {
+  @IsOptional() @IsString() userId?: string;
+  @IsOptional() @IsString() username?: string; // email/login id
+}
+
 class NukeDto {
   @IsString() @IsNotEmpty() confirm!: string;
 }
@@ -85,6 +90,17 @@ export class OrgsController {
     if (!user) throw new BadRequestException('user not found');
     if (user.orgUnitId !== id) throw new BadRequestException('user not in this org');
     await this.prisma.user.update({ where: { id: userId }, data: { orgUnitId: null } });
+    return { ok: true };
+  }
+
+  @Post(':id/members')
+  async addMember(@Param('id') id: string, @Body() dto: AddMemberDto) {
+    if (!dto.userId && !dto.username) throw new BadRequestException('userId or username required');
+    let user = null as any;
+    if (dto.userId) user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    if (!user && dto.username) user = await this.prisma.user.findUnique({ where: { email: dto.username } });
+    if (!user) throw new BadRequestException('user not found');
+    await this.prisma.user.update({ where: { id: user.id }, data: { orgUnitId: id } });
     return { ok: true };
   }
 

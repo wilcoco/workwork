@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { apiJson } from '../lib/api';
+import { API_BASE, apiJson } from '../lib/api';
 
 function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelete: (id: string) => void; onSelect: (id: string) => void; selectedId: string }) {
   return (
@@ -39,6 +39,8 @@ export function AdminOrgs(): JSX.Element {
   const [objectives, setObjectives] = useState<any[]>([]);
   const [nukeWord, setNukeWord] = useState('');
   const [nuking, setNuking] = useState(false);
+  const [addUsername, setAddUsername] = useState('');
+  const isProdApi = typeof API_BASE === 'string' && API_BASE.includes('production');
 
   const [name, setName] = useState('');
   const [type, setType] = useState('TEAM');
@@ -129,6 +131,20 @@ export function AdminOrgs(): JSX.Element {
     }
   }
 
+  async function addMember(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedId) { setError('왼쪽 트리에서 조직을 먼저 선택하세요.'); return; }
+    if (!addUsername) { setError('추가할 사용자 로그인 아이디를 입력하세요.'); return; }
+    try {
+      await apiJson(`/api/orgs/${encodeURIComponent(selectedId)}/members`, { method: 'POST', body: JSON.stringify({ username: addUsername }) });
+      setAddUsername('');
+      await loadMembers(selectedId);
+      await load();
+    } catch (e: any) {
+      setError(e.message || '구성원 추가 실패');
+    }
+  }
+
   useEffect(() => {
     load();
   }, []);
@@ -193,6 +209,10 @@ export function AdminOrgs(): JSX.Element {
             {!selectedId && <div style={{ color: '#6b7280', fontSize: 13 }}>왼쪽 트리에서 조직을 선택하세요.</div>}
             {selectedId && (
               <div style={{ display: 'grid', gap: 6 }}>
+                <form onSubmit={addMember} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input placeholder="사용자 로그인 아이디(이메일)" value={addUsername} onChange={(e) => setAddUsername(e.target.value)} style={input} />
+                  <button className="btn btn-primary btn-sm" disabled={!addUsername}>추가</button>
+                </form>
                 {members.length === 0 && <div style={{ color: '#6b7280', fontSize: 13 }}>구성원이 없습니다.</div>}
                 {members.map((m) => (
                   <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
@@ -228,14 +248,18 @@ export function AdminOrgs(): JSX.Element {
             )}
           </div>
           <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
-            <h3 style={{ marginTop: 0, color: '#ef4444' }}>Danger Zone</h3>
-            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
-              전체 삭제: 조직 트리, 목표, KR, 과제, 업무일지를 모두 삭제합니다. 복구 불가.
-            </div>
-            <form onSubmit={nukeAll} style={{ display: 'grid', gap: 8 }}>
-              <input placeholder="DELETE EVERYTHING" value={nukeWord} onChange={(e) => setNukeWord(e.target.value)} style={input} />
-              <button className="btn btn-danger" disabled={nuking}>{nuking ? '삭제중…' : '모두 삭제'}</button>
-            </form>
+            {!isProdApi && (
+              <>
+                <h3 style={{ marginTop: 0, color: '#ef4444' }}>Danger Zone</h3>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                  전체 삭제: 조직 트리, 목표, KR, 과제, 업무일지를 모두 삭제합니다. 복구 불가.
+                </div>
+                <form onSubmit={nukeAll} style={{ display: 'grid', gap: 8 }}>
+                  <input placeholder="DELETE EVERYTHING" value={nukeWord} onChange={(e) => setNukeWord(e.target.value)} style={input} />
+                  <button className="btn btn-danger" disabled={nuking}>{nuking ? '삭제중…' : '모두 삭제'}</button>
+                </form>
+              </>
+            )}
           </div>
         </div>
       </div>
