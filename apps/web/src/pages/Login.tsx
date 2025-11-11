@@ -19,6 +19,7 @@ export function Login() {
         { method: 'POST', body: JSON.stringify({ username, password }) }
       );
       localStorage.setItem('token', res.token);
+      localStorage.setItem('userLogin', username);
       localStorage.setItem('userId', res.user.id);
       localStorage.setItem('userName', res.user.name);
       localStorage.setItem('teamName', res.user.teamName || '');
