@@ -128,6 +128,7 @@ export function CoopsRequest() {
             body: JSON.stringify({
               userId: requesterId,
               teamName,
+              taskName: title || 'Help Request',
               title,
               content: stripHtml(contentHtml),
               contentHtml: contentHtml || undefined,

@@ -147,6 +147,7 @@ export function ApprovalsSubmit() {
             body: JSON.stringify({
               userId: requestedById,
               teamName,
+              taskName: title || 'Approval',
               title,
               content: stripHtml(contentHtml),
               contentHtml: contentHtml || undefined,
