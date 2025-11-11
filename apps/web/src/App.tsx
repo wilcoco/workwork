@@ -53,6 +53,7 @@ export function App() {
 function HeaderBar() {
   const nav = useNavigate();
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const userName = typeof localStorage !== 'undefined' ? localStorage.getItem('userName') || '' : '';
   const teamName = typeof localStorage !== 'undefined' ? localStorage.getItem('teamName') || '' : '';
   const onLogout = () => {
@@ -86,7 +87,7 @@ function HeaderBar() {
         <span className="nav-right">
           {token ? (
             <>
-              <span className="user-chip">{userName}{teamName ? ` · ${teamName}` : ''}</span>
+              <span className="user-chip">{userName}{teamName ? ` · ${teamName}` : ''}{userId ? ` · ${userId}` : ''}</span>
               <button onClick={onLogout} className="btn btn-ghost">로그아웃</button>
             </>
           ) : (

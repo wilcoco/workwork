@@ -20,6 +20,7 @@ export function ApprovalsSubmit() {
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
+  const [teams, setTeams] = useState<string[]>([]);
   const editorEl = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<Quill | null>(null);
 
@@ -51,6 +52,17 @@ export function ApprovalsSubmit() {
     q.on('text-change', () => setContentHtml(q.root.innerHTML));
     quillRef.current = q;
   }, [createNewDoc]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiJson<{ items: any[] }>(`/api/orgs`);
+        const options = (res.items || []).filter((u: any) => u.type === 'TEAM').map((u: any) => u.name).sort();
+        setTeams(options);
+        if (!teamName && options.length > 0) setTeamName(options[0]);
+      } catch {}
+    })();
+  }, []);
 
   function addStep(u: PickedUser) {
     setSteps((prev) => [...prev, { id: u.id, name: u.name }]);
@@ -197,8 +209,12 @@ export function ApprovalsSubmit() {
         )}
         {createNewDoc && (
           <div style={{ display: 'grid', gap: 8 }}>
-            <label>팀명</label>
-            <input value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} />
+            <label>팀</label>
+            <select value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input}>
+              {teams.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
             <label>제목</label>
             <input value={title} onChange={(e) => setTitle(e.target.value)} style={input} />
             <label>내용</label>

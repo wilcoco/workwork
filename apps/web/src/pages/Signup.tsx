@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
@@ -13,6 +13,18 @@ export function Signup() {
   const [role, setRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'>('INDIVIDUAL');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [teams, setTeams] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiJson<{ items: any[] }>(`/api/orgs`);
+        const options = (res.items || []).filter((u: any) => u.type === 'TEAM').map((u: any) => u.name).sort();
+        setTeams(options);
+        if (!teamName && options.length > 0) setTeamName(options[0]);
+      } catch {}
+    })();
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,8 +57,12 @@ export function Signup() {
         <p style={{ color: '#666' }}>팀명/이름/아이디/비밀번호를 입력해 주세요.</p>
         {error && <div className="error">{error}</div>}
         <form onSubmit={submit} className="form">
-          <label>팀명</label>
-          <input value={teamName} onChange={(e) => setTeamName(e.target.value)} required />
+          <label>팀</label>
+          <select value={teamName} onChange={(e) => setTeamName(e.target.value)} required>
+            {teams.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
           <label>이름</label>
           <input value={name} onChange={(e) => setName(e.target.value)} required />
           <label>직책</label>
