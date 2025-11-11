@@ -9,7 +9,6 @@ import '../styles/editor.css';
 export function ApprovalsSubmit() {
   const [subjectType, setSubjectType] = useState('Initiative');
   const [subjectId, setSubjectId] = useState('');
-  const [approverId, setApproverId] = useState('');
   const [steps, setSteps] = useState<Array<{ id: string; name: string }>>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [dueAt, setDueAt] = useState('');
@@ -132,7 +131,7 @@ export function ApprovalsSubmit() {
       if (!subjectType) missing.push('대상 종류');
       if (!subjectId) missing.push('대상 ID');
     }
-    if (!approverId && steps.length === 0) missing.push('결재자');
+    if (steps.length === 0) missing.push('결재자');
     if (missing.length) { setError(`${missing.join(', ')} 입력이 필요합니다.`); return; }
     setLoading(true);
     setError(null);
@@ -159,16 +158,11 @@ export function ApprovalsSubmit() {
         useSubjectId = res.id;
       }
       const body: any = { subjectType: useSubjectType, subjectId: useSubjectId, requestedById };
-      if (steps.length > 0) {
-        body.steps = steps.map((s) => ({ approverId: s.id }));
-      } else {
-        body.approverId = approverId;
-      }
+      body.steps = steps.map((s) => ({ approverId: s.id }));
       if (dueAt) body.dueAt = new Date(dueAt).toISOString();
       const res = await apiJson<any>('/api/approvals', { method: 'POST', body: JSON.stringify(body) });
       setOkMsg(`요청 완료: ${res?.id || ''}`);
       setSubjectId('');
-      setApproverId('');
       setSteps([]);
       setDueAt('');
       setTitle('');
@@ -247,10 +241,6 @@ export function ApprovalsSubmit() {
                 </div>
               )}
             </div>
-          </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <div style={{ fontSize: 12, color: '#64748b' }}>다단계 결재선을 사용하지 않으면 아래 단일 결재자 ID를 입력하세요.</div>
-            <input placeholder="단일 결재자 User ID" value={approverId} onChange={(e) => setApproverId(e.target.value)} style={input} disabled={steps.length > 0} />
           </div>
         </div>
         <label>기한(선택)</label>
