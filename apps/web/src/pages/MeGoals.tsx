@@ -31,16 +31,24 @@ export function MeGoals() {
     setLoading(true);
     setError(null);
     try {
-      const [inits, myg, me, pks, mokrs] = await Promise.all([
-        apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(userId)}`),
-        apiJson<{ items: any[] }>(`/api/my-goals?userId=${encodeURIComponent(userId)}`),
-        apiJson<{ id: string; name: string; role: string; teamName: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`),
-        apiJson<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`),
-        apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`),
-      ]);
+      async function getOrDefault<T>(path: string, def: T): Promise<T> {
+        try {
+          return await apiJson<T>(path);
+        } catch (e: any) {
+          const msg = String(e?.message || '');
+          const status = Number(e?.status || 0);
+          if (status === 404 || msg.startsWith('Non-JSON response')) return def as T;
+          throw e;
+        }
+      }
+      const inits = await getOrDefault<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(userId)}`, { items: [] });
+      const myg = await getOrDefault<{ items: any[] }>(`/api/my-goals?userId=${encodeURIComponent(userId)}`, { items: [] });
+      const me = await getOrDefault<{ id: string; name: string; role: string; teamName: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`, { id: '', name: '', role: '', teamName: '' } as any);
+      const pks = await getOrDefault<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`, { items: [] });
+      const mokrs = await getOrDefault<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`, { items: [] });
       setItems(inits.items || []);
       setGoals(myg.items || []);
-      setMyRole((me.role as any) || '');
+      setMyRole(((me as any).role as any) || '');
       setParentKrs(pks.items || []);
       setMyOkrs(mokrs.items || []);
     } catch (e: any) {
