@@ -116,6 +116,9 @@ export class OrgsController {
 
   @Post('nuke')
   async nuke(@Body() dto: NukeDto) {
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_NUKE !== 'true') {
+      throw new BadRequestException('nuke disabled in production');
+    }
     if ((dto.confirm || '').toLowerCase() !== 'delete everything') {
       throw new BadRequestException("type 'DELETE EVERYTHING' to confirm");
     }

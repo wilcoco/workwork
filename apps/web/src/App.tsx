@@ -20,9 +20,11 @@ import { CoopsMine } from './pages/CoopsMine';
 import { CoopsStatus } from './pages/CoopsStatus';
 
 export function App() {
+  const SHOW_APPROVALS = (import.meta as any)?.env?.VITE_SHOW_APPROVALS === 'true';
+  const SHOW_COOPS = (import.meta as any)?.env?.VITE_SHOW_COOPS === 'true';
   return (
     <BrowserRouter>
-      <HeaderBar />
+      <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
       <div className="container page">
         <Routes>
           <Route path="/" element={<Home />} />
@@ -36,21 +38,29 @@ export function App() {
           <Route path="/me/goals" element={<MeGoals />} />
           <Route path="/okr-map" element={<OkrMap />} />
           <Route path="/admin/orgs" element={<AdminOrgs />} />
-          <Route path="/approvals/new" element={<ApprovalsSubmit />} />
-          <Route path="/approvals/inbox" element={<ApprovalsInbox />} />
-          <Route path="/approvals/mine" element={<ApprovalsMine />} />
-          <Route path="/approvals/status" element={<ApprovalsStatus />} />
-          <Route path="/coops/request" element={<CoopsRequest />} />
-          <Route path="/coops/inbox" element={<CoopsInbox />} />
-          <Route path="/coops/mine" element={<CoopsMine />} />
-          <Route path="/coops/status" element={<CoopsStatus />} />
+          {SHOW_APPROVALS && (
+            <>
+              <Route path="/approvals/new" element={<ApprovalsSubmit />} />
+              <Route path="/approvals/inbox" element={<ApprovalsInbox />} />
+              <Route path="/approvals/mine" element={<ApprovalsMine />} />
+              <Route path="/approvals/status" element={<ApprovalsStatus />} />
+            </>
+          )}
+          {SHOW_COOPS && (
+            <>
+              <Route path="/coops/request" element={<CoopsRequest />} />
+              <Route path="/coops/inbox" element={<CoopsInbox />} />
+              <Route path="/coops/mine" element={<CoopsMine />} />
+              <Route path="/coops/status" element={<CoopsStatus />} />
+            </>
+          )}
         </Routes>
       </div>
     </BrowserRouter>
   );
 }
 
-function HeaderBar() {
+function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean }) {
   const nav = useNavigate();
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const userLogin = typeof localStorage !== 'undefined' ? localStorage.getItem('userLogin') || '' : '';
@@ -77,14 +87,22 @@ function HeaderBar() {
         <Link to="/search">조회</Link>
         <Link to="/okr-map">OKR맵</Link>
         <Link to="/admin/orgs">조직관리</Link>
-        <Link to="/approvals/new">결재올리기</Link>
-        <Link to="/approvals/inbox">결재함</Link>
-        <Link to="/approvals/mine">내결재</Link>
-        <Link to="/approvals/status">결재현황</Link>
-        <Link to="/coops/request">협조요청</Link>
-        <Link to="/coops/inbox">내협조함</Link>
-        <Link to="/coops/mine">보낸협조</Link>
-        <Link to="/coops/status">협조현황</Link>
+        {SHOW_APPROVALS && (
+          <>
+            <Link to="/approvals/new">결재올리기</Link>
+            <Link to="/approvals/inbox">결재함</Link>
+            <Link to="/approvals/mine">내결재</Link>
+            <Link to="/approvals/status">결재현황</Link>
+          </>
+        )}
+        {SHOW_COOPS && (
+          <>
+            <Link to="/coops/request">협조요청</Link>
+            <Link to="/coops/inbox">내협조함</Link>
+            <Link to="/coops/mine">보낸협조</Link>
+            <Link to="/coops/status">협조현황</Link>
+          </>
+        )}
         <span className="nav-right">
           {token ? (
             <>
