@@ -1,4 +1,6 @@
 import { BrowserRouter, Link, Route, Routes, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { apiJson } from './lib/api';
 import { Home } from './pages/Home';
 import { WorklogNew } from './pages/WorklogNew';
 import { WorklogDetail } from './pages/WorklogDetail';
@@ -66,13 +68,28 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
   const userLogin = typeof localStorage !== 'undefined' ? localStorage.getItem('userLogin') || '' : '';
   const userName = typeof localStorage !== 'undefined' ? localStorage.getItem('userName') || '' : '';
   const teamName = typeof localStorage !== 'undefined' ? localStorage.getItem('teamName') || '' : '';
+  const [brand, setBrand] = useState<{ name: string; logoPath: string } | null>(null);
   const rawCompanyName = (import.meta as any)?.env?.VITE_COMPANY_NAME ?? '';
   const companyName = String(rawCompanyName).trim().replace(/^['"]+|['"]+$/g, '');
   const norm = companyName.toLowerCase();
   const isCams = norm.includes('캠스') || norm.includes('cams');
   const isIat = norm.includes('아이앤테크');
-  const logoSrc = isCams ? '/camslogo.jpg' : isIat ? '/logo.png' : '/logo.png';
-  const brandLabel = companyName || '회사';
+  const envLogo = isCams ? '/camslogo.jpg' : isIat ? '/logo.png' : '/logo.png';
+  const [logoSrc, setLogoSrc] = useState(envLogo);
+  const [brandLabel, setBrandLabel] = useState(companyName || '회사');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const b = await apiJson<{ name: string; logoPath: string }>(`/api/brand`);
+        if (b?.logoPath) setLogoSrc(b.logoPath);
+        if (b?.name) setBrandLabel(b.name);
+        setBrand(b);
+      } catch {
+        // ignore, fall back to env
+      }
+    })();
+  }, []);
   const onLogout = () => {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('token');
