@@ -66,6 +66,9 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
   const userLogin = typeof localStorage !== 'undefined' ? localStorage.getItem('userLogin') || '' : '';
   const userName = typeof localStorage !== 'undefined' ? localStorage.getItem('userName') || '' : '';
   const teamName = typeof localStorage !== 'undefined' ? localStorage.getItem('teamName') || '' : '';
+  const companyName = (import.meta as any)?.env?.VITE_COMPANY_NAME || '';
+  const logoSrc = companyName === '캠스' ? '/CAMS LOGO.jpg' : companyName === '아이앤테크' ? '/logo.png' : '/logo.png';
+  const brandLabel = companyName || '회사';
   const onLogout = () => {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('token');
@@ -79,8 +82,8 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
   return (
     <div className="header">
       <div className="container">
-        <Link to="/" className="logo" aria-label="아이앤테크(주) 메인">
-          <img src="/logo.png" alt="아이앤테크(주) 로고" />
+        <Link to="/" className="logo" aria-label={`${brandLabel} 메인`}>
+          <img src={logoSrc} alt={`${brandLabel} 로고`} />
         </Link>
         <Link to="/quick">작성</Link>
         <Link to="/me/goals">내 목표</Link>
