@@ -66,8 +66,12 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
   const userLogin = typeof localStorage !== 'undefined' ? localStorage.getItem('userLogin') || '' : '';
   const userName = typeof localStorage !== 'undefined' ? localStorage.getItem('userName') || '' : '';
   const teamName = typeof localStorage !== 'undefined' ? localStorage.getItem('teamName') || '' : '';
-  const companyName = (import.meta as any)?.env?.VITE_COMPANY_NAME || '';
-  const logoSrc = companyName === '캠스' ? '/camslogo.jpg' : companyName === '아이앤테크' ? '/logo.png' : '/logo.png';
+  const rawCompanyName = (import.meta as any)?.env?.VITE_COMPANY_NAME ?? '';
+  const companyName = String(rawCompanyName).trim().replace(/^['"]+|['"]+$/g, '');
+  const norm = companyName.toLowerCase();
+  const isCams = norm.includes('캠스') || norm.includes('cams');
+  const isIat = norm.includes('아이앤테크');
+  const logoSrc = isCams ? '/camslogo.jpg' : isIat ? '/logo.png' : '/logo.png';
   const brandLabel = companyName || '회사';
   const onLogout = () => {
     if (typeof localStorage !== 'undefined') {
