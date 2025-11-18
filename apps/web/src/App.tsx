@@ -67,7 +67,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
   const userName = typeof localStorage !== 'undefined' ? localStorage.getItem('userName') || '' : '';
   const teamName = typeof localStorage !== 'undefined' ? localStorage.getItem('teamName') || '' : '';
   const companyName = (import.meta as any)?.env?.VITE_COMPANY_NAME || '';
-  const logoSrc = companyName === '캠스' ? '/CAMS LOGO.jpg' : companyName === '아이앤테크' ? '/logo.png' : '/logo.png';
+  const logoSrc = companyName === '캠스' ? '/camslogo.jpg' : companyName === '아이앤테크' ? '/logo.png' : '/logo.png';
   const brandLabel = companyName || '회사';
   const onLogout = () => {
     if (typeof localStorage !== 'undefined') {
