@@ -9,6 +9,7 @@ class CreateObjectiveDto {
   @IsDateString() periodStart!: string;
   @IsDateString() periodEnd!: string;
   @IsOptional() @IsString() alignsToKrId?: string;
+  @IsOptional() @IsString() orgUnitId?: string;
   // Optional: create multiple KRs together
   // Using any[] for simplicity; validated minimally at runtime
   @IsOptional() krs?: Array<{ title: string; metric: string; target: number; unit: string; type?: 'PROJECT' | 'OPERATIONAL' }>;
@@ -83,48 +84,48 @@ export class OkrsController {
   async createObjective(@Body() dto: CreateObjectiveDto) {
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user) throw new Error('user not found');
-    // Role-based validation for alignment
-    if (user.role === 'CEO') {
-      if (dto.alignsToKrId) throw new Error('CEO cannot align to a parent KR for top-level Objective');
-    } else {
-      if (!dto.alignsToKrId) throw new Error('non-CEO must align Objective to a parent KR');
-      const parentKr = await this.prisma.keyResult.findUnique({
+    // Validation: allow aligning to a parent KR for all roles; if no parent, restrict to CEO/EXEC
+    let parentKr: any = null;
+    if (dto.alignsToKrId) {
+      parentKr = await this.prisma.keyResult.findUnique({
         where: { id: dto.alignsToKrId },
         include: { objective: { include: { owner: true, orgUnit: true } } },
       });
       if (!parentKr) throw new Error('parent KR not found');
-      if (user.role === 'EXEC') {
-        if (parentKr.objective?.parentId) throw new Error('EXEC must align to a top-level company Objective KR');
-      } else if (user.role === 'MANAGER') {
+      if (user.role === 'MANAGER') {
         if (!user.orgUnitId) {
-          // Fallback: allow aligning to EXEC-owned KR when org structure missing
           if (parentKr.objective?.owner?.role !== 'EXEC') throw new Error('MANAGER must align to EXEC KR when org unit not configured');
         } else {
           const myUnit = await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } });
-          const parentUnitId = myUnit?.parentId || null;
-          if (!parentUnitId) {
+          const parentId = myUnit?.parentId || undefined;
+          if (!parentId) {
             if (parentKr.objective?.owner?.role !== 'EXEC') throw new Error('MANAGER must align to EXEC KR when parent org unit not configured');
-          } else if (parentKr.objective?.orgUnitId !== parentUnitId) {
+          } else if (parentKr.objective?.orgUnitId !== parentId) {
             throw new Error('MANAGER must align to parent org unit KR');
           }
         }
-      } else {
-        // INDIVIDUAL
+      } else if (user.role === 'INDIVIDUAL') {
         const myUnitId = user.orgUnitId || null;
         if (!myUnitId) {
-          // Fallback: allow aligning to any MANAGER-owned KR when org unit not configured
           if (parentKr.objective?.owner?.role !== 'MANAGER') throw new Error('INDIVIDUAL must align to Manager KR');
         } else {
           const ok = parentKr.objective?.orgUnitId === myUnitId && parentKr.objective?.owner?.role === 'MANAGER';
           if (!ok) {
-            // Relax: allow MANAGER-owned KR even if orgUnit mismatches when structure not standardized
             if (parentKr.objective?.owner?.role !== 'MANAGER') throw new Error('INDIVIDUAL must align to Manager KR');
           }
         }
       }
+    } else {
+      if (user.role !== ('CEO' as any) && user.role !== ('EXEC' as any)) {
+        throw new Error('top-level Objective requires CEO or EXEC');
+      }
     }
 
-    let orgUnitId = user.orgUnitId;
+    if (dto.orgUnitId) {
+      const org = await this.prisma.orgUnit.findUnique({ where: { id: dto.orgUnitId } });
+      if (!org) throw new Error('org unit not found');
+    }
+    let orgUnitId = dto.orgUnitId || user.orgUnitId;
     if (!orgUnitId) {
       const team = await this.prisma.orgUnit.create({ data: { name: `Personal-${user.name}`, type: 'TEAM' } });
       await this.prisma.user.update({ where: { id: user.id }, data: { orgUnitId: team.id } });
@@ -238,6 +239,7 @@ export class OkrsController {
         target: kr.target,
         unit: kr.unit,
         type: kr.type,
+        orgUnitId: o.orgUnitId,
         children: (byKr[kr.id] || []).map(mapObjective),
       }));
       return {

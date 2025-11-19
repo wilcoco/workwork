@@ -22,8 +22,8 @@ import { CoopsMine } from './pages/CoopsMine';
 import { CoopsStatus } from './pages/CoopsStatus';
 
 export function App() {
-  const SHOW_APPROVALS = (import.meta as any)?.env?.VITE_SHOW_APPROVALS === 'true';
-  const SHOW_COOPS = (import.meta as any)?.env?.VITE_SHOW_COOPS === 'true';
+  const SHOW_APPROVALS = ((import.meta as any)?.env?.VITE_SHOW_APPROVALS ?? 'true') === 'true';
+  const SHOW_COOPS = ((import.meta as any)?.env?.VITE_SHOW_COOPS ?? 'true') === 'true';
   return (
     <BrowserRouter>
       <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
@@ -109,7 +109,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         <Link to="/quick">작성</Link>
         <Link to="/me/goals">내 목표</Link>
         <Link to="/search">조회</Link>
-        <Link to="/okr-map">OKR맵</Link>
+        <Link to="/okr-map">전사 목표</Link>
         <Link to="/admin/orgs">조직관리</Link>
         {SHOW_APPROVALS && (
           <>
