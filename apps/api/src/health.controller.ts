@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 
 @Controller('health')
 export class HealthController {
@@ -22,7 +23,7 @@ export class HealthController {
   }
 
   @Get('info')
-  info() {
+  async info() {
     const raw = process.env.DATABASE_URL || this.config.get<string>('DATABASE_URL') || '';
     const m = raw.match(/^postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:\/]+)(?::(\d+))?\/([^?]+)/);
     const db = m
@@ -48,6 +49,19 @@ export class HealthController {
         this.config.get('VITE_WEB_BASE') ||
         undefined,
     };
-    return { ok: true, db, env };
+    const fingerprint = raw ? createHash('sha256').update(raw).digest('hex').slice(0, 12) : null;
+    let diagnostics: any = null;
+    try {
+      const rows: any[] = await this.prisma.$queryRawUnsafe(
+        `SELECT current_database() AS db, current_user AS "user", inet_server_addr()::text AS server_addr, inet_server_port()::int AS server_port, (SELECT oid FROM pg_database WHERE datname = current_database())::int AS db_oid`
+      );
+      const r = rows && rows[0] ? rows[0] : null;
+      const cu: string | undefined = r?.user;
+      const maskedUser = cu ? `${cu.slice(0, 2)}***${cu.slice(-2)}` : undefined;
+      diagnostics = r
+        ? { serverAddr: r.server_addr, serverPort: r.server_port, dbOid: r.db_oid, currentUser: maskedUser }
+        : null;
+    } catch {}
+    return { ok: true, db, env, fingerprint, diagnostics };
   }
 }
