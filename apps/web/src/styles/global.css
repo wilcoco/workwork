@@ -26,6 +26,12 @@ a:hover { text-decoration: underline; }
 .header .container { display: flex; align-items: center; gap: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 .header a { padding: 8px 10px; border-radius: 8px; color: var(--text); white-space: nowrap; }
 .header a:hover { background: #F1F5F9; }
+.header details { display: inline-block; }
+.header summary { padding: 8px 10px; border-radius: 8px; color: var(--text); white-space: nowrap; cursor: pointer; list-style: none; }
+.header summary::-webkit-details-marker { display: none; }
+.header summary:hover { background: #F1F5F9; }
+.header details > div a { color: var(--text) !important; display: block; padding: 6px 8px; border-radius: 6px; }
+.header details > div a:hover { background: #F1F5F9; text-decoration: none; }
 .header .logo { padding: 0; display: inline-flex; align-items: center; }
 .header .logo:hover { background: transparent; }
 .header .logo img { height: 52px; width: auto; display: block; }
