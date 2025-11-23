@@ -137,6 +137,19 @@ function ObjNode({ obj, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setK
             <KrNode
               key={kr.id}
               kr={kr}
+              krObjId={krObjId}
+              setKrObjId={setKrObjId}
+              krTitle={krTitle}
+              setKrTitle={setKrTitle}
+              krMetric={krMetric}
+              setKrMetric={setKrMetric}
+              krTarget={krTarget}
+              setKrTarget={setKrTarget}
+              krUnit={krUnit}
+              setKrUnit={setKrUnit}
+              krType={krType}
+              setKrType={setKrType}
+              onSubmitKr={onSubmitKr}
               childKrId={childKrId}
               setChildKrId={setChildKrId}
               childTitle={childTitle}
