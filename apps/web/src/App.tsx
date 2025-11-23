@@ -82,8 +82,13 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
     (async () => {
       try {
         const b = await apiJson<{ name: string; logoPath: string }>(`/api/brand`);
-        if (b?.logoPath) setLogoSrc(b.logoPath);
-        if (b?.name) setBrandLabel(b.name);
+        const apiName = String(b?.name || '').trim();
+        const apiLogo = String(b?.logoPath || '');
+        const isMeaningful = (apiName && apiName !== '회사') || apiLogo.includes('camslogo');
+        if (isMeaningful) {
+          if (b?.logoPath) setLogoSrc(b.logoPath);
+          if (b?.name) setBrandLabel(b.name);
+        }
         setBrand(b);
       } catch {
         // ignore, fall back to env
@@ -106,27 +111,31 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         <Link to="/" className="logo" aria-label={`${brandLabel} 메인`}>
           <img src={logoSrc} alt={`${brandLabel} 로고`} />
         </Link>
-        <Link to="/quick">작성</Link>
-        <Link to="/me/goals">내 목표</Link>
-        <Link to="/search">조회</Link>
-        <Link to="/okr-map">전사 목표</Link>
-        <Link to="/admin/orgs">조직관리</Link>
+        <NavDropdown label="업무일지">
+          <Link to="/quick">작성</Link>
+          <Link to="/search">조회</Link>
+        </NavDropdown>
+        <NavDropdown label="목표관리">
+          <Link to="/me/goals">내 목표</Link>
+          <Link to="/okr-map">전사 목표</Link>
+        </NavDropdown>
         {SHOW_APPROVALS && (
-          <>
+          <NavDropdown label="결재">
             <Link to="/approvals/new">결재올리기</Link>
             <Link to="/approvals/inbox">결재함</Link>
             <Link to="/approvals/mine">내결재</Link>
             <Link to="/approvals/status">결재현황</Link>
-          </>
+          </NavDropdown>
         )}
         {SHOW_COOPS && (
-          <>
+          <NavDropdown label="협조">
             <Link to="/coops/request">협조요청</Link>
             <Link to="/coops/inbox">내협조함</Link>
             <Link to="/coops/mine">보낸협조</Link>
             <Link to="/coops/status">협조현황</Link>
-          </>
+          </NavDropdown>
         )}
+        <Link to="/admin/orgs">조직관리</Link>
         <span className="nav-right">
           {token ? (
             <>
@@ -142,6 +151,17 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         </span>
       </div>
     </div>
+  );
+}
+
+function NavDropdown({ label, children }: { label: string; children: any }) {
+  return (
+    <details style={{ position: 'relative', marginLeft: 12 }}>
+      <summary style={{ cursor: 'pointer', listStyle: 'none' }}>{label}</summary>
+      <div style={{ position: 'absolute', top: '100%', left: 0, background: '#FFFFFF', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 6, zIndex: 50, minWidth: 140, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
+        {children}
+      </div>
+    </details>
   );
 }
 

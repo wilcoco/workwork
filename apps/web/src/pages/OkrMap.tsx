@@ -1,7 +1,22 @@
 import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
 
-function KrNode({ kr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild }: { kr: any; childKrId: string; setChildKrId: (v: string) => void; childTitle: string; setChildTitle: (v: string) => void; childDesc: string; setChildDesc: (v: string) => void; childStart: string; setChildStart: (v: string) => void; childEnd: string; setChildEnd: (v: string) => void; onSubmitChild: (krId: string, orgUnitId?: string) => Promise<void> }) {
+function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild }: {
+  kr: any;
+  krObjId: string; setKrObjId: (v: string) => void;
+  krTitle: string; setKrTitle: (v: string) => void;
+  krMetric: string; setKrMetric: (v: string) => void;
+  krTarget: number | ''; setKrTarget: (v: number | '') => void;
+  krUnit: string; setKrUnit: (v: string) => void;
+  krType: string; setKrType: (v: string) => void;
+  onSubmitKr: (objectiveId: string) => Promise<void>;
+  childKrId: string; setChildKrId: (v: string) => void;
+  childTitle: string; setChildTitle: (v: string) => void;
+  childDesc: string; setChildDesc: (v: string) => void;
+  childStart: string; setChildStart: (v: string) => void;
+  childEnd: string; setChildEnd: (v: string) => void;
+  onSubmitChild: (krId: string, orgUnitId?: string) => Promise<void>;
+}) {
   return (
     <li style={{ marginTop: 6 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -42,19 +57,19 @@ function KrNode({ kr, childKrId, setChildKrId, childTitle, setChildTitle, childD
             <ObjNode
               key={child.id}
               obj={child}
-              krObjId={''}
-              setKrObjId={() => {}}
-              krTitle={''}
-              setKrTitle={() => {}}
-              krMetric={''}
-              setKrMetric={() => {}}
-              krTarget={''}
-              setKrTarget={() => {}}
-              krUnit={''}
-              setKrUnit={() => {}}
-              krType={''}
-              setKrType={() => {}}
-              onSubmitKr={async () => {}}
+              krObjId={krObjId}
+              setKrObjId={setKrObjId}
+              krTitle={krTitle}
+              setKrTitle={setKrTitle}
+              krMetric={krMetric}
+              setKrMetric={setKrMetric}
+              krTarget={krTarget}
+              setKrTarget={setKrTarget}
+              krUnit={krUnit}
+              setKrUnit={setKrUnit}
+              krType={krType}
+              setKrType={setKrType}
+              onSubmitKr={onSubmitKr}
               childKrId={childKrId}
               setChildKrId={setChildKrId}
               childTitle={childTitle}
