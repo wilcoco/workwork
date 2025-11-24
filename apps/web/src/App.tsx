@@ -20,14 +20,19 @@ import { CoopsRequest } from './pages/CoopsRequest';
 import { CoopsInbox } from './pages/CoopsInbox';
 import { CoopsMine } from './pages/CoopsMine';
 import { CoopsStatus } from './pages/CoopsStatus';
+import { DEPLOY_TITLE, DEPLOY_DESC } from './deployInfo';
 
 function DeployBanner() {
-  const title = String(((import.meta as any)?.env?.VITE_DEPLOY_TITLE) ?? '')
+  const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
+  const codeDesc = String((DEPLOY_DESC ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
+  const envTitle = String(((import.meta as any)?.env?.VITE_DEPLOY_TITLE) ?? '')
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
-  const desc = String(((import.meta as any)?.env?.VITE_DEPLOY_DESC ?? (import.meta as any)?.env?.VITE_DEPLOY_NOTE ?? '') as any)
+  const envDesc = String(((import.meta as any)?.env?.VITE_DEPLOY_DESC ?? (import.meta as any)?.env?.VITE_DEPLOY_NOTE ?? '') as any)
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
+  const title = codeTitle || envTitle;
+  const desc = codeDesc || envDesc;
   if (!title && !desc) return null as any;
   return (
     <div className="deploy-banner">
