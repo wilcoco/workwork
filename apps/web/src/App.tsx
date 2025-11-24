@@ -187,7 +187,7 @@ function NavDropdown({ label, children }: { label: string; children: any }) {
   return (
     <details style={{ position: 'relative', marginLeft: 12 }}>
       <summary style={{ cursor: 'pointer', listStyle: 'none' }}>{label}</summary>
-      <div style={{ position: 'absolute', top: '100%', left: 0, background: '#FFFFFF', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 6, zIndex: 50, minWidth: 140, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}>
+      <div style={{ position: 'absolute', top: 'calc(100% + 12px)', left: 0, background: '#FFFFFF', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 1300, minWidth: 180, maxHeight: '60vh', overflowY: 'auto', boxShadow: '0 12px 32px rgba(0,0,0,0.12)' }}>
         {children}
       </div>
     </details>
