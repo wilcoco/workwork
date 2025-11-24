@@ -21,11 +21,29 @@ import { CoopsInbox } from './pages/CoopsInbox';
 import { CoopsMine } from './pages/CoopsMine';
 import { CoopsStatus } from './pages/CoopsStatus';
 
+function DeployBanner() {
+  const title = String(((import.meta as any)?.env?.VITE_DEPLOY_TITLE) ?? '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '');
+  const desc = String(((import.meta as any)?.env?.VITE_DEPLOY_DESC ?? (import.meta as any)?.env?.VITE_DEPLOY_NOTE ?? '') as any)
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '');
+  if (!title && !desc) return null as any;
+  return (
+    <div className="deploy-banner">
+      <div className="container">
+        <b>{title}</b>{desc ? ` · ${desc}` : ''}
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const SHOW_APPROVALS = ((import.meta as any)?.env?.VITE_SHOW_APPROVALS ?? 'true') === 'true';
   const SHOW_COOPS = ((import.meta as any)?.env?.VITE_SHOW_COOPS ?? 'true') === 'true';
   return (
     <BrowserRouter>
+      <DeployBanner />
       <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
       <div className="container page">
         <Routes>
