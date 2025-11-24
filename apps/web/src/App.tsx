@@ -82,6 +82,12 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
     (async () => {
       try {
         const b = await apiJson<{ name: string; logoPath: string }>(`/api/brand`);
+        // If env explicitly indicates CAMS, keep env-based logo (camslogo.jpg)
+        const envIsCams = norm.includes('캠스') || norm.includes('cams');
+        if (envIsCams) {
+          setBrand(b);
+          return;
+        }
         const apiName = String(b?.name || '').trim();
         const apiLogo = String(b?.logoPath || '');
         const isMeaningful = (apiName && apiName !== '회사') || apiLogo.includes('camslogo');
