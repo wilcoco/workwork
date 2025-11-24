@@ -25,14 +25,24 @@ import { DEPLOY_TITLE, DEPLOY_DESC } from './deployInfo';
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
   const codeDesc = String((DEPLOY_DESC ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
+  const gitTitle = String(((import.meta as any)?.env?.VITE_GIT_TITLE) ?? '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '');
+  const gitCommit = String(((import.meta as any)?.env?.VITE_GIT_COMMIT) ?? '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '');
+  const gitDate = String(((import.meta as any)?.env?.VITE_GIT_DATE) ?? '')
+    .trim()
+    .replace(/^['"]+|['"]+$/g, '');
   const envTitle = String(((import.meta as any)?.env?.VITE_DEPLOY_TITLE) ?? '')
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
   const envDesc = String(((import.meta as any)?.env?.VITE_DEPLOY_DESC ?? (import.meta as any)?.env?.VITE_DEPLOY_NOTE ?? '') as any)
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
-  const title = codeTitle || envTitle;
-  const desc = codeDesc || envDesc;
+  const title = gitTitle || codeTitle || envTitle;
+  const gitInfo = [gitCommit, gitDate].filter(Boolean).join(' · ');
+  const desc = gitInfo || codeDesc || envDesc;
   if (!title && !desc) return null as any;
   return (
     <div className="deploy-banner">
