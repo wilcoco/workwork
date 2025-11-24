@@ -35,6 +35,9 @@ a:hover { text-decoration: underline; }
 .header summary:hover { background: #F1F5F9; }
 .header details > div a { color: #000 !important; display: block; padding: 6px 8px; border-radius: 6px; }
 .header details > div a:hover { background: #F1F5F9; text-decoration: none; }
+.nav-panel { position: fixed; z-index: 2000; }
+.nav-panel a { color: #000 !important; display: block; padding: 6px 8px; border-radius: 6px; }
+.nav-panel a:hover { background: #F1F5F9; text-decoration: none; }
 .header .logo { padding: 0; display: inline-flex; align-items: center; }
 .header .logo:hover { background: transparent; }
 .header .logo img { height: 52px; width: auto; display: block; }

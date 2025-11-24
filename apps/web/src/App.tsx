@@ -1,5 +1,6 @@
 import { BrowserRouter, Link, Route, Routes, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { apiJson } from './lib/api';
 import { Home } from './pages/Home';
 import { WorklogNew } from './pages/WorklogNew';
@@ -194,13 +195,80 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
 }
 
 function NavDropdown({ label, children }: { label: string; children: any }) {
+  const [open, setOpen] = useState(false);
+  const detailsRef = useRef<HTMLDetailsElement | null>(null);
+  const summaryRef = useRef<HTMLElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+
+  const updatePos = () => {
+    const el = summaryRef.current as HTMLElement | null;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - 220));
+    setPos({ top: r.bottom + 12, left });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    updatePos();
+    const onScroll = () => updatePos();
+    const onResize = () => updatePos();
+    const onDown = (e: any) => {
+      if (panelRef.current && panelRef.current.contains(e.target)) return;
+      if (summaryRef.current && summaryRef.current.contains(e.target)) return;
+      setOpen(false);
+      if (detailsRef.current) detailsRef.current.open = false;
+    };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onResize);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onResize);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [open]);
+
+  const onToggle = (e: any) => {
+    const d = e.currentTarget as HTMLDetailsElement;
+    const next = !!d.open;
+    setOpen(next);
+    if (next) updatePos();
+  };
+
+  const panel = open
+    ? createPortal(
+        <div
+          className="nav-overlay"
+          style={{ position: 'fixed', inset: 0, zIndex: 2147483000, background: 'transparent' }}
+          onClick={() => {
+            setOpen(false);
+            if (detailsRef.current) detailsRef.current.open = false;
+          }}
+        >
+          <div
+            ref={panelRef}
+            className="nav-panel"
+            style={{ position: 'absolute', top: pos.top, left: pos.left, background: '#FFFFFF', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 2147483001, minWidth: 180, maxHeight: '60vh', overflowY: 'auto', boxShadow: '0 12px 32px rgba(0,0,0,0.12)' }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            {children}
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
+
   return (
-    <details style={{ position: 'relative', marginLeft: 12 }}>
-      <summary style={{ cursor: 'pointer', listStyle: 'none' }}>{label}</summary>
-      <div style={{ position: 'absolute', top: 'calc(100% + 12px)', left: 0, background: '#FFFFFF', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 1300, minWidth: 180, maxHeight: '60vh', overflowY: 'auto', boxShadow: '0 12px 32px rgba(0,0,0,0.12)' }}>
-        {children}
-      </div>
-    </details>
+    <>
+      <details ref={detailsRef} onToggle={onToggle} style={{ position: 'relative', marginLeft: 12 }}>
+        <summary ref={summaryRef} style={{ cursor: 'pointer', listStyle: 'none' }}>{label}</summary>
+      </details>
+      {panel}
+    </>
   );
 }
 
