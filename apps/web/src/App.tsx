@@ -41,10 +41,9 @@ function DeployBanner() {
   const envDesc = String(((import.meta as any)?.env?.VITE_DEPLOY_DESC ?? (import.meta as any)?.env?.VITE_DEPLOY_NOTE ?? '') as any)
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
-  const title = gitTitle || codeTitle || envTitle;
+  const title = gitTitle || codeTitle || envTitle || 'WorkWork Deploy';
   const gitInfo = [gitCommit, gitDate].filter(Boolean).join(' · ');
-  const desc = gitInfo || codeDesc || envDesc;
-  if (!title && !desc) return null as any;
+  const desc = gitInfo || codeDesc || envDesc || '';
   return (
     <div className="deploy-banner">
       <div className="container">
