@@ -18,3 +18,16 @@ yarn-error.log*
 # IDE
 .vscode/
 .idea/
+
+# Build outputs (nested)
+apps/*/dist/
+apps/*/build/
+
+# Caches/coverage
+coverage/
+.turbo/
+.next/
+.cache/
+
+# Uploads (runtime assets)
+apps/api/uploads/

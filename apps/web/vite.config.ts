@@ -11,12 +11,15 @@ function safe(cmd: string): string {
 }
 
 const ENV_COMMIT = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || '';
+const ENV_REPO = (process.env as any).RAILWAY_GIT_REPO || (process.env as any).VERCEL_GIT_REPO || process.env.GITHUB_REPOSITORY || '';
 const ENV_TITLE = (process.env as any).RAILWAY_GIT_COMMIT_MESSAGE || (process.env as any).VERCEL_GIT_COMMIT_MESSAGE || '';
 const ENV_DATE = (process.env as any).RAILWAY_GIT_COMMIT_TIME || (process.env as any).VERCEL_GIT_COMMIT_TIMESTAMP || '';
 
 const short = (s: string) => (s ? s.slice(0, 7) : '');
 
 const GIT_COMMIT = safe('git rev-parse --short HEAD') || short(ENV_COMMIT);
+const GIT_COMMIT_FULL = safe('git rev-parse HEAD') || ENV_COMMIT;
+const GIT_REPO = ENV_REPO || '';
 const GIT_TITLE = safe('git log -1 --pretty=%s') || ENV_TITLE || (ENV_COMMIT ? safe(`git show -s --format=%s ${ENV_COMMIT}`) : '');
 const GIT_DATE = safe('git log -1 --date=iso-local --pretty=%cd') || ENV_DATE || new Date().toISOString();
 
@@ -25,6 +28,8 @@ export default defineConfig({
     'import.meta.env.VITE_GIT_COMMIT': JSON.stringify(GIT_COMMIT),
     'import.meta.env.VITE_GIT_TITLE': JSON.stringify(GIT_TITLE),
     'import.meta.env.VITE_GIT_DATE': JSON.stringify(GIT_DATE),
+    'import.meta.env.VITE_GIT_COMMIT_FULL': JSON.stringify(GIT_COMMIT_FULL),
+    'import.meta.env.VITE_GIT_REPO': JSON.stringify(GIT_REPO),
   },
   plugins: [react()],
   server: {

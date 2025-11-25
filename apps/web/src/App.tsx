@@ -26,23 +26,47 @@ import { DEPLOY_TITLE, DEPLOY_DESC } from './deployInfo';
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
   const codeDesc = String((DEPLOY_DESC ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
-  const gitTitle = String(((import.meta as any)?.env?.VITE_GIT_TITLE) ?? '')
+  const gitTitle = String(import.meta.env.VITE_GIT_TITLE ?? '')
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
-  const gitCommit = String(((import.meta as any)?.env?.VITE_GIT_COMMIT) ?? '')
+  const gitCommit = String(import.meta.env.VITE_GIT_COMMIT ?? '')
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
-  const gitDate = String(((import.meta as any)?.env?.VITE_GIT_DATE) ?? '')
+  const gitDate = String(import.meta.env.VITE_GIT_DATE ?? '')
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
-  const envTitle = String(((import.meta as any)?.env?.VITE_DEPLOY_TITLE) ?? '')
+  const envTitle = String(import.meta.env.VITE_DEPLOY_TITLE ?? '')
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
-  const envDesc = String(((import.meta as any)?.env?.VITE_DEPLOY_DESC ?? (import.meta as any)?.env?.VITE_DEPLOY_NOTE ?? '') as any)
+  const envDesc = String((import.meta.env.VITE_DEPLOY_DESC ?? import.meta.env.VITE_DEPLOY_NOTE ?? '') as any)
     .trim()
     .replace(/^['"]+|['"]+$/g, '');
-  const title = gitTitle || codeTitle || envTitle || 'WorkWork Deploy';
-  const gitInfo = [gitCommit, gitDate].filter(Boolean).join(' · ');
+  const repo = String(import.meta.env.VITE_GIT_REPO ?? '').trim();
+  const fullSha = String(import.meta.env.VITE_GIT_COMMIT_FULL ?? '').trim();
+
+  const [dynTitle, setDynTitle] = useState<string>('');
+  const [dynDesc, setDynDesc] = useState<string>('');
+
+  useEffect(() => {
+    const initialTitle = gitTitle || codeTitle || envTitle;
+    const shouldFetch = (!gitTitle || gitTitle === codeTitle || gitTitle === envTitle) && repo && fullSha;
+    if (!shouldFetch) return;
+    const url = `https://api.github.com/repos/${repo}/commits/${fullSha}`;
+    fetch(url)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (!j) return;
+        const message = String(j?.commit?.message || '').split('\n')[0];
+        const when = String(j?.commit?.committer?.date || j?.commit?.author?.date || '');
+        if (message) setDynTitle(message);
+        const short = fullSha.slice(0, 7);
+        const info = [short || gitCommit, when || gitDate].filter(Boolean).join(' · ');
+        if (info) setDynDesc(info);
+      })
+      .catch(() => {});
+  }, [gitTitle, codeTitle, envTitle, repo, fullSha, gitCommit, gitDate]);
+  const title = dynTitle || gitTitle || codeTitle || envTitle || 'WorkWork Deploy';
+  const gitInfo = dynDesc || [gitCommit, gitDate].filter(Boolean).join(' · ');
   const desc = gitInfo || codeDesc || envDesc || '';
   return (
     <div className="deploy-banner">
@@ -54,8 +78,8 @@ function DeployBanner() {
 }
 
 export function App() {
-  const SHOW_APPROVALS = ((import.meta as any)?.env?.VITE_SHOW_APPROVALS ?? 'true') === 'true';
-  const SHOW_COOPS = ((import.meta as any)?.env?.VITE_SHOW_COOPS ?? 'true') === 'true';
+  const SHOW_APPROVALS = (import.meta.env.VITE_SHOW_APPROVALS ?? 'true') === 'true';
+  const SHOW_COOPS = (import.meta.env.VITE_SHOW_COOPS ?? 'true') === 'true';
   return (
     <BrowserRouter>
       <DeployBanner />
@@ -108,6 +132,11 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
   const isCams = norm.includes('캠스') || norm.includes('cams');
   const isIat = norm.includes('아이앤테크');
   const envLogo = isCams ? '/camslogo.jpg' : isIat ? '/logo.png' : '/logo.png';
+  console.log('VITE_COMPANY_NAME(raw):', (import.meta as any)?.env?.VITE_COMPANY_NAME);
+  console.log('companyName:', companyName);
+  console.log('norm:', norm);
+  console.log('isCams:', isCams);
+  console.log('initial logoSrc:', envLogo);
   const [logoSrc, setLogoSrc] = useState(envLogo);
   const [brandLabel, setBrandLabel] = useState(companyName || '회사');
 
