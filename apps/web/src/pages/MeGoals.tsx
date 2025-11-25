@@ -21,6 +21,15 @@ export function MeGoals() {
   const [fAnchor, setFAnchor] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [teamOrgId, setTeamOrgId] = useState('');
+  const [teamKrs, setTeamKrs] = useState<any[]>([]);
+  const [tKrId, setTKrId] = useState('');
+  const [tInitTitle, setTInitTitle] = useState('');
+  const [tStart, setTStart] = useState('');
+  const [tEnd, setTEnd] = useState('');
+  const [tCadence, setTCadence] = useState<'' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('');
+  const [tSaving, setTSaving] = useState(false);
+
   useEffect(() => {
     const uid = localStorage.getItem('userId') || '';
     setUserId(uid);
@@ -44,6 +53,24 @@ export function MeGoals() {
       const inits = await getOrDefault<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(userId)}`, { items: [] });
       const myg = await getOrDefault<{ items: any[] }>(`/api/my-goals?userId=${encodeURIComponent(userId)}`, { items: [] });
       const me = await getOrDefault<{ id: string; name: string; role: string; teamName: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`, { id: '', name: '', role: '', teamName: '' } as any);
+      const orgs = await getOrDefault<{ items: any[] }>(`/api/orgs`, { items: [] });
+      const myTeam = (orgs.items || []).find((o: any) => String(o?.name || '') === String((me as any).teamName || ''));
+      const orgId = myTeam?.id || '';
+      setTeamOrgId(orgId);
+      if (orgId) {
+        const teamObjs = await getOrDefault<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(orgId)}`, { items: [] });
+        const krs = (teamObjs.items || []).flatMap((o: any) => (o.keyResults || []).map((kr: any) => ({
+          id: kr.id,
+          title: kr.title,
+          metric: kr.metric,
+          target: kr.target,
+          unit: kr.unit,
+          objective: { id: o.id, title: o.title },
+        })));
+        setTeamKrs(krs);
+      } else {
+        setTeamKrs([]);
+      }
       const pks = await getOrDefault<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`, { items: [] });
       const mokrs = await getOrDefault<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`, { items: [] });
       setItems(inits.items || []);
@@ -171,6 +198,31 @@ export function MeGoals() {
     }
   }
 
+  async function createTeamInitiative() {
+    if (!userId || !tKrId || !tInitTitle) return;
+    setTSaving(true);
+    setError(null);
+    try {
+      await apiJson(`/api/initiatives`, {
+        method: 'POST',
+        body: JSON.stringify({
+          keyResultId: tKrId,
+          ownerId: userId,
+          title: tInitTitle,
+          startAt: tStart || undefined,
+          endAt: tEnd || undefined,
+          cadence: tCadence || undefined,
+        }),
+      });
+      setTInitTitle(''); setTStart(''); setTEnd(''); setTCadence(''); setTKrId('');
+      await load();
+    } catch (e: any) {
+      setError(e.message || '세부 과제 생성 실패');
+    } finally {
+      setTSaving(false);
+    }
+  }
+
   return (
     <div className="content" style={{ display: 'grid', gap: 12, maxWidth: 960, margin: '24px auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -217,6 +269,35 @@ export function MeGoals() {
           <div style={{ fontSize: 12, color: '#6b7280' }}>
             역할 변경 후 상위 O-KR 목록이 갱신됩니다. 대표이사는 상위 선택 없이 최상위 O를 생성합니다.
           </div>
+        </div>
+      </section>
+
+      <section style={{ display: 'grid', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>팀 KPI/OKR 선택 후 세부 과제 추가</h3>
+        <div style={card}>
+          <div className="resp-2">
+            <select value={tKrId} onChange={(e) => setTKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
+              <option value="">팀 KR 선택</option>
+              {teamKrs.map((kr) => (
+                <option key={kr.id} value={kr.id}>[{kr.objective?.title || '-'}] {kr.title}</option>
+              ))}
+            </select>
+            <input value={tInitTitle} onChange={(e) => setTInitTitle(e.target.value)} placeholder="세부 과제명" style={input} />
+          </div>
+          <div className="resp-3">
+            <input type="date" value={tStart} onChange={(e) => setTStart(e.target.value)} style={input} />
+            <input type="date" value={tEnd} onChange={(e) => setTEnd(e.target.value)} style={input} />
+            <select value={tCadence} onChange={(e) => setTCadence(e.target.value as any)} style={{ ...input, appearance: 'auto' as any }}>
+              <option value="">주기(선택)</option>
+              <option value="DAILY">일</option>
+              <option value="WEEKLY">주</option>
+              <option value="MONTHLY">월</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-primary" disabled={!userId || !tKrId || !tInitTitle || tSaving} onClick={createTeamInitiative}>{tSaving ? '생성중…' : '세부 과제 생성'}</button>
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>생성된 세부 과제는 업무일지 작성 시 "나의 과제"에서 선택할 수 있습니다.</div>
         </div>
       </section>
 

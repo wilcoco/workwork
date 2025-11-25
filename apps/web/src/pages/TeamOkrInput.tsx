@@ -9,7 +9,7 @@ type Objective = any;
 
 type ParentKr = { id: string; title: string; objective?: { title?: string; orgUnit?: { name?: string } } };
 
-export function TeamKpiInput() {
+export function TeamOkrInput() {
   const [orgs, setOrgs] = useState<OrgUnit[]>([]);
   const [orgUnitId, setOrgUnitId] = useState('');
   const [objectives, setObjectives] = useState<Objective[]>([]);
@@ -18,7 +18,6 @@ export function TeamKpiInput() {
 
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
 
-  // Create Objective (team OKR O)
   const [oTitle, setOTitle] = useState('');
   const [oDesc, setODesc] = useState('');
   const [oPillar, setOPillar] = useState<Pillar>('Q');
@@ -26,19 +25,16 @@ export function TeamKpiInput() {
   const [oEnd, setOEnd] = useState('');
   const [oParentKrId, setOParentKrId] = useState('');
 
-  // Create KR (KPI row)
   const [krObjectiveId, setKrObjectiveId] = useState('');
   const [krTitle, setKrTitle] = useState('');
   const [krMetric, setKrMetric] = useState('');
-  const [krBaseline, setKrBaseline] = useState<string>('');
   const [krTarget, setKrTarget] = useState<string>('');
   const [krUnit, setKrUnit] = useState('');
-  const [krType, setKrType] = useState<'PROJECT' | 'OPERATIONAL'>('OPERATIONAL');
+  const [krType, setKrType] = useState<'PROJECT' | 'OPERATIONAL'>('PROJECT');
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('');
   const [krWeight, setKrWeight] = useState<string>('');
 
-  // Initiative under KR (주요 추진 계획)
   const [initKrId, setInitKrId] = useState('');
   const [initTitle, setInitTitle] = useState('');
   const [initStart, setInitStart] = useState('');
@@ -113,12 +109,11 @@ export function TeamKpiInput() {
           unit: krUnit,
           type: krType,
           pillar: krPillar,
-          baseline: krBaseline === '' ? undefined : Number(krBaseline),
           cadence: krCadence || undefined,
           weight: krWeight === '' ? undefined : Number(krWeight),
         }),
       });
-      setKrObjectiveId(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrType('OPERATIONAL'); setKrPillar('Q'); setKrCadence(''); setKrWeight('');
+      setKrObjectiveId(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrUnit(''); setKrType('PROJECT'); setKrPillar('Q'); setKrCadence(''); setKrWeight('');
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
     } catch (e: any) {
@@ -151,8 +146,8 @@ export function TeamKpiInput() {
 
   return (
     <div style={{ maxWidth: 980, margin: '24px auto', display: 'grid', gap: 12 }}>
-      <h2 style={{ margin: 0 }}>팀 KPI 입력</h2>
-      {error && <div style={{ color: 'red' }}>{error}</div>}
+      <h2 style={{ margin: 0 }}>팀 OKR 입력</h2>
+      {error && <div style={{ color: '#red' }}>{error}</div>}
 
       <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -193,7 +188,7 @@ export function TeamKpiInput() {
       </div>
 
       <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
-        <h3 style={{ margin: 0 }}>KPI 입력 (KR)</h3>
+        <h3 style={{ margin: 0 }}>KR 입력</h3>
         <div className="resp-2">
           <select value={krObjectiveId} onChange={(e) => setKrObjectiveId(e.target.value)}>
             <option value="">목표 선택</option>
@@ -209,17 +204,16 @@ export function TeamKpiInput() {
             <option value="P">P</option>
           </select>
         </div>
-        <input placeholder="KPI명 (KR 제목)" value={krTitle} onChange={(e) => setKrTitle(e.target.value)} />
+        <input placeholder="KR 제목" value={krTitle} onChange={(e) => setKrTitle(e.target.value)} />
         <div className="resp-3">
           <input placeholder="메트릭(예: %, 건수)" value={krMetric} onChange={(e) => setKrMetric(e.target.value)} />
-          <input type="number" step="any" placeholder="기준값" value={krBaseline} onChange={(e) => setKrBaseline(e.target.value)} />
           <input type="number" step="any" placeholder="목표값" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} />
+          <input placeholder="단위(예: %, 건)" value={krUnit} onChange={(e) => setKrUnit(e.target.value)} />
         </div>
         <div className="resp-3">
-          <input placeholder="단위(예: %, 건)" value={krUnit} onChange={(e) => setKrUnit(e.target.value)} />
           <select value={krType} onChange={(e) => setKrType(e.target.value as any)}>
-            <option value="OPERATIONAL">오퍼레이션형</option>
             <option value="PROJECT">프로젝트형</option>
+            <option value="OPERATIONAL">오퍼레이션형</option>
           </select>
           <select value={krCadence} onChange={(e) => setKrCadence(e.target.value as any)}>
             <option value="">주기(선택)</option>
@@ -227,9 +221,9 @@ export function TeamKpiInput() {
             <option value="WEEKLY">주</option>
             <option value="MONTHLY">월</option>
           </select>
+          <input type="number" step="any" placeholder="평가비중(%)" value={krWeight} onChange={(e) => setKrWeight(e.target.value)} />
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input type="number" step="any" placeholder="평가비중(%)" value={krWeight} onChange={(e) => setKrWeight(e.target.value)} style={{ maxWidth: 180 }} />
           <button className="btn btn-primary" disabled={!userId || !orgUnitId || !krObjectiveId || !krTitle || !krMetric || !krTarget || !krUnit} onClick={createKr}>KR 생성</button>
         </div>
       </div>
@@ -259,7 +253,7 @@ export function TeamKpiInput() {
       </div>
 
       <div className="card" style={{ padding: 12 }}>
-        <h3 style={{ margin: 0 }}>팀 KPI/OKR 목록</h3>
+        <h3 style={{ margin: 0 }}>팀 OKR 목록</h3>
         <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
           {objectives.map((o) => (
             <div key={o.id} className="card" style={{ padding: 10 }}>
@@ -276,7 +270,7 @@ export function TeamKpiInput() {
                         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                           <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
                           <div style={{ fontWeight: 600 }}>{kr.title}</div>
-                          <div style={{ color: '#334155' }}>({kr.metric} / {kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
+                          <div style={{ color: '#334155' }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
                           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}{typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}</div>
                         </div>
                         {Array.isArray(kr.initiatives) && kr.initiatives.length > 0 && (
@@ -293,7 +287,7 @@ export function TeamKpiInput() {
               )}
             </div>
           ))}
-          {!objectives.length && <div style={{ color: '#6b7280' }}>선택한 팀의 OKR/KPI가 없습니다.</div>}
+          {!objectives.length && <div style={{ color: '#6b7280' }}>선택한 팀의 OKR이 없습니다.</div>}
         </div>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
 function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild }: {
@@ -178,6 +179,7 @@ export function OkrMap() {
   const [viewOrgId, setViewOrgId] = useState('');
   const [topTitle, setTopTitle] = useState('');
   const [topDesc, setTopDesc] = useState('');
+  const location = useLocation();
   function dateStr(d: Date) { return d.toISOString().slice(0, 10); }
   const [topStart, setTopStart] = useState(dateStr(new Date()));
   const [topEnd, setTopEnd] = useState(dateStr(new Date(Date.now() + 1000 * 60 * 60 * 24 * 90)));
@@ -217,6 +219,27 @@ export function OkrMap() {
     }
     loadOrgs();
   }, [viewOrgId]);
+
+  useEffect(() => {
+    async function applyQuery() {
+      const params = new URLSearchParams(location.search || '');
+      const pOrg = params.get('orgUnitId');
+      if (pOrg) {
+        setViewOrgId(pOrg);
+        return;
+      }
+      const team = params.get('team');
+      if (team === '1') {
+        try {
+          const me = await apiJson<{ id: string; name: string; role: string; teamName: string }>(`/api/users/me?userId=${encodeURIComponent(localStorage.getItem('userId') || '')}`);
+          const all = await apiJson<{ items: any[] }>(`/api/orgs`);
+          const mine = (all.items || []).find((o: any) => String(o?.name || '') === String(me.teamName || ''));
+          if (mine?.id) setViewOrgId(mine.id);
+        } catch {}
+      }
+    }
+    applyQuery();
+  }, [location.search]);
 
   async function createTopObjective(e: React.FormEvent) {
     e.preventDefault();

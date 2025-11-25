@@ -16,6 +16,7 @@ import { OkrInstructions } from './pages/OkrInstructions';
 import { CompanyOkrInput } from './pages/CompanyOkrInput';
 import { TeamKpiInput } from './pages/TeamKpiInput';
 import { TeamKpiBoard } from './pages/TeamKpiBoard';
+import { TeamOkrInput } from './pages/TeamOkrInput';
 import { AdminOrgs } from './pages/AdminOrgs';
 import { ApprovalsSubmit } from './pages/ApprovalsSubmit';
 import { ApprovalsInbox } from './pages/ApprovalsInbox';
@@ -104,6 +105,7 @@ export function App() {
           <Route path="/okr/company" element={<CompanyOkrInput />} />
           <Route path="/okr/team" element={<TeamKpiInput />} />
           <Route path="/okr/team-board" element={<TeamKpiBoard />} />
+          <Route path="/okr/team-okr" element={<TeamOkrInput />} />
           <Route path="/admin/orgs" element={<AdminOrgs />} />
           {SHOW_APPROVALS && (
             <>
@@ -193,11 +195,12 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         </NavDropdown>
         <NavDropdown label="목표관리">
           <Link to="/me/goals">내 목표</Link>
-          <Link to="/okr-map">전사 목표</Link>
-          <Link to="/okr/instructions">입력 안내</Link>
+          <Link to="/okr/team">팀 KPI 입력</Link>
+          <Link to="/okr/team-board">팀 KPI 조회</Link>
           <Link to="/okr/company">전사 OKR 입력</Link>
-          <Link to="/okr/team">팀 KPI/OKR 입력</Link>
-          <Link to="/okr/team-board">팀 KPI 보드</Link>
+          <Link to="/okr/team-okr">팀 OKR 입력</Link>
+          <Link to="/okr-map">OKR 조회(전사)</Link>
+          <Link to="/okr-map?team=1">OKR 조회(팀)</Link>
         </NavDropdown>
         {SHOW_APPROVALS && (
           <NavDropdown label="결재">
