@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Delete } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Delete, BadRequestException } from '@nestjs/common';
 import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -83,7 +83,7 @@ export class OkrsController {
   @Post('objectives')
   async createObjective(@Body() dto: CreateObjectiveDto) {
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
-    if (!user) throw new Error('user not found');
+    if (!user) throw new BadRequestException('user not found');
     // Validation: allow aligning to a parent KR for all roles; if no parent, restrict to CEO/EXEC
     let parentKr: any = null;
     if (dto.alignsToKrId) {
@@ -91,39 +91,39 @@ export class OkrsController {
         where: { id: dto.alignsToKrId },
         include: { objective: { include: { owner: true, orgUnit: true } } },
       });
-      if (!parentKr) throw new Error('parent KR not found');
+      if (!parentKr) throw new BadRequestException('parent KR not found');
       if (user.role === 'MANAGER') {
         if (!user.orgUnitId) {
-          if (parentKr.objective?.owner?.role !== 'EXEC') throw new Error('MANAGER must align to EXEC KR when org unit not configured');
+          if (parentKr.objective?.owner?.role !== 'EXEC') throw new BadRequestException('MANAGER must align to EXEC KR when org unit not configured');
         } else {
           const myUnit = await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } });
           const parentId = myUnit?.parentId || undefined;
           if (!parentId) {
-            if (parentKr.objective?.owner?.role !== 'EXEC') throw new Error('MANAGER must align to EXEC KR when parent org unit not configured');
+            if (parentKr.objective?.owner?.role !== 'EXEC') throw new BadRequestException('MANAGER must align to EXEC KR when parent org unit not configured');
           } else if (parentKr.objective?.orgUnitId !== parentId) {
-            throw new Error('MANAGER must align to parent org unit KR');
+            throw new BadRequestException('MANAGER must align to parent org unit KR');
           }
         }
       } else if (user.role === 'INDIVIDUAL') {
         const myUnitId = user.orgUnitId || null;
         if (!myUnitId) {
-          if (parentKr.objective?.owner?.role !== 'MANAGER') throw new Error('INDIVIDUAL must align to Manager KR');
+          if (parentKr.objective?.owner?.role !== 'MANAGER') throw new BadRequestException('INDIVIDUAL must align to Manager KR');
         } else {
           const ok = parentKr.objective?.orgUnitId === myUnitId && parentKr.objective?.owner?.role === 'MANAGER';
           if (!ok) {
-            if (parentKr.objective?.owner?.role !== 'MANAGER') throw new Error('INDIVIDUAL must align to Manager KR');
+            if (parentKr.objective?.owner?.role !== 'MANAGER') throw new BadRequestException('INDIVIDUAL must align to Manager KR');
           }
         }
       }
     } else {
       if (user.role !== ('CEO' as any) && user.role !== ('EXEC' as any)) {
-        throw new Error('top-level Objective requires CEO or EXEC');
+        throw new BadRequestException('top-level Objective requires CEO or EXEC');
       }
     }
 
     if (dto.orgUnitId) {
       const org = await this.prisma.orgUnit.findUnique({ where: { id: dto.orgUnitId } });
-      if (!org) throw new Error('org unit not found');
+      if (!org) throw new BadRequestException('org unit not found');
     }
     let orgUnitId = dto.orgUnitId || user.orgUnitId;
     if (!orgUnitId) {
