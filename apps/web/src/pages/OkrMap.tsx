@@ -22,7 +22,7 @@ function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrM
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
         <div style={{ fontWeight: 600 }}>{kr.title}</div>
-        <div style={{ fontSize: 12, color: '#6b7280' }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
+        <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
         <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.type}</div>
       </div>
       <div style={{ marginLeft: 18, marginTop: 6 }}>
@@ -98,7 +98,7 @@ function ObjNode({ obj, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setK
           <div style={{ fontWeight: 700 }}>{obj.title}</div>
           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>[{obj.orgUnit?.name || '-'}] {obj.owner?.name || ''} ({obj.owner?.role || ''})</div>
         </div>
-        {obj.description && <div style={{ color: '#374151' }}>{obj.description}</div>}
+        {obj.description && <div style={{ color: '#111827', fontSize: 15, lineHeight: 1.5 }}>{obj.description}</div>}
         <div style={{ fontSize: 12, color: '#6b7280' }}>{new Date(obj.periodStart).toLocaleDateString()} ~ {new Date(obj.periodEnd).toLocaleDateString()} · {obj.status}</div>
       </div>
       <div style={{ marginLeft: 18, marginTop: 6 }}>
@@ -175,6 +175,7 @@ export function OkrMap() {
   const [error, setError] = useState<string | null>(null);
   const [orgs, setOrgs] = useState<any[]>([]);
   const [topOrgId, setTopOrgId] = useState('');
+  const [viewOrgId, setViewOrgId] = useState('');
   const [topTitle, setTopTitle] = useState('');
   const [topDesc, setTopDesc] = useState('');
   function dateStr(d: Date) { return d.toISOString().slice(0, 10); }
@@ -199,7 +200,7 @@ export function OkrMap() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiJson<{ items: any[] }>(`/api/okrs/map`);
+        const res = await apiJson<{ items: any[] }>(`/api/okrs/map${viewOrgId ? `?orgUnitId=${encodeURIComponent(viewOrgId)}` : ''}`);
         setItems(res.items || []);
       } catch (e: any) {
         setError(e.message || '로드 실패');
@@ -215,7 +216,7 @@ export function OkrMap() {
       } catch {}
     }
     loadOrgs();
-  }, []);
+  }, [viewOrgId]);
 
   async function createTopObjective(e: React.FormEvent) {
     e.preventDefault();
@@ -273,7 +274,7 @@ export function OkrMap() {
 
   async function reload() {
     try {
-      const res = await apiJson<{ items: any[] }>(`/api/okrs/map`);
+      const res = await apiJson<{ items: any[] }>(`/api/okrs/map${viewOrgId ? `?orgUnitId=${encodeURIComponent(viewOrgId)}` : ''}`);
       setItems(res.items || []);
     } catch {}
   }
@@ -282,6 +283,17 @@ export function OkrMap() {
     <div style={{ maxWidth: 980, margin: '24px auto', display: 'grid', gap: 12 }}>
       <h2 style={{ margin: 0 }}>전사 목표</h2>
       {error && <div style={{ color: 'red' }}>{error}</div>}
+      <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div>조직별 조회</div>
+          <select value={viewOrgId} onChange={(e) => setViewOrgId(e.target.value)}>
+            <option value="">전체</option>
+            {orgs.map((o) => (
+              <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>상위 목표 생성</h3>
         <form onSubmit={createTopObjective} style={{ display: 'grid', gap: 8 }}>

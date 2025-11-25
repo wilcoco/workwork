@@ -213,12 +213,13 @@ export class OkrsController {
   }
 
   @Get('map')
-  async okrMap() {
+  async okrMap(@Query('orgUnitId') orgUnitId?: string) {
     // Load all objectives with their KRs and minimal owner/org info
-    const objectives = await this.prisma.objective.findMany({
+    const all = await this.prisma.objective.findMany({
       orderBy: { createdAt: 'asc' },
       include: ({ keyResults: true, owner: { select: { id: true, name: true, role: true } }, orgUnit: true } as any),
     });
+    const objectives = orgUnitId ? all.filter((o: any) => o.orgUnitId === orgUnitId) : all;
     // Build index by KR id -> child objectives aligned to it
     const byKr: Record<string, any[]> = {};
     for (const o of objectives) {
