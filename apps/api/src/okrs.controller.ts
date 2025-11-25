@@ -13,6 +13,8 @@ class CreateObjectiveDto {
   // Optional: create multiple KRs together
   // Using any[] for simplicity; validated minimally at runtime
   @IsOptional() krs?: Array<{ title: string; metric: string; target: number; unit: string; type?: 'PROJECT' | 'OPERATIONAL' }>;
+  @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
+  pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
 }
 
 class CreateKeyResultDto {
@@ -23,6 +25,36 @@ class CreateKeyResultDto {
   @IsString() @IsNotEmpty() unit!: string;
   @IsEnum({ PROJECT: 'PROJECT', OPERATIONAL: 'OPERATIONAL' } as any) type!: 'PROJECT' | 'OPERATIONAL';
   @IsOptional() @IsNumber() weight?: number;
+  @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
+  pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
+  @IsOptional() @IsNumber()
+  baseline?: number;
+  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY' } as any)
+  cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+}
+
+class UpdateObjectiveDto {
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() description?: string;
+  @IsOptional() @IsDateString() periodStart?: string;
+  @IsOptional() @IsDateString() periodEnd?: string;
+  @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
+  pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
+}
+
+class UpdateKeyResultDto {
+  @IsOptional() @IsString() title?: string;
+  @IsOptional() @IsString() metric?: string;
+  @IsOptional() @IsNumber() target?: number;
+  @IsOptional() @IsString() unit?: string;
+  @IsOptional() @IsNumber() weight?: number;
+  @IsOptional() @IsEnum({ PROJECT: 'PROJECT', OPERATIONAL: 'OPERATIONAL' } as any)
+  type?: 'PROJECT' | 'OPERATIONAL';
+  @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
+  pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
+  @IsOptional() @IsNumber() baseline?: number;
+  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY' } as any)
+  cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
 }
 
 @Controller('okrs')
@@ -141,6 +173,7 @@ export class OkrsController {
           periodStart: new Date(dto.periodStart),
           periodEnd: new Date(dto.periodEnd),
           alignsToKrId: dto.alignsToKrId,
+          pillar: (dto.pillar as any) ?? undefined,
           status: 'ACTIVE' as any,
         } as any),
       });
@@ -170,6 +203,7 @@ export class OkrsController {
               ownerId: user.id,
               weight: 1,
               type: (k.type as any) ?? 'PROJECT',
+              pillar: dto.pillar as any,
             } as any),
           });
         }
@@ -193,8 +227,41 @@ export class OkrsController {
         ownerId: dto.userId,
         weight: dto.weight ?? 1,
         type: dto.type as any,
+        pillar: (dto.pillar as any) ?? undefined,
+        baseline: dto.baseline as any,
+        cadence: (dto.cadence as any) ?? undefined,
       } as any),
     });
+    return rec;
+  }
+
+  @Put('objectives/:id')
+  async updateObjective(@Param('id') id: string, @Body() dto: UpdateObjectiveDto) {
+    const data: any = {
+      title: dto.title,
+      description: dto.description,
+      periodStart: dto.periodStart ? new Date(dto.periodStart) : undefined,
+      periodEnd: dto.periodEnd ? new Date(dto.periodEnd) : undefined,
+      pillar: (dto.pillar as any) ?? undefined,
+    };
+    const rec = await this.prisma.objective.update({ where: { id }, data });
+    return rec;
+  }
+
+  @Put('krs/:id')
+  async updateKr(@Param('id') id: string, @Body() dto: UpdateKeyResultDto) {
+    const data: any = {
+      title: dto.title,
+      metric: dto.metric,
+      target: typeof dto.target === 'number' ? dto.target : undefined,
+      unit: dto.unit,
+      weight: typeof dto.weight === 'number' ? dto.weight : undefined,
+      type: (dto.type as any) ?? undefined,
+      pillar: (dto.pillar as any) ?? undefined,
+      baseline: typeof dto.baseline === 'number' ? dto.baseline : undefined,
+      cadence: (dto.cadence as any) ?? undefined,
+    };
+    const rec = await this.prisma.keyResult.update({ where: { id }, data });
     return rec;
   }
 
@@ -239,7 +306,10 @@ export class OkrsController {
         metric: kr.metric,
         target: kr.target,
         unit: kr.unit,
+        baseline: kr.baseline,
         type: kr.type,
+        pillar: kr.pillar,
+        cadence: kr.cadence,
         orgUnitId: o.orgUnitId,
         children: (byKr[kr.id] || []).map(mapObjective),
       }));
@@ -252,6 +322,7 @@ export class OkrsController {
         periodStart: o.periodStart,
         periodEnd: o.periodEnd,
         status: o.status,
+        pillar: o.pillar,
         keyResults: krs,
       };
     }
@@ -259,5 +330,16 @@ export class OkrsController {
     // Roots: objectives that do not align to any KR
     const roots = objectives.filter((o: any) => !o.alignsToKrId);
     return { items: roots.map(mapObjective) };
+  }
+
+  @Get('objectives')
+  async listObjectives(@Query('orgUnitId') orgUnitId?: string) {
+    const where = orgUnitId ? { orgUnitId } : {};
+    const items = await this.prisma.objective.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+      include: ({ keyResults: { include: { initiatives: true } }, owner: { select: { id: true, name: true, role: true } }, orgUnit: true } as any),
+    });
+    return { items };
   }
 }

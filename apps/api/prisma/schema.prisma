@@ -64,6 +64,14 @@ enum KeyResultType {
   OPERATIONAL
 }
 
+enum Pillar {
+  Q
+  C
+  D
+  DEV
+  P
+}
+
 model OrgUnit {
   id        String    @id @default(cuid())
   name      String
@@ -121,6 +129,7 @@ model Objective {
   alignsToKrId String?
   alignsToKr   KeyResult? @relation("ObjectiveAlignedToKR", fields: [alignsToKrId], references: [id])
   keyResults  KeyResult[]
+  pillar      Pillar?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -141,6 +150,9 @@ model KeyResult {
   updatedAt    DateTime  @updatedAt
   type         KeyResultType @default(PROJECT)
   alignedObjectives Objective[] @relation("ObjectiveAlignedToKR")
+  pillar       Pillar?
+  baseline     Float?
+  cadence      Cadence?
 }
 
 model Initiative {
