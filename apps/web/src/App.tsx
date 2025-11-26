@@ -1,4 +1,4 @@
-import { BrowserRouter, Link, Route, Routes, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Link, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiJson } from './lib/api';
@@ -243,6 +243,7 @@ function NavDropdown({ label, children }: { label: string; children: any }) {
   const summaryRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const location = useLocation();
 
   const updatePos = () => {
     const el = summaryRef.current as HTMLElement | null;
@@ -280,6 +281,17 @@ function NavDropdown({ label, children }: { label: string; children: any }) {
     if (next) updatePos();
   };
 
+  // Close when route changes
+  useEffect(() => {
+    if (open) {
+      setOpen(false);
+      if (detailsRef.current) detailsRef.current.open = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, location.search]);
+
+  // no-op
+
   const panel = open
     ? createPortal(
         <div
@@ -295,6 +307,14 @@ function NavDropdown({ label, children }: { label: string; children: any }) {
             className="nav-panel"
             style={{ position: 'absolute', top: pos.top, left: pos.left, background: '#FFFFFF', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'flex', flexDirection: 'column', gap: 8, zIndex: 2147483001, minWidth: 180, maxHeight: '60vh', overflowY: 'auto', boxShadow: '0 12px 32px rgba(0,0,0,0.12)' }}
             onClick={(e) => {
+              // Close when clicking any anchor (<a>) inside panel (react-router Link renders as <a>)
+              const target = e.target as HTMLElement | null;
+              const anchor = target?.closest('a');
+              if (anchor) {
+                setOpen(false);
+                if (detailsRef.current) detailsRef.current.open = false;
+                return;
+              }
               e.stopPropagation();
             }}
           >
