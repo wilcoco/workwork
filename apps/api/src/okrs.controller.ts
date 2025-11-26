@@ -124,29 +124,6 @@ export class OkrsController {
         include: { objective: { include: { owner: true, orgUnit: true } } },
       });
       if (!parentKr) throw new BadRequestException('parent KR not found');
-      if (user.role === 'MANAGER') {
-        if (!user.orgUnitId) {
-          if (parentKr.objective?.owner?.role !== 'EXEC') throw new BadRequestException('MANAGER must align to EXEC KR when org unit not configured');
-        } else {
-          const myUnit = await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } });
-          const parentId = myUnit?.parentId || undefined;
-          if (!parentId) {
-            if (parentKr.objective?.owner?.role !== 'EXEC') throw new BadRequestException('MANAGER must align to EXEC KR when parent org unit not configured');
-          } else if (parentKr.objective?.orgUnitId !== parentId) {
-            throw new BadRequestException('MANAGER must align to parent org unit KR');
-          }
-        }
-      } else if (user.role === 'INDIVIDUAL') {
-        const myUnitId = user.orgUnitId || null;
-        if (!myUnitId) {
-          if (parentKr.objective?.owner?.role !== 'MANAGER') throw new BadRequestException('INDIVIDUAL must align to Manager KR');
-        } else {
-          const ok = parentKr.objective?.orgUnitId === myUnitId && parentKr.objective?.owner?.role === 'MANAGER';
-          if (!ok) {
-            if (parentKr.objective?.owner?.role !== 'MANAGER') throw new BadRequestException('INDIVIDUAL must align to Manager KR');
-          }
-        }
-      }
     } else {
     }
 

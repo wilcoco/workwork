@@ -257,8 +257,8 @@ export function MeGoals() {
               <option value="MANAGER">팀장</option>
               <option value="INDIVIDUAL">직원</option>
             </select>
-            <select value={parentKrId} onChange={(e) => setParentKrId(e.target.value)} disabled={!myRole || myRole === 'CEO'} style={{ ...input, appearance: 'auto' as any }}>
-              <option value="">상위 O-KR 선택 ({myRole === 'CEO' ? '최상위' : '필수'})</option>
+            <select value={parentKrId} onChange={(e) => setParentKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
+              <option value="">상위 O-KR 선택(선택)</option>
               {parentKrs.map((kr) => (
                 <option key={kr.id} value={kr.id}>
                   [{kr.objective?.orgUnit?.name || '-'}] {kr.objective?.title} / KR: {kr.title}
@@ -365,7 +365,7 @@ export function MeGoals() {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={okrCreating || !userId || !oTitle || !krTitle || !krMetric || !krTarget || !krUnit || !oStart || !oEnd || (!parentKrId && myRole !== 'CEO')}
+                disabled={okrCreating || !userId || !oTitle || !krTitle || !krMetric || !krTarget || !krUnit || !oStart || !oEnd}
                 onClick={async () => {
                   try {
                     setOkrCreating(true);
@@ -383,7 +383,7 @@ export function MeGoals() {
                         description: oDesc || undefined,
                         periodStart: oStart,
                         periodEnd: oEnd,
-                        alignsToKrId: myRole === 'CEO' ? undefined : (parentKrId || undefined),
+                        alignsToKrId: parentKrId || undefined,
                         krs,
                       }),
                     });
