@@ -20,10 +20,11 @@ class CreateObjectiveDto {
 class CreateKeyResultDto {
   @IsString() @IsNotEmpty() userId!: string;
   @IsString() @IsNotEmpty() title!: string;
-  @IsString() @IsNotEmpty() metric!: string;
+  @IsOptional() @IsString() metric?: string;
   @IsNumber() target!: number;
   @IsString() @IsNotEmpty() unit!: string;
-  @IsEnum({ PROJECT: 'PROJECT', OPERATIONAL: 'OPERATIONAL' } as any) type!: 'PROJECT' | 'OPERATIONAL';
+  @IsOptional() @IsEnum({ PROJECT: 'PROJECT', OPERATIONAL: 'OPERATIONAL' } as any)
+  type?: 'PROJECT' | 'OPERATIONAL';
   @IsOptional() @IsNumber() weight?: number;
   @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
@@ -243,12 +244,12 @@ export class OkrsController {
       data: ({
         objectiveId,
         title: dto.title,
-        metric: dto.metric,
+        metric: (dto.metric ?? ''),
         target: dto.target,
         unit: dto.unit,
         ownerId: dto.userId,
         weight: dto.weight ?? 1,
-        type: dto.type as any,
+        type: (dto.type as any) ?? undefined,
         pillar: (dto.pillar as any) ?? undefined,
         baseline: dto.baseline as any,
         cadence: (dto.cadence as any) ?? undefined,
