@@ -78,6 +78,21 @@ export class OkrsController {
     await tx.objective.delete({ where: { id } });
   }
 
+  private async deleteInitiativeCascade(id: string, tx: any): Promise<void> {
+    const children = await tx.initiative.findMany({ where: { parentId: id }, select: { id: true } });
+    for (const ch of children) {
+      await this.deleteInitiativeCascade(ch.id, tx);
+    }
+    const items = await tx.checklistItem.findMany({ where: { initiativeId: id }, select: { id: true } });
+    if (items.length > 0) {
+      await tx.checklistTick.deleteMany({ where: { checklistItemId: { in: items.map((i: any) => i.id) } } });
+    }
+    await tx.checklistItem.deleteMany({ where: { initiativeId: id } });
+    await tx.worklog.deleteMany({ where: { initiativeId: id } });
+    await tx.delegation.deleteMany({ where: { childInitiativeId: id } });
+    await tx.initiative.delete({ where: { id } });
+  }
+
   // Recursively delete a Key Result: delete any child Objectives aligned to this KR (and their trees),
   // then delete its initiatives, then the KR itself.
   private async deleteKrCascade(id: string, tx: any): Promise<void> {
@@ -86,8 +101,10 @@ export class OkrsController {
     for (const o of alignedObjs) {
       await this.deleteObjectiveCascade(o.id, tx);
     }
-    // Delete initiatives under this KR
-    await tx.initiative.deleteMany({ where: { keyResultId: id } });
+    const inits = await tx.initiative.findMany({ where: { keyResultId: id }, select: { id: true } });
+    for (const ii of inits) {
+      await this.deleteInitiativeCascade(ii.id, tx);
+    }
     // Delete the KR itself
     await tx.keyResult.delete({ where: { id } });
   }

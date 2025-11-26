@@ -1,7 +1,17 @@
-export const API_BASE = import.meta.env.VITE_API_BASE as string;
-if (!API_BASE) {
-  throw new Error('VITE_API_BASE is required');
+const ENV_API_BASE = import.meta.env.VITE_API_BASE as string | undefined;
+function resolveApiBase(): string {
+  try {
+    const override = typeof localStorage !== 'undefined' ? localStorage.getItem('API_BASE') || '' : '';
+    const base = override || ENV_API_BASE || '';
+    if (!base) throw new Error('VITE_API_BASE is required');
+    // eslint-disable-next-line no-console
+    console.log('[api] API_BASE', { override: !!override, base });
+    return base;
+  } catch (e) {
+    throw e;
+  }
 }
+export const API_BASE = resolveApiBase();
 
 export function apiUrl(path: string): string {
   if (!API_BASE) return path;
@@ -29,6 +39,8 @@ export async function apiJson<T = any>(input: string, init?: RequestInit): Promi
       ...(init?.headers as any),
     },
   });
+  // Tolerate 204 No Content
+  if (res.status === 204) return {} as T;
   const text = await res.text();
   const contentType = res.headers.get('content-type') || '';
   let data: any = null;
@@ -42,7 +54,10 @@ export async function apiJson<T = any>(input: string, init?: RequestInit): Promi
       throw err;
     }
   } else {
-    // Non-JSON response (e.g., HTML from static server). Treat as error even if status is 200.
+    // If DELETE and non-JSON, treat as success for robustness (some proxies return empty/html)
+    if ((init?.method || 'GET').toUpperCase() === 'DELETE' && res.ok) {
+      return {} as T;
+    }
     const snippet = (text || '').slice(0, 200);
     const err: any = new Error(`Non-JSON response (${contentType || 'unknown'}): ${snippet}`);
     err.status = res.status;

@@ -48,6 +48,26 @@ class TickChecklistDto {
 export class InitiativesController {
   constructor(private prisma: PrismaService) {}
 
+  private async deleteInitiativeCascade(id: string, tx: any): Promise<void> {
+    // Delete child initiatives first
+    const children = await tx.initiative.findMany({ where: { parentId: id }, select: { id: true } });
+    for (const ch of children) {
+      await this.deleteInitiativeCascade(ch.id, tx);
+    }
+    // Checklist ticks and items
+    const items = await tx.checklistItem.findMany({ where: { initiativeId: id }, select: { id: true } });
+    if (items.length) {
+      await tx.checklistTick.deleteMany({ where: { checklistItemId: { in: items.map((i: any) => i.id) } } });
+    }
+    await tx.checklistItem.deleteMany({ where: { initiativeId: id } });
+    // Worklogs
+    await tx.worklog.deleteMany({ where: { initiativeId: id } });
+    // Delegations referencing this initiative as child
+    await tx.delegation.deleteMany({ where: { childInitiativeId: id } });
+    // Finally, the initiative
+    await tx.initiative.delete({ where: { id } });
+  }
+
   @Get('my')
   async my(@Query('userId') userId: string) {
     if (!userId) throw new Error('userId required');
@@ -95,7 +115,9 @@ export class InitiativesController {
   @Delete(':id')
   async remove(@Param('id') id: string) {
     console.log('[initiatives] delete', { id, DATABASE_URL: process.env.DATABASE_URL });
-    await this.prisma.initiative.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await this.deleteInitiativeCascade(id, tx);
+    });
     return { ok: true };
   }
 
