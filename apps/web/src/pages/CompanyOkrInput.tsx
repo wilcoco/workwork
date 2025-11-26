@@ -167,6 +167,19 @@ export function CompanyOkrInput() {
                 <span style={{ background: '#E6EEF7', color: '#0F3D73', border: '1px solid #0F3D73', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>목표</span>
                 <b>{o.title}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>[{o.orgUnit?.name || '-'}] {o.pillar || '-'}</span>
+                <button
+                  className="btn btn-ghost"
+                  onClick={async () => {
+                    if (!confirm('해당 목표를 삭제할까요?\n(하위 KR/하위 목표가 있으면 삭제할 수 없습니다)')) return;
+                    try {
+                      await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}`, { method: 'DELETE' });
+                      const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
+                      setObjectives(res.items || []);
+                    } catch (e: any) {
+                      setError(e.message || '삭제 실패');
+                    }
+                  }}
+                >삭제</button>
               </div>
               {Array.isArray(o.keyResults) && o.keyResults.length > 0 && (
                 <ul style={{ marginLeft: 18 }}>
@@ -177,6 +190,19 @@ export function CompanyOkrInput() {
                         <div style={{ fontWeight: 600 }}>{kr.title}</div>
                         <div style={{ color: '#334155' }}>({kr.metric} / {kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
                         <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}</div>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={async () => {
+                            if (!confirm('해당 KR을 삭제할까요?\n(하위 과제/하위 목표가 있으면 삭제할 수 없습니다)')) return;
+                            try {
+                              await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}`, { method: 'DELETE' });
+                              const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
+                              setObjectives(res.items || []);
+                            } catch (e: any) {
+                              setError(e.message || '삭제 실패');
+                            }
+                          }}
+                        >삭제</button>
                       </div>
                     </li>
                   ))}

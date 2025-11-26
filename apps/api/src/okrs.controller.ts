@@ -253,6 +253,21 @@ export class OkrsController {
     return { ok: true };
   }
 
+  @Delete('krs/:id')
+  async deleteKr(@Param('id') id: string) {
+    const kr = await this.prisma.keyResult.findUnique({
+      where: { id },
+      include: { _count: { select: { initiatives: true } } } as any,
+    });
+    if (!kr) throw new Error('key result not found');
+    const childObjectives = await this.prisma.objective.count({ where: ({ alignsToKrId: id } as any) });
+    if ((kr as any)._count.initiatives > 0 || childObjectives > 0) {
+      throw new Error('remove initiatives/child objectives first');
+    }
+    await this.prisma.keyResult.delete({ where: { id } });
+    return { ok: true };
+  }
+
   @Get('map')
   async okrMap(@Query('orgUnitId') orgUnitId?: string) {
     // Load all objectives with their KRs and minimal owner/org info

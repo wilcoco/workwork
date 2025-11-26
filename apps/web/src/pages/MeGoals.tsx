@@ -472,6 +472,19 @@ export function MeGoals() {
                 <div style={{ marginLeft: 'auto' }}>
                   {(o.periodStart ? formatKstDatetime(o.periodStart) : '-') + ' ~ ' + (o.periodEnd ? formatKstDatetime(o.periodEnd) : '-')}
                 </div>
+                <button
+                  className="btn btn-ghost"
+                  onClick={async () => {
+                    if (!confirm('해당 Objective을 삭제할까요? (하위 KR/하위 목표가 있으면 삭제 불가)')) return;
+                    try {
+                      await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}`, { method: 'DELETE' });
+                      const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+                      setMyOkrs(mokrs.items || []);
+                    } catch (e: any) {
+                      setError(e.message || '삭제 실패');
+                    }
+                  }}
+                >삭제</button>
               </div>
               <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{o.title}</div>
               {o.description && <div style={{ marginTop: 6, color: '#374151' }}>{o.description}</div>}
@@ -483,7 +496,23 @@ export function MeGoals() {
               {o.keyResults?.length > 0 && (
                 <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
                   {o.keyResults.map((kr: any) => (
-                    <div key={kr.id} style={{ fontSize: 13, color: '#334155' }}>• KR: {kr.title} ({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''}) [{kr.type}]</div>
+                    <div key={kr.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155' }}>
+                      <span>• KR: {kr.title} ({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''}) [{kr.type}]</span>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ marginLeft: 'auto' }}
+                        onClick={async () => {
+                          if (!confirm('해당 KR을 삭제할까요? (하위 과제/하위 목표가 있으면 삭제 불가)')) return;
+                          try {
+                            await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}`, { method: 'DELETE' });
+                            const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+                            setMyOkrs(mokrs.items || []);
+                          } catch (e: any) {
+                            setError(e.message || '삭제 실패');
+                          }
+                        }}
+                      >삭제</button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -524,6 +553,19 @@ export function MeGoals() {
                 <div style={{ marginLeft: 'auto' }}>
                   {(g.startAt ? formatKstDatetime(g.startAt) : '-') + ' ~ ' + (g.endAt ? formatKstDatetime(g.endAt) : '-')}
                 </div>
+                <button
+                  className="btn btn-ghost"
+                  onClick={async () => {
+                    if (!confirm('해당 개인 목표를 삭제할까요?')) return;
+                    try {
+                      await apiJson(`/api/my-goals/${encodeURIComponent(g.id)}`, { method: 'DELETE' });
+                      const myg = await apiJson<{ items: any[] }>(`/api/my-goals?userId=${encodeURIComponent(userId)}`);
+                      setGoals(myg.items || []);
+                    } catch (e: any) {
+                      setError(e.message || '삭제 실패');
+                    }
+                  }}
+                >삭제</button>
               </div>
               <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{g.title}</div>
               {g.description && <div style={{ marginTop: 6, color: '#374151' }}>{g.description}</div>}
