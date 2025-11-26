@@ -148,9 +148,6 @@ export class OkrsController {
         }
       }
     } else {
-      if (user.role !== ('CEO' as any) && user.role !== ('EXEC' as any)) {
-        throw new BadRequestException('top-level Objective requires CEO or EXEC');
-      }
     }
 
     if (dto.orgUnitId) {
