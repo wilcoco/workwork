@@ -103,11 +103,24 @@ export function TeamKpiInput() {
   async function createKr() {
     try {
       setError(null);
-      if (!objectives.length) {
-        setError('팀 목표가 필요합니다');
-        return;
+      let objectiveId = objectives[0]?.id;
+      if (!objectiveId) {
+        const now = new Date();
+        const year = now.getFullYear();
+        const created = await apiJson(`/api/okrs/objectives`, {
+          method: 'POST',
+          body: JSON.stringify({
+            userId,
+            title: '팀 KPI',
+            description: undefined,
+            periodStart: `${year}-01-01`,
+            periodEnd: `${year}-12-31`,
+            orgUnitId: orgUnitId || undefined,
+            pillar: krPillar,
+          }),
+        });
+        objectiveId = created.id;
       }
-      const objectiveId = objectives[0]?.id;
       await apiJson(`/api/okrs/objectives/${encodeURIComponent(objectiveId)}/krs`, {
         method: 'POST',
         body: JSON.stringify({
@@ -215,6 +228,40 @@ export function TeamKpiInput() {
             <option value="MONTHLY">월</option>
           </select>
           <button className="btn btn-primary" disabled={!userId || !orgUnitId || !krTitle || !krTarget || !krUnit} onClick={createKr}>KPI 생성</button>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 12 }}>
+        <h3 style={{ margin: 0 }}>팀 KPI 목록</h3>
+        <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+          {(() => {
+            const krs = objectives.flatMap((o) => (o.keyResults || []).map((kr: any) => ({ kr, obj: o })));
+            if (!krs.length) return <div style={{ color: '#6b7280' }}>KPI가 없습니다.</div>;
+            return (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {krs.map(({ kr, obj }: any) => (
+                  <li key={kr.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                    <div style={{ fontWeight: 600 }}>{kr.title}</div>
+                    <div style={{ color: '#334155' }}>({kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
+                    <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{obj?.title ? `[${obj.title}] ` : ''}{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}</div>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={async () => {
+                        if (!confirm('해당 KR을 삭제할까요?')) return;
+                        try {
+                          await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}`, { method: 'DELETE' });
+                          const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
+                          setObjectives(res.items || []);
+                        } catch (e: any) {
+                          setError(e.message || '삭제 실패');
+                        }
+                      }}
+                    >삭제</button>
+                  </li>
+                ))}
+              </ul>
+            );
+          })()}
         </div>
       </div>
 
