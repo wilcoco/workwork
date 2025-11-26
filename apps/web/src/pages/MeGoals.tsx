@@ -475,7 +475,7 @@ export function MeGoals() {
                 <button
                   className="btn btn-ghost"
                   onClick={async () => {
-                    if (!confirm('해당 Objective을 삭제할까요? (하위 KR/하위 목표가 있으면 삭제 불가)')) return;
+                    if (!confirm('해당 Objective를 삭제할까요?')) return;
                     try {
                       await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}`, { method: 'DELETE' });
                       const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
@@ -502,7 +502,7 @@ export function MeGoals() {
                         className="btn btn-ghost"
                         style={{ marginLeft: 'auto' }}
                         onClick={async () => {
-                          if (!confirm('해당 KR을 삭제할까요? (하위 과제/하위 목표가 있으면 삭제 불가)')) return;
+                          if (!confirm('해당 KR을 삭제할까요?')) return;
                           try {
                             await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}`, { method: 'DELETE' });
                             const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);

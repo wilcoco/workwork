@@ -170,7 +170,7 @@ export function CompanyOkrInput() {
                 <button
                   className="btn btn-ghost"
                   onClick={async () => {
-                    if (!confirm('해당 목표를 삭제할까요?\n(하위 KR/하위 목표가 있으면 삭제할 수 없습니다)')) return;
+                    if (!confirm('해당 목표를 삭제할까요?')) return;
                     try {
                       await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}`, { method: 'DELETE' });
                       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
@@ -193,7 +193,7 @@ export function CompanyOkrInput() {
                         <button
                           className="btn btn-ghost"
                           onClick={async () => {
-                            if (!confirm('해당 KR을 삭제할까요?\n(하위 과제/하위 목표가 있으면 삭제할 수 없습니다)')) return;
+                            if (!confirm('해당 KR을 삭제할까요?')) return;
                             try {
                               await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}`, { method: 'DELETE' });
                               const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
