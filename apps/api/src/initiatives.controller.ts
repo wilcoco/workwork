@@ -13,6 +13,7 @@ class CreateInitiativeDto {
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY' } as any) cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
   @IsOptional() @IsString() cadenceAnchor?: string;
   @IsOptional() @IsString() userGoalId?: string;
+  @IsOptional() @IsString() parentId?: string;
 }
 
 class UpdateInitiativeDto {
@@ -91,6 +92,7 @@ export class InitiativesController {
       cadence: dto.cadence as any,
       cadenceAnchor: dto.cadenceAnchor,
       userGoalId: dto.userGoalId,
+      parentId: dto.parentId,
     };
     const rec = await this.prisma.initiative.create({ data });
     return rec;
