@@ -61,6 +61,37 @@ class UpdateKeyResultDto {
 export class OkrsController {
   constructor(private prisma: PrismaService) {}
 
+  // Recursively delete an Objective: delete its KRs (and their initiatives + child objectives aligned to those KRs),
+  // delete child Objectives by parentId as well, then delete the Objective itself.
+  private async deleteObjectiveCascade(id: string, tx: any): Promise<void> {
+    // Delete all KRs under this Objective (recursively handles aligned objectives and initiatives)
+    const krs = await tx.keyResult.findMany({ where: { objectiveId: id }, select: { id: true } });
+    for (const kr of krs) {
+      await this.deleteKrCascade(kr.id, tx);
+    }
+    // Delete child objectives by parent relation if any
+    const children = await tx.objective.findMany({ where: ({ parentId: id } as any), select: { id: true } });
+    for (const ch of children) {
+      await this.deleteObjectiveCascade(ch.id, tx);
+    }
+    // Finally delete this objective
+    await tx.objective.delete({ where: { id } });
+  }
+
+  // Recursively delete a Key Result: delete any child Objectives aligned to this KR (and their trees),
+  // then delete its initiatives, then the KR itself.
+  private async deleteKrCascade(id: string, tx: any): Promise<void> {
+    // Delete objectives aligned to this KR (recursive)
+    const alignedObjs = await tx.objective.findMany({ where: ({ alignsToKrId: id } as any), select: { id: true } });
+    for (const o of alignedObjs) {
+      await this.deleteObjectiveCascade(o.id, tx);
+    }
+    // Delete initiatives under this KR
+    await tx.initiative.deleteMany({ where: { keyResultId: id } });
+    // Delete the KR itself
+    await tx.keyResult.delete({ where: { id } });
+  }
+
   @Get('parent-krs')
   async parentKrs(@Query('userId') userId: string) {
     if (!userId) throw new Error('userId required');
@@ -241,30 +272,21 @@ export class OkrsController {
 
   @Delete('objectives/:id')
   async deleteObjective(@Param('id') id: string) {
-    const obj = await this.prisma.objective.findUnique({
-      where: { id },
-      include: { _count: { select: { keyResults: true, children: true } } } as any,
+    const exists = await this.prisma.objective.findUnique({ where: { id } });
+    if (!exists) throw new Error('objective not found');
+    await this.prisma.$transaction(async (tx) => {
+      await this.deleteObjectiveCascade(id, tx);
     });
-    if (!obj) throw new Error('objective not found');
-    if ((obj as any)._count.keyResults > 0 || (obj as any)._count.children > 0) {
-      throw new Error('remove key results/child objectives first');
-    }
-    await this.prisma.objective.delete({ where: { id } });
     return { ok: true };
   }
 
   @Delete('krs/:id')
   async deleteKr(@Param('id') id: string) {
-    const kr = await this.prisma.keyResult.findUnique({
-      where: { id },
-      include: { _count: { select: { initiatives: true } } } as any,
-    });
+    const kr = await this.prisma.keyResult.findUnique({ where: { id } });
     if (!kr) throw new Error('key result not found');
-    const childObjectives = await this.prisma.objective.count({ where: ({ alignsToKrId: id } as any) });
-    if ((kr as any)._count.initiatives > 0 || childObjectives > 0) {
-      throw new Error('remove initiatives/child objectives first');
-    }
-    await this.prisma.keyResult.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await this.deleteKrCascade(id, tx);
+    });
     return { ok: true };
   }
 
