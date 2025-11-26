@@ -11,10 +11,9 @@ export function WorklogQuickNew() {
   const nav = useNavigate();
   const [date, setDate] = useState<string>(() => todayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
-  const [taskName, setTaskName] = useState('');
-  const [myInits, setMyInits] = useState<any[]>([]);
-  const [myKrs, setMyKrs] = useState<any[]>([]);
-  const [selection, setSelection] = useState<string>(''); // '' | 'init:<id>' | 'kr:<id>'
+  const [orgUnitId, setOrgUnitId] = useState<string>('');
+  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string }>>([]);
+  const [selection, setSelection] = useState<string>(''); // 'init:<id>'
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
@@ -28,28 +27,34 @@ export function WorklogQuickNew() {
   useEffect(() => {
     const stored = localStorage.getItem('teamName') || '';
     if (stored) setTeamName(stored);
-    // preload my initiatives & goals
     const uid = localStorage.getItem('userId') || '';
-    if (uid) {
-      apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`)
-        .then((res) => setMyInits(res.items || []))
-        .catch(() => {});
-      apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(uid)}`)
-        .then((res) => {
-          const oks = res.items || [];
-          const krs = oks.flatMap((o: any) => (o.keyResults || []).map((kr: any) => ({
-            id: kr.id,
-            title: kr.title,
-            metric: kr.metric,
-            target: kr.target,
-            unit: kr.unit,
-            type: kr.type,
-            objective: { id: o.id, title: o.title },
-          })));
-          setMyKrs(krs);
-        })
-        .catch(() => {});
-    }
+    if (!uid) return;
+    (async () => {
+      try {
+        const me = await apiJson<{ id: string; orgUnitId: string }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
+        const ou = me.orgUnitId || '';
+        setOrgUnitId(ou);
+        if (!ou) return;
+        const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(ou)}`);
+        const objs = res.items || [];
+        const tasks: Array<{ id: string; title: string; period: string }> = [];
+        for (const o of objs) {
+          for (const kr of (o.keyResults || [])) {
+            for (const ii of (kr.initiatives || [])) {
+              const p = (ii.startAt || ii.endAt) ? ` (${ii.startAt ? String(ii.startAt).slice(0,10) : ''}${ii.startAt || ii.endAt ? ' ~ ' : ''}${ii.endAt ? String(ii.endAt).slice(0,10) : ''})` : '';
+              tasks.push({ id: ii.id, title: `[${o.title}] ${ii.title}`, period: p });
+              if (Array.isArray(ii.children)) {
+                for (const ch of ii.children) {
+                  const pc = (ch.startAt || ch.endAt) ? ` (${ch.startAt ? String(ch.startAt).slice(0,10) : ''}${ch.startAt || ch.endAt ? ' ~ ' : ''}${ch.endAt ? String(ch.endAt).slice(0,10) : ''})` : '';
+                  tasks.push({ id: ch.id, title: `[${o.title}] ${ii.title} / ${ch.title}`, period: pc });
+                }
+              }
+            }
+          }
+        }
+        setTeamTasks(tasks);
+      } catch {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -96,16 +101,15 @@ export function WorklogQuickNew() {
     try {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
-      const res = await apiJson<{ id: string }>(
+      if (!selection || !selection.startsWith('init:')) throw new Error('과제를 선택하세요');
+      await apiJson<{ id: string }>(
         '/api/worklogs/simple',
         {
           method: 'POST',
           body: JSON.stringify({
             userId,
             teamName,
-            taskName: selection && selection.startsWith('kr:') ? taskName : (!selection ? taskName : undefined),
-            initiativeId: selection.startsWith('init:') ? selection.substring(5) : undefined,
-            keyResultId: selection.startsWith('kr:') ? selection.substring(3) : undefined,
+            initiativeId: selection.substring(5),
             title,
             content: plainMode ? contentPlain : stripHtml(contentHtml),
             contentHtml: plainMode ? undefined : (contentHtml || undefined),
@@ -178,28 +182,18 @@ export function WorklogQuickNew() {
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>내 O-KR/과제 선택</label>
-            <select value={selection} onChange={(e) => setSelection(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
-              <option value="">선택 안 함 (새 과제 입력)</option>
-              {myKrs.length > 0 && (
-                <optgroup label="내 O-KR (KR)">
-                  {myKrs.map((kr) => (
-                    <option key={kr.id} value={`kr:${kr.id}`}>[KR] {kr.objective?.title || '-'} / {kr.title}</option>
-                  ))}
-                </optgroup>
-              )}
-              {myInits.length > 0 && (
-                <optgroup label="나의 과제">
-                  {myInits.map((it) => (
-                    <option key={it.id} value={`init:${it.id}`}>[과제][{it.type}] {it.title}</option>
-                  ))}
-                </optgroup>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제</label>
+            <select value={selection} onChange={(e) => setSelection(e.target.value)} style={{ ...input, appearance: 'auto' as any }} required>
+              <option value="" disabled>과제를 선택하세요</option>
+              {teamTasks.length > 0 ? (
+                teamTasks.map((t) => (
+                  <option key={t.id} value={`init:${t.id}`}>{t.title}{t.period}</option>
+                ))
+              ) : (
+                <option value="" disabled>팀 KPI/OKR 과제가 없습니다</option>
               )}
             </select>
           </div>
-          {(!selection || selection.startsWith('kr:')) && (
-            <input placeholder="새 과제명" value={taskName} onChange={(e) => setTaskName(e.target.value)} style={input} required />
-          )}
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontSize: 13, color: '#6b7280' }}>

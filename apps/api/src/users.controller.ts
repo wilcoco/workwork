@@ -17,7 +17,7 @@ export class UsersController {
     if (!userId) throw new Error('userId required');
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { orgUnit: true } });
     if (!user) throw new Error('user not found');
-    return { id: user.id, name: user.name, role: user.role, teamName: user.orgUnit?.name || '' };
+    return { id: user.id, name: user.name, role: user.role, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '' };
   }
 
   @Put(':id/role')

@@ -369,7 +369,7 @@ export class OkrsController {
     const items = await this.prisma.objective.findMany({
       where,
       orderBy: { createdAt: 'asc' },
-      include: ({ keyResults: { include: { initiatives: true } }, owner: { select: { id: true, name: true, role: true } }, orgUnit: true } as any),
+      include: ({ keyResults: { include: { initiatives: { include: { children: true } } } }, owner: { select: { id: true, name: true, role: true } }, orgUnit: true } as any),
     });
     return { items };
   }

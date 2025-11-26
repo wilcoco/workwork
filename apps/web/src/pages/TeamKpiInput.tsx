@@ -303,7 +303,7 @@ export function TeamKpiInput() {
       </div>
 
       <div className="card" style={{ padding: 12 }}>
-        <h3 style={{ margin: 0 }}>팀 KPI/OKR 목록</h3>
+        <h3 style={{ margin: 0 }}>팀 KPI/TASKS</h3>
         <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
           {objectives.map((o) => (
             <div key={o.id} className="card" style={{ padding: 10 }}>
@@ -350,23 +350,40 @@ export function TeamKpiInput() {
                           >삭제</button>
                         </div>
                         {Array.isArray(kr.initiatives) && kr.initiatives.length > 0 && (
-                          <ul style={{ marginLeft: 18, color: '#374151' }}>
+                          <ul style={{ marginLeft: 18, color: '#374151', display: 'grid', gap: 4 }}>
                             {kr.initiatives.map((ii: any) => (
-                              <li key={ii.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span>- {ii.title}</span>
-                                <button
-                                  className="btn btn-ghost"
-                                  onClick={async () => {
-                                    if (!confirm('해당 과제를 삭제할까요?')) return;
-                                    try {
-                                      await apiJson(`/api/initiatives/${encodeURIComponent(ii.id)}`, { method: 'DELETE' });
-                                      const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
-                                      setObjectives(res.items || []);
-                                    } catch (e: any) {
-                                      setError(e.message || '삭제 실패');
-                                    }
-                                  }}
-                                >삭제</button>
+                              <li key={ii.id}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span>- {ii.title}</span>
+                                  {(ii.startAt || ii.endAt) && (
+                                    <span style={{ fontSize: 12, color: '#64748b' }}>({ii.startAt ? String(ii.startAt).slice(0,10) : ''}{ii.startAt || ii.endAt ? ' ~ ' : ''}{ii.endAt ? String(ii.endAt).slice(0,10) : ''})</span>
+                                  )}
+                                  <button
+                                    className="btn btn-ghost"
+                                    onClick={async () => {
+                                      if (!confirm('해당 과제를 삭제할까요?')) return;
+                                      try {
+                                        await apiJson(`/api/initiatives/${encodeURIComponent(ii.id)}`, { method: 'DELETE' });
+                                        const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
+                                        setObjectives(res.items || []);
+                                      } catch (e: any) {
+                                        setError(e.message || '삭제 실패');
+                                      }
+                                    }}
+                                  >삭제</button>
+                                </div>
+                                {Array.isArray(ii.children) && ii.children.length > 0 && (
+                                  <ul style={{ marginLeft: 18 }}>
+                                    {ii.children.map((ch: any) => (
+                                      <li key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <span>· {ch.title}</span>
+                                        {(ch.startAt || ch.endAt) && (
+                                          <span style={{ fontSize: 12, color: '#94a3b8' }}>({ch.startAt ? String(ch.startAt).slice(0,10) : ''}{ch.startAt || ch.endAt ? ' ~ ' : ''}{ch.endAt ? String(ch.endAt).slice(0,10) : ''})</span>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
                               </li>
                             ))}
                           </ul>
