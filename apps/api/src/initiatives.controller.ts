@@ -94,6 +94,7 @@ export class InitiativesController {
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
+    console.log('[initiatives] delete', { id, DATABASE_URL: process.env.DATABASE_URL });
     await this.prisma.initiative.delete({ where: { id } });
     return { ok: true };
   }

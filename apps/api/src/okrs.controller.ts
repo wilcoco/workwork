@@ -274,6 +274,7 @@ export class OkrsController {
   async deleteObjective(@Param('id') id: string) {
     const exists = await this.prisma.objective.findUnique({ where: { id } });
     if (!exists) throw new Error('objective not found');
+    console.log('[okrs] deleteObjective', { id, DATABASE_URL: process.env.DATABASE_URL });
     await this.prisma.$transaction(async (tx) => {
       await this.deleteObjectiveCascade(id, tx);
     });
@@ -284,6 +285,7 @@ export class OkrsController {
   async deleteKr(@Param('id') id: string) {
     const kr = await this.prisma.keyResult.findUnique({ where: { id } });
     if (!kr) throw new Error('key result not found');
+    console.log('[okrs] deleteKr', { id, DATABASE_URL: process.env.DATABASE_URL });
     await this.prisma.$transaction(async (tx) => {
       await this.deleteKrCascade(id, tx);
     });

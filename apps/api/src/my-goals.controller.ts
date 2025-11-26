@@ -74,6 +74,7 @@ export class MyGoalsController {
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
+    console.log('[my-goals] delete', { id, DATABASE_URL: process.env.DATABASE_URL });
     await (this.prisma as any).userGoal.delete({ where: { id } });
     return { ok: true };
   }
