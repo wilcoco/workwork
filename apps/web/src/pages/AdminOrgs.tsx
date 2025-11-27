@@ -2,6 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { API_BASE, apiJson } from '../lib/api';
 
 function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelete: (id: string) => void; onSelect: (id: string) => void; selectedId: string }) {
+  const childCnt = node.children?.length || 0;
+  const userCnt = node.counts?.users || 0;
+  const objCnt = node.counts?.objectives || 0;
+  const deleteBlocked = childCnt > 0 || userCnt > 0 || objCnt > 0;
+  const deleteReason = deleteBlocked ? `child:${childCnt} users:${userCnt} objs:${objCnt}` : 'ok';
+  console.debug('[AdminOrgs][TreeNode] delete-state', { id: node.id, name: node.name, deleteBlocked, reason: deleteReason });
   return (
     <li>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -10,9 +16,9 @@ function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelet
         <span style={{ fontSize: 12, color: '#6b7280' }}>({node.type})</span>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>child:{node.children?.length || 0} users:{node.counts?.users || 0} objs:{node.counts?.objectives || 0}</span>
         <button
-          onClick={() => onDelete(node.id)}
-          disabled={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0 || (node.counts?.objectives || 0) > 0}
-          title={(node.children?.length || 0) > 0 || (node.counts?.users || 0) > 0 || (node.counts?.objectives || 0) > 0 ? '자식/사용자/목표 해제 후 삭제 가능' : '삭제'}
+          onClick={() => { console.log('[AdminOrgs] delete-click', { id: node.id, name: node.name, deleteBlocked, reason: deleteReason }); onDelete(node.id); }}
+          disabled={deleteBlocked}
+          title={deleteBlocked ? '자식/사용자/목표 해제 후 삭제 가능' : '삭제'}
           className="btn btn-danger btn-sm"
         >
           삭제
@@ -163,9 +169,12 @@ export function AdminOrgs(): JSX.Element {
   }
 
   async function onDelete(id: string) {
-    if (!confirm('정말 삭제하시겠습니까?\n자식 조직과 사용자 연결이 없는 경우에만 삭제됩니다.')) return;
+    console.log('[AdminOrgs] onDelete-init', { id, selectedId });
+    if (!confirm('정말 삭제하시겠습니까?\n자식 조직과 사용자 연결이 없는 경우에만 삭제됩니다.')) { console.log('[AdminOrgs] onDelete-cancelled', { id }); return; }
     try {
+      console.log('[AdminOrgs] onDelete-request', { id });
       await apiJson(`/api/orgs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      console.log('[AdminOrgs] onDelete-success', { id });
       // If the deleted org is currently selected, clear selection and side data
       if (selectedId === id) {
         setSelectedId('');
@@ -174,6 +183,7 @@ export function AdminOrgs(): JSX.Element {
       }
       await load();
     } catch (e: any) {
+      console.error('[AdminOrgs] onDelete-error', { id, message: e.message, stack: e.stack });
       setError(e.message || '삭제 실패');
     }
   }

@@ -69,12 +69,16 @@ export class OrgsController {
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
+    console.log('[OrgsController] delete-init', { id });
     const unit = await this.prisma.orgUnit.findUnique({ where: { id }, include: { _count: { select: { children: true, users: true, objectives: true } } } });
     if (!unit) throw new BadRequestException('org not found');
+    console.log('[OrgsController] delete-check', { id, counts: unit._count });
     if (unit._count.children > 0 || unit._count.users > 0 || (unit as any)._count.objectives > 0) {
+      console.warn('[OrgsController] delete-blocked', { id, children: unit._count.children, users: unit._count.users, objectives: (unit as any)._count.objectives });
       throw new BadRequestException('detach children/users/objectives first');
     }
     await this.prisma.orgUnit.delete({ where: { id } });
+    console.log('[OrgsController] delete-success', { id });
     return { ok: true };
   }
 
