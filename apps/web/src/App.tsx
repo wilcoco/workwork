@@ -200,6 +200,8 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         <NavDropdown label="목표관리">
           <Link to="/okr/input">OKR 입력</Link>
           <Link to="/okr/tree">OKR 조회</Link>
+          <Link to="/okr/team">팀 KPI 입력</Link>
+          <Link to="/okr/team-board">팀 KPI 조회</Link>
         </NavDropdown>
         {SHOW_APPROVALS && (
           <NavDropdown label="결재">
