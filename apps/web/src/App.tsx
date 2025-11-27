@@ -12,6 +12,8 @@ import { WorklogQuickNew } from './pages/WorklogQuickNew';
 import { WorklogSearch } from './pages/WorklogSearch';
 import { MeGoals } from './pages/MeGoals';
 import { OkrMap } from './pages/OkrMap';
+import { OkrInput } from './pages/OkrInput';
+import { OkrTree } from './pages/OkrTree';
 import { OkrInstructions } from './pages/OkrInstructions';
 import { CompanyOkrInput } from './pages/CompanyOkrInput';
 import { TeamKpiInput } from './pages/TeamKpiInput';
@@ -100,6 +102,8 @@ export function App() {
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
           <Route path="/me/goals" element={<MeGoals />} />
+          <Route path="/okr/input" element={<OkrInput />} />
+          <Route path="/okr/tree" element={<OkrTree />} />
           <Route path="/okr-map" element={<OkrMap />} />
           <Route path="/okr/instructions" element={<OkrInstructions />} />
           <Route path="/okr/company" element={<CompanyOkrInput />} />
@@ -194,13 +198,8 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           <Link to="/search">조회</Link>
         </NavDropdown>
         <NavDropdown label="목표관리">
-          <Link to="/me/goals">나의 OKR</Link>
-          <Link to="/okr/team">팀 KPI 입력</Link>
-          <Link to="/okr/team-board">팀 KPI 조회</Link>
-          <Link to="/okr/company">전사 OKR 입력</Link>
-          <Link to="/okr/team-okr">팀 OKR 입력</Link>
-          <Link to="/okr-map">OKR 조회(전사)</Link>
-          <Link to="/okr-map?team=1">OKR 조회(팀)</Link>
+          <Link to="/okr/input">OKR 입력</Link>
+          <Link to="/okr/tree">OKR 조회</Link>
         </NavDropdown>
         {SHOW_APPROVALS && (
           <NavDropdown label="결재">
