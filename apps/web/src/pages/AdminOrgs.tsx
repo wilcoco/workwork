@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { API_BASE, apiJson } from '../lib/api';
 
-function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelete: (id: string) => void; onSelect: (id: string) => void; selectedId: string }) {
+function TreeNode({ node, onDelete, onForceDelete, onSelect, selectedId }: { node: any; onDelete: (id: string) => void; onForceDelete: (id: string) => void; onSelect: (id: string) => void; selectedId: string }) {
   const childCnt = node.children?.length || 0;
   const userCnt = node.counts?.users || 0;
   const objCnt = node.counts?.objectives || 0;
@@ -23,11 +23,20 @@ function TreeNode({ node, onDelete, onSelect, selectedId }: { node: any; onDelet
         >
           삭제
         </button>
+        {deleteBlocked && (
+          <button
+            onClick={() => { console.warn('[AdminOrgs] force-delete-click', { id: node.id, name: node.name, reason: deleteReason }); onForceDelete(node.id); }}
+            className="btn btn-warning btn-sm"
+            title={`강제 삭제(연쇄 삭제): ${deleteReason}`}
+          >
+            강제삭제
+          </button>
+        )}
       </div>
       {node.children && node.children.length > 0 && (
         <ul>
           {node.children.map((c: any) => (
-            <TreeNode key={c.id} node={c} onDelete={onDelete} onSelect={onSelect} selectedId={selectedId} />
+            <TreeNode key={c.id} node={c} onDelete={onDelete} onForceDelete={onForceDelete} onSelect={onSelect} selectedId={selectedId} />
           ))}
         </ul>
       )}
@@ -188,6 +197,28 @@ export function AdminOrgs(): JSX.Element {
     }
   }
 
+  async function onForceDelete(id: string) {
+    console.log('[AdminOrgs] forceDelete-init', { id, selectedId });
+    const ok = confirm('강제 삭제를 진행할까요?\n이 조직과 모든 하위 조직, 목표/KR/과제, 사용자 연결이 연쇄적으로 제거됩니다.\n이 작업은 되돌릴 수 없습니다.');
+    if (!ok) { console.log('[AdminOrgs] forceDelete-cancelled-1', { id }); return; }
+    const word = prompt("문구를 입력하세요: FORCE DELETE");
+    if ((word || '').toUpperCase() !== 'FORCE DELETE') { alert('문구가 일치하지 않습니다.'); console.log('[AdminOrgs] forceDelete-cancelled-2', { id, word }); return; }
+    try {
+      console.log('[AdminOrgs] forceDelete-request', { id });
+      await apiJson(`/api/orgs/${encodeURIComponent(id)}/force-delete`, { method: 'POST', body: JSON.stringify({ confirm: 'FORCE DELETE' }) });
+      console.log('[AdminOrgs] forceDelete-success', { id });
+      if (selectedId === id) {
+        setSelectedId('');
+        setMembers([]);
+        setObjectives([]);
+      }
+      await load();
+    } catch (e: any) {
+      console.error('[AdminOrgs] forceDelete-error', { id, message: e.message, stack: e.stack });
+      setError(e.message || '강제 삭제 실패');
+    }
+  }
+
   return (
     <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 960, margin: '24px auto' }}>
       <h2 style={{ margin: 0 }}>조직 구성 관리</h2>
@@ -198,7 +229,7 @@ export function AdminOrgs(): JSX.Element {
           {loading ? '로딩중…' : (
             <ul>
               {items.map((n) => (
-                <TreeNode key={n.id} node={n} onDelete={onDelete} onSelect={onSelect} selectedId={selectedId} />
+                <TreeNode key={n.id} node={n} onDelete={onDelete} onForceDelete={onForceDelete} onSelect={onSelect} selectedId={selectedId} />
               ))}
             </ul>
           )}
