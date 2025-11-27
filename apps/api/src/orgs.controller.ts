@@ -44,35 +44,39 @@ export class OrgsController {
     await tx.checklistItem.deleteMany({ where: { initiativeId: id } });
     await tx.worklog.deleteMany({ where: { initiativeId: id } });
     await tx.delegation.deleteMany({ where: { childInitiativeId: id } });
-    await tx.initiative.delete({ where: { id } });
+    await tx.initiative.deleteMany({ where: { id } });
   }
 
-  private async deleteObjectiveCascade(id: string, tx: any): Promise<void> {
+  private async deleteObjectiveCascade(id: string, tx: any, allowedOrgIds?: Set<string>): Promise<void> {
     // Delete KRs under objective
     const krs = await tx.keyResult.findMany({ where: { objectiveId: id }, select: { id: true } });
     for (const kr of krs) {
-      await this.deleteKrCascade(kr.id, tx);
+      await this.deleteKrCascade(kr.id, tx, allowedOrgIds);
     }
     // Delete child objectives
-    const children = await tx.objective.findMany({ where: ({ parentId: id } as any), select: { id: true } });
+    const childWhere: any = { parentId: id } as any;
+    if (allowedOrgIds && allowedOrgIds.size > 0) childWhere.orgUnitId = { in: Array.from(allowedOrgIds) };
+    const children = await tx.objective.findMany({ where: childWhere, select: { id: true } });
     for (const ch of children) {
-      await this.deleteObjectiveCascade(ch.id, tx);
+      await this.deleteObjectiveCascade(ch.id, tx, allowedOrgIds);
     }
     // Delete objective itself
-    await tx.objective.delete({ where: { id } });
+    await tx.objective.deleteMany({ where: { id } });
   }
 
-  private async deleteKrCascade(id: string, tx: any): Promise<void> {
+  private async deleteKrCascade(id: string, tx: any, allowedOrgIds?: Set<string>): Promise<void> {
     // Delete objectives aligned to this KR
-    const alignedObjs = await tx.objective.findMany({ where: ({ alignsToKrId: id } as any), select: { id: true } });
+    const whereAligned: any = { alignsToKrId: id } as any;
+    if (allowedOrgIds && allowedOrgIds.size > 0) whereAligned.orgUnitId = { in: Array.from(allowedOrgIds) };
+    const alignedObjs = await tx.objective.findMany({ where: whereAligned, select: { id: true } });
     for (const o of alignedObjs) {
-      await this.deleteObjectiveCascade(o.id, tx);
+      await this.deleteObjectiveCascade(o.id, tx, allowedOrgIds);
     }
     const inits = await tx.initiative.findMany({ where: { keyResultId: id }, select: { id: true } });
     for (const ii of inits) {
       await this.deleteInitiativeCascade(ii.id, tx);
     }
-    await tx.keyResult.delete({ where: { id } });
+    await tx.keyResult.deleteMany({ where: { id } });
   }
 
   @Get('tree')
@@ -152,11 +156,12 @@ export class OrgsController {
 
         // delete objectives in subtree without double-deleting children
         const orgIds = order.slice();
-        const objs = await tx.objective.findMany({ where: { orgUnitId: { in: orgIds } }, select: { id: true, parentId: true } });
+        const objs = await tx.objective.findMany({ where: { orgUnitId: { in: orgIds } }, select: { id: true, parentId: true, orgUnitId: true } });
         const allIds = new Set(objs.map((o: any) => o.id));
         const roots = objs.filter((o: any) => !o.parentId || !allIds.has(o.parentId));
+        const allowed = new Set<string>(orgIds);
         for (const r of roots) {
-          await this.deleteObjectiveCascade(r.id, tx);
+          await this.deleteObjectiveCascade(r.id, tx, allowed);
         }
 
         // unlink users from these orgs
@@ -175,7 +180,7 @@ export class OrgsController {
       return { ok: true, ...result };
     } catch (err: any) {
       console.error('[OrgsController] force-delete-failed', { id, error: err?.message, stack: err?.stack });
-      throw err;
+      throw new BadRequestException(err?.message || 'force delete failed');
     }
   }
 
