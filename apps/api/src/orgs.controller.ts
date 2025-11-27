@@ -139,37 +139,44 @@ export class OrgsController {
     if (!root) throw new BadRequestException('org not found');
     console.warn('[OrgsController] force-delete-init', { id, name: root.name });
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      // collect subtree ids in post-order (children first)
-      const order: string[] = [];
-      const collect = async (oid: string) => {
-        const children = await tx.orgUnit.findMany({ where: { parentId: oid }, select: { id: true } });
-        for (const c of children) await collect(c.id);
-        order.push(oid);
-      };
-      await collect(id);
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        // collect subtree ids in post-order (children first)
+        const order: string[] = [];
+        const collect = async (oid: string) => {
+          const children = await tx.orgUnit.findMany({ where: { parentId: oid }, select: { id: true } });
+          for (const c of children) await collect(c.id);
+          order.push(oid);
+        };
+        await collect(id);
 
-      // delete objectives (and cascades) in all orgIds
-      const orgIds = order.slice();
-      const objs = await tx.objective.findMany({ where: { orgUnitId: { in: orgIds } }, select: { id: true } });
-      for (const o of objs) {
-        await this.deleteObjectiveCascade(o.id, tx);
-      }
+        // delete objectives in subtree without double-deleting children
+        const orgIds = order.slice();
+        const objs = await tx.objective.findMany({ where: { orgUnitId: { in: orgIds } }, select: { id: true, parentId: true } });
+        const allIds = new Set(objs.map((o: any) => o.id));
+        const roots = objs.filter((o: any) => !o.parentId || !allIds.has(o.parentId));
+        for (const r of roots) {
+          await this.deleteObjectiveCascade(r.id, tx);
+        }
 
-      // unlink users from these orgs
-      await tx.user.updateMany({ where: { orgUnitId: { in: orgIds } }, data: { orgUnitId: null } });
+        // unlink users from these orgs
+        await tx.user.updateMany({ where: { orgUnitId: { in: orgIds } }, data: { orgUnitId: null } });
 
-      // flatten managers and parents for safety, then delete org units bottom-up
-      await tx.orgUnit.updateMany({ where: { id: { in: orgIds } }, data: { managerId: null } });
-      await tx.orgUnit.updateMany({ where: { parentId: { in: orgIds } }, data: { parentId: null } });
-      for (const oid of order) {
-        await tx.orgUnit.delete({ where: { id: oid } });
-      }
-      return { deletedOrgCount: order.length, deletedObjectiveCount: objs.length };
-    });
+        // flatten managers and parents for safety, then delete org units bottom-up
+        await tx.orgUnit.updateMany({ where: { id: { in: orgIds } }, data: { managerId: null } });
+        await tx.orgUnit.updateMany({ where: { parentId: { in: orgIds } }, data: { parentId: null } });
+        for (const oid of order) {
+          await tx.orgUnit.delete({ where: { id: oid } });
+        }
+        return { deletedOrgCount: order.length, deletedObjectiveCount: objs.length, deletedObjectiveRoots: roots.length };
+      });
 
-    console.warn('[OrgsController] force-delete-success', { id, ...result });
-    return { ok: true, ...result };
+      console.warn('[OrgsController] force-delete-success', { id, ...result });
+      return { ok: true, ...result };
+    } catch (err: any) {
+      console.error('[OrgsController] force-delete-failed', { id, error: err?.message, stack: err?.stack });
+      throw err;
+    }
   }
 
   @Get(':id/members')
