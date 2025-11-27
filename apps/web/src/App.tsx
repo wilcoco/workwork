@@ -194,7 +194,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           <Link to="/search">조회</Link>
         </NavDropdown>
         <NavDropdown label="목표관리">
-          <Link to="/me/goals">내 목표</Link>
+          <Link to="/me/goals">나의 OKR</Link>
           <Link to="/okr/team">팀 KPI 입력</Link>
           <Link to="/okr/team-board">팀 KPI 조회</Link>
           <Link to="/okr/company">전사 OKR 입력</Link>

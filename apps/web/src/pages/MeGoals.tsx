@@ -274,7 +274,7 @@ export function MeGoals() {
   return (
     <div className="content" style={{ display: 'grid', gap: 12, maxWidth: 960, margin: '24px auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>내 목표</h2>
+        <h2 style={{ margin: 0 }}>나의 OKR</h2>
         <div style={{ display: 'flex', gap: 8 }}>
           <button disabled={!userId || loading} onClick={load} className="btn btn-primary">{loading ? '새로고침…' : '새로고침'}</button>
         </div>
@@ -320,53 +320,24 @@ export function MeGoals() {
       </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <h3 style={{ margin: 0 }}>나의 추진 과제 (Tasks)</h3>
-        <div style={card}>
-          <div className="resp-2">
-            <select value={pKrId} onChange={(e) => setPKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
-              <option value="">내 KR 선택</option>
-              {myKrs.map(({ kr, obj }) => (
-                <option key={kr.id} value={kr.id}>[{obj.title}] {kr.title}</option>
-              ))}
-            </select>
-            <input value={pTitle} onChange={(e) => setPTitle(e.target.value)} placeholder="부모 과제 제목" style={input} />
-          </div>
-          <div style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '140px repeat(12, 32px)', gap: 6, alignItems: 'center' }}>
-              <div />
-              {months2026.map((_, i) => (
-                <div key={i} style={{ textAlign: 'center', fontSize: 12, color: '#64748b' }}>{i + 1}</div>
-              ))}
-              {pRows.map((row, rIdx) => (
-                <Fragment key={`row-${rIdx}`}>
-                  <div key={`pt-${rIdx}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <input placeholder={`세부 제목 ${rIdx + 1}`} value={row.title} onChange={(e) => setPRows((prev) => prev.map((rr, i) => i === rIdx ? { ...rr, title: e.target.value } : rr))} style={input} />
-                    <button className="btn btn-ghost" onClick={() => removePRow(rIdx)}>삭제</button>
-                  </div>
-                  {row.months.map((on, mIdx) => (
-                    <div key={`pm-${rIdx}-${mIdx}`} onClick={() => togglePMonth(rIdx, mIdx)}
-                      style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
-                  ))}
-                </Fragment>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn" onClick={addPRow}>세부 추가</button>
-              <button className="btn btn-primary" disabled={!userId || !pKrId || !pTitle} onClick={createPersonalTasks}>추가</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-
-      <section style={{ display: 'grid', gap: 8 }}>
-        <h3 style={{ margin: 0 }}>나의 O-KR 구성</h3>
+        <h3 style={{ margin: 0 }}>나의 개선목표(O) 및 목표성과(KR)</h3>
         <div style={card}>
           <div className="stack-1-2">
             <input value={oTitle} onChange={(e) => setOTitle(e.target.value)} placeholder="나의 Objective 제목" style={input} />
             <input value={krTitle} onChange={(e) => setKrTitle(e.target.value)} placeholder="첫 Key Result 제목" style={input} />
           </div>
           <textarea value={oDesc} onChange={(e) => setODesc(e.target.value)} placeholder="Objective 설명" style={{ ...input, minHeight: 70 }} />
+          <div className="stack-3">
+            <input value={krMetric} onChange={(e) => setKrMetric(e.target.value)} placeholder="KR 내용/측정 기준" style={input} />
+            <input type="number" step="any" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} placeholder="측정 수치" style={input} />
+            <input value={krUnit} onChange={(e) => setKrUnit(e.target.value)} placeholder="단위" style={input} />
+          </div>
+          <div>
+            <select value={krType} onChange={(e) => setKrType(e.target.value as any)} style={{ ...input, width: 'auto', appearance: 'auto' as any }}>
+              <option value="PROJECT">프로젝트형 (간트)</option>
+              <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
+            </select>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '120px repeat(12, 32px)', gap: 8, alignItems: 'center' }}>
             <div style={{ fontSize: 13, color: '#6b7280' }}>기간(2026)</div>
             {months2026.map((_, i) => (
@@ -378,17 +349,6 @@ export function MeGoals() {
                 style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
             ))}
           </div>
-          <div className="stack-3">
-            <input value={krMetric} onChange={(e) => setKrMetric(e.target.value)} placeholder="KR 메트릭(예: %, 건수)" style={input} />
-            <input type="number" step="any" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} placeholder="KR 목표값" style={input} />
-            <input value={krUnit} onChange={(e) => setKrUnit(e.target.value)} placeholder="KR 단위(예: %, 건)" style={input} />
-          </div>
-          <div>
-            <select value={krType} onChange={(e) => setKrType(e.target.value as any)} style={{ ...input, width: 'auto', appearance: 'auto' as any }}>
-              <option value="PROJECT">프로젝트형 (간트)</option>
-              <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
-            </select>
-          </div>
             {extraKrs.length > 0 && (
               <div style={{ display: 'grid', gap: 6 }}>
                 {extraKrs.map((row, i) => (
@@ -399,15 +359,15 @@ export function MeGoals() {
                       }} placeholder="추가 KR 제목" style={input} />
                       <input value={row.metric} onChange={(e) => {
                         const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, metric: v } : r));
-                      }} placeholder="메트릭(예: %, 건수)" style={input} />
+                      }} placeholder="내용/측정 기준" style={input} />
                     </div>
                     <div className="resp-3">
                       <input type="number" step="any" value={row.target} onChange={(e) => {
                         const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, target: v } : r));
-                      }} placeholder="목표값" style={input} />
+                      }} placeholder="측정 수치" style={input} />
                       <input value={row.unit} onChange={(e) => {
                         const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, unit: v } : r));
-                      }} placeholder="단위(예: %, 건)" style={input} />
+                      }} placeholder="단위" style={input} />
                       <select value={row.type} onChange={(e) => {
                         const v = e.target.value as any; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, type: v } : r));
                       }} style={{ ...input, appearance: 'auto' as any }}>
@@ -475,7 +435,44 @@ export function MeGoals() {
           </div>
       </section>
 
-      
+      <section style={{ display: 'grid', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>나의 추진 과제 (Tasks)</h3>
+        <div style={card}>
+          <div className="resp-2">
+            <select value={pKrId} onChange={(e) => setPKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
+              <option value="">내 KR 선택</option>
+              {myKrs.map(({ kr, obj }) => (
+                <option key={kr.id} value={kr.id}>[{obj.title}] {kr.title}</option>
+              ))}
+            </select>
+            <input value={pTitle} onChange={(e) => setPTitle(e.target.value)} placeholder="부모 과제 제목" style={input} />
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '140px repeat(12, 32px)', gap: 6, alignItems: 'center' }}>
+              <div />
+              {months2026.map((_, i) => (
+                <div key={i} style={{ textAlign: 'center', fontSize: 12, color: '#64748b' }}>{i + 1}</div>
+              ))}
+              {pRows.map((row, rIdx) => (
+                <Fragment key={`row-${rIdx}`}>
+                  <div key={`pt-${rIdx}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input placeholder={`세부 제목 ${rIdx + 1}`} value={row.title} onChange={(e) => setPRows((prev) => prev.map((rr, i) => i === rIdx ? { ...rr, title: e.target.value } : rr))} style={input} />
+                    <button className="btn btn-ghost" onClick={() => removePRow(rIdx)}>삭제</button>
+                  </div>
+                  {row.months.map((on, mIdx) => (
+                    <div key={`pm-${rIdx}-${mIdx}`} onClick={() => togglePMonth(rIdx, mIdx)}
+                      style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
+                  ))}
+                </Fragment>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn" onClick={addPRow}>세부 추가</button>
+              <button className="btn btn-primary" disabled={!userId || !pKrId || !pTitle} onClick={createPersonalTasks}>추가</button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>나의 O-KR 목록</h3>
