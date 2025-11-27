@@ -9,10 +9,14 @@ import { todayKstYmd } from '../lib/time';
 
 export function WorklogQuickNew() {
   const nav = useNavigate();
-  const [date, setDate] = useState<string>(() => todayKstYmd());
+  function firstDayKstYmd() {
+    const t = todayKstYmd();
+    return t.slice(0, 8) + '01';
+  }
+  const [date, setDate] = useState<string>(() => firstDayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [orgUnitId, setOrgUnitId] = useState<string>('');
-  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string }>>([]);
+  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string }>>([]);
   const [selection, setSelection] = useState<string>(''); // 'init:<id>'
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
@@ -37,16 +41,16 @@ export function WorklogQuickNew() {
         if (!ou) return;
         const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(ou)}`);
         const objs = res.items || [];
-        const tasks: Array<{ id: string; title: string; period: string }> = [];
+        const tasks: Array<{ id: string; title: string; period: string; startAt?: string }> = [];
         for (const o of objs) {
           for (const kr of (o.keyResults || [])) {
             for (const ii of (kr.initiatives || [])) {
-              const p = (ii.startAt || ii.endAt) ? ` (${ii.startAt ? String(ii.startAt).slice(0,10) : ''}${ii.startAt || ii.endAt ? ' ~ ' : ''}${ii.endAt ? String(ii.endAt).slice(0,10) : ''})` : '';
-              tasks.push({ id: ii.id, title: `[${o.title}] ${ii.title}`, period: p });
               if (Array.isArray(ii.children)) {
                 for (const ch of ii.children) {
-                  const pc = (ch.startAt || ch.endAt) ? ` (${ch.startAt ? String(ch.startAt).slice(0,10) : ''}${ch.startAt || ch.endAt ? ' ~ ' : ''}${ch.endAt ? String(ch.endAt).slice(0,10) : ''})` : '';
-                  tasks.push({ id: ch.id, title: `[${o.title}] ${ii.title} / ${ch.title}`, period: pc });
+                  const s = ch.startAt ? String(ch.startAt).slice(0,10) : '';
+                  const e = ch.endAt ? String(ch.endAt).slice(0,10) : '';
+                  const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
+                  tasks.push({ id: ch.id, title: `${ii.title} / ${ch.title}`, period: pc, startAt: s });
                 }
               }
             }
@@ -183,7 +187,19 @@ export function WorklogQuickNew() {
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제</label>
-            <select value={selection} onChange={(e) => setSelection(e.target.value)} style={{ ...input, appearance: 'auto' as any }} required>
+            <select value={selection} onChange={(e) => {
+              const v = e.target.value;
+              setSelection(v);
+              const id = v.startsWith('init:') ? v.substring(5) : '';
+              const t = teamTasks.find((x) => x.id === id);
+              if (t?.startAt) {
+                const y = t.startAt.slice(0,4);
+                const m = t.startAt.slice(5,7);
+                setDate(`${y}-${m}-01`);
+              } else {
+                setDate(firstDayKstYmd());
+              }
+            }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="" disabled>과제를 선택하세요</option>
               {teamTasks.length > 0 ? (
                 teamTasks.map((t) => (
