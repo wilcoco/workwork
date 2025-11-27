@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
 
@@ -85,23 +85,65 @@ export function MeGoals() {
     }
   }
 
+  async function createPersonalTasks() {
+    if (!userId || !pKrId || !pTitle) return;
+    try {
+      setError(null);
+      const parent = await apiJson(`/api/initiatives`, {
+        method: 'POST',
+        body: JSON.stringify({
+          keyResultId: pKrId,
+          ownerId: userId,
+          title: pTitle,
+        }),
+      });
+      for (let i = 0; i < pRows.length; i++) {
+        const row = pRows[i];
+        const sel = row.months.map((v, idx) => (v ? idx : -1)).filter((v) => v >= 0);
+        if (!sel.length) continue;
+        const mStart = Math.min(...sel);
+        const mEnd = Math.max(...sel);
+        const s = new Date(2026, mStart, 1);
+        const e = new Date(2026, mEnd + 1, 0);
+        const sYmd = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2,'0')}-${String(s.getDate()).padStart(2,'0')}`;
+        const eYmd = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2,'0')}-${String(e.getDate()).padStart(2,'0')}`;
+        const title = row.title?.trim() || `세부 ${i + 1}`;
+        await apiJson(`/api/initiatives`, {
+          method: 'POST',
+          body: JSON.stringify({
+            keyResultId: pKrId,
+            ownerId: userId,
+            title,
+            startAt: sYmd,
+            endAt: eYmd,
+            parentId: parent.id,
+          }),
+        });
+      }
+      setPTitle(''); setPRows([{ title: '', months: Array(12).fill(false) }]);
+      const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+      setMyOkrs(mokrs.items || []);
+    } catch (e: any) {
+      setError(e.message || '과제 생성 실패');
+    }
+  }
+
+  const [pKrId, setPKrId] = useState('');
+  const [pTitle, setPTitle] = useState('');
+  const [pRows, setPRows] = useState<Array<{ title: string; months: boolean[] }>>([{ title: '', months: Array(12).fill(false) }]);
+  function togglePMonth(rIdx: number, mIdx: number) {
+    setPRows((prev) => prev.map((r, i) => i === rIdx ? { ...r, months: r.months.map((v, j) => j === mIdx ? !v : v) } : r));
+  }
+  function addPRow() { setPRows((prev) => [...prev, { title: '', months: Array(12).fill(false) }]); }
+  function removePRow(idx: number) { setPRows((prev) => prev.filter((_, i) => i !== idx)); }
+  const myKrs = useMemo(() => myOkrs.flatMap((o: any) => (o.keyResults || []).map((kr: any) => ({ kr, obj: o }))), [myOkrs]);
+
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const projects = items.filter((it) => it.type === 'PROJECT');
-  const ops = items.filter((it) => it.type === 'OPERATIONAL');
-  const [createOpen, setCreateOpen] = useState(false);
-  const [gTitle, setGTitle] = useState('');
-  const [gDesc, setGDesc] = useState('');
-  const [gKind, setGKind] = useState<'QUALITATIVE' | 'QUANTITATIVE'>('QUALITATIVE');
-  const [gMetric, setGMetric] = useState('');
-  const [gTarget, setGTarget] = useState<string>('');
-  const [gUnit, setGUnit] = useState('');
-  const [gStart, setGStart] = useState('');
-  const [gEnd, setGEnd] = useState('');
-  const [creating, setCreating] = useState(false);
+  
 
   // Build my O-KR under a parent KR
   const [roleSaving, setRoleSaving] = useState(false);
@@ -117,6 +159,12 @@ export function MeGoals() {
   const [krType, setKrType] = useState<'PROJECT' | 'OPERATIONAL'>('PROJECT');
   const [okrCreating, setOkrCreating] = useState(false);
   const [extraKrs, setExtraKrs] = useState<Array<{ title: string; metric: string; target: string; unit: string; type: 'PROJECT' | 'OPERATIONAL' }>>([]);
+
+  const [oMonths, setOMonths] = useState<boolean[]>(() => Array(12).fill(false));
+  const months2026 = useMemo(() => Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1)), []);
+  function toggleOMonth(idx: number) {
+    setOMonths((prev) => prev.map((v, i) => (i === idx ? !v : v)));
+  }
 
   // Per-objective KR create form state
   const [krForm, setKrForm] = useState<Record<string, { title: string; metric: string; target: string; unit: string; type: 'PROJECT' | 'OPERATIONAL'; saving?: boolean }>>({});
@@ -228,7 +276,6 @@ export function MeGoals() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>내 목표</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setCreateOpen((v) => !v)} className="btn btn-ghost">{createOpen ? '닫기' : '신규 목표'}</button>
           <button disabled={!userId || loading} onClick={load} className="btn btn-primary">{loading ? '새로고침…' : '새로고침'}</button>
         </div>
       </div>
@@ -273,33 +320,44 @@ export function MeGoals() {
       </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
-        <h3 style={{ margin: 0 }}>팀 KPI/OKR 선택 후 세부 과제 추가</h3>
+        <h3 style={{ margin: 0 }}>나의 추진 과제 (Tasks)</h3>
         <div style={card}>
           <div className="resp-2">
-            <select value={tKrId} onChange={(e) => setTKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
-              <option value="">팀 KR 선택</option>
-              {teamKrs.map((kr) => (
-                <option key={kr.id} value={kr.id}>[{kr.objective?.title || '-'}] {kr.title}</option>
+            <select value={pKrId} onChange={(e) => setPKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
+              <option value="">내 KR 선택</option>
+              {myKrs.map(({ kr, obj }) => (
+                <option key={kr.id} value={kr.id}>[{obj.title}] {kr.title}</option>
               ))}
             </select>
-            <input value={tInitTitle} onChange={(e) => setTInitTitle(e.target.value)} placeholder="세부 과제명" style={input} />
+            <input value={pTitle} onChange={(e) => setPTitle(e.target.value)} placeholder="부모 과제 제목" style={input} />
           </div>
-          <div className="resp-3">
-            <input type="date" value={tStart} onChange={(e) => setTStart(e.target.value)} style={input} />
-            <input type="date" value={tEnd} onChange={(e) => setTEnd(e.target.value)} style={input} />
-            <select value={tCadence} onChange={(e) => setTCadence(e.target.value as any)} style={{ ...input, appearance: 'auto' as any }}>
-              <option value="">주기(선택)</option>
-              <option value="DAILY">일</option>
-              <option value="WEEKLY">주</option>
-              <option value="MONTHLY">월</option>
-            </select>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '140px repeat(12, 32px)', gap: 6, alignItems: 'center' }}>
+              <div />
+              {months2026.map((_, i) => (
+                <div key={i} style={{ textAlign: 'center', fontSize: 12, color: '#64748b' }}>{i + 1}</div>
+              ))}
+              {pRows.map((row, rIdx) => (
+                <Fragment key={`row-${rIdx}`}>
+                  <div key={`pt-${rIdx}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input placeholder={`세부 제목 ${rIdx + 1}`} value={row.title} onChange={(e) => setPRows((prev) => prev.map((rr, i) => i === rIdx ? { ...rr, title: e.target.value } : rr))} style={input} />
+                    <button className="btn btn-ghost" onClick={() => removePRow(rIdx)}>삭제</button>
+                  </div>
+                  {row.months.map((on, mIdx) => (
+                    <div key={`pm-${rIdx}-${mIdx}`} onClick={() => togglePMonth(rIdx, mIdx)}
+                      style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
+                  ))}
+                </Fragment>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn" onClick={addPRow}>세부 추가</button>
+              <button className="btn btn-primary" disabled={!userId || !pKrId || !pTitle} onClick={createPersonalTasks}>추가</button>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button className="btn btn-primary" disabled={!userId || !tKrId || !tInitTitle || tSaving} onClick={createTeamInitiative}>{tSaving ? '생성중…' : '세부 과제 생성'}</button>
-          </div>
-          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>생성된 세부 과제는 업무일지 작성 시 "나의 과제"에서 선택할 수 있습니다.</div>
         </div>
       </section>
+
 
       <section style={{ display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>나의 O-KR 구성</h3>
@@ -309,9 +367,16 @@ export function MeGoals() {
             <input value={krTitle} onChange={(e) => setKrTitle(e.target.value)} placeholder="첫 Key Result 제목" style={input} />
           </div>
           <textarea value={oDesc} onChange={(e) => setODesc(e.target.value)} placeholder="Objective 설명" style={{ ...input, minHeight: 70 }} />
-          <div className="stack-1-2">
-            <input type="date" value={oStart} onChange={(e) => setOStart(e.target.value)} style={input} />
-            <input type="date" value={oEnd} onChange={(e) => setOEnd(e.target.value)} style={input} />
+          <div style={{ display: 'grid', gridTemplateColumns: '120px repeat(12, 32px)', gap: 8, alignItems: 'center' }}>
+            <div style={{ fontSize: 13, color: '#6b7280' }}>기간(2026)</div>
+            {months2026.map((_, i) => (
+              <div key={i} style={{ textAlign: 'center', fontSize: 12, color: '#64748b' }}>{i + 1}</div>
+            ))}
+            <div style={{ gridColumn: '1 / span 1' }} />
+            {oMonths.map((on, i) => (
+              <div key={`m-${i}`} onClick={() => toggleOMonth(i)}
+                style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
+            ))}
           </div>
           <div className="stack-3">
             <input value={krMetric} onChange={(e) => setKrMetric(e.target.value)} placeholder="KR 메트릭(예: %, 건수)" style={input} />
@@ -324,7 +389,6 @@ export function MeGoals() {
               <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
             </select>
           </div>
-            {/* Extra KR rows */}
             {extraKrs.length > 0 && (
               <div style={{ display: 'grid', gap: 6 }}>
                 {extraKrs.map((row, i) => (
@@ -365,10 +429,18 @@ export function MeGoals() {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={okrCreating || !userId || !oTitle || !krTitle || !krMetric || !krTarget || !krUnit || !oStart || !oEnd}
+                disabled={okrCreating || !userId || !oTitle || !krTitle || !krMetric || !krTarget || !krUnit || !oMonths.some(Boolean)}
                 onClick={async () => {
                   try {
                     setOkrCreating(true);
+                    const sel = oMonths.map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+                    if (!sel.length) throw new Error('기간(월)을 선택하세요');
+                    const mStart = Math.min(...sel);
+                    const mEnd = Math.max(...sel);
+                    const s = new Date(2026, mStart, 1);
+                    const e = new Date(2026, mEnd + 1, 0);
+                    const periodStart = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`;
+                    const periodEnd = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, '0')}-${String(e.getDate()).padStart(2, '0')}`;
                     const krs = [
                       { title: krTitle, metric: krMetric, target: Number(krTarget), unit: krUnit, type: krType },
                       ...extraKrs
@@ -381,13 +453,14 @@ export function MeGoals() {
                         userId,
                         title: oTitle,
                         description: oDesc || undefined,
-                        periodStart: oStart,
-                        periodEnd: oEnd,
+                        periodStart,
+                        periodEnd,
                         alignsToKrId: parentKrId || undefined,
                         krs,
                       }),
                     });
                     setOTitle(''); setODesc(''); setOStart(''); setOEnd(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrUnit(''); setKrType('PROJECT');
+                    setOMonths(Array(12).fill(false));
                     setExtraKrs([]);
                     const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
                     setMyOkrs(mokrs.items || []);
@@ -402,63 +475,7 @@ export function MeGoals() {
           </div>
       </section>
 
-      {createOpen && (
-        <div style={card}>
-          <div style={{ display: 'grid', gap: 8 }}>
-            <input value={gTitle} onChange={(e) => setGTitle(e.target.value)} placeholder="제목" style={input} />
-            <textarea value={gDesc} onChange={(e) => setGDesc(e.target.value)} placeholder="설명" style={{ ...input, minHeight: 80 }} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <select value={gKind} onChange={(e) => setGKind(e.target.value as any)} style={{ ...input, appearance: 'auto' as any }}>
-                <option value="QUALITATIVE">QUALITATIVE</option>
-                <option value="QUANTITATIVE">QUANTITATIVE</option>
-              </select>
-              <input value={gMetric} onChange={(e) => setGMetric(e.target.value)} placeholder="메트릭(예: %, 건수)" style={input} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input type="number" step="any" value={gTarget} onChange={(e) => setGTarget(e.target.value)} placeholder="목표값" style={input} />
-              <input value={gUnit} onChange={(e) => setGUnit(e.target.value)} placeholder="단위(예: %, 건)" style={input} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <input type="date" value={gStart} onChange={(e) => setGStart(e.target.value)} style={input} />
-              <input type="date" value={gEnd} onChange={(e) => setGEnd(e.target.value)} style={input} />
-            </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                style={primaryBtn}
-                disabled={!gTitle || creating}
-                onClick={async () => {
-                  try {
-                    setCreating(true);
-                    await apiJson('/api/my-goals', {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        userId,
-                        title: gTitle,
-                        description: gDesc || undefined,
-                        kind: gKind,
-                        metric: gMetric || undefined,
-                        target: gTarget ? Number(gTarget) : undefined,
-                        unit: gUnit || undefined,
-                        startAt: gStart || undefined,
-                        endAt: gEnd || undefined,
-                      }),
-                    });
-                    // reset form and reload
-                    setGTitle(''); setGDesc(''); setGKind('QUALITATIVE'); setGMetric(''); setGTarget(''); setGUnit(''); setGStart(''); setGEnd('');
-                    setCreateOpen(false);
-                    await load();
-                  } catch (e: any) {
-                    setError(e.message || '생성 실패');
-                  } finally {
-                    setCreating(false);
-                  }
-                }}
-              >{creating ? '생성중…' : '생성'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      
 
       <section style={{ display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>나의 O-KR 목록</h3>
@@ -516,7 +533,6 @@ export function MeGoals() {
                   ))}
                 </div>
               )}
-              {/* Add KR form */}
               <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
                 <div className="resp-2">
                   <input value={(krForm[o.id]?.title) || ''} onChange={(e) => setKrField(o.id, 'title', e.target.value)} placeholder="추가 KR 제목" style={input} />
@@ -541,44 +557,7 @@ export function MeGoals() {
         </div>
       </section>
 
-      <section style={{ display: 'grid', gap: 8 }}>
-        <h3 style={{ margin: 0 }}>내 목표 목록</h3>
-        <div style={{ display: 'grid', gap: 8 }}>
-          {goals.map((g) => (
-            <div key={g.id} style={card}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
-                <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
-                  {g.kind}
-                </div>
-                <div style={{ marginLeft: 'auto' }}>
-                  {(g.startAt ? formatKstDatetime(g.startAt) : '-') + ' ~ ' + (g.endAt ? formatKstDatetime(g.endAt) : '-')}
-                </div>
-                <button
-                  className="btn btn-ghost"
-                  onClick={async () => {
-                    if (!confirm('해당 개인 목표를 삭제할까요?')) return;
-                    try {
-                      await apiJson(`/api/my-goals/${encodeURIComponent(g.id)}`, { method: 'DELETE' });
-                      const myg = await apiJson<{ items: any[] }>(`/api/my-goals?userId=${encodeURIComponent(userId)}`);
-                      setGoals(myg.items || []);
-                    } catch (e: any) {
-                      setError(e.message || '삭제 실패');
-                    }
-                  }}
-                >삭제</button>
-              </div>
-              <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{g.title}</div>
-              {g.description && <div style={{ marginTop: 6, color: '#374151' }}>{g.description}</div>}
-              {(g.metric || g.target || g.unit) && (
-                <div style={{ marginTop: 6, color: '#475569', fontSize: 13 }}>
-                  지표: {g.metric || '-'} / 목표: {g.target ?? '-'} {g.unit || ''}
-                </div>
-              )}
-            </div>
-          ))}
-          {!goals.length && <div style={{ color: '#64748b' }}>아직 등록된 목표가 없습니다. 상단의 "신규 목표" 버튼으로 추가하세요.</div>}
-        </div>
-      </section>
+      
 
       {/* 개인 과제 섹션은 추후 별도 페이지로 분리 예정 */}
     </div>
