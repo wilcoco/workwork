@@ -163,14 +163,16 @@ export function TeamKpiInput() {
         const start = new Date(2026, mStart, 1);
         const end = new Date(2026, mEnd + 1, 0);
         const childTitle = row.title && row.title.trim() ? row.title.trim() : `세부 ${i + 1}`;
+        const sYmd = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
+        const eYmd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
         await apiJson(`/api/initiatives`, {
           method: 'POST',
           body: JSON.stringify({
             keyResultId: initKrId,
             ownerId: userId,
             title: childTitle,
-            startAt: start.toISOString().slice(0,10),
-            endAt: end.toISOString().slice(0,10),
+            startAt: sYmd,
+            endAt: eYmd,
             parentId: parent.id,
           }),
         });
