@@ -166,6 +166,12 @@ export function AdminOrgs(): JSX.Element {
     if (!confirm('정말 삭제하시겠습니까?\n자식 조직과 사용자 연결이 없는 경우에만 삭제됩니다.')) return;
     try {
       await apiJson(`/api/orgs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      // If the deleted org is currently selected, clear selection and side data
+      if (selectedId === id) {
+        setSelectedId('');
+        setMembers([]);
+        setObjectives([]);
+      }
       await load();
     } catch (e: any) {
       setError(e.message || '삭제 실패');
