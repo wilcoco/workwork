@@ -358,7 +358,25 @@ export function TeamKpiInput() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                   <span>- {ii.title}</span>
                                   {(ii.startAt || ii.endAt) && (
-                                    <span style={{ fontSize: 12, color: '#64748b' }}>({ii.startAt ? String(ii.startAt).slice(0,10) : ''}{ii.startAt || ii.endAt ? ' ~ ' : ''}{ii.endAt ? String(ii.endAt).slice(0,10) : ''})</span>
+                                    <span style={{ fontSize: 12, color: '#64748b' }}>{(() => {
+                                      const lastDay = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+                                      const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+                                      const s0 = ii.startAt ? new Date(ii.startAt) : null;
+                                      const e0 = ii.endAt ? new Date(ii.endAt) : null;
+                                      let s = s0;
+                                      if (s0) {
+                                        const sNext = addDays(s0, 1);
+                                        if (s0.getDate() >= 28 && sNext.getDate() === 1) s = sNext;
+                                      }
+                                      let e = e0;
+                                      if (e0) {
+                                        const eNext = addDays(e0, 1);
+                                        if (e0.getDate() >= 28 && eNext.getDate() === lastDay(eNext)) e = eNext;
+                                      }
+                                      const sy = s ? `${s.getFullYear()}-${String(s.getMonth()+1).padStart(2,'0')}-${String(s.getDate()).padStart(2,'0')}` : '';
+                                      const ey = e ? `${e.getFullYear()}-${String(e.getMonth()+1).padStart(2,'0')}-${String(e.getDate()).padStart(2,'0')}` : '';
+                                      return `(${sy}${sy || ey ? ' ~ ' : ''}${ey})`;
+                                    })()}</span>
                                   )}
                                   <button
                                     className="btn btn-ghost"
@@ -380,7 +398,25 @@ export function TeamKpiInput() {
                                       <li key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                         <span>· {ch.title}</span>
                                         {(ch.startAt || ch.endAt) && (
-                                          <span style={{ fontSize: 12, color: '#94a3b8' }}>({ch.startAt ? String(ch.startAt).slice(0,10) : ''}{ch.startAt || ch.endAt ? ' ~ ' : ''}{ch.endAt ? String(ch.endAt).slice(0,10) : ''})</span>
+                                          <span style={{ fontSize: 12, color: '#94a3b8' }}>{(() => {
+                                            const lastDay = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+                                            const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+                                            const s0 = ch.startAt ? new Date(ch.startAt) : null;
+                                            const e0 = ch.endAt ? new Date(ch.endAt) : null;
+                                            let s = s0;
+                                            if (s0) {
+                                              const sNext = addDays(s0, 1);
+                                              if (s0.getDate() >= 28 && sNext.getDate() === 1) s = sNext;
+                                            }
+                                            let e = e0;
+                                            if (e0) {
+                                              const eNext = addDays(e0, 1);
+                                              if (e0.getDate() >= 28 && eNext.getDate() === lastDay(eNext)) e = eNext;
+                                            }
+                                            const sy = s ? `${s.getFullYear()}-${String(s.getMonth()+1).padStart(2,'0')}-${String(s.getDate()).padStart(2,'0')}` : '';
+                                            const ey = e ? `${e.getFullYear()}-${String(e.getMonth()+1).padStart(2,'0')}-${String(e.getDate()).padStart(2,'0')}` : '';
+                                            return `(${sy}${sy || ey ? ' ~ ' : ''}${ey})`;
+                                          })()}</span>
                                         )}
                                       </li>
                                     ))}

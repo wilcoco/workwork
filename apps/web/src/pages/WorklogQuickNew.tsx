@@ -47,8 +47,22 @@ export function WorklogQuickNew() {
             for (const ii of (kr.initiatives || [])) {
               if (Array.isArray(ii.children)) {
                 for (const ch of ii.children) {
-                  const s = ch.startAt ? String(ch.startAt).slice(0,10) : '';
-                  const e = ch.endAt ? String(ch.endAt).slice(0,10) : '';
+                  const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+                  const lastDay = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+                  const s0 = ch.startAt ? new Date(ch.startAt) : null;
+                  const e0 = ch.endAt ? new Date(ch.endAt) : null;
+                  let sD = s0;
+                  if (s0) {
+                    const sNext = addDays(s0, 1);
+                    if (s0.getDate() >= 28 && sNext.getDate() === 1) sD = sNext;
+                  }
+                  let eD = e0;
+                  if (e0) {
+                    const eNext = addDays(e0, 1);
+                    if (e0.getDate() >= 28 && eNext.getDate() === lastDay(eNext)) eD = eNext;
+                  }
+                  const s = sD ? `${sD.getFullYear()}-${String(sD.getMonth()+1).padStart(2,'0')}-${String(sD.getDate()).padStart(2,'0')}` : '';
+                  const e = eD ? `${eD.getFullYear()}-${String(eD.getMonth()+1).padStart(2,'0')}-${String(eD.getDate()).padStart(2,'0')}` : '';
                   const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
                   tasks.push({ id: ch.id, title: `${ii.title} / ${ch.title}`, period: pc, startAt: s });
                 }
