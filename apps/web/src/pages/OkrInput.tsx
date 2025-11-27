@@ -16,9 +16,9 @@ export function OkrInput() {
   const months2026 = useMemo(() => Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1)), []);
   function toggleOMonth(i: number) { setOMonths(prev => prev.map((v, idx) => idx === i ? !v : v)); }
 
-  type Row = { title: string; metric: string; type: 'PROJECT' | 'OPERATIONAL'; months: boolean[] };
-  const [rows, setRows] = useState<Row[]>([{ title: '', metric: '', type: 'PROJECT', months: Array(12).fill(false) }] );
-  function addRow() { setRows(prev => [...prev, { title: '', metric: '', type: 'PROJECT', months: Array(12).fill(false) }]); }
+  type Row = { title: string; metric: string; target: string; unit: string; months: boolean[] };
+  const [rows, setRows] = useState<Row[]>([{ title: '', metric: '', target: '', unit: '', months: Array(12).fill(false) }] );
+  function addRow() { setRows(prev => [...prev, { title: '', metric: '', target: '', unit: '', months: Array(12).fill(false) }]); }
   function removeRow(i: number) { setRows(prev => prev.filter((_, idx) => idx !== i)); }
   function toggleRMonth(r: number, m: number) {
     setRows(prev => prev.map((row, i) => i === r ? { ...row, months: row.months.map((v, j) => j === m ? !v : v) } : row));
@@ -54,7 +54,7 @@ export function OkrInput() {
       const selO = oMonths.map((v, i) => v ? i : -1).filter(i => i >= 0);
       if (!selO.length) throw new Error('Objective 기간');
       if (myRole !== 'CEO' && !parentKrId) throw new Error('상위 O-KR');
-      const validRows = rows.filter(r => r.title && r.metric);
+      const validRows = rows.filter(r => r.title && r.metric && r.target !== '' && r.unit);
       if (!validRows.length) throw new Error('KR 최소 1개');
 
       const mStart = Math.min(...selO);
@@ -72,7 +72,7 @@ export function OkrInput() {
       for (const r of validRows) {
         const kr = await apiJson<{ id: string }>(`/api/okrs/objectives/${encodeURIComponent(obj.id)}/krs`, {
           method: 'POST',
-          body: JSON.stringify({ userId, title: r.title, metric: r.metric, type: r.type }),
+          body: JSON.stringify({ userId, title: r.title, metric: r.metric, target: Number(r.target), unit: r.unit }),
         });
         const sel = r.months.map((v, i) => v ? i : -1).filter(i => i >= 0);
         if (sel.length) {
@@ -89,7 +89,7 @@ export function OkrInput() {
         }
       }
 
-      setOTitle(''); setODesc(''); setOMonths(Array(12).fill(false)); setRows([{ title: '', metric: '', type: 'PROJECT', months: Array(12).fill(false) }]); setParentKrId('');
+      setOTitle(''); setODesc(''); setOMonths(Array(12).fill(false)); setRows([{ title: '', metric: '', target: '', unit: '', months: Array(12).fill(false) }]); setParentKrId('');
       alert('OKR이 저장되었습니다');
     } catch (e: any) {
       setError(e.message || '저장 실패');
@@ -164,13 +164,11 @@ export function OkrInput() {
               <div key={i} style={{ display: 'grid', gap: 8, border: '1px dashed #e5e7eb', borderRadius: 8, padding: 8 }}>
                 <div className="resp-2">
                   <input value={r.title} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, title: e.target.value } : rr))} placeholder={`KR ${i+1} 제목`} style={input} />
-                  <input value={r.metric} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, metric: e.target.value } : rr))} placeholder="KR 내용" style={input} />
+                  <input value={r.metric} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, metric: e.target.value } : rr))} placeholder="KR 내용/측정 기준" style={input} />
                 </div>
-                <div>
-                  <select value={r.type} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, type: e.target.value as any } : rr))} style={{ ...input, appearance: 'auto' as any }}>
-                    <option value="PROJECT">프로젝트형 (간트)</option>
-                    <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
-                  </select>
+                <div className="resp-3">
+                  <input type="number" step="any" value={r.target} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, target: e.target.value } : rr))} placeholder="측정 수치" style={input} />
+                  <input value={r.unit} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, unit: e.target.value } : rr))} placeholder="단위" style={input} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '140px repeat(12, 32px)', gap: 6, alignItems: 'center' }}>
                   <div />

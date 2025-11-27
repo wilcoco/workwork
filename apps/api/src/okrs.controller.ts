@@ -12,7 +12,7 @@ class CreateObjectiveDto {
   @IsOptional() @IsString() orgUnitId?: string;
   // Optional: create multiple KRs together
   // Using any[] for simplicity; validated minimally at runtime
-  @IsOptional() krs?: Array<{ title: string; metric: string; target?: number; unit?: string; type?: 'PROJECT' | 'OPERATIONAL' }>;
+  @IsOptional() krs?: Array<{ title: string; metric: string; target: number; unit: string; type?: 'PROJECT' | 'OPERATIONAL' }>;
   @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
 }
@@ -20,9 +20,9 @@ class CreateObjectiveDto {
 class CreateKeyResultDto {
   @IsString() @IsNotEmpty() userId!: string;
   @IsString() @IsNotEmpty() title!: string;
-  @IsOptional() @IsString() metric?: string;
-  @IsOptional() @IsNumber() target?: number;
-  @IsOptional() @IsString() unit?: string;
+  @IsString() @IsNotEmpty() metric!: string;
+  @IsNumber() target!: number;
+  @IsString() @IsNotEmpty() unit!: string;
   @IsOptional() @IsEnum({ PROJECT: 'PROJECT', OPERATIONAL: 'OPERATIONAL' } as any)
   type?: 'PROJECT' | 'OPERATIONAL';
   @IsOptional() @IsNumber() weight?: number;
@@ -218,14 +218,14 @@ export class OkrsController {
       // Optional bulk KRs
       if (Array.isArray(dto.krs) && dto.krs.length > 0) {
         for (const k of dto.krs) {
-          if (!k || !k.title) continue;
+          if (!k || !k.title || !k.metric || typeof k.target !== 'number' || !k.unit) continue;
           await tx.keyResult.create({
             data: ({
               objectiveId: rec.id,
               title: k.title,
               metric: (k.metric ?? ''),
-              target: typeof k.target === 'number' ? k.target : undefined,
-              unit: k.unit ?? undefined,
+              target: k.target,
+              unit: k.unit,
               ownerId: user.id,
               weight: 1,
               type: (k.type as any) ?? 'PROJECT',
@@ -248,8 +248,8 @@ export class OkrsController {
         objectiveId,
         title: dto.title,
         metric: (dto.metric ?? ''),
-        target: typeof dto.target === 'number' ? dto.target : undefined,
-        unit: dto.unit ?? undefined,
+        target: dto.target,
+        unit: dto.unit,
         ownerId: dto.userId,
         weight: dto.weight ?? 1,
         type: (dto.type as any) ?? undefined,

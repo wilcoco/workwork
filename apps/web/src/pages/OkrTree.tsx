@@ -42,7 +42,10 @@ export function OkrTree() {
                   <div style={{ fontWeight: 600 }}>KR:</div>
                   <div>{kr.title}</div>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: '#94a3b8' }}>{kr.metric}</span>
+                    <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                      {kr.metric}
+                      {kr.target != null ? ` / ${kr.target}${kr.unit ? ' ' + kr.unit : ''}` : ''}
+                    </span>
                     <button className="btn btn-ghost" onClick={() => setExpanded((prev) => ({ ...prev, [kr.id]: !prev[kr.id] }))}>
                       {expanded[kr.id] || depth < defaultExpandDepth ? '접기' : `하위 보기 (${(kr.children || []).length})`}
                     </button>

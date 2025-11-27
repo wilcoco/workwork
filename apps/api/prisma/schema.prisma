@@ -140,8 +140,8 @@ model KeyResult {
   objective    Objective @relation(fields: [objectiveId], references: [id])
   title        String
   metric       String
-  target       Float?
-  unit         String?
+  target       Float
+  unit         String
   weight       Float     @default(1)
   ownerId      String
   owner        User      @relation("KeyResultOwner", fields: [ownerId], references: [id])

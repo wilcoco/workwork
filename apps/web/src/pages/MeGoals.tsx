@@ -156,9 +156,9 @@ export function MeGoals() {
   const [krMetric, setKrMetric] = useState('');
   const [krTarget, setKrTarget] = useState<string>('');
   const [krUnit, setKrUnit] = useState('');
-  const [krType, setKrType] = useState<'PROJECT' | 'OPERATIONAL'>('PROJECT');
+  
   const [okrCreating, setOkrCreating] = useState(false);
-  const [extraKrs, setExtraKrs] = useState<Array<{ title: string; metric: string; target: string; unit: string; type: 'PROJECT' | 'OPERATIONAL' }>>([]);
+  const [extraKrs, setExtraKrs] = useState<Array<{ title: string; metric: string; target: string; unit: string }>>([]);
 
   const [oMonths, setOMonths] = useState<boolean[]>(() => Array(12).fill(false));
   const months2026 = useMemo(() => Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1)), []);
@@ -167,30 +167,28 @@ export function MeGoals() {
   }
 
   // Per-objective KR create form state
-  const [krForm, setKrForm] = useState<Record<string, { title: string; metric: string; target: string; unit: string; type: 'PROJECT' | 'OPERATIONAL'; saving?: boolean }>>({});
+  const [krForm, setKrForm] = useState<Record<string, { title: string; metric: string; target: string; unit: string; saving?: boolean }>>({});
 
   function setKrField(objId: string, field: keyof (typeof krForm)[string], value: any) {
     setKrForm((prev) => {
-      const base = prev[objId] ?? { title: '', metric: '', target: '', unit: '', type: 'PROJECT' as const };
+      const base = prev[objId] ?? { title: '', metric: '', target: '', unit: '' };
       return { ...prev, [objId]: { ...base, [field]: value } };
     });
   }
 
   async function addKr(objId: string) {
-    const f = krForm[objId] || { title: '', metric: '', target: '', unit: '', type: 'PROJECT' as const };
-    if (!userId || !f.title || !f.metric) return;
+    const f = krForm[objId] || { title: '', metric: '', target: '', unit: '' };
+    if (!userId || !f.title || !f.metric || !f.target || !f.unit) return;
     setKrForm((prev) => ({ ...prev, [objId]: { ...(prev[objId] || f), saving: true } }));
     try {
-      const payload: any = { userId, title: f.title, metric: f.metric, type: f.type };
-      if (String(f.target || '').trim() !== '') payload.target = Number(f.target);
-      if (String(f.unit || '').trim() !== '') payload.unit = f.unit;
+      const payload: any = { userId, title: f.title, metric: f.metric, target: Number(f.target), unit: f.unit };
       await apiJson(`/api/okrs/objectives/${encodeURIComponent(objId)}/krs`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
       const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
       setMyOkrs(mokrs.items || []);
-      setKrForm((prev) => ({ ...prev, [objId]: { title: '', metric: '', target: '', unit: '', type: 'PROJECT' } }));
+      setKrForm((prev) => ({ ...prev, [objId]: { title: '', metric: '', target: '', unit: '' } }));
     } catch (e: any) {
       setError(e.message || 'KR 추가 실패');
     } finally {
@@ -330,15 +328,12 @@ export function MeGoals() {
             <input value={krTitle} onChange={(e) => setKrTitle(e.target.value)} placeholder="첫 Key Result 제목" style={input} />
           </div>
           <textarea value={oDesc} onChange={(e) => setODesc(e.target.value)} placeholder="Objective 설명" style={{ ...input, minHeight: 70 }} />
-          <div className="stack-1-2">
-            <input value={krMetric} onChange={(e) => setKrMetric(e.target.value)} placeholder="KR 내용" style={input} />
+          <div className="stack-3">
+            <input value={krMetric} onChange={(e) => setKrMetric(e.target.value)} placeholder="KR 내용/측정 기준" style={input} />
+            <input type="number" step="any" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} placeholder="측정 수치" style={input} />
+            <input value={krUnit} onChange={(e) => setKrUnit(e.target.value)} placeholder="단위" style={input} />
           </div>
-          <div>
-            <select value={krType} onChange={(e) => setKrType(e.target.value as any)} style={{ ...input, width: 'auto', appearance: 'auto' as any }}>
-              <option value="PROJECT">프로젝트형 (간트)</option>
-              <option value="OPERATIONAL">오퍼레이션형 (KPI)</option>
-            </select>
-          </div>
+          
           <div style={{ display: 'grid', gridTemplateColumns: '120px repeat(12, 32px)', gap: 8, alignItems: 'center' }}>
             <div style={{ fontSize: 13, color: '#6b7280' }}>기간(2026)</div>
             {months2026.map((_, i) => (
@@ -360,15 +355,15 @@ export function MeGoals() {
                       }} placeholder="추가 KR 제목" style={input} />
                       <input value={row.metric} onChange={(e) => {
                         const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, metric: v } : r));
-                      }} placeholder="KR 내용" style={input} />
+                      }} placeholder="KR 내용/측정 기준" style={input} />
                     </div>
-                    <div>
-                      <select value={row.type} onChange={(e) => {
-                        const v = e.target.value as any; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, type: v } : r));
-                      }} style={{ ...input, appearance: 'auto' as any }}>
-                        <option value="PROJECT">프로젝트형</option>
-                        <option value="OPERATIONAL">오퍼레이션형</option>
-                      </select>
+                    <div className="resp-3">
+                      <input type="number" step="any" value={row.target} onChange={(e) => {
+                        const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, target: v } : r));
+                      }} placeholder="측정 수치" style={input} />
+                      <input value={row.unit} onChange={(e) => {
+                        const v = e.target.value; setExtraKrs((prev) => prev.map((r, idx) => idx === i ? { ...r, unit: v } : r));
+                      }} placeholder="단위" style={input} />
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <button type="button" className="btn btn-ghost" onClick={() => setExtraKrs((prev) => prev.filter((_r, idx) => idx !== i))}>행 제거</button>
@@ -378,13 +373,13 @@ export function MeGoals() {
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-ghost" onClick={() => setExtraKrs((prev) => [...prev, { title: '', metric: '', target: '', unit: '', type: 'PROJECT' }])}>KR 행 추가</button>
+              <button type="button" className="btn btn-ghost" onClick={() => setExtraKrs((prev) => [...prev, { title: '', metric: '', target: '', unit: '' }])}>KR 행 추가</button>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={okrCreating || !userId || !oTitle || !krTitle || !krMetric || !oMonths.some(Boolean)}
+                disabled={okrCreating || !userId || !oTitle || !krTitle || !krMetric || !krTarget || !krUnit || !oMonths.some(Boolean)}
                 onClick={async () => {
                   try {
                     setOkrCreating(true);
@@ -397,10 +392,10 @@ export function MeGoals() {
                     const periodStart = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`;
                     const periodEnd = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, '0')}-${String(e.getDate()).padStart(2, '0')}`;
                     const krs = [
-                      { title: krTitle, metric: krMetric, target: krTarget !== '' ? Number(krTarget) : undefined, unit: krUnit || undefined, type: krType },
+                      { title: krTitle, metric: krMetric, target: Number(krTarget), unit: krUnit },
                       ...extraKrs
-                        .filter((r) => r.title && r.metric)
-                        .map((r) => ({ title: r.title, metric: r.metric, target: r.target !== '' ? Number(r.target) : undefined, unit: r.unit || undefined, type: r.type })),
+                        .filter((r) => r.title && r.metric && r.target !== '' && r.unit)
+                        .map((r) => ({ title: r.title, metric: r.metric, target: Number(r.target), unit: r.unit })),
                     ];
                     await apiJson<{ id: string }>(`/api/okrs/objectives`, {
                       method: 'POST',
@@ -414,7 +409,7 @@ export function MeGoals() {
                         krs,
                       }),
                     });
-                    setOTitle(''); setODesc(''); setOStart(''); setOEnd(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrUnit(''); setKrType('PROJECT');
+                    setOTitle(''); setODesc(''); setOStart(''); setOEnd(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrUnit('');
                     setOMonths(Array(12).fill(false));
                     setExtraKrs([]);
                     const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
@@ -506,7 +501,7 @@ export function MeGoals() {
                 <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
                   {o.keyResults.map((kr: any) => (
                     <div key={kr.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155' }}>
-                      <span>• KR: {kr.title} ({kr.metric}) [{kr.type}]</span>
+                      <span>• KR: {kr.title} ({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</span>
                       <button
                         className="btn btn-ghost"
                         style={{ marginLeft: 'auto' }}
@@ -528,16 +523,14 @@ export function MeGoals() {
               <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
                 <div className="resp-2">
                   <input value={(krForm[o.id]?.title) || ''} onChange={(e) => setKrField(o.id, 'title', e.target.value)} placeholder="추가 KR 제목" style={input} />
-                  <input value={(krForm[o.id]?.metric) || ''} onChange={(e) => setKrField(o.id, 'metric', e.target.value)} placeholder="KR 내용" style={input} />
+                  <input value={(krForm[o.id]?.metric) || ''} onChange={(e) => setKrField(o.id, 'metric', e.target.value)} placeholder="KR 내용/측정 기준" style={input} />
                 </div>
-                <div>
-                  <select value={(krForm[o.id]?.type) || 'PROJECT'} onChange={(e) => setKrField(o.id, 'type', e.target.value as any)} style={{ ...input, appearance: 'auto' as any }}>
-                    <option value="PROJECT">프로젝트형</option>
-                    <option value="OPERATIONAL">오퍼레이션형</option>
-                  </select>
+                <div className="resp-3">
+                  <input type="number" step="any" value={(krForm[o.id]?.target) || ''} onChange={(e) => setKrField(o.id, 'target', e.target.value)} placeholder="측정 수치" style={input} />
+                  <input value={(krForm[o.id]?.unit) || ''} onChange={(e) => setKrField(o.id, 'unit', e.target.value)} placeholder="단위" style={input} />
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-primary" disabled={!userId || krForm[o.id]?.saving || !krForm[o.id]?.title}
+                  <button type="button" className="btn btn-primary" disabled={!userId || krForm[o.id]?.saving || !krForm[o.id]?.title || !krForm[o.id]?.metric || !krForm[o.id]?.target || !krForm[o.id]?.unit}
                           onClick={() => addKr(o.id)}>{krForm[o.id]?.saving ? '추가중…' : 'KR 추가'}</button>
                 </div>
               </div>
