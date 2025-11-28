@@ -1,5 +1,5 @@
 import { Body, Controller, Post, BadRequestException } from '@nestjs/common';
-import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
@@ -8,7 +8,9 @@ class SignupDto {
   @IsString() @IsNotEmpty() username!: string; // stored in User.email
   @IsString() @IsNotEmpty() password!: string;
   @IsString() @IsNotEmpty() name!: string;
-  @IsString() @IsNotEmpty() teamName!: string;
+  @IsOptional() @IsString() teamName?: string;
+  @IsOptional() @IsString() companyId?: string; // optional: allow CEO/EXEC without team
+  @IsOptional() @IsString() teamId?: string;    // optional: direct team selection by id
   @IsEnum({ CEO: 'CEO', EXEC: 'EXEC', MANAGER: 'MANAGER', INDIVIDUAL: 'INDIVIDUAL' } as any)
   role?: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
 }
@@ -24,9 +26,34 @@ export class AuthController {
 
   @Post('signup')
   async signup(@Body() dto: SignupDto) {
-    let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
-    if (!team) {
-      team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
+    let orgUnitId: string | null = null;
+    // Prefer explicit teamId
+    if (dto.teamId) {
+      const t = await this.prisma.orgUnit.findUnique({ where: { id: dto.teamId } });
+      if (!t || t.type !== 'TEAM') throw new BadRequestException('invalid teamId');
+      orgUnitId = t.id;
+    } else if (dto.teamName) {
+      // Legacy behavior: find or create team by name
+      let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
+      if (!team) {
+        team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
+      }
+      orgUnitId = team.id;
+    }
+
+    // For CEO/EXEC: allow binding to company when no team provided
+    if (!orgUnitId && (dto.role === ('CEO' as any) || dto.role === ('EXEC' as any)) && dto.companyId) {
+      const company = await this.prisma.orgUnit.findUnique({ where: { id: dto.companyId } });
+      if (!company || company.type !== 'COMPANY') throw new BadRequestException('invalid companyId');
+      orgUnitId = company.id;
+    }
+
+    // Enforce role-based requirements
+    if ((dto.role === ('MANAGER' as any) || dto.role === ('INDIVIDUAL' as any)) && !orgUnitId) {
+      throw new BadRequestException('team required for this role');
+    }
+    if ((dto.role === ('CEO' as any) || dto.role === ('EXEC' as any)) && !orgUnitId && !dto.companyId) {
+      throw new BadRequestException('companyId or team required for this role');
     }
 
     const existing = await this.prisma.user.findUnique({ where: { email: dto.username } });
@@ -38,13 +65,15 @@ export class AuthController {
         email: dto.username,
         name: dto.name,
         role: (dto.role as any) || ('INDIVIDUAL' as any),
-        orgUnitId: team.id,
+        orgUnitId: orgUnitId,
         passwordHash,
       },
     });
 
     const token = this.signToken(user.id);
-    return { token, user: { id: user.id, name: user.name, teamName: team.name } };
+    // Resolve org name for response (teamName key kept for compatibility)
+    const org = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;
+    return { token, user: { id: user.id, name: user.name, teamName: org?.name || '' } };
   }
 
   @Post('login')
