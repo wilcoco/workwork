@@ -30,6 +30,7 @@ import { CoopsMine } from './pages/CoopsMine';
 import { CoopsStatus } from './pages/CoopsStatus';
 import { DEPLOY_TITLE, DEPLOY_DESC } from './deployInfo';
 import { AdminMembers } from './pages/AdminMembers';
+import { AdminTools } from './pages/AdminTools';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -113,6 +114,7 @@ export function App() {
           <Route path="/okr/team-okr" element={<TeamOkrInput />} />
           <Route path="/admin/orgs" element={<AdminOrgs />} />
           <Route path="/admin/members" element={<AdminMembers />} />
+          <Route path="/admin/tools" element={<AdminTools />} />
           {SHOW_APPROVALS && (
             <>
               <Route path="/approvals/new" element={<ApprovalsSubmit />} />
@@ -221,8 +223,11 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
             <Link to="/coops/status">협조현황</Link>
           </NavDropdown>
         )}
-        <Link to="/admin/orgs">조직관리</Link>
-        <Link to="/admin/members" style={{ marginLeft: 8 }}>구성원</Link>
+        <NavDropdown label="관리">
+          <Link to="/admin/orgs">조직관리</Link>
+          <Link to="/admin/members">구성원</Link>
+          <Link to="/admin/tools">시스템 도구</Link>
+        </NavDropdown>
         <span className="nav-right">
           {token ? (
             <>
