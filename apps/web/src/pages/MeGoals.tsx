@@ -476,19 +476,21 @@ export function MeGoals() {
                 <div style={{ marginLeft: 'auto' }}>
                   {(o.periodStart ? formatKstDatetime(o.periodStart) : '-') + ' ~ ' + (o.periodEnd ? formatKstDatetime(o.periodEnd) : '-')}
                 </div>
-                <button
-                  className="btn btn-ghost"
-                  onClick={async () => {
-                    if (!confirm('해당 Objective를 삭제할까요?')) return;
-                    try {
-                      await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}`, { method: 'DELETE' });
-                      const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
-                      setMyOkrs(mokrs.items || []);
-                    } catch (e: any) {
-                      setError(e.message || '삭제 실패');
-                    }
-                  }}
-                >삭제</button>
+                {myRole === 'CEO' && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={async () => {
+                      if (!confirm('해당 Objective를 삭제할까요?')) return;
+                      try {
+                        await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                        const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+                        setMyOkrs(mokrs.items || []);
+                      } catch (e: any) {
+                        setError(e.message || '삭제 실패');
+                      }
+                    }}
+                  >삭제</button>
+                )}
               </div>
               <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{o.title}</div>
               {o.description && <div style={{ marginTop: 6, color: '#374151' }}>{o.description}</div>}
@@ -502,20 +504,22 @@ export function MeGoals() {
                   {o.keyResults.map((kr: any) => (
                     <div key={kr.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155' }}>
                       <span>• {o.title} / KR: {kr.title} ({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</span>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ marginLeft: 'auto' }}
-                        onClick={async () => {
-                          if (!confirm('해당 KR을 삭제할까요?')) return;
-                          try {
-                            await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}`, { method: 'DELETE' });
-                            const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
-                            setMyOkrs(mokrs.items || []);
-                          } catch (e: any) {
-                            setError(e.message || '삭제 실패');
-                          }
-                        }}
-                      >삭제</button>
+                      {myRole === 'CEO' && (
+                        <button
+                          className="btn btn-ghost"
+                          style={{ marginLeft: 'auto' }}
+                          onClick={async () => {
+                            if (!confirm('해당 KR을 삭제할까요?')) return;
+                            try {
+                              await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                              const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+                              setMyOkrs(mokrs.items || []);
+                            } catch (e: any) {
+                              setError(e.message || '삭제 실패');
+                            }
+                          }}
+                        >삭제</button>
+                      )}
                     </div>
                   ))}
                 </div>

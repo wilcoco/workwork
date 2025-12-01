@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Delete, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Delete, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -279,9 +279,12 @@ export class OkrsController {
   }
 
   @Delete('objectives/:id')
-  async deleteObjective(@Param('id') id: string) {
+  async deleteObjective(@Param('id') id: string, @Query('userId') userId?: string) {
     const exists = await this.prisma.objective.findUnique({ where: { id } });
     if (!exists) throw new Error('objective not found');
+    if (!userId) throw new BadRequestException('userId required');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== ('CEO' as any)) throw new ForbiddenException('only CEO can delete');
     console.log('[okrs] deleteObjective', { id, DATABASE_URL: process.env.DATABASE_URL });
     await this.prisma.$transaction(async (tx) => {
       await this.deleteObjectiveCascade(id, tx);
@@ -290,9 +293,12 @@ export class OkrsController {
   }
 
   @Delete('krs/:id')
-  async deleteKr(@Param('id') id: string) {
+  async deleteKr(@Param('id') id: string, @Query('userId') userId?: string) {
     const kr = await this.prisma.keyResult.findUnique({ where: { id } });
     if (!kr) throw new Error('key result not found');
+    if (!userId) throw new BadRequestException('userId required');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== ('CEO' as any)) throw new ForbiddenException('only CEO can delete');
     console.log('[okrs] deleteKr', { id, DATABASE_URL: process.env.DATABASE_URL });
     await this.prisma.$transaction(async (tx) => {
       await this.deleteKrCascade(id, tx);

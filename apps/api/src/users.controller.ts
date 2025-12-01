@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Put, Query } from '@nestjs/common';
 import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
+import { BadRequestException, Delete } from '@nestjs/common';
 
 class UpdateRoleDto {
   @IsString() @IsNotEmpty()
@@ -20,9 +21,37 @@ export class UsersController {
     return { id: user.id, name: user.name, role: user.role, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '' };
   }
 
+  @Get()
+  async list(@Query('orgUnitId') orgUnitId?: string) {
+    const where: any = {};
+    if (orgUnitId) where.orgUnitId = orgUnitId;
+    const users = await this.prisma.user.findMany({ where, include: { orgUnit: true }, orderBy: { name: 'asc' } });
+    return {
+      items: users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        orgUnitId: u.orgUnitId || '',
+        orgName: u.orgUnit?.name || '',
+      })),
+    };
+  }
+
   @Put(':id/role')
   async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
     const user = await this.prisma.user.update({ where: { id }, data: { role: dto.role as any } });
     return { id: user.id, role: user.role };
   }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    try {
+      await this.prisma.user.delete({ where: { id } });
+      return { ok: true };
+    } catch (e) {
+      throw new BadRequestException('삭제할 수 없습니다. 관련 데이터가 존재합니다.');
+    }
+  }
 }
+
