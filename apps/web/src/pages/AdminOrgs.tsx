@@ -55,6 +55,8 @@ export function AdminOrgs(): JSX.Element {
   const [nukeWord, setNukeWord] = useState('');
   const [nuking, setNuking] = useState(false);
   const [addUsername, setAddUsername] = useState('');
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [userQuery, setUserQuery] = useState('');
   const isProdApi = typeof API_BASE === 'string' && API_BASE.includes('production');
 
   const [name, setName] = useState('');
@@ -67,8 +69,19 @@ export function AdminOrgs(): JSX.Element {
     try {
       const tree = await apiJson<{ items: any[] }>(`/api/orgs/tree`);
       const list = await apiJson<{ items: any[] }>(`/api/orgs`);
+      const users = await apiJson<{ items: any[] }>(`/api/users`);
       setItems(tree.items || []);
       setFlat(list.items || []);
+      // Sort users by Korean collation on name, fallback to email
+      const coll = new Intl.Collator('ko');
+      const us = (users.items || []).slice().sort((a: any, b: any) => {
+        const an = (a.name || a.email || '').toString();
+        const bn = (b.name || b.email || '').toString();
+        const c = coll.compare(an, bn);
+        if (c !== 0) return c;
+        return (a.email || '').localeCompare(b.email || '');
+      });
+      setAllUsers(us);
     } catch (e: any) {
       setError(e.message || '로드 실패');
     } finally {
@@ -256,9 +269,33 @@ export function AdminOrgs(): JSX.Element {
             {!selectedId && <div style={{ color: '#6b7280', fontSize: 13 }}>왼쪽 트리에서 조직을 선택하세요.</div>}
             {selectedId && (
               <div style={{ display: 'grid', gap: 6 }}>
-                <form onSubmit={addMember} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input placeholder="사용자 로그인 아이디(이메일)" value={addUsername} onChange={(e) => setAddUsername(e.target.value)} style={input} />
-                  <button className="btn btn-primary btn-sm" disabled={!addUsername}>추가</button>
+                <form onSubmit={addMember} style={{ display: 'grid', gap: 6 }}>
+                  <input
+                    placeholder="검색: 이름 또는 이메일"
+                    value={userQuery}
+                    onChange={(e) => setUserQuery(e.target.value)}
+                    style={input}
+                  />
+                  <select
+                    value={addUsername}
+                    onChange={(e) => setAddUsername(e.target.value)}
+                    style={input}
+                  >
+                    <option value="">구성원 선택</option>
+                    {(() => {
+                      const q = (userQuery || '').toLowerCase();
+                      const existing = new Set((members || []).map((m: any) => (m.email || '').toLowerCase()));
+                      return allUsers
+                        .filter((u) => !existing.has((u.email || '').toLowerCase()))
+                        .filter((u) => !q || (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q))
+                        .map((u) => (
+                          <option key={u.id} value={u.email}>{`${u.name || u.email} (${u.email})`}</option>
+                        ));
+                    })()}
+                  </select>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button className="btn btn-primary btn-sm" disabled={!addUsername}>추가</button>
+                  </div>
                 </form>
                 {members.length === 0 && <div style={{ color: '#6b7280', fontSize: 13 }}>구성원이 없습니다.</div>}
                 {members.map((m) => (

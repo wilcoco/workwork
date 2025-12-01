@@ -116,21 +116,23 @@ export class OkrsController {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { orgUnit: true } });
     if (!user) throw new NotFoundException('user not found');
 
-    // Return KRs from the immediate upper role, ignoring org hierarchy
+    // Return KRs from ALL higher roles (ignoring org hierarchy)
     const role = (user.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
-    let targetRole: 'CEO' | 'EXEC' | 'MANAGER' | null = null;
+    let roles: Array<'CEO' | 'EXEC' | 'MANAGER'> = [];
     if (role === 'CEO') {
-      return { items: [] };
+      roles = [];
     } else if (role === 'EXEC') {
-      targetRole = 'CEO';
+      roles = ['CEO'];
     } else if (role === 'MANAGER') {
-      targetRole = 'EXEC';
+      roles = ['EXEC', 'CEO'];
     } else {
-      targetRole = 'MANAGER';
+      roles = ['MANAGER', 'EXEC', 'CEO'];
     }
 
+    if (roles.length === 0) return { items: [] };
+
     const items = await this.prisma.keyResult.findMany({
-      where: { objective: { owner: { role: targetRole as any } } },
+      where: { objective: { owner: { role: { in: roles as any } } } },
       orderBy: { createdAt: 'desc' },
       include: { objective: { include: { owner: true, orgUnit: true } } },
     });
