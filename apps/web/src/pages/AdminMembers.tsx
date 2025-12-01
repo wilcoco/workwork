@@ -55,6 +55,14 @@ export function AdminMembers() {
     );
   });
 
+  function roleLabel(r?: string) {
+    if (r === 'CEO') return '대표';
+    if (r === 'EXEC') return '임원';
+    if (r === 'MANAGER') return '팀장';
+    if (r === 'INDIVIDUAL') return '팀원';
+    return r || '';
+  }
+
   return (
     <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 980, margin: '24px auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -91,7 +99,7 @@ export function AdminMembers() {
                 <tr key={u.id}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
-                  <td>{u.role}</td>
+                  <td>{roleLabel(u.role)}</td>
                   <td>{u.orgName || '-'}</td>
                   <td style={{ textAlign: 'right' }}>
                     <button className="btn btn-sm btn-danger" onClick={() => onDelete(u.id)}>삭제</button>

@@ -302,16 +302,16 @@ export function MeGoals() {
               }
             }} style={{ ...input, appearance: 'auto' as any }}>
               <option value="">역할 선택</option>
-              <option value="CEO">대표이사</option>
+              <option value="CEO">대표</option>
               <option value="EXEC">임원</option>
               <option value="MANAGER">팀장</option>
-              <option value="INDIVIDUAL">직원</option>
+              <option value="INDIVIDUAL">팀원</option>
             </select>
             <select value={parentKrId} onChange={(e) => setParentKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
               <option value="">상위 O-KR 선택(선택)</option>
               {parentKrs.map((kr) => (
                 <option key={kr.id} value={kr.id}>
-                  [{(kr.objective?.owner?.role === 'CEO' ? '대표이사' : kr.objective?.owner?.role === 'EXEC' ? '임원' : kr.objective?.owner?.role === 'MANAGER' ? '팀장' : kr.objective?.owner?.role === 'INDIVIDUAL' ? '직원' : kr.objective?.owner?.role) + '-' + (kr.objective?.owner?.name || '')}] {kr.objective?.title} / KR: {kr.title}
+                  [{(kr.objective?.owner?.role === 'CEO' ? '대표' : kr.objective?.owner?.role === 'EXEC' ? '임원' : kr.objective?.owner?.role === 'MANAGER' ? '팀장' : kr.objective?.owner?.role === 'INDIVIDUAL' ? '팀원' : kr.objective?.owner?.role) + '-' + (kr.objective?.owner?.name || '')}] {kr.objective?.title} / KR: {kr.title}
                 </option>
               ))}
             </select>
@@ -473,7 +473,7 @@ export function MeGoals() {
             <div key={o.id} style={card}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
                 <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
-                  {`${(myRole === 'CEO' ? '대표이사' : myRole === 'EXEC' ? '임원' : myRole === 'MANAGER' ? '팀장' : myRole === 'INDIVIDUAL' ? '직원' : myRole)}-${myName || ''}`}
+                  {`${(myRole === 'CEO' ? '대표' : myRole === 'EXEC' ? '임원' : myRole === 'MANAGER' ? '팀장' : myRole === 'INDIVIDUAL' ? '팀원' : myRole)}-${myName || ''}`}
                 </div>
                 <div style={{ marginLeft: 'auto' }}>
                   {(o.periodStart ? formatKstDatetime(o.periodStart) : '-') + ' ~ ' + (o.periodEnd ? formatKstDatetime(o.periodEnd) : '-')}

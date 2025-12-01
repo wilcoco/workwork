@@ -55,14 +55,14 @@ export function Signup() {
             <optgroup label="권장(팀)">
               {recommendedRoles.map((r) => (
                 <option key={r} value={r}>
-                  {r === 'MANAGER' ? '팀장' : r === 'INDIVIDUAL' ? '직원' : r}
+                  {r === 'MANAGER' ? '팀장' : r === 'INDIVIDUAL' ? '팀원' : r}
                 </option>
               ))}
             </optgroup>
             <optgroup label="상위 계위">
               {upperRoles.map((r) => (
                 <option key={r} value={r}>
-                  {r === 'CEO' ? '대표이사' : r === 'EXEC' ? '임원' : r}
+                  {r === 'CEO' ? '대표' : r === 'EXEC' ? '임원' : r}
                 </option>
               ))}
             </optgroup>

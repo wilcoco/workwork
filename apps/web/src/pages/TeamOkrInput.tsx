@@ -166,7 +166,7 @@ export function TeamOkrInput() {
           <select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
             <option value="">선택</option>
             {orgs.map((o) => (
-              <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
+              <option key={o.id} value={o.id}>{o.name} ({o.type === 'COMPANY' ? '회사' : o.type === 'DIVISION' ? '실' : o.type === 'TEAM' ? '팀' : o.type})</option>
             ))}
           </select>
         </div>
@@ -186,7 +186,7 @@ export function TeamOkrInput() {
           <select value={oParentKrId} onChange={(e) => setOParentKrId(e.target.value)}>
             <option value="">상위 KR 선택(선택)</option>
             {parentKrs.map((kr) => (
-              <option key={kr.id} value={kr.id}>[{(kr.objective?.owner?.role === 'CEO' ? '대표이사' : kr.objective?.owner?.role === 'EXEC' ? '임원' : kr.objective?.owner?.role === 'MANAGER' ? '팀장' : kr.objective?.owner?.role === 'INDIVIDUAL' ? '직원' : kr.objective?.owner?.role) + '-' + (kr.objective?.owner?.name || '')}] {kr.objective?.title} / {kr.title}</option>
+              <option key={kr.id} value={kr.id}>[{(kr.objective?.owner?.role === 'CEO' ? '대표' : kr.objective?.owner?.role === 'EXEC' ? '임원' : kr.objective?.owner?.role === 'MANAGER' ? '팀장' : kr.objective?.owner?.role === 'INDIVIDUAL' ? '팀원' : kr.objective?.owner?.role) + '-' + (kr.objective?.owner?.name || '')}] {kr.objective?.title} / {kr.title}</option>
             ))}
           </select>
         </div>

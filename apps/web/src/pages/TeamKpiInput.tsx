@@ -188,7 +188,7 @@ export function TeamKpiInput() {
                 return o.id === myOrgUnitId;
               })
               .map((o) => (
-              <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
+              <option key={o.id} value={o.id}>{o.name} ({o.type === 'TEAM' ? '팀' : o.type === 'DIVISION' ? '실' : o.type === 'COMPANY' ? '회사' : o.type})</option>
             ))}
           </select>
         </div>

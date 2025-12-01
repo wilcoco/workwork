@@ -1,6 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { API_BASE, apiJson } from '../lib/api';
 
+function orgTypeLabel(t?: string) {
+  if (t === 'COMPANY') return '회사';
+  if (t === 'DIVISION') return '실';
+  if (t === 'TEAM') return '팀';
+  return t || '';
+}
+function roleLabel(r?: string) {
+  if (r === 'CEO') return '대표';
+  if (r === 'EXEC') return '임원';
+  if (r === 'MANAGER') return '팀장';
+  if (r === 'INDIVIDUAL') return '팀원';
+  return r || '';
+}
+
 function TreeNode({ node, onDelete, onForceDelete, onSelect, selectedId, canAdmin }: { node: any; onDelete: (id: string) => void; onForceDelete: (id: string) => void; onSelect: (id: string) => void; selectedId: string; canAdmin: boolean }) {
   const childCnt = node.children?.length || 0;
   const userCnt = node.counts?.users || 0;
@@ -13,7 +27,7 @@ function TreeNode({ node, onDelete, onForceDelete, onSelect, selectedId, canAdmi
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button onClick={() => onSelect(node.id)} className={selectedId === node.id ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}>{selectedId === node.id ? '선택됨' : '선택'}</button>
         <strong>{node.name}</strong>
-        <span style={{ fontSize: 12, color: '#6b7280' }}>({node.type})</span>
+        <span style={{ fontSize: 12, color: '#6b7280' }}>({orgTypeLabel(node.type)})</span>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>child:{node.children?.length || 0} users:{node.counts?.users || 0} objs:{node.counts?.objectives || 0}</span>
         {canAdmin && (
           <>
@@ -244,14 +258,14 @@ export function AdminOrgs(): JSX.Element {
             <form onSubmit={createOrg} style={{ display: 'grid', gap: 8 }}>
               <input placeholder="조직명" value={name} onChange={(e) => setName(e.target.value)} required style={input} />
               <select value={type} onChange={(e) => setType(e.target.value)} style={input}>
-                <option value="COMPANY">COMPANY</option>
-                <option value="DIVISION">DIVISION</option>
-                <option value="TEAM">TEAM</option>
+                <option value="COMPANY">회사</option>
+                <option value="DIVISION">실</option>
+                <option value="TEAM">팀</option>
               </select>
               <select value={parentId} onChange={(e) => setParentId(e.target.value)} style={input}>
                 <option value="">(상위 없음)</option>
                 {flat.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name} ({u.type})</option>
+                  <option key={u.id} value={u.id}>{u.name} ({orgTypeLabel(u.type)})</option>
                 ))}
               </select>
               <button className="btn btn-primary">생성</button>
@@ -301,7 +315,7 @@ export function AdminOrgs(): JSX.Element {
                   <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{m.name}</div>
-                      <div style={{ fontSize: 12, color: '#6b7280' }}>{m.email} · {m.role}</div>
+                      <div style={{ fontSize: 12, color: '#6b7280' }}>{m.email} · {roleLabel(m.role)}</div>
                     </div>
                     {myRole === 'CEO' && (
                       <button onClick={() => removeMember(m.id)} className="btn btn-danger btn-sm">제거</button>

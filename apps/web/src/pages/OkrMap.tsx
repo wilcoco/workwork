@@ -3,11 +3,18 @@ import { useLocation } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
 function roleLabel(r?: string) {
-  if (r === 'CEO') return '대표이사';
+  if (r === 'CEO') return '대표';
   if (r === 'EXEC') return '임원';
   if (r === 'MANAGER') return '팀장';
-  if (r === 'INDIVIDUAL') return '직원';
+  if (r === 'INDIVIDUAL') return '팀원';
   return r || '';
+}
+
+function orgTypeLabel(t?: string) {
+  if (t === 'COMPANY') return '회사';
+  if (t === 'DIVISION') return '실';
+  if (t === 'TEAM') return '팀';
+  return t || '';
 }
 
 function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild }: {
@@ -320,7 +327,7 @@ export function OkrMap() {
           <select value={viewOrgId} onChange={(e) => setViewOrgId(e.target.value)}>
             <option value="">전체</option>
             {orgs.map((o) => (
-              <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
+              <option key={o.id} value={o.id}>{o.name} ({orgTypeLabel(o.type)})</option>
             ))}
           </select>
         </div>
@@ -331,7 +338,7 @@ export function OkrMap() {
           <select value={topOrgId} onChange={(e) => setTopOrgId(e.target.value)} required>
             <option value="">조직 선택</option>
             {orgs.map((o) => (
-              <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
+              <option key={o.id} value={o.id}>{o.name} ({orgTypeLabel(o.type)})</option>
             ))}
           </select>
           <input placeholder="목표 제목" value={topTitle} onChange={(e) => setTopTitle(e.target.value)} required />

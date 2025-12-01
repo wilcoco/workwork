@@ -14,10 +14,10 @@ export function OkrInput() {
   const [myObjectives, setMyObjectives] = useState<any[]>([]);
 
   function roleLabel(r?: string) {
-    if (r === 'CEO') return '대표이사';
+    if (r === 'CEO') return '대표';
     if (r === 'EXEC') return '임원';
     if (r === 'MANAGER') return '팀장';
-    if (r === 'INDIVIDUAL') return '직원';
+    if (r === 'INDIVIDUAL') return '팀원';
     return r || '';
   }
 
@@ -152,7 +152,7 @@ export function OkrInput() {
               } catch {}
             }} style={{ ...input, appearance: 'auto' as any }}>
               <option value="">역할 선택</option>
-              <option value="CEO">대표이사</option>
+              <option value="CEO">대표</option>
               <option value="EXEC">임원</option>
               <option value="MANAGER">팀장</option>
               <option value="INDIVIDUAL">팀원</option>

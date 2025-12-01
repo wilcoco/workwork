@@ -12,10 +12,10 @@ export function OkrTree() {
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
 
   function roleLabel(r?: string) {
-    if (r === 'CEO') return '대표이사';
+    if (r === 'CEO') return '대표';
     if (r === 'EXEC') return '임원';
     if (r === 'MANAGER') return '팀장';
-    if (r === 'INDIVIDUAL') return '직원';
+    if (r === 'INDIVIDUAL') return '팀원';
     return r || '';
   }
 

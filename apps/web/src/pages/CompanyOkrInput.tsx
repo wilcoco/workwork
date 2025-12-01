@@ -105,7 +105,7 @@ export function CompanyOkrInput() {
           <select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
             <option value="">전체</option>
             {orgs.map((o) => (
-              <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
+              <option key={o.id} value={o.id}>{o.name} ({o.type === 'COMPANY' ? '회사' : o.type === 'DIVISION' ? '실' : o.type === 'TEAM' ? '팀' : o.type})</option>
             ))}
           </select>
         </div>
