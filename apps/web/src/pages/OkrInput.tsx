@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
 export function OkrInput() {
@@ -8,6 +9,9 @@ export function OkrInput() {
   const [parentKrId, setParentKrId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [myObjectives, setMyObjectives] = useState<any[]>([]);
 
   const [oTitle, setOTitle] = useState('');
   const [oDesc, setODesc] = useState('');
@@ -38,6 +42,8 @@ export function OkrInput() {
         setMyRole((me.role as any) || '');
         const p = await apiJson<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`);
         setParentKrs(p.items || []);
+        const mine = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+        setMyObjectives(mine.items || []);
       } catch (e: any) {
         setError(e.message || '로드 실패');
       } finally {
@@ -49,6 +55,8 @@ export function OkrInput() {
   async function save() {
     try {
       setError(null);
+      setSuccess(null);
+      setSaving(true);
       if (!userId) throw new Error('userId');
       if (!oTitle) throw new Error('Objective 제목');
       const selO = oMonths.map((v, i) => v ? i : -1).filter(i => i >= 0);
@@ -90,9 +98,14 @@ export function OkrInput() {
       }
 
       setOTitle(''); setODesc(''); setOMonths(Array(12).fill(false)); setRows([{ title: '', metric: '', target: '', unit: '', months: Array(12).fill(false) }]); setParentKrId('');
-      alert('OKR이 저장되었습니다');
+      const mine = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+      setMyObjectives(mine.items || []);
+      setSuccess('OKR이 저장되었습니다');
+      setTimeout(() => setSuccess(null), 2000);
     } catch (e: any) {
       setError(e.message || '저장 실패');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -188,7 +201,46 @@ export function OkrInput() {
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn" onClick={addRow}>KR 행 추가</button>
-            <button className="btn btn-primary" onClick={save} disabled={!userId || loading}>저장</button>
+            <button className="btn btn-primary" onClick={save} disabled={!userId || loading || saving}>{saving ? '저장중…' : '저장'}</button>
+          </div>
+        </div>
+      </section>
+
+      {success && (
+        <div style={{ color: '#16a34a', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span>{success}</span>
+          <Link to="/okr/tree" style={{ color: '#0ea5e9', textDecoration: 'underline' }}>OKR 조회</Link>
+          <Link to="/me/goals" style={{ color: '#0ea5e9', textDecoration: 'underline' }}>내 목표</Link>
+        </div>
+      )}
+
+      <section style={{ display: 'grid', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>내 OKR 목록</h3>
+        <div style={card}>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {myObjectives.map((o) => (
+              <div key={o.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ background: '#E6EEF7', color: '#0F3D73', border: '1px solid #0F3D73', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>목표</span>
+                  <b>{o.title}</b>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{o.pillar || '-'}</span>
+                </div>
+                {Array.isArray(o.keyResults) && o.keyResults.length > 0 && (
+                  <ul style={{ marginLeft: 18 }}>
+                    {o.keyResults.map((kr: any) => (
+                      <li key={kr.id}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                          <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
+                          <div style={{ fontWeight: 600 }}>{kr.title}</div>
+                          <div style={{ color: '#334155' }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+            {myObjectives.length === 0 && <div style={{ color: '#6b7280', fontSize: 13 }}>등록된 OKR이 없습니다.</div>}
           </div>
         </div>
       </section>

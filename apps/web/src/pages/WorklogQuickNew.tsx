@@ -17,6 +17,7 @@ export function WorklogQuickNew() {
   const [teamName, setTeamName] = useState<string>('');
   const [orgUnitId, setOrgUnitId] = useState<string>('');
   const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string }>>([]);
+  const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string }>>([]);
   const [selection, setSelection] = useState<string>(''); // 'init:<id>'
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
@@ -38,6 +39,19 @@ export function WorklogQuickNew() {
         const me = await apiJson<{ id: string; orgUnitId: string }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
         const ou = me.orgUnitId || '';
         setOrgUnitId(ou);
+        // Always load my own initiatives (personal OKR/KPI tasks)
+        try {
+          const mine = await apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`);
+          const its = (mine.items || []).map((ii: any) => {
+            const s0 = ii.startAt ? new Date(ii.startAt) : null;
+            const e0 = ii.endAt ? new Date(ii.endAt) : null;
+            const s = s0 ? `${s0.getFullYear()}-${String(s0.getMonth()+1).padStart(2,'0')}-${String(s0.getDate()).padStart(2,'0')}` : '';
+            const e = e0 ? `${e0.getFullYear()}-${String(e0.getMonth()+1).padStart(2,'0')}-${String(e0.getDate()).padStart(2,'0')}` : '';
+            const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
+            return { id: ii.id, title: ii.title as string, period: pc, startAt: s };
+          });
+          setMyTasks(its);
+        } catch {}
         if (!ou) return;
         const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(ou)}`);
         const objs = res.items || [];
@@ -205,7 +219,7 @@ export function WorklogQuickNew() {
               const v = e.target.value;
               setSelection(v);
               const id = v.startsWith('init:') ? v.substring(5) : '';
-              const t = teamTasks.find((x) => x.id === id);
+              const t = [...teamTasks, ...myTasks].find((x) => x.id === id);
               if (t?.startAt) {
                 const y = t.startAt.slice(0,4);
                 const m = t.startAt.slice(5,7);
@@ -215,13 +229,19 @@ export function WorklogQuickNew() {
               }
             }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="" disabled>과제를 선택하세요</option>
-              {teamTasks.length > 0 ? (
-                teamTasks.map((t) => (
-                  <option key={t.id} value={`init:${t.id}`}>{t.title}{t.period}</option>
-                ))
-              ) : (
-                <option value="" disabled>팀 KPI/OKR 과제가 없습니다</option>
-              )}
+              {(() => {
+                const list = [...teamTasks, ...myTasks];
+                const uniq: Array<{ id: string; title: string; period: string; startAt?: string }> = [];
+                const seen = new Set<string>();
+                for (const t of list) { if (!seen.has(t.id)) { seen.add(t.id); uniq.push(t); } }
+                return uniq.length ? (
+                  uniq.map((t) => (
+                    <option key={t.id} value={`init:${t.id}`}>{t.title}{t.period}</option>
+                  ))
+                ) : (
+                  <option value="" disabled>나의 OKR/KPI 과제가 없습니다</option>
+                );
+              })()}
             </select>
           </div>
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
