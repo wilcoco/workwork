@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, ForbiddenException } from '@nestjs/common';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -107,7 +107,10 @@ export class OrgsController {
   }
 
   @Post()
-  async create(@Body() dto: CreateOrgDto) {
+  async create(@Body() dto: CreateOrgDto, @Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can create orgs');
     const rec = await this.prisma.orgUnit.create({ data: { name: dto.name, type: dto.type, parentId: dto.parentId || null } });
     return rec;
   }
@@ -123,7 +126,10 @@ export class OrgsController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can delete orgs');
     console.log('[OrgsController] delete-init', { id });
     const unit = await this.prisma.orgUnit.findUnique({ where: { id }, include: { _count: { select: { children: true, users: true, objectives: true } } } });
     if (!unit) throw new BadRequestException('org not found');
@@ -138,7 +144,10 @@ export class OrgsController {
   }
 
   @Post('cleanup/personal')
-  async cleanupPersonal() {
+  async cleanupPersonal(@Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can cleanup');
     // Find all Personal-* org units
     const all = await this.prisma.orgUnit.findMany({ orderBy: { name: 'asc' } });
     const personal = all.filter((u) => /^personal\s*-/i.test(u.name || ''));
@@ -184,7 +193,10 @@ export class OrgsController {
   }
 
   @Post(':id/force-delete')
-  async forceDelete(@Param('id') id: string, @Body() dto: ForceDeleteDto) {
+  async forceDelete(@Param('id') id: string, @Body() dto: ForceDeleteDto, @Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can force delete');
     if ((dto.confirm || '').toUpperCase() !== 'FORCE DELETE') {
       throw new BadRequestException("type 'FORCE DELETE' to confirm");
     }
@@ -240,7 +252,11 @@ export class OrgsController {
   }
 
   @Delete(':id/members/:userId')
-  async removeMember(@Param('id') id: string, @Param('userId') userId: string) {
+  async removeMember(@Param('id') id: string, @Param('userId') userId: string, @Query('actorId') actorId?: string, @Query('userId') qUserId?: string) {
+    const acting = actorId || qUserId; // support either actorId or userId as acting user
+    if (!acting) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: acting } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can remove members');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new BadRequestException('user not found');
     if (user.orgUnitId !== id) throw new BadRequestException('user not in this org');
@@ -249,7 +265,10 @@ export class OrgsController {
   }
 
   @Post(':id/members')
-  async addMember(@Param('id') id: string, @Body() dto: AddMemberDto) {
+  async addMember(@Param('id') id: string, @Body() dto: AddMemberDto, @Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can add members');
     if (!dto.userId && !dto.username) throw new BadRequestException('userId or username required');
     let user = null as any;
     if (dto.userId) user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
@@ -270,10 +289,13 @@ export class OrgsController {
   }
 
   @Post('nuke')
-  async nuke(@Body() dto: NukeDto) {
+  async nuke(@Body() dto: NukeDto, @Query('userId') userId?: string) {
     if (process.env.NODE_ENV === 'production' && process.env.ALLOW_NUKE !== 'true') {
       throw new BadRequestException('nuke disabled in production');
     }
+    if (!userId) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can nuke');
     if ((dto.confirm || '').toLowerCase() !== 'delete everything') {
       throw new BadRequestException("type 'DELETE EVERYTHING' to confirm");
     }
