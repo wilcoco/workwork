@@ -501,7 +501,7 @@ export function MeGoals() {
                 <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
                   {o.keyResults.map((kr: any) => (
                     <div key={kr.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155' }}>
-                      <span>• KR: {kr.title} ({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</span>
+                      <span>• {o.title} / KR: {kr.title} ({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</span>
                       <button
                         className="btn btn-ghost"
                         style={{ marginLeft: 'auto' }}

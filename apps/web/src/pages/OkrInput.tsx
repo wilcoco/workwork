@@ -230,8 +230,7 @@ export function OkrInput() {
                     {o.keyResults.map((kr: any) => (
                       <li key={kr.id}>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                          <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
-                          <div style={{ fontWeight: 600 }}>{kr.title}</div>
+                          <div style={{ fontWeight: 600 }}>{o.title} / KR: {kr.title}</div>
                           <div style={{ color: '#334155' }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
                         </div>
                       </li>

@@ -243,9 +243,9 @@ export function TeamKpiInput() {
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {krs.map(({ kr, obj }: any) => (
                   <li key={kr.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                    <div style={{ fontWeight: 600 }}>{kr.title}</div>
+                    <div style={{ fontWeight: 600 }}>{obj?.title ? `${obj.title} / KR: ${kr.title}` : `KR: ${kr.title}`}</div>
                     <div style={{ color: '#334155' }}>({kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
-                    <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{obj?.title ? `[${obj.title}] ` : ''}{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}</div>
+                    <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}</div>
                     <button
                       className="btn btn-ghost"
                       onClick={async () => {
@@ -273,7 +273,7 @@ export function TeamKpiInput() {
           <select value={initKrId} onChange={(e) => setInitKrId(e.target.value)}>
             <option value="">KPI 선택</option>
             {objectives.flatMap((o) => (o.keyResults || []).map((kr: any) => (
-              <option key={kr.id} value={kr.id}>[{o.title}] {kr.title}</option>
+              <option key={kr.id} value={kr.id}>{o.title} / KR: {kr.title}</option>
             )))}
           </select>
           <input placeholder="과제 제목" value={initTitle} onChange={(e) => setInitTitle(e.target.value)} />
@@ -333,8 +333,7 @@ export function TeamKpiInput() {
                     <li key={kr.id}>
                       <div style={{ display: 'grid', gap: 4 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                          <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
-                          <div style={{ fontWeight: 600 }}>{kr.title}</div>
+                          <div style={{ fontWeight: 600 }}>{o.title} / KR: {kr.title}</div>
                           <div style={{ color: '#334155' }}>({kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
                           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}{typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}</div>
                           <button
