@@ -116,38 +116,25 @@ export class OkrsController {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { orgUnit: true } });
     if (!user) throw new Error('user not found');
 
-    let where: any = {};
-    if (user.role === 'CEO') {
+    // Return KRs from the immediate upper role, ignoring org hierarchy
+    const role = (user.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
+    let targetRole: 'CEO' | 'EXEC' | 'MANAGER' | null = null;
+    if (role === 'CEO') {
       return { items: [] };
-    } else if (user.role === 'EXEC') {
-      where = { objective: { parentId: null } };
-    } else if (user.role === 'MANAGER') {
-      const myUnit = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;
-      const parentId = myUnit?.parentId || undefined;
-      if (parentId) {
-        where = { objective: { orgUnitId: parentId } };
-        const items = await this.prisma.keyResult.findMany({ where, orderBy: { createdAt: 'desc' }, include: { objective: { include: { owner: true, orgUnit: true } } } });
-        return { items };
-      }
-      // Fallback: show EXEC-owned KR when org unit hierarchy not defined
-      where = { objective: { owner: { role: 'EXEC' as any } } };
-      const items = await this.prisma.keyResult.findMany({ where, orderBy: { createdAt: 'desc' }, include: { objective: { include: { owner: true, orgUnit: true } } } });
-      return { items };
+    } else if (role === 'EXEC') {
+      targetRole = 'CEO';
+    } else if (role === 'MANAGER') {
+      targetRole = 'EXEC';
     } else {
-      const myUnitId = user.orgUnitId || undefined;
-      if (myUnitId) {
-        const primary = await this.prisma.keyResult.findMany({
-          where: { objective: { orgUnitId: myUnitId, owner: { role: 'MANAGER' as any } } },
-          orderBy: { createdAt: 'desc' },
-          include: { objective: { include: { owner: true, orgUnit: true } } },
-        });
-        if (primary.length) return { items: primary };
-      }
-      // Fallback: show all MANAGER-owned KR
-      where = { objective: { owner: { role: 'MANAGER' as any } } };
-      const items = await this.prisma.keyResult.findMany({ where, orderBy: { createdAt: 'desc' }, include: { objective: { include: { owner: true, orgUnit: true } } } });
-      return { items };
+      targetRole = 'MANAGER';
     }
+
+    const items = await this.prisma.keyResult.findMany({
+      where: { objective: { owner: { role: targetRole as any } } },
+      orderBy: { createdAt: 'desc' },
+      include: { objective: { include: { owner: true, orgUnit: true } } },
+    });
+    return { items };
   }
 
   @Get('my')

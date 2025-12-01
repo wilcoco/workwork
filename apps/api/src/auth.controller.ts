@@ -59,6 +59,18 @@ export class AuthController {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.username } });
     if (existing) throw new BadRequestException('username already exists');
 
+    // Diagnostic log: signup intent (no sensitive data)
+    try {
+      console.log('[auth] signup intent', {
+        username: dto.username,
+        role: dto.role,
+        teamId: dto.teamId,
+        teamName: dto.teamName,
+        companyId: dto.companyId,
+        resolvedOrgUnitId: orgUnitId,
+      });
+    } catch {}
+
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const user = await this.prisma.user.create({
       data: {
@@ -69,6 +81,10 @@ export class AuthController {
         passwordHash,
       },
     });
+
+    try {
+      console.log('[auth] signup created', { id: user.id, role: user.role, orgUnitId: user.orgUnitId });
+    } catch {}
 
     const token = this.signToken(user.id);
     // Resolve org name for response (teamName key kept for compatibility)
