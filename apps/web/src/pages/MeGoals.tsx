@@ -9,6 +9,7 @@ export function MeGoals() {
   const [myOkrs, setMyOkrs] = useState<any[]>([]);
   const [parentKrs, setParentKrs] = useState<any[]>([]);
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myName, setMyName] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export function MeGoals() {
       setItems(inits.items || []);
       setGoals(myg.items || []);
       setMyRole(((me as any).role as any) || '');
+      setMyName(((me as any).name as any) || '');
       setParentKrs(pks.items || []);
       setMyOkrs(mokrs.items || []);
     } catch (e: any) {
@@ -309,7 +311,7 @@ export function MeGoals() {
               <option value="">상위 O-KR 선택(선택)</option>
               {parentKrs.map((kr) => (
                 <option key={kr.id} value={kr.id}>
-                  [{kr.objective?.orgUnit?.name || '-'}] {kr.objective?.title} / KR: {kr.title}
+                  [{(kr.objective?.owner?.role === 'CEO' ? '대표이사' : kr.objective?.owner?.role === 'EXEC' ? '임원' : kr.objective?.owner?.role === 'MANAGER' ? '팀장' : kr.objective?.owner?.role === 'INDIVIDUAL' ? '직원' : kr.objective?.owner?.role) + '-' + (kr.objective?.owner?.name || '')}] {kr.objective?.title} / KR: {kr.title}
                 </option>
               ))}
             </select>
@@ -471,7 +473,7 @@ export function MeGoals() {
             <div key={o.id} style={card}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
                 <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
-                  {o.orgUnit?.name || '-'}
+                  {`${(myRole === 'CEO' ? '대표이사' : myRole === 'EXEC' ? '임원' : myRole === 'MANAGER' ? '팀장' : myRole === 'INDIVIDUAL' ? '직원' : myRole)}-${myName || ''}`}
                 </div>
                 <div style={{ marginLeft: 'auto' }}>
                   {(o.periodStart ? formatKstDatetime(o.periodStart) : '-') + ' ~ ' + (o.periodEnd ? formatKstDatetime(o.periodEnd) : '-')}

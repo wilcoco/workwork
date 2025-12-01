@@ -11,6 +11,14 @@ export function OkrTree() {
   const [userId, setUserId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
 
+  function roleLabel(r?: string) {
+    if (r === 'CEO') return '대표이사';
+    if (r === 'EXEC') return '임원';
+    if (r === 'MANAGER') return '팀장';
+    if (r === 'INDIVIDUAL') return '직원';
+    return r || '';
+  }
+
   useEffect(() => {
     (async () => {
       try {
@@ -51,7 +59,7 @@ export function OkrTree() {
     return (
       <div style={card}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{o.orgUnit?.name || '-'}</div>
+          <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{`${roleLabel(o.owner?.role)}-${o.owner?.name || ''}`}</div>
           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{(o.periodStart ? formatKstDatetime(o.periodStart) : '-') + ' ~ ' + (o.periodEnd ? formatKstDatetime(o.periodEnd) : '-')}</div>
           {myRole === 'CEO' && (
             <button

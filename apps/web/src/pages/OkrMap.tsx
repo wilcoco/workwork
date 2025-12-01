@@ -2,6 +2,14 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
+function roleLabel(r?: string) {
+  if (r === 'CEO') return '대표이사';
+  if (r === 'EXEC') return '임원';
+  if (r === 'MANAGER') return '팀장';
+  if (r === 'INDIVIDUAL') return '직원';
+  return r || '';
+}
+
 function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild }: {
   kr: any;
   krObjId: string; setKrObjId: (v: string) => void;
@@ -97,7 +105,7 @@ function ObjNode({ obj, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setK
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ background: '#E6EEF7', color: '#0F3D73', border: '1px solid #0F3D73', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>목표</span>
           <div style={{ fontWeight: 700 }}>{obj.title}</div>
-          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>[{obj.orgUnit?.name || '-'}] {obj.owner?.name || ''} ({obj.owner?.role || ''})</div>
+          <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{`${roleLabel(obj.owner?.role)}-${obj.owner?.name || ''}`}</div>
         </div>
         {obj.description && <div style={{ color: '#111827', fontSize: 15, lineHeight: 1.5 }}>{obj.description}</div>}
         <div style={{ fontSize: 12, color: '#6b7280' }}>{new Date(obj.periodStart).toLocaleDateString()} ~ {new Date(obj.periodEnd).toLocaleDateString()} · {obj.status}</div>

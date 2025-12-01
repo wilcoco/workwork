@@ -13,6 +13,14 @@ export function OkrInput() {
   const [success, setSuccess] = useState<string | null>(null);
   const [myObjectives, setMyObjectives] = useState<any[]>([]);
 
+  function roleLabel(r?: string) {
+    if (r === 'CEO') return '대표이사';
+    if (r === 'EXEC') return '임원';
+    if (r === 'MANAGER') return '팀장';
+    if (r === 'INDIVIDUAL') return '직원';
+    return r || '';
+  }
+
   const [oTitle, setOTitle] = useState('');
   const [oDesc, setODesc] = useState('');
   const [oMonths, setOMonths] = useState<boolean[]>(() => Array(12).fill(false));
@@ -153,7 +161,7 @@ export function OkrInput() {
               <select value={parentKrId} onChange={(e) => setParentKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
                 <option value="">상위 O-KR 선택</option>
                 {parentKrs.map((kr) => (
-                  <option key={kr.id} value={kr.id}>[{kr.objective?.orgUnit?.name || '-'}] {kr.objective?.title} / KR: {kr.title}</option>
+                  <option key={kr.id} value={kr.id}>[{`${roleLabel(kr.objective?.owner?.role)}-${kr.objective?.owner?.name || ''}`}] {kr.objective?.title} / KR: {kr.title}</option>
                 ))}
               </select>
             )}

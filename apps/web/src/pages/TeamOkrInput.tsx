@@ -7,7 +7,7 @@ type OrgUnit = { id: string; name: string; type: string };
 
 type Objective = any;
 
-type ParentKr = { id: string; title: string; objective?: { title?: string; orgUnit?: { name?: string } } };
+type ParentKr = { id: string; title: string; objective?: { title?: string; orgUnit?: { name?: string }; owner?: { name?: string; role?: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | string } } };
 
 export function TeamOkrInput() {
   const [orgs, setOrgs] = useState<OrgUnit[]>([]);
@@ -186,7 +186,7 @@ export function TeamOkrInput() {
           <select value={oParentKrId} onChange={(e) => setOParentKrId(e.target.value)}>
             <option value="">상위 KR 선택(선택)</option>
             {parentKrs.map((kr) => (
-              <option key={kr.id} value={kr.id}>[{kr.objective?.orgUnit?.name || '-'}] {kr.objective?.title} / {kr.title}</option>
+              <option key={kr.id} value={kr.id}>[{(kr.objective?.owner?.role === 'CEO' ? '대표이사' : kr.objective?.owner?.role === 'EXEC' ? '임원' : kr.objective?.owner?.role === 'MANAGER' ? '팀장' : kr.objective?.owner?.role === 'INDIVIDUAL' ? '직원' : kr.objective?.owner?.role) + '-' + (kr.objective?.owner?.name || '')}] {kr.objective?.title} / {kr.title}</option>
             ))}
           </select>
         </div>
