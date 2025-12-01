@@ -81,10 +81,12 @@ export class OrgsController {
 
   @Get('tree')
   async tree() {
-    const units = await this.prisma.orgUnit.findMany({
+    const unitsAll = await this.prisma.orgUnit.findMany({
       orderBy: { name: 'asc' },
       include: { _count: { select: { children: true, users: true, objectives: true } } },
     });
+    const isPersonal = (name: string) => /^personal\s*-/i.test(name || '');
+    const units = unitsAll.filter((u) => !isPersonal(u.name));
     const map: Record<string, any> = {};
     for (const u of units) {
       map[u.id] = { id: u.id, name: u.name, type: u.type, parentId: u.parentId || null, managerId: u.managerId || null, counts: u._count, children: [] as any[] };
@@ -99,7 +101,8 @@ export class OrgsController {
 
   @Get()
   async list() {
-    const items = await this.prisma.orgUnit.findMany({ orderBy: { name: 'asc' } });
+    const all = await this.prisma.orgUnit.findMany({ orderBy: { name: 'asc' } });
+    const items = all.filter((u) => !/^personal\s*-/i.test(u.name || ''));
     return { items };
   }
 
@@ -132,6 +135,52 @@ export class OrgsController {
     await this.prisma.orgUnit.delete({ where: { id } });
     console.log('[OrgsController] delete-success', { id });
     return { ok: true };
+  }
+
+  @Post('cleanup/personal')
+  async cleanupPersonal() {
+    // Find all Personal-* org units
+    const all = await this.prisma.orgUnit.findMany({ orderBy: { name: 'asc' } });
+    const personal = all.filter((u) => /^personal\s*-/i.test(u.name || ''));
+    if (personal.length === 0) return { ok: true, deletedOrgCount: 0 };
+
+    const visited = new Set<string>();
+    let deleted = 0;
+    for (const p of personal) {
+      if (visited.has(p.id)) continue;
+      await this.prisma.$transaction(async (tx) => {
+        // collect subtree ids (children first)
+        const order: string[] = [];
+        const collect = async (oid: string) => {
+          if (visited.has(oid)) return;
+          visited.add(oid);
+          const children = await tx.orgUnit.findMany({ where: { parentId: oid }, select: { id: true, name: true } });
+          for (const c of children) await collect(c.id);
+          order.push(oid);
+        };
+        await collect(p.id);
+
+        const orgIds = order.slice();
+        // delete objectives under these orgs (children first)
+        const objs = await tx.objective.findMany({ where: { orgUnitId: { in: orgIds } }, select: { id: true, parentId: true } });
+        const allIds = new Set(objs.map((o: any) => o.id));
+        const roots = objs.filter((o: any) => !o.parentId || !allIds.has(o.parentId));
+        const allowed = new Set<string>(orgIds);
+        for (const r of roots) {
+          await this.deleteObjectiveCascade(r.id, tx, allowed);
+        }
+        // unlink users
+        await tx.user.updateMany({ where: { orgUnitId: { in: orgIds } }, data: { orgUnitId: null } });
+        // flatten and delete org units
+        await tx.orgUnit.updateMany({ where: { id: { in: orgIds } }, data: { managerId: null } });
+        await tx.orgUnit.updateMany({ where: { parentId: { in: orgIds } }, data: { parentId: null } });
+        for (const oid of order) {
+          await tx.orgUnit.delete({ where: { id: oid } });
+          deleted++;
+        }
+      });
+    }
+    return { ok: true, deletedOrgCount: deleted };
   }
 
   @Post(':id/force-delete')

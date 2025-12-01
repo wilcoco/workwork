@@ -172,11 +172,9 @@ export class OkrsController {
       const org = await this.prisma.orgUnit.findUnique({ where: { id: dto.orgUnitId } });
       if (!org) throw new BadRequestException('org unit not found');
     }
-    let orgUnitId = dto.orgUnitId || user.orgUnitId;
+    const orgUnitId = dto.orgUnitId || user.orgUnitId;
     if (!orgUnitId) {
-      const team = await this.prisma.orgUnit.create({ data: { name: `Personal-${user.name}`, type: 'TEAM' } });
-      await this.prisma.user.update({ where: { id: user.id }, data: { orgUnitId: team.id } });
-      orgUnitId = team.id;
+      throw new BadRequestException('org unit required');
     }
     const result = await this.prisma.$transaction(async (tx) => {
       const rec = await tx.objective.create({

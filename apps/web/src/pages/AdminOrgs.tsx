@@ -57,6 +57,7 @@ export function AdminOrgs(): JSX.Element {
   const [addUsername, setAddUsername] = useState('');
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [userQuery, setUserQuery] = useState('');
+  const [cleaningPersonal, setCleaningPersonal] = useState(false);
   const isProdApi = typeof API_BASE === 'string' && API_BASE.includes('production');
 
   const [name, setName] = useState('');
@@ -342,6 +343,30 @@ export function AdminOrgs(): JSX.Element {
                   <input placeholder="DELETE EVERYTHING" value={nukeWord} onChange={(e) => setNukeWord(e.target.value)} style={input} />
                   <button className="btn btn-danger" disabled={nuking}>{nuking ? '삭제중…' : '모두 삭제'}</button>
                 </form>
+                <div style={{ height: 1, background: '#e5e7eb', margin: '12px 0' }} />
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280' }}>Personal-* 조직 정리: 사용자 개인 이름으로 생성된 조직을 제거하고 사용자 연결을 해제합니다.</div>
+                  <button
+                    className="btn btn-warning"
+                    disabled={cleaningPersonal}
+                    onClick={async () => {
+                      if (!confirm('Personal-* 조직을 정리할까요? 관련 목표/KR/과제가 삭제될 수 있습니다.')) return;
+                      try {
+                        setCleaningPersonal(true);
+                        await apiJson('/api/orgs/cleanup/personal', { method: 'POST' });
+                        await load();
+                        if (selectedId) {
+                          await loadMembers(selectedId);
+                          await loadObjectives(selectedId);
+                        }
+                      } catch (e: any) {
+                        setError(e.message || '정리 실패');
+                      } finally {
+                        setCleaningPersonal(false);
+                      }
+                    }}
+                  >{cleaningPersonal ? '정리중…' : 'Personal 조직 정리'}</button>
+                </div>
               </>
             )}
           </div>
