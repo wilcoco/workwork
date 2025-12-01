@@ -17,6 +17,7 @@ export function TeamOkrInput() {
   const [error, setError] = useState<string | null>(null);
 
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
 
   const [oTitle, setOTitle] = useState('');
   const [oDesc, setODesc] = useState('');
@@ -50,6 +51,16 @@ export function TeamOkrInput() {
     }
     loadOrg();
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!userId) return;
+        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        setMyRole((me as any).role || '');
+      } catch {}
+    })();
+  }, [userId]);
 
   useEffect(() => {
     async function loadObjectives() {
@@ -261,19 +272,21 @@ export function TeamOkrInput() {
                 <span style={{ background: '#E6EEF7', color: '#0F3D73', border: '1px solid #0F3D73', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>목표</span>
                 <b>{o.title}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{o.pillar || '-'}</span>
-                <button
-                  className="btn btn-ghost"
-                  onClick={async () => {
-                    if (!confirm('해당 목표를 삭제할까요?')) return;
-                    try {
-                      await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}`, { method: 'DELETE' });
-                      const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
-                      setObjectives(res.items || []);
-                    } catch (e: any) {
-                      setError(e.message || '삭제 실패');
-                    }
-                  }}
-                >삭제</button>
+                {myRole === 'CEO' && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={async () => {
+                      if (!confirm('해당 목표를 삭제할까요?')) return;
+                      try {
+                        await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                        const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
+                        setObjectives(res.items || []);
+                      } catch (e: any) {
+                        setError(e.message || '삭제 실패');
+                      }
+                    }}
+                  >삭제</button>
+                )}
               </div>
               {Array.isArray(o.keyResults) && o.keyResults.length > 0 && (
                 <ul style={{ marginLeft: 18 }}>
@@ -285,19 +298,21 @@ export function TeamOkrInput() {
                           <div style={{ fontWeight: 600 }}>{kr.title}</div>
                           <div style={{ color: '#334155' }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
                           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}{typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}</div>
-                          <button
-                            className="btn btn-ghost"
-                            onClick={async () => {
-                              if (!confirm('해당 KR을 삭제할까요?')) return;
-                              try {
-                                await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}`, { method: 'DELETE' });
-                                const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
-                                setObjectives(res.items || []);
-                              } catch (e: any) {
-                                setError(e.message || '삭제 실패');
-                              }
-                            }}
-                          >삭제</button>
+                          {myRole === 'CEO' && (
+                            <button
+                              className="btn btn-ghost"
+                              onClick={async () => {
+                                if (!confirm('해당 KR을 삭제할까요?')) return;
+                                try {
+                                  await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                                  const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
+                                  setObjectives(res.items || []);
+                                } catch (e: any) {
+                                  setError(e.message || '삭제 실패');
+                                }
+                              }}
+                            >삭제</button>
+                          )}
                         </div>
                         {Array.isArray(kr.initiatives) && kr.initiatives.length > 0 && (
                           <ul style={{ marginLeft: 18, color: '#374151' }}>

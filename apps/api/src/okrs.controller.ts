@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Delete, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Delete, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -112,9 +112,9 @@ export class OkrsController {
 
   @Get('parent-krs')
   async parentKrs(@Query('userId') userId: string) {
-    if (!userId) throw new Error('userId required');
+    if (!userId) throw new BadRequestException('userId required');
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { orgUnit: true } });
-    if (!user) throw new Error('user not found');
+    if (!user) throw new NotFoundException('user not found');
 
     // Return KRs from the immediate upper role, ignoring org hierarchy
     const role = (user.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
@@ -139,7 +139,7 @@ export class OkrsController {
 
   @Get('my')
   async myOkrs(@Query('userId') userId: string) {
-    if (!userId) throw new Error('userId required');
+    if (!userId) throw new BadRequestException('userId required');
     const items = await this.prisma.objective.findMany({
       where: { ownerId: userId },
       orderBy: { createdAt: 'desc' },

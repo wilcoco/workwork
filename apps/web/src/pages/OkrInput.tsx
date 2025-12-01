@@ -38,11 +38,21 @@ export function OkrInput() {
     (async () => {
       try {
         setLoading(true);
-        const me = await apiJson<{ id: string; role: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
-        setMyRole((me.role as any) || '');
-        const p = await apiJson<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`);
+        async function getOrDefault<T>(path: string, def: T): Promise<T> {
+          try {
+            return await apiJson<T>(path);
+          } catch (e: any) {
+            const msg = String(e?.message || '');
+            const status = Number(e?.status || 0);
+            if (status === 404 || msg.startsWith('Non-JSON response')) return def as T;
+            throw e;
+          }
+        }
+        const me = await getOrDefault<{ id: string; role: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`, { id: '', role: '' } as any);
+        setMyRole(((me as any).role as any) || '');
+        const p = await getOrDefault<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`, { items: [] });
         setParentKrs(p.items || []);
-        const mine = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+        const mine = await getOrDefault<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`, { items: [] });
         setMyObjectives(mine.items || []);
       } catch (e: any) {
         setError(e.message || '로드 실패');
