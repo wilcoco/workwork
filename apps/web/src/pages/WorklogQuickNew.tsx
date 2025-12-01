@@ -39,16 +39,25 @@ export function WorklogQuickNew() {
         const me = await apiJson<{ id: string; orgUnitId: string }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
         const ou = me.orgUnitId || '';
         setOrgUnitId(ou);
-        // Always load my own initiatives (personal OKR/KPI tasks)
+        // Always load my own initiatives (personal OKR/KPI tasks) and enrich with my OKR metadata (O/KR)
         try {
           const mine = await apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`);
+          const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(uid)}`);
+          const meta: Record<string, { objTitle: string; krTitle: string }> = {};
+          for (const o of (mokrs.items || [])) {
+            for (const kr of (o.keyResults || [])) {
+              meta[kr.id] = { objTitle: o.title, krTitle: kr.title };
+            }
+          }
           const its = (mine.items || []).map((ii: any) => {
             const s0 = ii.startAt ? new Date(ii.startAt) : null;
             const e0 = ii.endAt ? new Date(ii.endAt) : null;
             const s = s0 ? `${s0.getFullYear()}-${String(s0.getMonth()+1).padStart(2,'0')}-${String(s0.getDate()).padStart(2,'0')}` : '';
             const e = e0 ? `${e0.getFullYear()}-${String(e0.getMonth()+1).padStart(2,'0')}-${String(e0.getDate()).padStart(2,'0')}` : '';
             const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
-            return { id: ii.id, title: ii.title as string, period: pc, startAt: s };
+            const mm = meta[ii.keyResultId as string];
+            const title = mm ? `${mm.objTitle} / KR: ${mm.krTitle} / ${ii.title}` : (ii.title as string);
+            return { id: ii.id, title, period: pc, startAt: s };
           });
           setMyTasks(its);
         } catch {}
@@ -78,7 +87,7 @@ export function WorklogQuickNew() {
                   const s = sD ? `${sD.getFullYear()}-${String(sD.getMonth()+1).padStart(2,'0')}-${String(sD.getDate()).padStart(2,'0')}` : '';
                   const e = eD ? `${eD.getFullYear()}-${String(eD.getMonth()+1).padStart(2,'0')}-${String(eD.getDate()).padStart(2,'0')}` : '';
                   const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
-                  tasks.push({ id: ch.id, title: `${ii.title} / ${ch.title}`, period: pc, startAt: s });
+                  tasks.push({ id: ch.id, title: `${o.title} / KR: ${kr.title} / ${ch.title}`, period: pc, startAt: s });
                 }
               }
             }
