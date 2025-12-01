@@ -48,13 +48,7 @@ export class AuthController {
       orgUnitId = company.id;
     }
 
-    // Enforce role-based requirements
-    if ((dto.role === ('MANAGER' as any) || dto.role === ('INDIVIDUAL' as any)) && !orgUnitId) {
-      throw new BadRequestException('team required for this role');
-    }
-    if ((dto.role === ('CEO' as any) || dto.role === ('EXEC' as any)) && !orgUnitId && !dto.companyId) {
-      throw new BadRequestException('companyId or team required for this role');
-    }
+    // No org assignment required at signup; org assignment will be handled later in Org Management
 
     const existing = await this.prisma.user.findUnique({ where: { email: dto.username } });
     if (existing) throw new BadRequestException('username already exists');
