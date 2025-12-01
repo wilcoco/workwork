@@ -3,7 +3,7 @@ import { apiJson } from '../lib/api';
 
 type Pillar = 'Q' | 'C' | 'D' | 'DEV' | 'P';
 
-type OrgUnit = { id: string; name: string; type: string };
+type OrgUnit = { id: string; name: string; type: string; parentId?: string | null };
 
 type Objective = any;
 
@@ -36,17 +36,11 @@ export function TeamKpiInput() {
   const [krUnit, setKrUnit] = useState('');
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('');
+  const [taskRows, setTaskRows] = useState<Array<{ title: string; desc: string; start: string; end: string }>>([
+    { title: '', desc: '', start: '', end: '' },
+  ]);
 
-  // Initiative under KR (추진 과제)
-  const [initKrId, setInitKrId] = useState('');
-  const [initTitle, setInitTitle] = useState('');
-  const [subRows, setSubRows] = useState<Array<{ title: string; months: boolean[] }>>([{ title: '', months: Array(12).fill(false) }]);
-  const months2026 = useMemo(() => Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1)), []);
-  function toggleMonth(rowIdx: number, mIdx: number) {
-    setSubRows((prev) => prev.map((r, i) => i === rowIdx ? { ...r, months: r.months.map((v, j) => j === mIdx ? !v : v) } : r));
-  }
-  function addSubRow() { setSubRows((prev) => [...prev, { title: '', months: Array(12).fill(false) }]); }
-  function removeSubRow(idx: number) { setSubRows((prev) => prev.filter((_, i) => i !== idx)); }
+  // (removed) separate initiative entry UI replaced by taskRows within KPI form
 
   useEffect(() => {
     async function loadOrg() {
@@ -122,7 +116,7 @@ export function TeamKpiInput() {
       if (!objectiveId) {
         const now = new Date();
         const year = now.getFullYear();
-        const created = await apiJson(`/api/okrs/objectives`, {
+        const created = await apiJson<{ id: string }>(`/api/okrs/objectives?context=team`, {
           method: 'POST',
           body: JSON.stringify({
             userId,
@@ -136,7 +130,7 @@ export function TeamKpiInput() {
         });
         objectiveId = created.id;
       }
-      await apiJson(`/api/okrs/objectives/${encodeURIComponent(objectiveId)}/krs`, {
+      const newKr = await apiJson<{ id: string }>(`/api/okrs/objectives/${encodeURIComponent(objectiveId)}/krs?context=team`, {
         method: 'POST',
         body: JSON.stringify({
           userId,
@@ -149,7 +143,23 @@ export function TeamKpiInput() {
           cadence: krCadence || undefined,
         }),
       });
+      // Create initiatives for each task row
+      for (const r of taskRows) {
+        if (!r.title) continue;
+        await apiJson(`/api/initiatives`, {
+          method: 'POST',
+          body: JSON.stringify({
+            keyResultId: newKr.id,
+            ownerId: userId,
+            title: r.title,
+            description: r.desc || undefined,
+            startAt: r.start || undefined,
+            endAt: r.end || undefined,
+          }),
+        });
+      }
       setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence('');
+      setTaskRows([{ title: '', desc: '', start: '', end: '' }]);
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
     } catch (e: any) {
@@ -157,48 +167,7 @@ export function TeamKpiInput() {
     }
   }
 
-  async function createInitiative() {
-    if (!initKrId) return;
-    try {
-      setError(null);
-      const parent = await apiJson(`/api/initiatives`, {
-        method: 'POST',
-        body: JSON.stringify({
-          keyResultId: initKrId,
-          ownerId: userId,
-          title: initTitle,
-        }),
-      });
-      for (let i = 0; i < subRows.length; i++) {
-        const row = subRows[i];
-        const selected = row.months.map((v, idx) => v ? idx : -1).filter((v) => v >= 0);
-        if (!selected.length) continue;
-        const mStart = Math.min(...selected);
-        const mEnd = Math.max(...selected);
-        const start = new Date(2026, mStart, 1);
-        const end = new Date(2026, mEnd + 1, 0);
-        const childTitle = row.title && row.title.trim() ? row.title.trim() : `세부 ${i + 1}`;
-        const sYmd = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2,'0')}-${String(start.getDate()).padStart(2,'0')}`;
-        const eYmd = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`;
-        await apiJson(`/api/initiatives`, {
-          method: 'POST',
-          body: JSON.stringify({
-            keyResultId: initKrId,
-            ownerId: userId,
-            title: childTitle,
-            startAt: sYmd,
-            endAt: eYmd,
-            parentId: parent.id,
-          }),
-        });
-      }
-      setInitTitle(''); setSubRows([{ title: '', months: Array(12).fill(false) }]);
-      const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
-      setObjectives(res.items || []);
-    } catch (e: any) {
-      setError(e.message || '이니셔티브 생성 실패');
-    }
-  }
+  // (removed) createInitiative helper — tasks are created alongside KPI now
 
   return (
     <div style={{ maxWidth: 980, margin: '24px auto', display: 'grid', gap: 12 }}>
@@ -211,7 +180,13 @@ export function TeamKpiInput() {
           <select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
             <option value="">선택</option>
             {orgs
-              .filter((o) => myRole === 'CEO' ? true : (myOrgUnitId ? o.id === myOrgUnitId : true))
+              .filter((o) => o.type === 'TEAM')
+              .filter((o) => {
+                if (myRole === 'CEO') return true;
+                if (myRole === 'MANAGER') return o.id === myOrgUnitId;
+                if (myRole === 'EXEC') return (o.parentId || '') === (myOrgUnitId || '');
+                return o.id === myOrgUnitId;
+              })
               .map((o) => (
               <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
             ))}
@@ -219,8 +194,7 @@ export function TeamKpiInput() {
         </div>
       </div>
 
-      
-
+      {myRole !== 'INDIVIDUAL' && (
       <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>KPI 입력</h3>
         <div className="resp-2">
@@ -248,7 +222,25 @@ export function TeamKpiInput() {
           </select>
           <button className="btn btn-primary" disabled={!userId || !orgUnitId || !krTitle || !krTarget || !krUnit} onClick={createKr}>KPI 생성</button>
         </div>
+        <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10, display: 'grid', gap: 8 }}>
+          <h4 style={{ margin: 0 }}>추진 과제</h4>
+          {taskRows.map((r, i) => (
+            <div key={i} className="card" style={{ padding: 8, display: 'grid', gap: 6 }}>
+              <input placeholder="과제 제목" value={r.title} onChange={(e) => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, title: e.target.value } : rr))} />
+              <textarea placeholder="과제 내용" value={r.desc} onChange={(e) => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, desc: e.target.value } : rr))} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input type="date" value={r.start} onChange={(e) => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, start: e.target.value } : rr))} />
+                <input type="date" value={r.end} onChange={(e) => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, end: e.target.value } : rr))} />
+                <button type="button" className="btn btn-ghost" onClick={() => setTaskRows((prev) => prev.filter((_, idx) => idx !== i))}>삭제</button>
+              </div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn" onClick={() => setTaskRows((prev) => [...prev, { title: '', desc: '', start: '', end: '' }])}>과제 추가</button>
+          </div>
+        </div>
       </div>
+      )}
 
       <div className="card" style={{ padding: 12 }}>
         <h3 style={{ margin: 0 }}>팀 KPI 목록</h3>
@@ -283,43 +275,6 @@ export function TeamKpiInput() {
               </ul>
             );
           })()}
-        </div>
-      </div>
-
-      <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
-        <h3 style={{ margin: 0 }}>추진 과제 (Tasks)</h3>
-        <div className="resp-2">
-          <select value={initKrId} onChange={(e) => setInitKrId(e.target.value)}>
-            <option value="">KPI 선택</option>
-            {objectives.flatMap((o) => (o.keyResults || []).map((kr: any) => (
-              <option key={kr.id} value={kr.id}>{o.title} / KR: {kr.title}</option>
-            )))}
-          </select>
-          <input placeholder="과제 제목" value={initTitle} onChange={(e) => setInitTitle(e.target.value)} />
-        </div>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '140px repeat(12, 32px)', gap: 6, alignItems: 'center' }}>
-            <div />
-            {months2026.map((d, i) => (
-              <div key={i} style={{ textAlign: 'center', fontSize: 12, color: '#64748b' }}>{i + 1}</div>
-            ))}
-            {subRows.map((row, rIdx) => (
-              <>
-                <div key={`t-${rIdx}`} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input placeholder={`세부 제목 ${rIdx + 1}`} value={row.title} onChange={(e) => setSubRows((prev) => prev.map((rr, i) => i === rIdx ? { ...rr, title: e.target.value } : rr))} />
-                  <button className="btn btn-ghost" onClick={() => removeSubRow(rIdx)}>삭제</button>
-                </div>
-                {row.months.map((on, mIdx) => (
-                  <div key={`m-${rIdx}-${mIdx}`} onClick={() => toggleMonth(rIdx, mIdx)}
-                    style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
-                ))}
-              </>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn" onClick={addSubRow}>세부 추가</button>
-            <button className="btn btn-primary" disabled={!initKrId || !initTitle} onClick={createInitiative}>추가</button>
-          </div>
         </div>
       </div>
 

@@ -151,10 +151,10 @@ export class OkrsController {
   }
 
   @Post('objectives')
-  async createObjective(@Body() dto: CreateObjectiveDto) {
+  async createObjective(@Body() dto: CreateObjectiveDto, @Query('context') context?: string) {
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user) throw new BadRequestException('user not found');
-    // Validation: allow aligning to a parent KR for all roles; if no parent, restrict to CEO/EXEC
+    // Validation: for general OKR, if no parent KR, restrict to CEO (top-level creation)
     let parentKr: any = null;
     if (dto.alignsToKrId) {
       parentKr = await this.prisma.keyResult.findUnique({
@@ -162,7 +162,7 @@ export class OkrsController {
         include: { objective: { include: { owner: true, orgUnit: true } } },
       });
       if (!parentKr) throw new BadRequestException('parent KR not found');
-    } else {
+    } else if (context !== 'team') {
       if (user.role !== ('CEO' as any)) {
         throw new BadRequestException('non-CEO must align to a parent KR');
       }
@@ -175,6 +175,16 @@ export class OkrsController {
     const orgUnitId = dto.orgUnitId || user.orgUnitId;
     if (!orgUnitId) {
       throw new BadRequestException('org unit required');
+    }
+    // Team KPI permission when context=team
+    if (context === 'team') {
+      const org = await this.prisma.orgUnit.findUnique({ where: { id: orgUnitId } });
+      const isCEO = (user.role as any) === 'CEO';
+      const isMgrSameTeam = (user.role as any) === 'MANAGER' && user.orgUnitId === orgUnitId;
+      const isExecParent = (user.role as any) === 'EXEC' && !!org?.parentId && user.orgUnitId === org.parentId;
+      if (!isCEO && !isMgrSameTeam && !isExecParent) {
+        throw new ForbiddenException('not allowed to create team KPI');
+      }
     }
     const result = await this.prisma.$transaction(async (tx) => {
       const rec = await tx.objective.create({
@@ -227,9 +237,19 @@ export class OkrsController {
   }
 
   @Post('objectives/:id/krs')
-  async createKr(@Param('id') objectiveId: string, @Body() dto: CreateKeyResultDto) {
-    const obj = await this.prisma.objective.findUnique({ where: { id: objectiveId } });
+  async createKr(@Param('id') objectiveId: string, @Body() dto: CreateKeyResultDto, @Query('context') context?: string) {
+    const obj = await this.prisma.objective.findUnique({ where: { id: objectiveId }, include: { orgUnit: true } });
     if (!obj) throw new Error('objective not found');
+    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    if (!user) throw new BadRequestException('user not found');
+    if (context === 'team') {
+      const isCEO = (user.role as any) === 'CEO';
+      const isMgrSameTeam = (user.role as any) === 'MANAGER' && user.orgUnitId === (obj as any).orgUnitId;
+      const isExecParent = (user.role as any) === 'EXEC' && !!(obj as any)?.orgUnit?.parentId && user.orgUnitId === (obj as any).orgUnit.parentId;
+      if (!isCEO && !isMgrSameTeam && !isExecParent) {
+        throw new ForbiddenException('not allowed to create team KPI');
+      }
+    }
     const rec = await this.prisma.keyResult.create({
       data: ({
         objectiveId,
@@ -300,14 +320,16 @@ export class OkrsController {
 
   @Delete('krs/:id')
   async deleteKr(@Param('id') id: string, @Query('userId') userId?: string, @Query('context') context?: string) {
-    const kr = await this.prisma.keyResult.findUnique({ where: { id }, include: { objective: true } });
+    const kr = await this.prisma.keyResult.findUnique({ where: { id }, include: { objective: { include: { orgUnit: true } } } });
     if (!kr) throw new Error('key result not found');
     if (!userId) throw new BadRequestException('userId required');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new ForbiddenException('not allowed');
     const isCEO = (user.role as any) === 'CEO';
-    const isExecOrMgr = (user.role as any) === 'EXEC' || (user.role as any) === 'MANAGER';
+    const isMgr = (user.role as any) === 'MANAGER';
+    const isExec = (user.role as any) === 'EXEC';
     const sameTeam = !!user.orgUnitId && user.orgUnitId === (kr.objective as any)?.orgUnitId;
+    const execIsParent = isExec && !!(kr.objective as any)?.orgUnit?.parentId && user.orgUnitId === (kr.objective as any).orgUnit.parentId;
     // Allow CEO always
     let allowed = isCEO;
     // Allow owner for general OKR
@@ -316,7 +338,7 @@ export class OkrsController {
     }
     // Team KPI context: allow EXEC/MANAGER when same team
     if (!allowed && context === 'team') {
-      allowed = isExecOrMgr && sameTeam;
+      allowed = (isMgr && sameTeam) || execIsParent;
     }
     if (!allowed) throw new ForbiddenException('not allowed');
     console.log('[okrs] deleteKr', { id, DATABASE_URL: process.env.DATABASE_URL, context, role: user.role, sameTeam });
