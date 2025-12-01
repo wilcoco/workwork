@@ -18,6 +18,7 @@ export function TeamKpiInput() {
 
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myOrgUnitId, setMyOrgUnitId] = useState<string>('');
 
   // Create Objective (team OKR O)
   const [oTitle, setOTitle] = useState('');
@@ -61,8 +62,11 @@ export function TeamKpiInput() {
     (async () => {
       try {
         if (!userId) return;
-        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'; orgUnitId?: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
         setMyRole((me as any).role || '');
+        const orgId = (me as any).orgUnitId || '';
+        setMyOrgUnitId(orgId);
+        if (!orgUnitId && orgId) setOrgUnitId(orgId);
       } catch {}
     })();
   }, [userId]);
@@ -206,7 +210,9 @@ export function TeamKpiInput() {
           <div>팀(조직) 선택</div>
           <select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
             <option value="">선택</option>
-            {orgs.map((o) => (
+            {orgs
+              .filter((o) => myRole === 'CEO' ? true : (myOrgUnitId ? o.id === myOrgUnitId : true))
+              .map((o) => (
               <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
             ))}
           </select>
@@ -257,13 +263,13 @@ export function TeamKpiInput() {
                     <div style={{ fontWeight: 600 }}>{obj?.title ? `${obj.title} / KR: ${kr.title}` : `KR: ${kr.title}`}</div>
                     <div style={{ color: '#334155' }}>({kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
                     <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}</div>
-                    {myRole === 'CEO' && (
+                    {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
                       <button
                         className="btn btn-ghost"
                         onClick={async () => {
                           if (!confirm('해당 KR을 삭제할까요?')) return;
                           try {
-                            await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                            await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}&context=team`, { method: 'DELETE' });
                             const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
                             setObjectives(res.items || []);
                           } catch (e: any) {
@@ -326,13 +332,13 @@ export function TeamKpiInput() {
                 <span style={{ background: '#E6EEF7', color: '#0F3D73', border: '1px solid #0F3D73', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>목표</span>
                 <b>{o.title}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{o.pillar || '-'}</span>
-                {myRole === 'CEO' && (
+                {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
                   <button
                     className="btn btn-ghost"
                     onClick={async () => {
                       if (!confirm('해당 목표를 삭제할까요?')) return;
                       try {
-                        await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                        await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}?userId=${encodeURIComponent(userId)}&context=team`, { method: 'DELETE' });
                         const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
                         setObjectives(res.items || []);
                       } catch (e: any) {
@@ -351,13 +357,13 @@ export function TeamKpiInput() {
                           <div style={{ fontWeight: 600 }}>{o.title} / KR: {kr.title}</div>
                           <div style={{ color: '#334155' }}>({kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
                           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}{typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}</div>
-                          {myRole === 'CEO' && (
+                          {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
                             <button
                               className="btn btn-ghost"
                               onClick={async () => {
                                 if (!confirm('해당 KR을 삭제할까요?')) return;
                                 try {
-                                  await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                                  await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}&context=team`, { method: 'DELETE' });
                                   const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
                                   setObjectives(res.items || []);
                                 } catch (e: any) {

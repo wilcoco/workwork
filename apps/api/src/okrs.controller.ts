@@ -279,12 +279,18 @@ export class OkrsController {
   }
 
   @Delete('objectives/:id')
-  async deleteObjective(@Param('id') id: string, @Query('userId') userId?: string) {
-    const exists = await this.prisma.objective.findUnique({ where: { id } });
+  async deleteObjective(@Param('id') id: string, @Query('userId') userId?: string, @Query('context') context?: string) {
+    const exists = await this.prisma.objective.findUnique({ where: { id }, include: { orgUnit: true } });
     if (!exists) throw new Error('objective not found');
     if (!userId) throw new BadRequestException('userId required');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.role !== ('CEO' as any)) throw new ForbiddenException('only CEO can delete');
+    if (!user) throw new ForbiddenException('not allowed');
+    const isCEO = (user.role as any) === 'CEO';
+    const isExecOrMgr = (user.role as any) === 'EXEC' || (user.role as any) === 'MANAGER';
+    const sameTeam = !!user.orgUnitId && user.orgUnitId === (exists as any)?.orgUnitId;
+    // Allow CEO or the owner of the objective, or team exec/manager in team context
+    const allowed = isCEO || exists.ownerId === userId || (context === 'team' && isExecOrMgr && sameTeam);
+    if (!allowed) throw new ForbiddenException('not allowed');
     console.log('[okrs] deleteObjective', { id, DATABASE_URL: process.env.DATABASE_URL });
     await this.prisma.$transaction(async (tx) => {
       await this.deleteObjectiveCascade(id, tx);
@@ -293,13 +299,27 @@ export class OkrsController {
   }
 
   @Delete('krs/:id')
-  async deleteKr(@Param('id') id: string, @Query('userId') userId?: string) {
-    const kr = await this.prisma.keyResult.findUnique({ where: { id } });
+  async deleteKr(@Param('id') id: string, @Query('userId') userId?: string, @Query('context') context?: string) {
+    const kr = await this.prisma.keyResult.findUnique({ where: { id }, include: { objective: true } });
     if (!kr) throw new Error('key result not found');
     if (!userId) throw new BadRequestException('userId required');
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.role !== ('CEO' as any)) throw new ForbiddenException('only CEO can delete');
-    console.log('[okrs] deleteKr', { id, DATABASE_URL: process.env.DATABASE_URL });
+    if (!user) throw new ForbiddenException('not allowed');
+    const isCEO = (user.role as any) === 'CEO';
+    const isExecOrMgr = (user.role as any) === 'EXEC' || (user.role as any) === 'MANAGER';
+    const sameTeam = !!user.orgUnitId && user.orgUnitId === (kr.objective as any)?.orgUnitId;
+    // Allow CEO always
+    let allowed = isCEO;
+    // Allow owner for general OKR
+    if (!allowed && (!context || context !== 'team')) {
+      allowed = kr.ownerId === userId;
+    }
+    // Team KPI context: allow EXEC/MANAGER when same team
+    if (!allowed && context === 'team') {
+      allowed = isExecOrMgr && sameTeam;
+    }
+    if (!allowed) throw new ForbiddenException('not allowed');
+    console.log('[okrs] deleteKr', { id, DATABASE_URL: process.env.DATABASE_URL, context, role: user.role, sameTeam });
     await this.prisma.$transaction(async (tx) => {
       await this.deleteKrCascade(id, tx);
     });
