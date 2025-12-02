@@ -231,7 +231,6 @@ export function TeamKpiInput() {
             <option value="WEEKLY">주</option>
             <option value="MONTHLY">월</option>
           </select>
-          <button className="btn btn-primary" disabled={!userId || !orgUnitId || !krTitle || !krMetric || krTarget === '' || !krUnit} onClick={createKr}>KPI 생성</button>
         </div>
         <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10, display: 'grid', gap: 8 }}>
           <h4 style={{ margin: 0 }}>추진 과제</h4>
@@ -256,6 +255,7 @@ export function TeamKpiInput() {
           ))}
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn" onClick={() => setTaskRows((prev) => [...prev, { title: '', desc: '', months: Array(12).fill(false) }])}>과제 추가</button>
+            <button className="btn btn-primary" disabled={!userId || !orgUnitId || !krTitle || !krMetric || krTarget === '' || !krUnit} onClick={createKr}>KPI 생성</button>
           </div>
         </div>
       </div>
