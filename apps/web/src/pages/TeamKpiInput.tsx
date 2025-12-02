@@ -36,8 +36,8 @@ export function TeamKpiInput() {
   const [krUnit, setKrUnit] = useState('');
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('');
-  const [taskRows, setTaskRows] = useState<Array<{ title: string; desc: string; start: string; end: string }>>([
-    { title: '', desc: '', start: '', end: '' },
+  const [taskRows, setTaskRows] = useState<Array<{ title: string; desc: string; months: boolean[] }>>([
+    { title: '', desc: '', months: Array(12).fill(false) },
   ]);
 
   // (removed) separate initiative entry UI replaced by taskRows within KPI form
@@ -112,7 +112,7 @@ export function TeamKpiInput() {
   async function createKr() {
     try {
       setError(null);
-      let objectiveId = objectives[0]?.id;
+      let objectiveId = (objectives.find((o: any) => !!o.pillar) as any)?.id;
       if (!objectiveId) {
         const now = new Date();
         const year = now.getFullYear();
@@ -135,7 +135,7 @@ export function TeamKpiInput() {
         body: JSON.stringify({
           userId,
           title: krTitle,
-          metric: krMetric || undefined,
+          metric: krMetric,
           target: Number(krTarget),
           unit: krUnit,
           pillar: krPillar,
@@ -146,6 +146,17 @@ export function TeamKpiInput() {
       // Create initiatives for each task row
       for (const r of taskRows) {
         if (!r.title) continue;
+        const sel = (r.months || []).map((v, i) => (v ? i : -1)).filter(i => i >= 0);
+        let startAt: string | undefined = undefined;
+        let endAt: string | undefined = undefined;
+        if (sel.length) {
+          const ms = Math.min(...sel);
+          const me = Math.max(...sel);
+          const ss = new Date(2026, ms, 1);
+          const ee = new Date(2026, me + 1, 0);
+          startAt = `${ss.getFullYear()}-${String(ss.getMonth()+1).padStart(2,'0')}-${String(ss.getDate()).padStart(2,'0')}`;
+          endAt = `${ee.getFullYear()}-${String(ee.getMonth()+1).padStart(2,'0')}-${String(ee.getDate()).padStart(2,'0')}`;
+        }
         await apiJson(`/api/initiatives`, {
           method: 'POST',
           body: JSON.stringify({
@@ -153,13 +164,13 @@ export function TeamKpiInput() {
             ownerId: userId,
             title: r.title,
             description: r.desc || undefined,
-            startAt: r.start || undefined,
-            endAt: r.end || undefined,
+            startAt,
+            endAt,
           }),
         });
       }
       setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence('');
-      setTaskRows([{ title: '', desc: '', start: '', end: '' }]);
+      setTaskRows([{ title: '', desc: '', months: Array(12).fill(false) }]);
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
     } catch (e: any) {
@@ -220,7 +231,7 @@ export function TeamKpiInput() {
             <option value="WEEKLY">주</option>
             <option value="MONTHLY">월</option>
           </select>
-          <button className="btn btn-primary" disabled={!userId || !orgUnitId || !krTitle || !krTarget || !krUnit} onClick={createKr}>KPI 생성</button>
+          <button className="btn btn-primary" disabled={!userId || !orgUnitId || !krTitle || !krMetric || krTarget === '' || !krUnit} onClick={createKr}>KPI 생성</button>
         </div>
         <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10, display: 'grid', gap: 8 }}>
           <h4 style={{ margin: 0 }}>추진 과제</h4>
@@ -228,15 +239,23 @@ export function TeamKpiInput() {
             <div key={i} className="card" style={{ padding: 8, display: 'grid', gap: 6 }}>
               <input placeholder="과제 제목" value={r.title} onChange={(e) => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, title: e.target.value } : rr))} />
               <textarea placeholder="과제 내용" value={r.desc} onChange={(e) => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, desc: e.target.value } : rr))} />
+              <div style={{ display: 'grid', gridTemplateColumns: '120px repeat(12, 32px)', gap: 6, alignItems: 'center' }}>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>'26 월 선택</div>
+                {Array.from({ length: 12 }).map((_, m) => (
+                  <div key={`ml-${i}-${m}`} style={{ textAlign: 'center', fontSize: 12, color: '#64748b' }}>{m + 1}</div>
+                ))}
+                <div style={{ gridColumn: '1 / span 1' }} />
+                {(r.months || []).map((on, m) => (
+                  <div key={`mm-${i}-${m}`} onClick={() => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, months: rr.months.map((v, j) => j === m ? !v : v) } : rr))} style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
+                ))}
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input type="date" value={r.start} onChange={(e) => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, start: e.target.value } : rr))} />
-                <input type="date" value={r.end} onChange={(e) => setTaskRows((prev) => prev.map((rr, idx) => idx === i ? { ...rr, end: e.target.value } : rr))} />
                 <button type="button" className="btn btn-ghost" onClick={() => setTaskRows((prev) => prev.filter((_, idx) => idx !== i))}>삭제</button>
               </div>
             </div>
           ))}
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className="btn" onClick={() => setTaskRows((prev) => [...prev, { title: '', desc: '', start: '', end: '' }])}>과제 추가</button>
+            <button type="button" className="btn" onClick={() => setTaskRows((prev) => [...prev, { title: '', desc: '', months: Array(12).fill(false) }])}>과제 추가</button>
           </div>
         </div>
       </div>
