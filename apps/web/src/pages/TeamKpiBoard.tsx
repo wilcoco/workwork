@@ -49,6 +49,7 @@ export function TeamKpiBoard() {
         const r: KrRow[] = [];
         for (const o of items) {
           const pillar: Pillar | null = (o.pillar as any) ?? null;
+          if (!pillar) continue; // Only KPI objectives (pillar is set)
           for (const kr of (o.keyResults || [])) {
             r.push({
               id: kr.id,
@@ -92,7 +93,7 @@ export function TeamKpiBoard() {
         <select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
           <option value="">선택</option>
           {orgs.map((o) => (
-            <option key={o.id} value={o.id}>{o.name} ({o.type})</option>
+            <option key={o.id} value={o.id}>{o.name} ({o.type === 'COMPANY' ? '회사' : o.type === 'DIVISION' ? '실' : o.type === 'TEAM' ? '팀' : o.type})</option>
           ))}
         </select>
       </div>

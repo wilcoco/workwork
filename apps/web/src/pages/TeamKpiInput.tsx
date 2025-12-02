@@ -246,7 +246,7 @@ export function TeamKpiInput() {
         <h3 style={{ margin: 0 }}>팀 KPI 목록</h3>
         <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
           {(() => {
-            const krs = objectives.flatMap((o) => (o.keyResults || []).map((kr: any) => ({ kr, obj: o })));
+            const krs = objectives.filter((o: any) => !!o.pillar).flatMap((o) => (o.keyResults || []).map((kr: any) => ({ kr, obj: o })));
             if (!krs.length) return <div style={{ color: '#6b7280' }}>KPI가 없습니다.</div>;
             return (
               <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -281,7 +281,7 @@ export function TeamKpiInput() {
       <div className="card" style={{ padding: 12 }}>
         <h3 style={{ margin: 0 }}>팀 KPI/TASKS</h3>
         <div style={{ display: 'grid', gap: 10, marginTop: 8 }}>
-          {objectives.map((o) => (
+          {objectives.filter((o: any) => !!o.pillar).map((o) => (
             <div key={o.id} className="card" style={{ padding: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ background: '#E6EEF7', color: '#0F3D73', border: '1px solid #0F3D73', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>목표</span>

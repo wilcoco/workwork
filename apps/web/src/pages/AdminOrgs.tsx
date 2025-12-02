@@ -271,7 +271,7 @@ export function AdminOrgs(): JSX.Element {
               <button className="btn btn-primary">생성</button>
             </form>
           ) : (
-            <div style={{ fontSize: 13, color: '#6b7280' }}>대표이사만 조직을 추가할 수 있습니다.</div>
+            <div style={{ fontSize: 13, color: '#6b7280' }}>대표만 조직을 추가할 수 있습니다.</div>
           )}
           <div>
             <h3 style={{ marginTop: 0 }}>구성원</h3>
@@ -308,7 +308,7 @@ export function AdminOrgs(): JSX.Element {
                     </div>
                   </form>
                 ) : (
-                  <div style={{ fontSize: 13, color: '#6b7280' }}>대표이사만 구성원을 추가/제거할 수 있습니다.</div>
+                  <div style={{ fontSize: 13, color: '#6b7280' }}>대표만 구성원을 추가/제거할 수 있습니다.</div>
                 )}
                 {members.length === 0 && <div style={{ color: '#6b7280', fontSize: 13 }}>구성원이 없습니다.</div>}
                 {members.map((m) => (

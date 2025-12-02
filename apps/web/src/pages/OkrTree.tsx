@@ -47,7 +47,8 @@ export function OkrTree() {
 
   const itemsSorted = useMemo(() => {
     const order: Record<string, number> = { CEO: 0, EXEC: 1, MANAGER: 2, INDIVIDUAL: 3 } as any;
-    return [...items].sort((a, b) => {
+    const onlyOkrs = items.filter((o: any) => !o.pillar);
+    return [...onlyOkrs].sort((a, b) => {
       const ra = order[(a?.owner?.role as any) || 'INDIVIDUAL'] ?? 99;
       const rb = order[(b?.owner?.role as any) || 'INDIVIDUAL'] ?? 99;
       if (ra !== rb) return ra - rb;
