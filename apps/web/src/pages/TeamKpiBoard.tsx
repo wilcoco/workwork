@@ -15,10 +15,11 @@ type KrRow = {
   baseline: number | null;
   target: number;
   weight: number | null;
-  initiatives: string[];
+  initiatives: Array<{ id: string; title: string; done?: boolean }>;
   latestValue?: number | null;
   latestPeriodEnd?: string | null;
   warn?: boolean;
+  periods?: Array<{ label: string; value: number | null }>;
 };
 
 function toPillarLabel(p: Pillar | null | undefined): string {
@@ -64,21 +65,51 @@ export function TeamKpiBoard() {
               baseline: typeof kr.baseline === 'number' ? kr.baseline : null,
               target: typeof kr.target === 'number' ? kr.target : 0,
               weight: typeof kr.weight === 'number' ? kr.weight : null,
-              initiatives: Array.isArray(kr.initiatives) ? kr.initiatives.map((ii: any) => ii.title).filter(Boolean) : [],
+              initiatives: Array.isArray(kr.initiatives) ? kr.initiatives.map((ii: any) => ({ id: ii.id, title: ii.title })).filter((x: { id: string; title: string }) => !!x.title) : [],
             });
           }
         }
+        function labelForPeriod(cadence: string | '', ps?: string, pe?: string) {
+          if (!ps) return '';
+          const d = new Date(ps);
+          const yy = String(d.getFullYear()).slice(2);
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          if (cadence === 'QUARTERLY') {
+            const q = Math.floor(d.getMonth() / 3) + 1;
+            return `${yy}-Q${q}`;
+          }
+          if (cadence === 'WEEKLY') {
+            const onejan = new Date(d.getFullYear(), 0, 1);
+            const week = Math.ceil((((d as any) - (onejan as any)) / 86400000 + onejan.getDay() + 1) / 7);
+            return `${yy}-W${String(week).padStart(2, '0')}`;
+          }
+          if (cadence === 'DAILY') return `${yy}-${mm}-${String(d.getDate()).padStart(2, '0')}`;
+          return `${yy}-${mm}`;
+        }
+
         const enhanced = await Promise.all(r.map(async (row) => {
           try {
             const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(row.id)}`);
-            const latest = (pr.items || [])[0] || null;
+            const list = pr.items || [];
+            const latest = list[0] || null;
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
             let warn = false;
             if (latest && latestValue != null && latestPeriodEnd) {
               if (new Date(latestPeriodEnd) < new Date() && latestValue < row.target) warn = true;
             }
-            return { ...row, latestValue, latestPeriodEnd, warn } as KrRow;
+            const periods = list.slice(0, 6).map((e: any) => ({ label: labelForPeriod(row.cadence, e.periodStart, e.periodEnd), value: e.krValue ?? null }));
+            // initiative done flags
+            const inits = await Promise.all((row.initiatives || []).map(async (ii) => {
+              try {
+                const ir = await apiJson<{ items: any[] }>(`/api/progress?subjectType=INITIATIVE&subjectId=${encodeURIComponent(ii.id)}`);
+                const done = (ir.items || []).some((x: any) => x.initiativeDone && new Date(x.periodEnd) <= new Date());
+                return { ...ii, done };
+              } catch {
+                return { ...ii };
+              }
+            }));
+            return { ...row, latestValue, latestPeriodEnd, warn, periods, initiatives: inits } as KrRow;
           } catch {
             return { ...row } as KrRow;
           }
@@ -150,10 +181,22 @@ export function TeamKpiBoard() {
                         <td style={td}>{r.target}</td>
                         <td style={td}>{delta == null ? '-' : `${arrow} ${Math.abs(delta)}`}</td>
                         <td style={td}>{r.weight == null ? '-' : r.weight}</td>
-                        <td style={td}>{r.latestValue == null ? '-' : `${r.latestValue}${r.unit ? ' ' + r.unit : ''}`}</td>
+                        <td style={td}>{r.periods && r.periods.length ? (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {r.periods.map((p, i) => (
+                              <span key={i} style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 6px', fontSize: 12 }}>
+                                {p.label}: {p.value == null ? '-' : p.value}
+                              </span>
+                            ))}
+                          </div>
+                        ) : '-'}</td>
                         <td style={td}>{r.initiatives.length ? (
                           <ul style={{ margin: 0, paddingLeft: 16 }}>
-                            {r.initiatives.map((t, i) => <li key={i}>{t}</li>)}
+                            {r.initiatives.map((it, i) => (
+                              <li key={it.id}>
+                                {it.title} {it.done ? <span style={{ color: '#16a34a', fontWeight: 700 }}>(완료)</span> : null}
+                              </li>
+                            ))}
                           </ul>
                         ) : '-'}</td>
                       </tr>
