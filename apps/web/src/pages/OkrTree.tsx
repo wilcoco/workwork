@@ -120,8 +120,22 @@ export function OkrTree() {
         {/* KRs */}
         {o.keyResults?.length > 0 && (
           <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
-            {o.keyResults.map((kr: any) => (
-              <div key={kr.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: krProg[kr.id]?.warn ? '#fee2e2' : undefined }}>
+            {o.keyResults.map((kr: any) => {
+              const lv = krProg[kr.id]?.latestValue;
+              const lpe = krProg[kr.id]?.latestPeriodEnd ? new Date(krProg[kr.id]!.latestPeriodEnd as any) : null;
+              const pe = o.periodEnd ? new Date(o.periodEnd) : null;
+              let bg: string | undefined = undefined;
+              if (pe) {
+                const deadline = new Date(pe.getFullYear(), pe.getMonth() + 1, 0, 23, 59, 59, 999);
+                const passed = new Date() > deadline;
+                const entered = !!lpe && lpe.getTime() >= deadline.getTime();
+                if (passed && !entered) bg = '#fee2e2';
+                else if (lv != null && typeof kr.target === 'number' && lv < kr.target) bg = '#ffedd5';
+              } else if (lv != null && typeof kr.target === 'number' && lv < kr.target) {
+                bg = '#ffedd5';
+              }
+              return (
+              <div key={kr.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: bg }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ fontWeight: 600 }}>KR:</div>
                   <div>{kr.title}</div>
@@ -179,7 +193,7 @@ export function OkrTree() {
                   </div>
                 )}
               </div>
-            ))}
+            );})}
           </div>
         )}
       </div>

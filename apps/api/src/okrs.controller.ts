@@ -30,8 +30,8 @@ class CreateKeyResultDto {
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
   @IsOptional() @IsNumber()
   baseline?: number;
-  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY' } as any)
-  cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY';
+  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
+  cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
 }
 
 class UpdateObjectiveDto {
@@ -54,8 +54,8 @@ class UpdateKeyResultDto {
   @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
   @IsOptional() @IsNumber() baseline?: number;
-  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY' } as any)
-  cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY';
+  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
+  cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
 }
 
 @Controller('okrs')

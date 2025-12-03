@@ -52,9 +52,13 @@ export class ProgressController {
   private quarterOfK(dK: Date) { return Math.floor(dK.getMonth() / 3); }
   private startOfQuarterK(dK: Date) { const q = this.quarterOfK(dK); return new Date(dK.getFullYear(), q * 3, 1, 0, 0, 0, 0); }
   private endOfQuarterK(dK: Date) { const q = this.quarterOfK(dK); return new Date(dK.getFullYear(), q * 3 + 3, 0, 23, 59, 59, 999); }
+  private startOfHalfYearK(dK: Date) { const h = dK.getMonth() < 6 ? 0 : 6; return new Date(dK.getFullYear(), h, 1, 0, 0, 0, 0); }
+  private endOfHalfYearK(dK: Date) { const h = dK.getMonth() < 6 ? 6 : 12; return new Date(dK.getFullYear(), h, 0, 23, 59, 59, 999); }
+  private startOfYearK(dK: Date) { return new Date(dK.getFullYear(), 0, 1, 0, 0, 0, 0); }
+  private endOfYearK(dK: Date) { return new Date(dK.getFullYear(), 12, 0, 23, 59, 59, 999); }
 
   // Compute period boundaries in KST, return as UTC Date
-  private calcPeriod(cadence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | null | undefined, whenUtc: Date): { start: Date; end: Date } {
+  private calcPeriod(cadence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY' | null | undefined, whenUtc: Date): { start: Date; end: Date } {
     const cd = cadence || 'MONTHLY';
     const wK = this.toKst(whenUtc);
     if (cd === 'DAILY') {
@@ -70,6 +74,16 @@ export class ProgressController {
     if (cd === 'QUARTERLY') {
       const sK = this.startOfQuarterK(wK);
       const eK = this.endOfQuarterK(wK);
+      return { start: this.fromKst(sK), end: this.fromKst(eK) };
+    }
+    if (cd === 'HALF_YEARLY') {
+      const sK = this.startOfHalfYearK(wK);
+      const eK = this.endOfHalfYearK(wK);
+      return { start: this.fromKst(sK), end: this.fromKst(eK) };
+    }
+    if (cd === 'YEARLY') {
+      const sK = this.startOfYearK(wK);
+      const eK = this.endOfYearK(wK);
       return { start: this.fromKst(sK), end: this.fromKst(eK) };
     }
     const sK = this.startOfMonthK(wK);

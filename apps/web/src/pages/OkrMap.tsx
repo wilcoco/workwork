@@ -17,8 +17,9 @@ function orgTypeLabel(t?: string) {
   return t || '';
 }
 
-function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild, krProg }: {
+function KrNode({ kr, parentEnd, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild, krProg }: {
   kr: any;
+  parentEnd?: string;
   krObjId: string; setKrObjId: (v: string) => void;
   krTitle: string; setKrTitle: (v: string) => void;
   krMetric: string; setKrMetric: (v: string) => void;
@@ -36,28 +37,45 @@ function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrM
 }) {
   return (
     <li style={{ marginTop: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, background: krProg[kr.id]?.warn ? '#fee2e2' : undefined, borderRadius: 6, padding: krProg[kr.id]?.warn ? '4px 6px' : undefined }}>
-        <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
-        <div style={{ fontWeight: 600 }}>{kr.title}</div>
-        <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          {(() => {
-            const lv = krProg[kr.id]?.latestValue;
-            const tgt = typeof kr.target === 'number' ? kr.target : null;
-            const achieved = lv != null && tgt != null && lv >= tgt;
-            if (lv == null || tgt == null) return null;
-            return (
-              <span style={{ fontSize: 11, fontWeight: 700, color: achieved ? '#065f46' : '#991b1b', background: achieved ? '#d1fae5' : '#fee2e2', border: '1px solid', borderColor: achieved ? '#10b981' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>
-                {achieved ? '달성' : '미달'}
+      {(() => {
+        const lv = krProg[kr.id]?.latestValue;
+        const lpe = krProg[kr.id]?.latestPeriodEnd ? new Date(krProg[kr.id]!.latestPeriodEnd as any) : null;
+        const pe = parentEnd ? new Date(parentEnd) : null;
+        let bg: string | undefined;
+        if (pe) {
+          const deadline = new Date(pe.getFullYear(), pe.getMonth() + 1, 0, 23, 59, 59, 999);
+          const passed = new Date() > deadline;
+          const entered = !!lpe && lpe.getTime() >= deadline.getTime();
+          if (passed && !entered) bg = '#fee2e2';
+          else if (lv != null && typeof kr.target === 'number' && lv < kr.target) bg = '#ffedd5';
+        } else if (lv != null && typeof kr.target === 'number' && lv < kr.target) {
+          bg = '#ffedd5';
+        }
+        return (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, background: bg, borderRadius: 6, padding: bg ? '4px 6px' : undefined }}>
+            <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
+            <div style={{ fontWeight: 600 }}>{kr.title}</div>
+            <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {(() => {
+                const lv2 = krProg[kr.id]?.latestValue;
+                const tgt = typeof kr.target === 'number' ? kr.target : null;
+                const achieved = lv2 != null && tgt != null && lv2 >= tgt;
+                if (lv2 == null || tgt == null) return null;
+                return (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: achieved ? '#065f46' : '#991b1b', background: achieved ? '#d1fae5' : '#fee2e2', border: '1px solid', borderColor: achieved ? '#10b981' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>
+                    {achieved ? '달성' : '미달'}
+                  </span>
+                );
+              })()}
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+                {krProg[kr.id]?.latestValue == null ? '' : `내 입력: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
               </span>
-            );
-          })()}
-          <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
-            {krProg[kr.id]?.latestValue == null ? '' : `내 입력: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
-          </span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>{kr.type}</span>
-        </div>
-      </div>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{kr.type}</span>
+            </div>
+          </div>
+        );
+      })()}
       <div style={{ marginLeft: 18, marginTop: 6 }}>
         {childKrId !== kr.id ? (
           <button className="btn btn-ghost btn-sm" onClick={() => {
@@ -171,6 +189,7 @@ function ObjNode({ obj, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setK
             <KrNode
               key={kr.id}
               kr={kr}
+              parentEnd={obj.periodEnd}
               krObjId={krObjId}
               setKrObjId={setKrObjId}
               krTitle={krTitle}

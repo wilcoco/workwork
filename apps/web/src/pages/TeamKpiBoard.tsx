@@ -19,6 +19,7 @@ type KrRow = {
   latestValue?: number | null;
   latestPeriodEnd?: string | null;
   warn?: boolean;
+  bg?: 'red' | 'orange' | null;
   periods?: Array<{ label: string; value: number | null }>;
 };
 
@@ -78,6 +79,13 @@ export function TeamKpiBoard() {
             const q = Math.floor(d.getMonth() / 3) + 1;
             return `${yy}-Q${q}`;
           }
+          if (cadence === 'HALF_YEARLY') {
+            const h = d.getMonth() < 6 ? 'H1' : 'H2';
+            return `${yy}-${h}`;
+          }
+          if (cadence === 'YEARLY') {
+            return `${d.getFullYear()}`;
+          }
           if (cadence === 'WEEKLY') {
             const onejan = new Date(d.getFullYear(), 0, 1);
             const week = Math.ceil((((d as any) - (onejan as any)) / 86400000 + onejan.getDay() + 1) / 7);
@@ -87,6 +95,26 @@ export function TeamKpiBoard() {
           return `${yy}-${mm}`;
         }
 
+        function lastCompletedPeriodEnd(cadence: string | ''): Date {
+          const now = new Date();
+          const y = now.getFullYear();
+          const m = now.getMonth(); // 0-11
+          if (cadence === 'QUARTERLY') {
+            const q = Math.floor(m / 3); // 0..3 current quarter
+            const prevQEnd = q === 0 ? new Date(y - 1, 12, 0, 23, 59, 59, 999) : new Date(y, q * 3, 0, 23, 59, 59, 999);
+            return prevQEnd;
+          }
+          if (cadence === 'HALF_YEARLY') {
+            if (m < 6) return new Date(y - 1, 12, 0, 23, 59, 59, 999); // previous year end
+            return new Date(y, 6, 0, 23, 59, 59, 999); // Jun end
+          }
+          if (cadence === 'YEARLY') {
+            return new Date(y - 1, 12, 0, 23, 59, 59, 999);
+          }
+          // MONTHLY default
+          return new Date(y, m, 0, 23, 59, 59, 999);
+        }
+
         const enhanced = await Promise.all(r.map(async (row) => {
           try {
             const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(row.id)}`);
@@ -94,9 +122,20 @@ export function TeamKpiBoard() {
             const latest = list[0] || null;
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
+            // Compute warnings
             let warn = false;
-            if (latest && latestValue != null && latestPeriodEnd) {
-              if (new Date(latestPeriodEnd) < new Date() && latestValue < row.target) warn = true;
+            let bg: 'red' | 'orange' | null = null;
+            const lastEnd = lastCompletedPeriodEnd(row.cadence || 'MONTHLY');
+            const hasEntryForLast = list.some((e: any) => {
+              const pe = e.periodEnd ? new Date(e.periodEnd) : null;
+              return !!pe && Math.abs(pe.getTime() - lastEnd.getTime()) < 1000 * 60 * 60 * 24; // same period end (tolerance 1d)
+            });
+            if (!hasEntryForLast && new Date() > lastEnd) {
+              bg = 'red';
+              warn = true;
+            } else if (latestValue != null && latestValue < row.target) {
+              bg = 'orange';
+              warn = true;
             }
             // group by cadence period label and take latest per period (list already desc by createdAt)
             const seen: Record<string, { label: string; value: number | null }> = {};
@@ -107,7 +146,7 @@ export function TeamKpiBoard() {
             }
             const grouped = Object.values(seen);
             // cap number of chips by cadence
-            const cap = row.cadence === 'DAILY' ? 14 : row.cadence === 'WEEKLY' ? 8 : row.cadence === 'QUARTERLY' ? 4 : 6;
+            const cap = row.cadence === 'DAILY' ? 14 : row.cadence === 'WEEKLY' ? 8 : row.cadence === 'QUARTERLY' ? 4 : row.cadence === 'YEARLY' ? 1 : row.cadence === 'HALF_YEARLY' ? 2 : 6;
             const periods = grouped.slice(0, cap);
             // initiative done flags
             const inits = await Promise.all((row.initiatives || []).map(async (ii) => {
@@ -119,7 +158,7 @@ export function TeamKpiBoard() {
                 return { ...ii };
               }
             }));
-            return { ...row, latestValue, latestPeriodEnd, warn, periods, initiatives: inits } as KrRow;
+            return { ...row, latestValue, latestPeriodEnd, warn, bg, periods, initiatives: inits } as KrRow;
           } catch {
             return { ...row } as KrRow;
           }
@@ -183,10 +222,10 @@ export function TeamKpiBoard() {
                     const delta = r.baseline == null ? null : (r.target - r.baseline);
                     const arrow = delta == null ? '' : (delta >= 0 ? '▲' : '▼');
                     return (
-                      <tr key={r.id} style={r.warn ? { background: '#fee2e2' } : undefined}>
+                      <tr key={r.id} style={r.bg === 'red' ? { background: '#fee2e2' } : r.bg === 'orange' ? { background: '#ffedd5' } : undefined}>
                         <td style={td}>{r.kpiName}</td>
                         <td style={td}>{r.unit}</td>
-                        <td style={td}>{r.cadence || '-'}</td>
+                        <td style={td}>{r.cadence === 'MONTHLY' ? '월' : r.cadence === 'QUARTERLY' ? '분기' : r.cadence === 'HALF_YEARLY' ? '반기' : r.cadence === 'YEARLY' ? '연간' : '-'}</td>
                         <td style={td}>{r.baseline == null ? '-' : r.baseline}</td>
                         <td style={td}>{r.target}</td>
                         <td style={td}>{delta == null ? '-' : `${arrow} ${Math.abs(delta)}`}</td>

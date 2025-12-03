@@ -18,6 +18,7 @@ export function WorklogQuickNew() {
   const [orgUnitId, setOrgUnitId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string }>>([]);
+  const [teamKpis, setTeamKpis] = useState<Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string }>>([]);
   const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string }>>([]);
   const [selection, setSelection] = useState<string>(''); // 'init:<id>'
   const [krValue, setKrValue] = useState<string>('');
@@ -70,8 +71,12 @@ export function WorklogQuickNew() {
         const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(ou)}`);
         const objs = res.items || [];
         const tasks: Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string }> = [];
+        const kpis: Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string }> = [];
         for (const o of objs) {
           for (const kr of (o.keyResults || [])) {
+            if (o.pillar) {
+              kpis.push({ id: kr.id, title: `${o.title} / KPI: ${kr.title}`, krTarget: (typeof kr.target === 'number' ? kr.target : null), krUnit: kr.unit });
+            }
             for (const ii of (kr.initiatives || [])) {
               if (Array.isArray(ii.children)) {
                 for (const ch of ii.children) {
@@ -99,6 +104,7 @@ export function WorklogQuickNew() {
           }
         }
         setTeamTasks(tasks);
+        setTeamKpis(kpis);
       } catch {}
     })();
   }, []);
@@ -147,7 +153,7 @@ export function WorklogQuickNew() {
     try {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
-      if (!selection || !selection.startsWith('init:')) throw new Error('과제를 선택하세요');
+      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:'))) throw new Error('대상을 선택하세요');
       const wl = await apiJson<{ id: string }>(
         '/api/worklogs/simple',
         {
@@ -155,7 +161,9 @@ export function WorklogQuickNew() {
           body: JSON.stringify({
             userId,
             teamName,
-            initiativeId: selection.substring(5),
+            initiativeId: selection.startsWith('init:') ? selection.substring(5) : undefined,
+            keyResultId: selection.startsWith('kr:') ? selection.substring(3) : undefined,
+            taskName: selection.startsWith('kr:') ? (title || 'KPI 보고') : undefined,
             title,
             content: plainMode ? contentPlain : stripHtml(contentHtml),
             contentHtml: plainMode ? undefined : (contentHtml || undefined),
@@ -164,28 +172,31 @@ export function WorklogQuickNew() {
           }),
         }
       );
+      const isKR = selection.startsWith('kr:');
       const selectedId = selection.substring(5);
-      const selected = [...teamTasks, ...myTasks].find((x) => x.id === selectedId);
+      const selected = isKR ? undefined : [...teamTasks, ...myTasks].find((x) => x.id === selectedId);
       // Progress: initiative done
-      if (initiativeDone) {
+      if (!isKR && initiativeDone) {
         await apiJson('/api/progress', {
           method: 'POST',
           body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: selectedId, actorId: userId, worklogId: wl.id, initiativeDone: true, note: title || undefined, at: date }),
         });
       }
       // Progress: KR value (explicit or achieved)
-      if (selected?.krId && (krValue !== '' || krAchieved)) {
+      if ((isKR || selected?.krId) && (krValue !== '' || krAchieved)) {
         let valueToSend: number | null = null;
         if (krValue !== '') {
           valueToSend = Number(krValue);
         } else if (krAchieved) {
-          const tgt = typeof selected.krTarget === 'number' ? selected.krTarget : null;
+          const tgt = isKR
+            ? (teamKpis.find((k) => k.id === selectedId)?.krTarget ?? null)
+            : (typeof selected!.krTarget === 'number' ? selected!.krTarget : null);
           if (tgt != null) valueToSend = tgt;
         }
         if (valueToSend != null) {
           await apiJson('/api/progress', {
             method: 'POST',
-            body: JSON.stringify({ subjectType: 'KR', subjectId: selected.krId, actorId: userId, worklogId: wl.id, krValue: valueToSend, note: title || undefined, at: date }),
+            body: JSON.stringify({ subjectType: 'KR', subjectId: isKR ? selectedId : (selected as any).krId, actorId: userId, worklogId: wl.id, krValue: valueToSend, note: title || undefined, at: date }),
           });
         }
       }
@@ -253,34 +264,43 @@ export function WorklogQuickNew() {
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제</label>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제 / 팀 KPI</label>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
-              const id = v.startsWith('init:') ? v.substring(5) : '';
-              const t = [...teamTasks, ...myTasks].find((x) => x.id === id);
-              if (t?.startAt) {
-                const y = t.startAt.slice(0,4);
-                const m = t.startAt.slice(5,7);
-                setDate(`${y}-${m}-01`);
+              const id = v.substring(5);
+              if (v.startsWith('init:')) {
+                const t = [...teamTasks, ...myTasks].find((x) => x.id === id);
+                if (t?.startAt) {
+                  const y = t.startAt.slice(0,4);
+                  const m = t.startAt.slice(5,7);
+                  setDate(`${y}-${m}-01`);
+                } else {
+                  setDate(firstDayKstYmd());
+                }
               } else {
-                setDate(firstDayKstYmd());
+                // KR selection: keep current date (manager chooses appropriate period start date)
               }
             }} style={{ ...input, appearance: 'auto' as any }} required>
-              <option value="" disabled>과제를 선택하세요</option>
-              {(() => {
-                const list = [...teamTasks, ...myTasks];
-                const uniq: Array<{ id: string; title: string; period: string; startAt?: string }> = [];
-                const seen = new Set<string>();
-                for (const t of list) { if (!seen.has(t.id)) { seen.add(t.id); uniq.push(t); } }
-                return uniq.length ? (
-                  uniq.map((t) => (
-                    <option key={t.id} value={`init:${t.id}`}>{t.title}{t.period}</option>
+              <option value="" disabled>대상을 선택하세요</option>
+              <optgroup label="나의 과제">
+                {(() => {
+                  const list = [...teamTasks, ...myTasks];
+                  const uniq: Array<{ id: string; title: string; period: string; startAt?: string }> = [];
+                  const seen = new Set<string>();
+                  for (const t of list) { if (!seen.has(t.id)) { seen.add(t.id); uniq.push(t); } }
+                  return uniq.map((t) => (
+                    <option key={`init-${t.id}`} value={`init:${t.id}`}>{t.title}{t.period}</option>
+                  ));
+                })()}
+              </optgroup>
+              <optgroup label="팀 KPI">
+                {teamKpis.length ? (
+                  teamKpis.map((k) => (
+                    <option key={`kr-${k.id}`} value={`kr:${k.id}`}>{k.title}</option>
                   ))
-                ) : (
-                  <option value="" disabled>나의 OKR/KPI 과제가 없습니다</option>
-                );
-              })()}
+                ) : null}
+              </optgroup>
             </select>
           </div>
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
@@ -308,11 +328,13 @@ export function WorklogQuickNew() {
             <label>
               지표값 입력(선택)
               <input type="number" step="any" value={krValue} onChange={(e) => setKrValue(e.target.value)} style={input} placeholder="예: 12.5" disabled={(() => {
+                if (!selection) return true;
+                if (selection.startsWith('kr:')) return myRole !== 'MANAGER';
                 const id = selection.startsWith('init:') ? selection.substring(5) : '';
                 const mine = myTasks.some((x) => x.id === id);
                 const team = teamTasks.some((x) => x.id === id);
                 if (mine) return false; // own OKR allowed
-                if (team) return myRole !== 'MANAGER'; // team KPI only for manager
+                if (team) return myRole !== 'MANAGER'; // team KPI (via initiative) only for manager
                 return true;
               })()} />
             </label>
@@ -322,6 +344,8 @@ export function WorklogQuickNew() {
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" checked={krAchieved} onChange={(e) => setKrAchieved(e.target.checked)} disabled={(() => {
+                  if (!selection) return true;
+                  if (selection.startsWith('kr:')) return myRole !== 'MANAGER';
                   const id = selection.startsWith('init:') ? selection.substring(5) : '';
                   const mine = myTasks.some((x) => x.id === id);
                   const team = teamTasks.some((x) => x.id === id);

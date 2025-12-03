@@ -1,0 +1,8 @@
+-- Add HALF_YEARLY and YEARLY to Cadence enum (PostgreSQL)
+DO $$ BEGIN
+  ALTER TYPE "Cadence" ADD VALUE IF NOT EXISTS 'HALF_YEARLY';
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TYPE "Cadence" ADD VALUE IF NOT EXISTS 'YEARLY';
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

@@ -35,7 +35,7 @@ export function TeamKpiInput() {
   const [krTarget, setKrTarget] = useState<string>('');
   const [krUnit, setKrUnit] = useState('');
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
-  const [krCadence, setKrCadence] = useState<'' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('');
+  const [krCadence, setKrCadence] = useState<'' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'>('');
   const [taskRows, setTaskRows] = useState<Array<{ title: string; desc: string; months: boolean[] }>>([
     { title: '', desc: '', months: Array(12).fill(false) },
   ]);
@@ -227,10 +227,10 @@ export function TeamKpiInput() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select value={krCadence} onChange={(e) => setKrCadence(e.target.value as any)}>
             <option value="">평가 주기(선택)</option>
-            <option value="DAILY">일</option>
-            <option value="WEEKLY">주</option>
             <option value="MONTHLY">월</option>
             <option value="QUARTERLY">분기</option>
+            <option value="HALF_YEARLY">반기</option>
+            <option value="YEARLY">연간</option>
           </select>
         </div>
         <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10, display: 'grid', gap: 8 }}>

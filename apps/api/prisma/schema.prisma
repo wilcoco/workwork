@@ -58,6 +58,8 @@ enum Cadence {
   WEEKLY
   MONTHLY
   QUARTERLY
+  HALF_YEARLY
+  YEARLY
 }
 
 enum KeyResultType {
