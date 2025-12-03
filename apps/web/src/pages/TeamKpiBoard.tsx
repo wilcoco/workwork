@@ -223,7 +223,7 @@ export function TeamKpiBoard() {
                       <tr key={r.id} style={r.bg === 'red' ? { background: '#fee2e2' } : r.bg === 'orange' ? { background: '#ffedd5' } : undefined}>
                         <td style={td}>{r.kpiName}</td>
                         <td style={td}>{r.unit}</td>
-                        <td style={td}>{r.cadence === 'MONTHLY' ? '월' : r.cadence === 'QUARTERLY' ? '분기' : r.cadence === 'HALF_YEARLY' ? '반기' : r.cadence === 'YEARLY' ? '연간' : '-'}</td>
+                        <td style={td}>{'월'}</td>
                         <td style={td}>{r.baseline == null ? '-' : r.baseline}</td>
                         <td style={td}>{r.target}</td>
                         <td style={td}>{(() => {

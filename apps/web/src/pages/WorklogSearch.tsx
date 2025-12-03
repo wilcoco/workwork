@@ -24,6 +24,8 @@ export function WorklogSearch() {
   const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
   const [krs, setKrs] = useState<Array<{ id: string; label: string }>>([]);
   const [krId, setKrId] = useState('');
+  const [krInits, setKrInits] = useState<Record<string, Array<{ id: string; label: string }>>>({});
+  const [initiativeId, setInitiativeId] = useState('');
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
   const [q, setQ] = useState('');
@@ -49,6 +51,7 @@ export function WorklogSearch() {
       if (q) params.set('q', q);
       if (kind) params.set('kind', kind);
       if (krId) params.set('krId', krId);
+      if (initiativeId) params.set('initiativeId', initiativeId);
       const res = await apiJson<{ items: Item[] }>(`/api/worklogs/search?${params.toString()}`);
       setItems(res.items);
     } catch (e) {
@@ -118,6 +121,7 @@ export function WorklogSearch() {
         if (teamId) {
           try {
             const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(teamId)}`);
+            const map: Record<string, Array<{ id: string; label: string }>> = {};
             for (const o of (res.items || [])) {
               for (const kr of (o.keyResults || [])) {
                 if (!seen.has(kr.id)) {
@@ -125,8 +129,26 @@ export function WorklogSearch() {
                   const isKpi = !!o.pillar;
                   list.push({ id: kr.id, label: `${o.title} / ${isKpi ? 'KPI' : 'KR'}: ${kr.title}` });
                 }
+                // Build initiatives list for this KR (flatten children if present)
+                const inits: Array<{ id: string; label: string }> = [];
+                for (const ii of (kr.initiatives || [])) {
+                  const pushInit = (x: any) => {
+                    const s0 = x.startAt ? new Date(x.startAt) : null;
+                    const e0 = x.endAt ? new Date(x.endAt) : null;
+                    const fmt = (d: Date | null) => d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '';
+                    const label = `${x.title}${s0 || e0 ? ` (${fmt(s0)}${s0||e0?' ~ ':''}${fmt(e0)})` : ''}`;
+                    inits.push({ id: x.id, label });
+                  };
+                  if (Array.isArray(ii.children) && ii.children.length) {
+                    for (const ch of ii.children) pushInit(ch);
+                  } else {
+                    pushInit(ii);
+                  }
+                }
+                map[kr.id] = inits;
               }
             }
+            setKrInits(map);
           } catch {}
         }
         if (userId) {
@@ -225,13 +247,18 @@ export function WorklogSearch() {
               <option key={k.id} value={k.id}>{k.label}</option>
             ))}
           </select>
-          <div />
+          <select value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} style={input} disabled={!krId}>
+            <option value="">과제 선택(전체)</option>
+            {(krInits[krId] || []).map((it) => (
+              <option key={it.id} value={it.id}>{it.label}</option>
+            ))}
+          </select>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn" onClick={() => { setMode('feed'); search(); }} type="button">아이콘 보기</button>
           <button className="btn" onClick={() => { setMode('list'); search(); }} type="button">전체 보기</button>
           {mode === 'list' ? (
-            <button className="btn" onClick={() => { setTeam(''); setUser(''); setTeamId(''); setUserId(''); setKrId(''); setKrs([]); setFrom(''); setTo(''); setQ(''); setMode('feed'); loadRecent(); }} type="button">최근 보기</button>
+            <button className="btn" onClick={() => { setTeam(''); setUser(''); setTeamId(''); setUserId(''); setKrId(''); setKrs([]); setKrInits({}); setInitiativeId(''); setFrom(''); setTo(''); setQ(''); setMode('feed'); loadRecent(); }} type="button">최근 보기</button>
           ) : null}
           <button className="btn btn-primary" onClick={() => { setMode('list'); search(); }} disabled={loading}>{loading ? '검색중…' : '검색'}</button>
         </div>
