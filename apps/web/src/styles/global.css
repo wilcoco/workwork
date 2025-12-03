@@ -73,7 +73,7 @@ textarea { resize: vertical; }
 .attachments { display: grid; gap: 8px; }
 .attachment-item { display: grid; gap: 6px; }
 .file-link { color: var(--primary); word-break: break-all; overflow-wrap: anywhere; }
-.image-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.image-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 16px; }
 .image-overlay img { max-width: 96vw; max-height: 90vh; width: auto; height: auto; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
 
 /* Responsive grid helpers */

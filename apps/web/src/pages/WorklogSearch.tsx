@@ -18,6 +18,8 @@ type Item = {
 export function WorklogSearch() {
   const [team, setTeam] = useState('');
   const [user, setUser] = useState('');
+  const [teams, setTeams] = useState<Array<{ id: string; name: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
   const [q, setQ] = useState('');
@@ -87,6 +89,19 @@ export function WorklogSearch() {
     return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
   }
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const orgRes = await apiJson<{ items: any[] }>(`/api/orgs`);
+        setTeams((orgRes.items || []).map((o: any) => ({ id: o.id, name: o.name })));
+      } catch {}
+      try {
+        const userRes = await apiJson<{ items: any[] }>(`/api/users`);
+        setUsers((userRes.items || []).map((u: any) => ({ id: u.id, name: u.name })));
+      } catch {}
+    })();
+  }, []);
+
   function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement | null;
     if (target && target.tagName === 'IMG') {
@@ -116,8 +131,18 @@ export function WorklogSearch() {
     <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12, background: '#F8FAFC', padding: '12px', borderRadius: 12 }}>
       <div style={{ display: 'grid', gap: 8, background: '#FFFFFF', border: '1px solid #E5E7EB', padding: 14, borderRadius: 12, boxShadow: '0 2px 10px rgba(16,24,40,0.04)' }}>
         <div className="resp-3">
-          <input placeholder="팀명" value={team} onChange={(e) => setTeam(e.target.value)} style={input} />
-          <input placeholder="이름" value={user} onChange={(e) => setUser(e.target.value)} style={input} />
+          <select value={team} onChange={(e) => setTeam(e.target.value)} style={input}>
+            <option value="">팀 선택(전체)</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.name}>{t.name}</option>
+            ))}
+          </select>
+          <select value={user} onChange={(e) => setUser(e.target.value)} style={input}>
+            <option value="">이름 선택(전체)</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.name}>{u.name}</option>
+            ))}
+          </select>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={input} />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={input} />
           <input placeholder="검색어" value={q} onChange={(e) => setQ(e.target.value)} style={input} />
