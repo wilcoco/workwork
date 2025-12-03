@@ -156,7 +156,7 @@ export function OkrTree() {
                       {kr.target != null ? ` / ${kr.target}${kr.unit ? ' ' + kr.unit : ''}` : ''}
                     </span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
-                      {krProg[kr.id]?.latestValue == null ? '' : `내 입력: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
+                      {'달성: '}{krProg[kr.id]?.latestValue == null ? '-' : `${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
                     </span>
                     {myRole === 'CEO' && (
                       <button
