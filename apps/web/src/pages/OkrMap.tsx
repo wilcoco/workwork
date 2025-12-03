@@ -75,7 +75,7 @@ function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrM
       </div>
       {Array.isArray(kr.children) && kr.children.length > 0 && (
         <ul style={{ marginLeft: 18 }}>
-          {kr.children.map((child: any) => (
+          {kr.children.filter((child: any) => !child.pillar).map((child: any) => (
             <ObjNode
               key={child.id}
               obj={child}
@@ -228,7 +228,8 @@ export function OkrMap() {
       setError(null);
       try {
         const res = await apiJson<{ items: any[] }>(`/api/okrs/map${viewOrgId ? `?orgUnitId=${encodeURIComponent(viewOrgId)}` : ''}`);
-        setItems(res.items || []);
+        const onlyOkrs = (res.items || []).filter((o: any) => !o.pillar);
+        setItems(onlyOkrs);
       } catch (e: any) {
         setError(e.message || '로드 실패');
       } finally {

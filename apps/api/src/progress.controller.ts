@@ -32,39 +32,65 @@ class CreateProgressDto {
 export class ProgressController {
   constructor(private prisma: PrismaService) {}
 
-  private startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
-  private endOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999); }
-  private startOfWeekMon(d: Date) {
-    const day = d.getDay(); // 0=Sun..6=Sat
-    const diff = (day === 0 ? -6 : 1 - day);
-    const res = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff);
-    res.setHours(0, 0, 0, 0);
-    return res;
-  }
-  private endOfWeekSun(d: Date) {
-    const start = this.startOfWeekMon(d);
-    const res = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
-    return res;
-  }
-  private quarterOf(d: Date) { return Math.floor(d.getMonth() / 3); }
-  private startOfQuarter(d: Date) { const q = this.quarterOf(d); return new Date(d.getFullYear(), q * 3, 1); }
-  private endOfQuarter(d: Date) { const q = this.quarterOf(d); return new Date(d.getFullYear(), q * 3 + 3, 0, 23, 59, 59, 999); }
+  // KST helpers (UTC+9)
+  private readonly KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  private toKst(utc: Date) { return new Date(utc.getTime() + this.KST_OFFSET_MS); }
+  private fromKst(kst: Date) { return new Date(kst.getTime() - this.KST_OFFSET_MS); }
 
-  private calcPeriod(cadence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | null | undefined, when: Date): { start: Date; end: Date } {
+  private startOfMonthK(dK: Date) { return new Date(dK.getFullYear(), dK.getMonth(), 1, 0, 0, 0, 0); }
+  private endOfMonthK(dK: Date) { return new Date(dK.getFullYear(), dK.getMonth() + 1, 0, 23, 59, 59, 999); }
+  private startOfWeekMonK(dK: Date) {
+    const day = dK.getDay(); // 0=Sun..6=Sat
+    const diff = (day === 0 ? -6 : 1 - day);
+    const res = new Date(dK.getFullYear(), dK.getMonth(), dK.getDate() + diff, 0, 0, 0, 0);
+    return res;
+  }
+  private endOfWeekSunK(dK: Date) {
+    const start = this.startOfWeekMonK(dK);
+    return new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
+  }
+  private quarterOfK(dK: Date) { return Math.floor(dK.getMonth() / 3); }
+  private startOfQuarterK(dK: Date) { const q = this.quarterOfK(dK); return new Date(dK.getFullYear(), q * 3, 1, 0, 0, 0, 0); }
+  private endOfQuarterK(dK: Date) { const q = this.quarterOfK(dK); return new Date(dK.getFullYear(), q * 3 + 3, 0, 23, 59, 59, 999); }
+
+  // Compute period boundaries in KST, return as UTC Date
+  private calcPeriod(cadence: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | null | undefined, whenUtc: Date): { start: Date; end: Date } {
     const cd = cadence || 'MONTHLY';
+    const wK = this.toKst(whenUtc);
     if (cd === 'DAILY') {
-      const s = new Date(when.getFullYear(), when.getMonth(), when.getDate());
-      const e = new Date(when.getFullYear(), when.getMonth(), when.getDate(), 23, 59, 59, 999);
-      return { start: s, end: e };
+      const sK = new Date(wK.getFullYear(), wK.getMonth(), wK.getDate(), 0, 0, 0, 0);
+      const eK = new Date(wK.getFullYear(), wK.getMonth(), wK.getDate(), 23, 59, 59, 999);
+      return { start: this.fromKst(sK), end: this.fromKst(eK) };
     }
-    if (cd === 'WEEKLY') return { start: this.startOfWeekMon(when), end: this.endOfWeekSun(when) };
-    if (cd === 'QUARTERLY') return { start: this.startOfQuarter(when), end: this.endOfQuarter(when) };
-    return { start: this.startOfMonth(when), end: this.endOfMonth(when) };
+    if (cd === 'WEEKLY') {
+      const sK = this.startOfWeekMonK(wK);
+      const eK = this.endOfWeekSunK(wK);
+      return { start: this.fromKst(sK), end: this.fromKst(eK) };
+    }
+    if (cd === 'QUARTERLY') {
+      const sK = this.startOfQuarterK(wK);
+      const eK = this.endOfQuarterK(wK);
+      return { start: this.fromKst(sK), end: this.fromKst(eK) };
+    }
+    const sK = this.startOfMonthK(wK);
+    const eK = this.endOfMonthK(wK);
+    return { start: this.fromKst(sK), end: this.fromKst(eK) };
   }
 
   @Post()
   async create(@Body() dto: CreateProgressDto) {
-    const when = dto.at ? new Date(dto.at) : new Date();
+    // Treat 'at' as KST date when provided in YYYY-MM-DD
+    let when: Date;
+    if (dto.at) {
+      const s = String(dto.at);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        when = new Date(`${s}T00:00:00+09:00`);
+      } else {
+        when = new Date(s);
+      }
+    } else {
+      when = new Date();
+    }
     let cadence: any = 'MONTHLY';
     const user = await this.prisma.user.findUnique({ where: { id: dto.actorId } });
     if (!user) throw new BadRequestException('actor not found');

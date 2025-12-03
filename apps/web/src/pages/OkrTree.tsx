@@ -156,7 +156,7 @@ export function OkrTree() {
                 {/* Child objectives under this KR */}
                 {(expanded[kr.id] || depth < defaultExpandDepth) && kr.children?.length > 0 && (
                   <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
-                    {[...kr.children].sort((a: any, b: any) => {
+                    {[...kr.children].filter((c: any) => !c.pillar).sort((a: any, b: any) => {
                       const order: Record<string, number> = { CEO: 0, EXEC: 1, MANAGER: 2, INDIVIDUAL: 3 } as any;
                       const ra = order[(a?.owner?.role as any) || 'INDIVIDUAL'] ?? 99;
                       const rb = order[(b?.owner?.role as any) || 'INDIVIDUAL'] ?? 99;
