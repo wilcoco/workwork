@@ -19,6 +19,8 @@ type KrRow = {
   initiatives: Array<{ id: string; title: string; done?: boolean }>;
   latestValue?: number | null;
   latestPeriodEnd?: string | null;
+  thisYearValue?: number | null;
+  thisYearInputAt?: string | null;
   warn?: boolean;
   bg?: 'red' | 'orange' | null;
   periods?: Array<{ label: string; value: number | null }>;
@@ -124,6 +126,18 @@ export function TeamKpiBoard() {
             const latest = list[0] || null;
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
+            // this year actual and input timestamp
+            const nowY = new Date().getFullYear();
+            let thisYearValue: number | null = null;
+            let thisYearInputAt: string | null = null;
+            for (const e of list) {
+              const pey = e?.periodEnd ? new Date(e.periodEnd).getFullYear() : null;
+              if (pey === nowY) {
+                thisYearValue = typeof e.krValue === 'number' ? e.krValue : null;
+                thisYearInputAt = e.createdAt || null;
+                break;
+              }
+            }
             // Compute warnings
             let warn = false;
             let bg: 'red' | 'orange' | null = null;
@@ -164,7 +178,7 @@ export function TeamKpiBoard() {
                 return { ...ii };
               }
             }));
-            return { ...row, latestValue, latestPeriodEnd, warn, bg, periods, initiatives: inits } as KrRow;
+            return { ...row, latestValue, latestPeriodEnd, thisYearValue, thisYearInputAt, warn, bg, periods, initiatives: inits } as KrRow;
           } catch {
             return { ...row } as KrRow;
           }
@@ -214,12 +228,14 @@ export function TeamKpiBoard() {
                   <tr>
                     <th style={th}>구 분</th>
                     <th style={th}>단위</th>
-                    <th style={th}>주기</th>
-                    <th style={th}>'24실적</th>
-                    <th style={th}>'25목표</th>
+                    <th style={th}>관리 주기</th>
+                    <th style={th}>전년 실적</th>
+                    <th style={th}>금년 목표</th>
+                    <th style={th}>금년 실적</th>
+                    <th style={th}>입력 일시</th>
                     <th style={th}>향상률</th>
                     <th style={th}>평가비중</th>
-                    <th style={th}>월/분기 관리</th>
+                    <th style={th}>기간별 실적</th>
                     <th style={th}>주요 추진 계획</th>
                   </tr>
                 </thead>
@@ -234,6 +250,8 @@ export function TeamKpiBoard() {
                         <td style={td}>{r.cadence === 'MONTHLY' ? '월' : r.cadence === 'QUARTERLY' ? '분기' : r.cadence === 'HALF_YEARLY' ? '반기' : r.cadence === 'YEARLY' ? '연간' : '-'}</td>
                         <td style={td}>{r.baseline == null ? '-' : r.baseline}</td>
                         <td style={td}>{r.target}</td>
+                        <td style={td}>{r.thisYearValue == null ? '-' : r.thisYearValue}</td>
+                        <td style={td}>{r.thisYearInputAt ? new Date(r.thisYearInputAt).toLocaleString() : '-'}</td>
                         <td style={td}>{delta == null ? '-' : `${arrow} ${Math.abs(delta)}`}</td>
                         <td style={td}>{r.weight == null ? '-' : r.weight}</td>
                         <td style={td}>{r.periods && r.periods.length ? (
