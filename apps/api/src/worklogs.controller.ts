@@ -414,6 +414,7 @@ export class WorklogsController {
     @Query('limit') limitStr?: string,
     @Query('cursor') cursor?: string,
     @Query('kind') kind?: 'OKR' | 'KPI',
+    @Query('krId') krId?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '20', 10) || 20, 100);
     const where: any = {};
@@ -431,6 +432,7 @@ export class WorklogsController {
         ...where,
         ...(kind === 'OKR' ? { initiative: { keyResult: { objective: { pillar: null } } } } : {}),
         ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
+        ...(krId ? { initiative: { keyResultId: krId } } : {}),
       },
       take: limit,
       skip: cursor ? 1 : 0,

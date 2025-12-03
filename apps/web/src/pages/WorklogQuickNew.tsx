@@ -173,7 +173,7 @@ export function WorklogQuickNew() {
         }
       );
       const isKR = selection.startsWith('kr:');
-      const selectedId = selection.substring(5);
+      const selectedId = isKR ? selection.substring(3) : selection.substring(5);
       const selected = isKR ? undefined : [...teamTasks, ...myTasks].find((x) => x.id === selectedId);
       // Progress: initiative done
       if (!isKR && initiativeDone) {
@@ -307,7 +307,7 @@ export function WorklogQuickNew() {
           {(() => {
             if (!selection) return null;
             const isKR = selection.startsWith('kr:');
-            const id = selection.substring(5);
+            const id = isKR ? selection.substring(3) : selection.substring(5);
             let meta: { baseline?: number | null; target?: number | null; unit?: string; direction?: 'AT_LEAST' | 'AT_MOST' } | null = null;
             if (isKR) {
               const k = teamKpis.find((x) => x.id === id);

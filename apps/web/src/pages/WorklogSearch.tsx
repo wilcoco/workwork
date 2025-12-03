@@ -16,10 +16,14 @@ type Item = {
 };
 
 export function WorklogSearch() {
-  const [team, setTeam] = useState('');
-  const [user, setUser] = useState('');
+  const [team, setTeam] = useState(''); // team name for API query
+  const [user, setUser] = useState(''); // user name for API query
+  const [teamId, setTeamId] = useState('');
+  const [userId, setUserId] = useState('');
   const [teams, setTeams] = useState<Array<{ id: string; name: string }>>([]);
   const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
+  const [krs, setKrs] = useState<Array<{ id: string; label: string }>>([]);
+  const [krId, setKrId] = useState('');
   const [from, setFrom] = useState<string>('');
   const [to, setTo] = useState<string>('');
   const [q, setQ] = useState('');
@@ -44,6 +48,7 @@ export function WorklogSearch() {
       if (to) params.set('to', to);
       if (q) params.set('q', q);
       if (kind) params.set('kind', kind);
+      if (krId) params.set('krId', krId);
       const res = await apiJson<{ items: Item[] }>(`/api/worklogs/search?${params.toString()}`);
       setItems(res.items);
     } catch (e) {
@@ -104,6 +109,47 @@ export function WorklogSearch() {
     })();
   }, []);
 
+  // Load KRs when teamId or userId changes
+  useEffect(() => {
+    (async () => {
+      try {
+        const list: Array<{ id: string; label: string }> = [];
+        const seen = new Set<string>();
+        if (teamId) {
+          try {
+            const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(teamId)}`);
+            for (const o of (res.items || [])) {
+              for (const kr of (o.keyResults || [])) {
+                if (!seen.has(kr.id)) {
+                  seen.add(kr.id);
+                  const isKpi = !!o.pillar;
+                  list.push({ id: kr.id, label: `${o.title} / ${isKpi ? 'KPI' : 'KR'}: ${kr.title}` });
+                }
+              }
+            }
+          } catch {}
+        }
+        if (userId) {
+          try {
+            const res = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
+            for (const o of (res.items || [])) {
+              for (const kr of (o.keyResults || [])) {
+                if (!seen.has(kr.id)) {
+                  seen.add(kr.id);
+                  const isKpi = !!o.pillar;
+                  list.push({ id: kr.id, label: `${o.title} / ${isKpi ? 'KPI' : 'KR'}: ${kr.title}` });
+                }
+              }
+            }
+          } catch {}
+        }
+        setKrs(list);
+      } catch {
+        setKrs([]);
+      }
+    })();
+  }, [teamId, userId]);
+
   function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement | null;
     if (target && target.tagName === 'IMG') {
@@ -133,16 +179,34 @@ export function WorklogSearch() {
     <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12, background: '#F8FAFC', padding: '12px', borderRadius: 12 }}>
       <div style={{ display: 'grid', gap: 8, background: '#FFFFFF', border: '1px solid #E5E7EB', padding: 14, borderRadius: 12, boxShadow: '0 2px 10px rgba(16,24,40,0.04)' }}>
         <div className="resp-3">
-          <select value={team} onChange={(e) => setTeam(e.target.value)} style={input}>
+          <select
+            value={teamId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setTeamId(id);
+              const nm = teams.find((t) => t.id === id)?.name || '';
+              setTeam(nm);
+            }}
+            style={input}
+          >
             <option value="">팀 선택(전체)</option>
             {teams.map((t) => (
-              <option key={t.id} value={t.name}>{t.name}</option>
+              <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
-          <select value={user} onChange={(e) => setUser(e.target.value)} style={input}>
+          <select
+            value={userId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setUserId(id);
+              const nm = users.find((u) => u.id === id)?.name || '';
+              setUser(nm);
+            }}
+            style={input}
+          >
             <option value="">이름 선택(전체)</option>
             {users.map((u) => (
-              <option key={u.id} value={u.name}>{u.name}</option>
+              <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={input} />
@@ -155,14 +219,19 @@ export function WorklogSearch() {
             <option value="OKR">OKR</option>
             <option value="KPI">KPI</option>
           </select>
-          <div />
+          <select value={krId} onChange={(e) => setKrId(e.target.value)} style={input}>
+            <option value="">지표 선택(전체)</option>
+            {krs.map((k) => (
+              <option key={k.id} value={k.id}>{k.label}</option>
+            ))}
+          </select>
           <div />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn" onClick={() => { setMode('feed'); search(); }} type="button">아이콘 보기</button>
           <button className="btn" onClick={() => { setMode('list'); search(); }} type="button">전체 보기</button>
           {mode === 'list' ? (
-            <button className="btn" onClick={() => { setTeam(''); setUser(''); setFrom(''); setTo(''); setQ(''); setMode('feed'); loadRecent(); }} type="button">최근 보기</button>
+            <button className="btn" onClick={() => { setTeam(''); setUser(''); setTeamId(''); setUserId(''); setKrId(''); setKrs([]); setFrom(''); setTo(''); setQ(''); setMode('feed'); loadRecent(); }} type="button">최근 보기</button>
           ) : null}
           <button className="btn btn-primary" onClick={() => { setMode('list'); search(); }} disabled={loading}>{loading ? '검색중…' : '검색'}</button>
         </div>
