@@ -7,7 +7,7 @@ export function OkrTree() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // KR.id -> expanded
-  const defaultExpandDepth = 1; // CEO -> EXEC 상세
+  const defaultExpandDepth = 99; // 기본으로 대부분의 하위 트리를 펼침
   const [userId, setUserId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [krProg, setKrProg] = useState<Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }>>({});
@@ -140,6 +140,8 @@ export function OkrTree() {
                 const violate = dir === 'AT_LEAST' ? (lv < kr.target) : (lv > kr.target);
                 if (violate) bg = '#ffedd5';
               }
+              const defaultOpen = depth < defaultExpandDepth;
+              const isOpen = (expanded[kr.id] ?? defaultOpen) as boolean;
               return (
               <div key={kr.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: bg }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -180,13 +182,13 @@ export function OkrTree() {
                         }}
                       >삭제</button>
                     )}
-                    <button className="btn btn-ghost" onClick={() => setExpanded((prev) => ({ ...prev, [kr.id]: !prev[kr.id] }))}>
-                      {expanded[kr.id] || depth < defaultExpandDepth ? '접기' : `하위 보기 (${(kr.children || []).length})`}
+                    <button className="btn btn-ghost" onClick={() => setExpanded((prev) => ({ ...prev, [kr.id]: !isOpen }))}>
+                      {isOpen ? '접기' : `하위 보기 (${(kr.children || []).length})`}
                     </button>
                   </div>
                 </div>
                 {/* Child objectives under this KR */}
-                {(expanded[kr.id] || depth < defaultExpandDepth) && kr.children?.length > 0 && (
+                {isOpen && kr.children?.length > 0 && (
                   <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
                     {[...kr.children].filter((c: any) => !c.pillar).sort((a: any, b: any) => {
                       const order: Record<string, number> = { CEO: 0, EXEC: 1, MANAGER: 2, INDIVIDUAL: 3 } as any;
