@@ -117,6 +117,8 @@ export class ProgressController {
         const sameTeam = !!user.orgUnitId && user.orgUnitId === ((kr as any)?.objective as any)?.orgUnitId;
         const isMgr = (user.role as any) === 'MANAGER';
         if (!(isMgr && sameTeam)) throw new ForbiddenException('only team manager can update team KPI');
+        // Unify KPI progress input cadence to MONTHLY
+        cadence = 'MONTHLY' as any;
       } else {
         if (user.id !== (kr as any).ownerId) throw new ForbiddenException('only KR owner can update this OKR');
       }

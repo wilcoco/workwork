@@ -19,11 +19,10 @@ type KrRow = {
   initiatives: Array<{ id: string; title: string; done?: boolean }>;
   latestValue?: number | null;
   latestPeriodEnd?: string | null;
-  thisYearValue?: number | null;
-  thisYearInputAt?: string | null;
   warn?: boolean;
   bg?: 'red' | 'orange' | null;
   periods?: Array<{ label: string; value: number | null }>;
+  history?: Array<{ label: string; value: number | null; createdAt?: string | null }>;
 };
 
 function toPillarLabel(p: Pillar | null | undefined): string {
@@ -126,41 +125,18 @@ export function TeamKpiBoard() {
             const latest = list[0] || null;
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
-            // this year actual and input timestamp
-            const nowY = new Date().getFullYear();
-            let thisYearValue: number | null = null;
-            let thisYearInputAt: string | null = null;
-            for (const e of list) {
-              const pey = e?.periodEnd ? new Date(e.periodEnd).getFullYear() : null;
-              if (pey === nowY) {
-                thisYearValue = typeof e.krValue === 'number' ? e.krValue : null;
-                thisYearInputAt = e.createdAt || null;
-                break;
-              }
-            }
-            // Compute warnings
+            // Compute warnings: only based on latest vs target and direction
             let warn = false;
             let bg: 'red' | 'orange' | null = null;
-            const lastEnd = lastCompletedPeriodEnd(row.cadence || 'MONTHLY');
-            const hasEntryForLast = list.some((e: any) => {
-              const pe = e.periodEnd ? new Date(e.periodEnd) : null;
-              return !!pe && Math.abs(pe.getTime() - lastEnd.getTime()) < 1000 * 60 * 60 * 24; // same period end (tolerance 1d)
-            });
-            if (!hasEntryForLast && new Date() > lastEnd) {
-              bg = 'red';
-              warn = true;
-            } else if (latestValue != null) {
+            if (latestValue != null) {
               const dir = row.direction || 'AT_LEAST';
               const violate = dir === 'AT_LEAST' ? (latestValue < row.target) : (latestValue > row.target);
-              if (violate) {
-                bg = 'orange';
-                warn = true;
-              }
+              if (violate) { bg = 'orange'; warn = true; }
             }
             // group by cadence period label and take latest per period (list already desc by createdAt)
             const seen: Record<string, { label: string; value: number | null }> = {};
             for (const e of list) {
-              const label = labelForPeriod(row.cadence, e.periodStart, e.periodEnd);
+              const label = labelForPeriod('MONTHLY', e.periodStart, e.periodEnd);
               if (!label) continue;
               if (!seen[label]) seen[label] = { label, value: e.krValue ?? null };
             }
@@ -168,6 +144,8 @@ export function TeamKpiBoard() {
             // cap number of chips by cadence
             const cap = row.cadence === 'DAILY' ? 14 : row.cadence === 'WEEKLY' ? 8 : row.cadence === 'QUARTERLY' ? 4 : row.cadence === 'YEARLY' ? 1 : row.cadence === 'HALF_YEARLY' ? 2 : 6;
             const periods = grouped.slice(0, cap);
+            // full history for dropdown (monthly labels)
+            const history = list.map((e: any) => ({ label: labelForPeriod('MONTHLY', e.periodStart, e.periodEnd), value: e.krValue ?? null, createdAt: e.createdAt || null }));
             // initiative done flags
             const inits = await Promise.all((row.initiatives || []).map(async (ii) => {
               try {
@@ -178,7 +156,7 @@ export function TeamKpiBoard() {
                 return { ...ii };
               }
             }));
-            return { ...row, latestValue, latestPeriodEnd, thisYearValue, thisYearInputAt, warn, bg, periods, initiatives: inits } as KrRow;
+            return { ...row, latestValue, latestPeriodEnd, warn, bg, periods, history, initiatives: inits } as KrRow;
           } catch {
             return { ...row } as KrRow;
           }
@@ -231,11 +209,9 @@ export function TeamKpiBoard() {
                     <th style={th}>관리 주기</th>
                     <th style={th}>전년 실적</th>
                     <th style={th}>금년 목표</th>
-                    <th style={th}>금년 실적</th>
-                    <th style={th}>입력 일시</th>
+                    <th style={th}>기간별 실적</th>
                     <th style={th}>향상률</th>
                     <th style={th}>평가비중</th>
-                    <th style={th}>기간별 실적</th>
                     <th style={th}>주요 추진 계획</th>
                   </tr>
                 </thead>
@@ -250,19 +226,30 @@ export function TeamKpiBoard() {
                         <td style={td}>{r.cadence === 'MONTHLY' ? '월' : r.cadence === 'QUARTERLY' ? '분기' : r.cadence === 'HALF_YEARLY' ? '반기' : r.cadence === 'YEARLY' ? '연간' : '-'}</td>
                         <td style={td}>{r.baseline == null ? '-' : r.baseline}</td>
                         <td style={td}>{r.target}</td>
-                        <td style={td}>{r.thisYearValue == null ? '-' : r.thisYearValue}</td>
-                        <td style={td}>{r.thisYearInputAt ? new Date(r.thisYearInputAt).toLocaleString() : '-'}</td>
+                        <td style={td}>{(() => {
+                          const h = r.history || [];
+                          if (!h.length) return '-';
+                          const latest = h[0];
+                          const ts = latest.createdAt ? new Date(latest.createdAt).toLocaleString() : '-';
+                          return (
+                            <details>
+                              <summary style={{ cursor: 'pointer' }}>
+                                최근 {latest.label}: {latest.value == null ? '-' : latest.value} · 입력 {ts}
+                              </summary>
+                              <div style={{ marginTop: 6 }}>
+                                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                  {h.map((e, i) => (
+                                    <li key={i}>
+                                      {e.label}: {e.value == null ? '-' : e.value} · 입력 {e.createdAt ? new Date(e.createdAt).toLocaleString() : '-'}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </details>
+                          );
+                        })()}</td>
                         <td style={td}>{delta == null ? '-' : `${arrow} ${Math.abs(delta)}`}</td>
                         <td style={td}>{r.weight == null ? '-' : r.weight}</td>
-                        <td style={td}>{r.periods && r.periods.length ? (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                            {r.periods.map((p, i) => (
-                              <span key={i} style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: '2px 6px', fontSize: 12 }}>
-                                {p.label}: {p.value == null ? '-' : p.value}
-                              </span>
-                            ))}
-                          </div>
-                        ) : '-'}</td>
                         <td style={td}>{r.initiatives.length ? (
                           <ul style={{ margin: 0, paddingLeft: 16 }}>
                             {r.initiatives.map((it, i) => (
