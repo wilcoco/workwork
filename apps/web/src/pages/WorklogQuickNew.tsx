@@ -17,9 +17,9 @@ export function WorklogQuickNew() {
   const [teamName, setTeamName] = useState<string>('');
   const [orgUnitId, setOrgUnitId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
-  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
+  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [teamKpis, setTeamKpis] = useState<Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
-  const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
+  const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [selection, setSelection] = useState<string>(''); // 'init:<id>'
   const [krValue, setKrValue] = useState<string>('');
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
@@ -49,10 +49,10 @@ export function WorklogQuickNew() {
         try {
           const mine = await apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`);
           const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(uid)}`);
-          const meta: Record<string, { objTitle: string; krTitle: string; krTarget: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = {};
+          const meta: Record<string, { objTitle: string; krTitle: string; isKpi: boolean; krTarget: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = {};
           for (const o of (mokrs.items || [])) {
             for (const kr of (o.keyResults || [])) {
-              meta[kr.id] = { objTitle: o.title, krTitle: kr.title, krTarget: typeof kr.target === 'number' ? kr.target : null, krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction };
+              meta[kr.id] = { objTitle: o.title, krTitle: kr.title, isKpi: !!o.pillar, krTarget: typeof kr.target === 'number' ? kr.target : null, krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction };
             }
           }
           const its = (mine.items || []).map((ii: any) => {
@@ -62,15 +62,19 @@ export function WorklogQuickNew() {
             const e = e0 ? `${e0.getFullYear()}-${String(e0.getMonth()+1).padStart(2,'0')}-${String(e0.getDate()).padStart(2,'0')}` : '';
             const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
             const mm = meta[ii.keyResultId as string];
-            const title = mm ? `${mm.objTitle} / ${mm.krTitle}` : (ii.title as string);
-            return { id: ii.id, title, period: pc, startAt: s, krId: ii.keyResultId, krTarget: mm?.krTarget ?? null, krUnit: mm?.krUnit, krBaseline: mm?.krBaseline ?? null, krDirection: mm?.krDirection };
+            const initTitle = (() => {
+              const parts = String(ii.title || '').split('/');
+              return (parts.length > 1 ? parts[parts.length - 1] : ii.title) as string;
+            })();
+            const title = (ii.title as string);
+            return { id: ii.id, title, initTitle, objTitle: mm?.objTitle, krTitle: mm?.krTitle, isKpi: mm?.isKpi, period: pc, startAt: s, krId: ii.keyResultId, krTarget: mm?.krTarget ?? null, krUnit: mm?.krUnit, krBaseline: mm?.krBaseline ?? null, krDirection: mm?.krDirection };
           });
           setMyTasks(its);
         } catch {}
         if (!ou) return;
         const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(ou)}`);
         const objs = res.items || [];
-        const tasks: Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = [];
+        const tasks: Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = [];
         const kpis: Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = [];
         for (const o of objs) {
           for (const kr of (o.keyResults || [])) {
@@ -97,7 +101,8 @@ export function WorklogQuickNew() {
                   const s = sD ? `${sD.getFullYear()}-${String(sD.getMonth()+1).padStart(2,'0')}-${String(sD.getDate()).padStart(2,'0')}` : '';
                   const e = eD ? `${eD.getFullYear()}-${String(eD.getMonth()+1).padStart(2,'0')}-${String(eD.getDate()).padStart(2,'0')}` : '';
                   const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
-                  tasks.push({ id: ch.id, title: `${o.title} / KR: ${kr.title} / ${ch.title}`, period: pc, startAt: s, krId: kr.id, krTarget: (typeof kr.target === 'number' ? kr.target : null), krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction });
+                  const initTitle = String(ch.title || '');
+                  tasks.push({ id: ch.id, title: initTitle, initTitle, objTitle: o.title, krTitle: kr.title, isKpi: !!o.pillar, period: pc, startAt: s, krId: kr.id, krTarget: (typeof kr.target === 'number' ? kr.target : null), krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction });
                 }
               }
             }
@@ -287,9 +292,13 @@ export function WorklogQuickNew() {
                 {(() => {
                   const kpiKrIds = new Set(teamKpis.map((k) => k.id));
                   const list = myTasks.filter((t) => !t.krId || !kpiKrIds.has(t.krId));
-                  return list.map((t) => (
-                    <option key={`init-${t.id}`} value={`init:${t.id}`}>{t.title}</option>
-                  ));
+                  return list.map((t) => {
+                    const initLabel = String(t.initTitle || (() => { const parts = String(t.title||'').split('/'); return parts.length>1? parts[parts.length-1].trim() : (t.title||''); })());
+                    const prefix = `${t.objTitle || ''} / ${(t.isKpi ? 'KPI' : 'KR')}: ${t.krTitle || ''}`.trim();
+                    return (
+                      <option key={`init-${t.id}`} value={`init:${t.id}`}>{prefix} / {initLabel}</option>
+                    );
+                  });
                 })()}
               </optgroup>
               <optgroup label="팀 KPI 및 과제">
@@ -301,15 +310,10 @@ export function WorklogQuickNew() {
                     for (const t of allTasks) {
                       if (t.krId === k.id && !seen.has(t.id)) {
                         seen.add(t.id);
-                        const parts = (t.title || '').split('/');
-                        const initLabel = parts.length > 1 ? parts[parts.length - 1].trim() : (t.title || '');
-                        const kpiPlain = (() => {
-                          const kp = (k.title || '').split('/');
-                          const last = kp[kp.length - 1] || '';
-                          return last.replace(/^\s*KPI:\s*/i, '').trim();
-                        })();
+                        const initLabel = String(t.initTitle || (() => { const parts = String(t.title||'').split('/'); return parts.length>1? parts[parts.length-1].trim() : (t.title||''); })());
+                        const prefix = `${t.objTitle || ''} / KPI: ${t.krTitle || ''}`.trim();
                         options.push(
-                          <option key={`init-${t.id}`} value={`init:${t.id}`}>{kpiPlain} / {initLabel}</option>
+                          <option key={`init-${t.id}`} value={`init:${t.id}`}>{prefix} / {initLabel}</option>
                         );
                       }
                     }
