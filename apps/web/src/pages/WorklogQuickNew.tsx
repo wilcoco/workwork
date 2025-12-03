@@ -285,11 +285,9 @@ export function WorklogQuickNew() {
               <option value="" disabled>대상을 선택하세요</option>
               <optgroup label="나의 과제">
                 {(() => {
-                  const list = [...teamTasks, ...myTasks];
-                  const uniq: Array<{ id: string; title: string; period: string; startAt?: string }> = [];
-                  const seen = new Set<string>();
-                  for (const t of list) { if (!seen.has(t.id)) { seen.add(t.id); uniq.push(t); } }
-                  return uniq.map((t) => (
+                  const kpiKrIds = new Set(teamKpis.map((k) => k.id));
+                  const list = myTasks.filter((t) => !t.krId || !kpiKrIds.has(t.krId));
+                  return list.map((t) => (
                     <option key={`init-${t.id}`} value={`init:${t.id}`}>{t.title}{t.period}</option>
                   ));
                 })()}
@@ -298,16 +296,13 @@ export function WorklogQuickNew() {
                 {teamKpis.length ? (
                   teamKpis.flatMap((k) => {
                     const options: JSX.Element[] = [];
-                    options.push(
-                      <option key={`kr-${k.id}`} value={`kr:${k.id}`}>{k.title}</option>
-                    );
                     const allTasks = [...teamTasks, ...myTasks];
                     const seen = new Set<string>();
                     for (const t of allTasks) {
                       if (t.krId === k.id && !seen.has(t.id)) {
                         seen.add(t.id);
                         options.push(
-                          <option key={`init-${t.id}`} value={`init:${t.id}`}>↳ {t.title}{t.period}</option>
+                          <option key={`init-${t.id}`} value={`init:${t.id}`}>{k.title} / {t.title}{t.period}</option>
                         );
                       }
                     }
