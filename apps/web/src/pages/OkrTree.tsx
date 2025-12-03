@@ -11,6 +11,11 @@ export function OkrTree() {
   const [userId, setUserId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [krProg, setKrProg] = useState<Record<string, { latestValue: number | null; latestPeriodEnd: string | null; latestCreatedAt: string | null; warn: boolean; history: Array<{ label: string; value: number | null; createdAt?: string | null }>; stalenessDays: number | null; status: 'On Track' | 'At Risk' | 'Off Track' | '-' }>>({});
+  const [orgs, setOrgs] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [filterDivisionId, setFilterDivisionId] = useState<string>('');
+  const [filterTeamId, setFilterTeamId] = useState<string>('');
+  const [filterUserId, setFilterUserId] = useState<string>('');
 
   function roleLabel(r?: string) {
     if (r === 'CEO') return '대표';
@@ -31,6 +36,19 @@ export function OkrTree() {
       } finally {
         setLoading(false);
       }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const o = await apiJson<{ items: any[] }>(`/api/orgs`);
+        setOrgs(o.items || []);
+      } catch {}
+      try {
+        const u = await apiJson<{ items: any[] }>(`/api/users`);
+        setUsers(u.items || []);
+      } catch {}
     })();
   }, []);
 
@@ -108,6 +126,36 @@ export function OkrTree() {
       return String(a.title || '').localeCompare(String(b.title || ''));
     });
   }, [items]);
+
+  const divisions = useMemo(() => (orgs || []).filter((o: any) => o.type === 'DIVISION'), [orgs]);
+  const teams = useMemo(() => (orgs || []).filter((o: any) => o.type === 'TEAM'), [orgs]);
+
+  function matches(o: any): boolean {
+    if (filterTeamId && String(o?.orgUnit?.id || '') !== filterTeamId) return false;
+    if (filterDivisionId) {
+      const ou = o?.orgUnit;
+      const ok = String(ou?.id || '') === filterDivisionId || String((ou as any)?.parentId || '') === filterDivisionId;
+      if (!ok) return false;
+    }
+    if (filterUserId && String(o?.owner?.id || '') !== filterUserId) return false;
+    return true;
+  }
+
+  function hasMatch(o: any): boolean {
+    if (matches(o)) return true;
+    for (const kr of (o?.keyResults || [])) {
+      for (const child of (kr?.children || [])) {
+        if (hasMatch(child)) return true;
+      }
+    }
+    return false;
+  }
+
+  const filteredRoots = useMemo(() => {
+    const anyFilter = !!(filterTeamId || filterDivisionId || filterUserId);
+    if (!anyFilter) return itemsSorted;
+    return itemsSorted.filter((o: any) => hasMatch(o));
+  }, [itemsSorted, filterTeamId, filterDivisionId, filterUserId]);
 
   function ObjectiveCard({ o, depth }: { o: any; depth: number }) {
     return (
@@ -239,7 +287,7 @@ export function OkrTree() {
                 {/* Child objectives under this KR */}
                 {isOpen && kr.children?.length > 0 && (
                   <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
-                    {[...kr.children].filter((c: any) => !c.pillar).sort((a: any, b: any) => {
+                    {[...kr.children].filter((c: any) => !c.pillar && hasMatch(c)).sort((a: any, b: any) => {
                       const order: Record<string, number> = { CEO: 0, EXEC: 1, MANAGER: 2, INDIVIDUAL: 3 } as any;
                       const ra = order[(a?.owner?.role as any) || 'INDIVIDUAL'] ?? 99;
                       const rb = order[(b?.owner?.role as any) || 'INDIVIDUAL'] ?? 99;
@@ -263,13 +311,31 @@ export function OkrTree() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>OKR 조회</h2>
         <div style={{ display: 'flex', gap: 8 }}>
+          <select value={filterDivisionId} onChange={(e) => { setFilterDivisionId(e.target.value); }}>
+            <option value="">실(전체)</option>
+            {divisions.map((d: any) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+          <select value={filterTeamId} onChange={(e) => { setFilterTeamId(e.target.value); }}>
+            <option value="">팀(전체)</option>
+            {teams.map((t: any) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          <select value={filterUserId} onChange={(e) => { setFilterUserId(e.target.value); }}>
+            <option value="">이름(전체)</option>
+            {users.map((u: any) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
           <button disabled={loading} onClick={() => window.location.reload()} className="btn btn-primary">새로고침</button>
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
       <div style={{ display: 'grid', gap: 10 }}>
-        {itemsSorted.map((o) => (
+        {filteredRoots.map((o) => (
           <ObjectiveCard key={o.id} o={o} depth={0} />
         ))}
         {!items.length && !loading && <div style={{ color: '#64748b' }}>표시할 OKR이 없습니다.</div>}
