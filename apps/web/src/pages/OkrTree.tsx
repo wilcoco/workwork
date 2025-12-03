@@ -45,9 +45,11 @@ export function OkrTree() {
           }
         }
         for (const o of items) collect(o);
+        const uid = userId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '');
+        if (!uid) { setKrProg({}); return; }
         const entries = await Promise.all(allKrs.map(async (k) => {
           try {
-            const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(k.id)}`);
+            const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(k.id)}&actorId=${encodeURIComponent(uid)}`);
             const latest = (pr.items || [])[0] || null;
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
@@ -65,7 +67,7 @@ export function OkrTree() {
         setKrProg(map);
       } catch {}
     })();
-  }, [items]);
+  }, [items, userId]);
 
   useEffect(() => {
     (async () => {
@@ -129,7 +131,7 @@ export function OkrTree() {
                       {kr.target != null ? ` / ${kr.target}${kr.unit ? ' ' + kr.unit : ''}` : ''}
                     </span>
                     <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
-                      {krProg[kr.id]?.latestValue == null ? '' : `최근: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
+                      {krProg[kr.id]?.latestValue == null ? '' : `내 입력: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
                     </span>
                     {myRole === 'CEO' && (
                       <button

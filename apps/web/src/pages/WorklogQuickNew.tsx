@@ -16,6 +16,7 @@ export function WorklogQuickNew() {
   const [date, setDate] = useState<string>(() => firstDayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [orgUnitId, setOrgUnitId] = useState<string>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string }>>([]);
   const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string }>>([]);
   const [selection, setSelection] = useState<string>(''); // 'init:<id>'
@@ -38,9 +39,10 @@ export function WorklogQuickNew() {
     if (!uid) return;
     (async () => {
       try {
-        const me = await apiJson<{ id: string; orgUnitId: string }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
+        const me = await apiJson<{ id: string; orgUnitId: string; role?: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
         const ou = me.orgUnitId || '';
         setOrgUnitId(ou);
+        setMyRole((me as any)?.role || '');
         // Always load my own initiatives (personal OKR/KPI tasks) and enrich with my OKR metadata (O/KR)
         try {
           const mine = await apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`);
@@ -295,7 +297,14 @@ export function WorklogQuickNew() {
           <div className="resp-2" style={{ marginTop: 6 }}>
             <label>
               지표값 입력(선택)
-              <input type="number" step="any" value={krValue} onChange={(e) => setKrValue(e.target.value)} style={input} placeholder="예: 12.5" />
+              <input type="number" step="any" value={krValue} onChange={(e) => setKrValue(e.target.value)} style={input} placeholder="예: 12.5" disabled={(() => {
+                const id = selection.startsWith('init:') ? selection.substring(5) : '';
+                const mine = myTasks.some((x) => x.id === id);
+                const team = teamTasks.some((x) => x.id === id);
+                if (mine) return false; // own OKR allowed
+                if (team) return myRole !== 'MANAGER'; // team KPI only for manager
+                return true;
+              })()} />
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료

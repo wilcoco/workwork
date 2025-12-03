@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, ForbiddenException } from '@nestjs/common';
 import { IsBoolean, IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -66,14 +66,32 @@ export class ProgressController {
   async create(@Body() dto: CreateProgressDto) {
     const when = dto.at ? new Date(dto.at) : new Date();
     let cadence: any = 'MONTHLY';
+    const user = await this.prisma.user.findUnique({ where: { id: dto.actorId } });
+    if (!user) throw new BadRequestException('actor not found');
     if (dto.subjectType === 'KR') {
-      const kr = await this.prisma.keyResult.findUnique({ where: { id: dto.subjectId } });
+      const kr = await this.prisma.keyResult.findUnique({ where: { id: dto.subjectId }, include: { objective: true } });
       if (!kr) throw new BadRequestException('invalid keyResultId');
       cadence = (kr as any).cadence || 'MONTHLY';
+      const isTeamKpi = !!(kr as any)?.objective?.pillar;
+      if (isTeamKpi) {
+        const sameTeam = !!user.orgUnitId && user.orgUnitId === ((kr as any)?.objective as any)?.orgUnitId;
+        const isMgr = (user.role as any) === 'MANAGER';
+        if (!(isMgr && sameTeam)) throw new ForbiddenException('only team manager can update team KPI');
+      } else {
+        if (user.id !== (kr as any).ownerId) throw new ForbiddenException('only KR owner can update this OKR');
+      }
     } else {
-      const init = await this.prisma.initiative.findUnique({ where: { id: dto.subjectId } });
+      const init = await this.prisma.initiative.findUnique({ where: { id: dto.subjectId }, include: { keyResult: { include: { objective: true } } } });
       if (!init) throw new BadRequestException('invalid initiativeId');
       cadence = (init as any).cadence || 'MONTHLY';
+      const isTeamKpi = !!(init as any)?.keyResult?.objective?.pillar;
+      if (isTeamKpi) {
+        const sameTeam = !!user.orgUnitId && user.orgUnitId === (((init as any)?.keyResult as any)?.objective as any)?.orgUnitId;
+        const isMgr = (user.role as any) === 'MANAGER';
+        if (!(isMgr && sameTeam)) throw new ForbiddenException('only team manager can update team KPI');
+      } else {
+        if (user.id !== (init as any).ownerId) throw new ForbiddenException('only initiative owner can update this OKR');
+      }
     }
     const { start, end } = this.calcPeriod(cadence, when);
     const rec = await this.prisma.progressEntry.create({
@@ -93,10 +111,11 @@ export class ProgressController {
   }
 
   @Get()
-  async list(@Query('subjectType') subjectType: 'KR' | 'INITIATIVE', @Query('subjectId') subjectId: string) {
+  async list(@Query('subjectType') subjectType: 'KR' | 'INITIATIVE', @Query('subjectId') subjectId: string, @Query('actorId') actorId?: string) {
     if (!subjectType || !subjectId) throw new BadRequestException('subjectType/subjectId required');
     const where: any = {};
     if (subjectType === 'KR') where.keyResultId = subjectId; else where.initiativeId = subjectId;
+    if (actorId) where.actorId = actorId;
     const items = await this.prisma.progressEntry.findMany({ where, orderBy: { createdAt: 'desc' } });
     return { items };
   }

@@ -42,7 +42,7 @@ function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrM
         <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
-            {krProg[kr.id]?.latestValue == null ? '' : `최근: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
+            {krProg[kr.id]?.latestValue == null ? '' : `내 입력: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
           </span>
           <span style={{ fontSize: 12, color: '#94a3b8' }}>{kr.type}</span>
         </div>
@@ -207,6 +207,7 @@ export function OkrMap() {
   const [topStart, setTopStart] = useState(dateStr(new Date()));
   const [topEnd, setTopEnd] = useState(dateStr(new Date(Date.now() + 1000 * 60 * 60 * 24 * 90)));
   const [krProg, setKrProg] = useState<Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }>>({});
+  const [userId, setUserId] = useState<string>('');
 
   const [krObjId, setKrObjId] = useState('');
   const [krTitle, setKrTitle] = useState('');
@@ -255,9 +256,11 @@ export function OkrMap() {
           }
         }
         for (const o of items) collect(o);
+        const uid = userId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '');
+        if (!uid) { setKrProg({}); return; }
         const entries = await Promise.all(allKrs.map(async (k) => {
           try {
-            const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(k.id)}`);
+            const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(k.id)}&actorId=${encodeURIComponent(uid)}`);
             const latest = (pr.items || [])[0] || null;
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
@@ -275,7 +278,7 @@ export function OkrMap() {
         setKrProg(map);
       } catch {}
     })();
-  }, [items]);
+  }, [items, userId]);
 
   useEffect(() => {
     async function applyQuery() {
@@ -297,6 +300,11 @@ export function OkrMap() {
     }
     applyQuery();
   }, [location.search]);
+
+  useEffect(() => {
+    const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+    setUserId(uid);
+  }, []);
 
   async function createTopObjective(e: React.FormEvent) {
     e.preventDefault();
