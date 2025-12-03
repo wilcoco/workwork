@@ -21,8 +21,8 @@ export function WorklogSearch() {
   const [teamId, setTeamId] = useState('');
   const [userId, setUserId] = useState('');
   const [teams, setTeams] = useState<Array<{ id: string; name: string }>>([]);
-  const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
-  const [krs, setKrs] = useState<Array<{ id: string; label: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; orgUnitId?: string; orgUnitName?: string }>>([]);
+  const [krs, setKrs] = useState<Array<{ id: string; label: string; isKpi: boolean }>>([]);
   const [krId, setKrId] = useState('');
   const [krInits, setKrInits] = useState<Record<string, Array<{ id: string; label: string }>>>({});
   const [initiativeId, setInitiativeId] = useState('');
@@ -107,7 +107,7 @@ export function WorklogSearch() {
       } catch {}
       try {
         const userRes = await apiJson<{ items: any[] }>(`/api/users`);
-        setUsers((userRes.items || []).map((u: any) => ({ id: u.id, name: u.name })));
+        setUsers((userRes.items || []).map((u: any) => ({ id: u.id, name: u.name, orgUnitId: (u as any)?.orgUnitId, orgUnitName: (u as any)?.orgUnit?.name })));
       } catch {}
     })();
   }, []);
@@ -116,7 +116,7 @@ export function WorklogSearch() {
   useEffect(() => {
     (async () => {
       try {
-        const list: Array<{ id: string; label: string }> = [];
+        const list: Array<{ id: string; label: string; isKpi: boolean }> = [];
         const seen = new Set<string>();
         if (teamId) {
           try {
@@ -127,7 +127,7 @@ export function WorklogSearch() {
                 if (!seen.has(kr.id)) {
                   seen.add(kr.id);
                   const isKpi = !!o.pillar;
-                  list.push({ id: kr.id, label: `${o.title} / ${isKpi ? 'KPI' : 'KR'}: ${kr.title}` });
+                  list.push({ id: kr.id, label: `${o.title} / ${isKpi ? 'KPI' : 'KR'}: ${kr.title}`, isKpi });
                 }
                 // Build initiatives list for this KR (flatten children if present)
                 const inits: Array<{ id: string; label: string }> = [];
@@ -159,7 +159,7 @@ export function WorklogSearch() {
                 if (!seen.has(kr.id)) {
                   seen.add(kr.id);
                   const isKpi = !!o.pillar;
-                  list.push({ id: kr.id, label: `${o.title} / ${isKpi ? 'KPI' : 'KR'}: ${kr.title}` });
+                  list.push({ id: kr.id, label: `${o.title} / ${isKpi ? 'KPI' : 'KR'}: ${kr.title}` , isKpi});
                 }
               }
             }
@@ -221,8 +221,15 @@ export function WorklogSearch() {
             onChange={(e) => {
               const id = e.target.value;
               setUserId(id);
-              const nm = users.find((u) => u.id === id)?.name || '';
+              const u = users.find((uu) => uu.id === id);
+              const nm = u?.name || '';
               setUser(nm);
+              // When a user is selected, also select their team to load team KPI + personal OKR
+              if (u?.orgUnitId) {
+                setTeamId(u.orgUnitId);
+                const teamName = teams.find((t) => t.id === u.orgUnitId)?.name || u.orgUnitName || '';
+                setTeam(teamName);
+              }
             }}
             style={input}
           >
@@ -236,14 +243,24 @@ export function WorklogSearch() {
           <input placeholder="검색어" value={q} onChange={(e) => setQ(e.target.value)} style={input} />
         </div>
         <div className="resp-3">
-          <select value={kind} onChange={(e) => setKind(e.target.value as any)} style={input}>
+          <select value={kind} onChange={(e) => {
+            const nk = e.target.value as any;
+            setKind(nk);
+            if (nk) {
+              const cur = krs.find((k) => k.id === krId);
+              if (cur && ((nk === 'KPI' && !cur.isKpi) || (nk === 'OKR' && cur.isKpi))) {
+                setKrId('');
+                setInitiativeId('');
+              }
+            }
+          }} style={input}>
             <option value="">종류(전체)</option>
             <option value="OKR">OKR</option>
             <option value="KPI">KPI</option>
           </select>
           <select value={krId} onChange={(e) => setKrId(e.target.value)} style={input}>
             <option value="">지표 선택(전체)</option>
-            {krs.map((k) => (
+            {(kind ? krs.filter((k) => (kind === 'KPI' ? k.isKpi : !k.isKpi)) : krs).map((k) => (
               <option key={k.id} value={k.id}>{k.label}</option>
             ))}
           </select>
