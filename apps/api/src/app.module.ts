@@ -18,6 +18,7 @@ import { UsersController } from './users.controller';
 import { OrgsController } from './orgs.controller';
 import { BrandController } from './brand.controller';
 import { AdminController } from './admin.controller';
+import { ProgressController } from './progress.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -39,6 +40,7 @@ import { AdminController } from './admin.controller';
     OrgsController,
     BrandController,
     AdminController,
+    ProgressController,
   ],
   providers: [PrismaService],
 })

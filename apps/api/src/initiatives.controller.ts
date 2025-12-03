@@ -10,7 +10,7 @@ class CreateInitiativeDto {
   @IsOptional() @IsEnum({ PROJECT: 'PROJECT', OPERATIONAL: 'OPERATIONAL' } as any) type?: 'PROJECT' | 'OPERATIONAL';
   @IsOptional() @IsDateString() startAt?: string;
   @IsOptional() @IsDateString() endAt?: string;
-  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY' } as any) cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY' } as any) cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY';
   @IsOptional() @IsString() cadenceAnchor?: string;
   @IsOptional() @IsString() userGoalId?: string;
   @IsOptional() @IsString() parentId?: string;
@@ -22,7 +22,7 @@ class UpdateInitiativeDto {
   @IsOptional() @IsEnum({ PROJECT: 'PROJECT', OPERATIONAL: 'OPERATIONAL' } as any) type?: 'PROJECT' | 'OPERATIONAL';
   @IsOptional() @IsDateString() startAt?: string;
   @IsOptional() @IsDateString() endAt?: string;
-  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY' } as any) cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY' } as any) cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY';
   @IsOptional() @IsString() cadenceAnchor?: string;
   @IsOptional() @IsString() userGoalId?: string;
 }

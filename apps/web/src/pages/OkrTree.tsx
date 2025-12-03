@@ -10,6 +10,7 @@ export function OkrTree() {
   const defaultExpandDepth = 1; // CEO -> EXEC 상세
   const [userId, setUserId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [krProg, setKrProg] = useState<Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }>>({});
 
   function roleLabel(r?: string) {
     if (r === 'CEO') return '대표';
@@ -32,6 +33,39 @@ export function OkrTree() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const allKrs: Array<{ id: string; target: number | null }> = [];
+        function collect(o: any) {
+          for (const kr of (o?.keyResults || [])) {
+            allKrs.push({ id: kr.id, target: typeof kr.target === 'number' ? kr.target : null });
+            for (const child of (kr.children || [])) collect(child);
+          }
+        }
+        for (const o of items) collect(o);
+        const entries = await Promise.all(allKrs.map(async (k) => {
+          try {
+            const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(k.id)}`);
+            const latest = (pr.items || [])[0] || null;
+            const latestValue = latest?.krValue ?? null;
+            const latestPeriodEnd = latest?.periodEnd ?? null;
+            let warn = false;
+            if (latest && latestValue != null && latestPeriodEnd && typeof k.target === 'number') {
+              if (new Date(latestPeriodEnd) < new Date() && latestValue < (k.target as number)) warn = true;
+            }
+            return [k.id, { latestValue, latestPeriodEnd, warn }] as const;
+          } catch {
+            return [k.id, { latestValue: null, latestPeriodEnd: null, warn: false }] as const;
+          }
+        }));
+        const map: Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }> = {};
+        for (const [id, v] of entries) map[id] = v;
+        setKrProg(map);
+      } catch {}
+    })();
+  }, [items]);
 
   useEffect(() => {
     (async () => {
@@ -85,7 +119,7 @@ export function OkrTree() {
         {o.keyResults?.length > 0 && (
           <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
             {o.keyResults.map((kr: any) => (
-              <div key={kr.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
+              <div key={kr.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: krProg[kr.id]?.warn ? '#fee2e2' : undefined }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ fontWeight: 600 }}>KR:</div>
                   <div>{kr.title}</div>
@@ -93,6 +127,9 @@ export function OkrTree() {
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>
                       {kr.metric}
                       {kr.target != null ? ` / ${kr.target}${kr.unit ? ' ' + kr.unit : ''}` : ''}
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
+                      {krProg[kr.id]?.latestValue == null ? '' : `최근: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
                     </span>
                     {myRole === 'CEO' && (
                       <button

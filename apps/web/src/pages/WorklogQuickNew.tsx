@@ -16,9 +16,11 @@ export function WorklogQuickNew() {
   const [date, setDate] = useState<string>(() => firstDayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [orgUnitId, setOrgUnitId] = useState<string>('');
-  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string }>>([]);
-  const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string }>>([]);
+  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string }>>([]);
+  const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string }>>([]);
   const [selection, setSelection] = useState<string>(''); // 'init:<id>'
+  const [krValue, setKrValue] = useState<string>('');
+  const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
@@ -57,14 +59,14 @@ export function WorklogQuickNew() {
             const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
             const mm = meta[ii.keyResultId as string];
             const title = mm ? `${mm.objTitle} / KR: ${mm.krTitle} / ${ii.title}` : (ii.title as string);
-            return { id: ii.id, title, period: pc, startAt: s };
+            return { id: ii.id, title, period: pc, startAt: s, krId: ii.keyResultId };
           });
           setMyTasks(its);
         } catch {}
         if (!ou) return;
         const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(ou)}`);
         const objs = res.items || [];
-        const tasks: Array<{ id: string; title: string; period: string; startAt?: string }> = [];
+        const tasks: Array<{ id: string; title: string; period: string; startAt?: string; krId?: string }> = [];
         for (const o of objs) {
           for (const kr of (o.keyResults || [])) {
             for (const ii of (kr.initiatives || [])) {
@@ -87,7 +89,7 @@ export function WorklogQuickNew() {
                   const s = sD ? `${sD.getFullYear()}-${String(sD.getMonth()+1).padStart(2,'0')}-${String(sD.getDate()).padStart(2,'0')}` : '';
                   const e = eD ? `${eD.getFullYear()}-${String(eD.getMonth()+1).padStart(2,'0')}-${String(eD.getDate()).padStart(2,'0')}` : '';
                   const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
-                  tasks.push({ id: ch.id, title: `${o.title} / KR: ${kr.title} / ${ch.title}`, period: pc, startAt: s });
+                  tasks.push({ id: ch.id, title: `${o.title} / KR: ${kr.title} / ${ch.title}`, period: pc, startAt: s, krId: kr.id });
                 }
               }
             }
@@ -143,7 +145,7 @@ export function WorklogQuickNew() {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
       if (!selection || !selection.startsWith('init:')) throw new Error('과제를 선택하세요');
-      await apiJson<{ id: string }>(
+      const wl = await apiJson<{ id: string }>(
         '/api/worklogs/simple',
         {
           method: 'POST',
@@ -159,6 +161,22 @@ export function WorklogQuickNew() {
           }),
         }
       );
+      const selectedId = selection.substring(5);
+      const selected = [...teamTasks, ...myTasks].find((x) => x.id === selectedId);
+      // Progress: initiative done
+      if (initiativeDone) {
+        await apiJson('/api/progress', {
+          method: 'POST',
+          body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: selectedId, actorId: userId, worklogId: wl.id, initiativeDone: true, note: title || undefined, at: date }),
+        });
+      }
+      // Progress: KR value
+      if (selected?.krId && krValue !== '') {
+        await apiJson('/api/progress', {
+          method: 'POST',
+          body: JSON.stringify({ subjectType: 'KR', subjectId: selected.krId, actorId: userId, worklogId: wl.id, krValue: Number(krValue), note: title || undefined, at: date }),
+        });
+      }
       nav('/search?mode=list');
     } catch (err: any) {
       setError(err?.message || '저장 실패');
@@ -273,6 +291,15 @@ export function WorklogQuickNew() {
             ) : (
               <div ref={editorEl} style={{ minHeight: 260, width: '100%' }} />
             )}
+          </div>
+          <div className="resp-2" style={{ marginTop: 6 }}>
+            <label>
+              지표값 입력(선택)
+              <input type="number" step="any" value={krValue} onChange={(e) => setKrValue(e.target.value)} style={input} placeholder="예: 12.5" />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료
+            </label>
           </div>
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>

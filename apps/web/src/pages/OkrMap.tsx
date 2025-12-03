@@ -17,7 +17,7 @@ function orgTypeLabel(t?: string) {
   return t || '';
 }
 
-function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild }: {
+function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild, krProg }: {
   kr: any;
   krObjId: string; setKrObjId: (v: string) => void;
   krTitle: string; setKrTitle: (v: string) => void;
@@ -32,14 +32,20 @@ function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrM
   childStart: string; setChildStart: (v: string) => void;
   childEnd: string; setChildEnd: (v: string) => void;
   onSubmitChild: (krId: string, orgUnitId?: string) => Promise<void>;
+  krProg: Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }>;
 }) {
   return (
     <li style={{ marginTop: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, background: krProg[kr.id]?.warn ? '#fee2e2' : undefined, borderRadius: 6, padding: krProg[kr.id]?.warn ? '4px 6px' : undefined }}>
         <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
         <div style={{ fontWeight: 600 }}>{kr.title}</div>
         <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
-        <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.type}</div>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
+            {krProg[kr.id]?.latestValue == null ? '' : `최근: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
+          </span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>{kr.type}</span>
+        </div>
       </div>
       <div style={{ marginLeft: 18, marginTop: 6 }}>
         {childKrId !== kr.id ? (
@@ -97,6 +103,7 @@ function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrM
               childEnd={childEnd}
               setChildEnd={setChildEnd}
               onSubmitChild={onSubmitChild}
+              krProg={krProg}
             />
           ))}
         </ul>
@@ -105,7 +112,7 @@ function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrM
   );
 }
 
-function ObjNode({ obj, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild }: { obj: any; krObjId: string; setKrObjId: (v: string) => void; krTitle: string; setKrTitle: (v: string) => void; krMetric: string; setKrMetric: (v: string) => void; krTarget: number | ''; setKrTarget: (v: number | '') => void; krUnit: string; setKrUnit: (v: string) => void; krType: string; setKrType: (v: string) => void; onSubmitKr: (objectiveId: string) => Promise<void>; childKrId: string; setChildKrId: (v: string) => void; childTitle: string; setChildTitle: (v: string) => void; childDesc: string; setChildDesc: (v: string) => void; childStart: string; setChildStart: (v: string) => void; childEnd: string; setChildEnd: (v: string) => void; onSubmitChild: (krId: string, orgUnitId?: string) => Promise<void> }) {
+function ObjNode({ obj, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrMetric, krTarget, setKrTarget, krUnit, setKrUnit, krType, setKrType, onSubmitKr, childKrId, setChildKrId, childTitle, setChildTitle, childDesc, setChildDesc, childStart, setChildStart, childEnd, setChildEnd, onSubmitChild, krProg }: { obj: any; krObjId: string; setKrObjId: (v: string) => void; krTitle: string; setKrTitle: (v: string) => void; krMetric: string; setKrMetric: (v: string) => void; krTarget: number | ''; setKrTarget: (v: number | '') => void; krUnit: string; setKrUnit: (v: string) => void; krType: string; setKrType: (v: string) => void; onSubmitKr: (objectiveId: string) => Promise<void>; childKrId: string; setChildKrId: (v: string) => void; childTitle: string; setChildTitle: (v: string) => void; childDesc: string; setChildDesc: (v: string) => void; childStart: string; setChildStart: (v: string) => void; childEnd: string; setChildEnd: (v: string) => void; onSubmitChild: (krId: string, orgUnitId?: string) => Promise<void>; krProg: Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }> }) {
   return (
     <li style={{ marginTop: 10 }}>
       <div style={{ display: 'grid', gap: 4 }}>
@@ -177,6 +184,7 @@ function ObjNode({ obj, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setK
               childEnd={childEnd}
               setChildEnd={setChildEnd}
               onSubmitChild={onSubmitChild}
+              krProg={krProg}
             />
           ))}
         </ul>
@@ -198,6 +206,7 @@ export function OkrMap() {
   function dateStr(d: Date) { return d.toISOString().slice(0, 10); }
   const [topStart, setTopStart] = useState(dateStr(new Date()));
   const [topEnd, setTopEnd] = useState(dateStr(new Date(Date.now() + 1000 * 60 * 60 * 24 * 90)));
+  const [krProg, setKrProg] = useState<Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }>>({});
 
   const [krObjId, setKrObjId] = useState('');
   const [krTitle, setKrTitle] = useState('');
@@ -234,6 +243,39 @@ export function OkrMap() {
     }
     loadOrgs();
   }, [viewOrgId]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const allKrs: Array<{ id: string; target: number | null; unit?: string }> = [];
+        function collect(o: any) {
+          for (const kr of (o?.keyResults || [])) {
+            allKrs.push({ id: kr.id, target: typeof kr.target === 'number' ? kr.target : null, unit: kr.unit });
+            for (const child of (kr.children || [])) collect(child);
+          }
+        }
+        for (const o of items) collect(o);
+        const entries = await Promise.all(allKrs.map(async (k) => {
+          try {
+            const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(k.id)}`);
+            const latest = (pr.items || [])[0] || null;
+            const latestValue = latest?.krValue ?? null;
+            const latestPeriodEnd = latest?.periodEnd ?? null;
+            let warn = false;
+            if (latest && latestValue != null && latestPeriodEnd && typeof k.target === 'number') {
+              if (new Date(latestPeriodEnd) < new Date() && latestValue < (k.target as number)) warn = true;
+            }
+            return [k.id, { latestValue, latestPeriodEnd, warn }] as const;
+          } catch {
+            return [k.id, { latestValue: null, latestPeriodEnd: null, warn: false }] as const;
+          }
+        }));
+        const map: Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }> = {};
+        for (const [id, v] of entries) map[id] = v;
+        setKrProg(map);
+      } catch {}
+    })();
+  }, [items]);
 
   useEffect(() => {
     async function applyQuery() {
@@ -382,6 +424,7 @@ export function OkrMap() {
               childEnd={childEnd}
               setChildEnd={setChildEnd}
               onSubmitChild={onSubmitChild}
+              krProg={krProg}
             />
           ))}
         </ul>

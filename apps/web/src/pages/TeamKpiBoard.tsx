@@ -16,6 +16,9 @@ type KrRow = {
   target: number;
   weight: number | null;
   initiatives: string[];
+  latestValue?: number | null;
+  latestPeriodEnd?: string | null;
+  warn?: boolean;
 };
 
 function toPillarLabel(p: Pillar | null | undefined): string {
@@ -65,8 +68,23 @@ export function TeamKpiBoard() {
             });
           }
         }
-        r.sort((a, b) => a.pillarLabel.localeCompare(b.pillarLabel));
-        setRows(r);
+        const enhanced = await Promise.all(r.map(async (row) => {
+          try {
+            const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(row.id)}`);
+            const latest = (pr.items || [])[0] || null;
+            const latestValue = latest?.krValue ?? null;
+            const latestPeriodEnd = latest?.periodEnd ?? null;
+            let warn = false;
+            if (latest && latestValue != null && latestPeriodEnd) {
+              if (new Date(latestPeriodEnd) < new Date() && latestValue < row.target) warn = true;
+            }
+            return { ...row, latestValue, latestPeriodEnd, warn } as KrRow;
+          } catch {
+            return { ...row } as KrRow;
+          }
+        }));
+        enhanced.sort((a, b) => a.pillarLabel.localeCompare(b.pillarLabel));
+        setRows(enhanced);
       } catch (e: any) {
         setError(e.message || '로드 실패');
       }
@@ -124,7 +142,7 @@ export function TeamKpiBoard() {
                     const delta = r.baseline == null ? null : (r.target - r.baseline);
                     const arrow = delta == null ? '' : (delta >= 0 ? '▲' : '▼');
                     return (
-                      <tr key={r.id}>
+                      <tr key={r.id} style={r.warn ? { background: '#fee2e2' } : undefined}>
                         <td style={td}>{r.kpiName}</td>
                         <td style={td}>{r.unit}</td>
                         <td style={td}>{r.cadence || '-'}</td>
@@ -132,7 +150,7 @@ export function TeamKpiBoard() {
                         <td style={td}>{r.target}</td>
                         <td style={td}>{delta == null ? '-' : `${arrow} ${Math.abs(delta)}`}</td>
                         <td style={td}>{r.weight == null ? '-' : r.weight}</td>
-                        <td style={td}>-</td>
+                        <td style={td}>{r.latestValue == null ? '-' : `${r.latestValue}${r.unit ? ' ' + r.unit : ''}`}</td>
                         <td style={td}>{r.initiatives.length ? (
                           <ul style={{ margin: 0, paddingLeft: 16 }}>
                             {r.initiatives.map((t, i) => <li key={i}>{t}</li>)}

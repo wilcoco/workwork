@@ -230,6 +230,7 @@ export function TeamKpiInput() {
             <option value="DAILY">일</option>
             <option value="WEEKLY">주</option>
             <option value="MONTHLY">월</option>
+            <option value="QUARTERLY">분기</option>
           </select>
         </div>
         <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10, display: 'grid', gap: 8 }}>

@@ -57,6 +57,7 @@ enum Cadence {
   DAILY
   WEEKLY
   MONTHLY
+  QUARTERLY
 }
 
 enum KeyResultType {
@@ -110,6 +111,7 @@ model User {
   passwordHash String?
   checklistTicks ChecklistTick[]
   userGoals UserGoal[]
+  progressEntries ProgressEntry[]
 }
 
 model Objective {
@@ -153,6 +155,7 @@ model KeyResult {
   pillar       Pillar?
   baseline     Float?
   cadence      Cadence?
+  progressEntries ProgressEntry[]
 }
 
 model Initiative {
@@ -182,6 +185,7 @@ model Initiative {
   delegationsAsChild Delegation[] @relation("DelegationChildInitiative")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  progressEntries ProgressEntry[]
 }
 
 model Worklog {
@@ -197,6 +201,7 @@ model Worklog {
   createdBy          User      @relation("WorklogCreator", fields: [createdById], references: [id])
   attachments        Json?
   createdAt          DateTime  @default(now())
+  progressEntries    ProgressEntry[]
 }
 
 model Event {
@@ -383,4 +388,22 @@ model ChecklistTick {
   checkedAt       DateTime @default(now())
   actorId         String
   actor           User     @relation(fields: [actorId], references: [id])
+}
+
+model ProgressEntry {
+  id            String    @id @default(cuid())
+  worklogId     String?
+  worklog       Worklog?  @relation(fields: [worklogId], references: [id])
+  actorId       String
+  actor         User      @relation(fields: [actorId], references: [id])
+  keyResultId   String?
+  keyResult     KeyResult? @relation(fields: [keyResultId], references: [id])
+  initiativeId  String?
+  initiative    Initiative? @relation(fields: [initiativeId], references: [id])
+  periodStart   DateTime
+  periodEnd     DateTime
+  krValue       Float?
+  initiativeDone Boolean?
+  note          String?
+  createdAt     DateTime @default(now())
 }
