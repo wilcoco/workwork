@@ -264,7 +264,7 @@ export function WorklogQuickNew() {
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제 / 팀 KPI</label>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제 / KPI 및 과제</label>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
@@ -294,11 +294,25 @@ export function WorklogQuickNew() {
                   ));
                 })()}
               </optgroup>
-              <optgroup label="팀 KPI">
+              <optgroup label="팀 KPI 및 과제">
                 {teamKpis.length ? (
-                  teamKpis.map((k) => (
-                    <option key={`kr-${k.id}`} value={`kr:${k.id}`}>{k.title}</option>
-                  ))
+                  teamKpis.flatMap((k) => {
+                    const options: JSX.Element[] = [];
+                    options.push(
+                      <option key={`kr-${k.id}`} value={`kr:${k.id}`}>{k.title}</option>
+                    );
+                    const allTasks = [...teamTasks, ...myTasks];
+                    const seen = new Set<string>();
+                    for (const t of allTasks) {
+                      if (t.krId === k.id && !seen.has(t.id)) {
+                        seen.add(t.id);
+                        options.push(
+                          <option key={`init-${t.id}`} value={`init:${t.id}`}>↳ {t.title}{t.period}</option>
+                        );
+                      }
+                    }
+                    return options;
+                  })
                 ) : null}
               </optgroup>
             </select>

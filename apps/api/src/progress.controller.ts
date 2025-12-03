@@ -136,12 +136,20 @@ export class ProgressController {
       }
     }
     const { start, end } = this.calcPeriod(cadence, when);
+    // If KR progress comes from a worklog, infer initiativeId from that worklog to record task-level association
+    let inferredInitiativeId: string | null = null;
+    if (dto.worklogId) {
+      try {
+        const wl = await this.prisma.worklog.findUnique({ where: { id: dto.worklogId } });
+        inferredInitiativeId = (wl as any)?.initiativeId ?? null;
+      } catch {}
+    }
     const rec = await this.prisma.progressEntry.create({
       data: {
         worklogId: dto.worklogId,
         actorId: dto.actorId,
         keyResultId: dto.subjectType === 'KR' ? dto.subjectId : null,
-        initiativeId: dto.subjectType === 'INITIATIVE' ? dto.subjectId : null,
+        initiativeId: dto.subjectType === 'INITIATIVE' ? dto.subjectId : (dto.subjectType === 'KR' ? inferredInitiativeId : null),
         periodStart: start,
         periodEnd: end,
         krValue: typeof dto.krValue === 'number' ? dto.krValue : null,

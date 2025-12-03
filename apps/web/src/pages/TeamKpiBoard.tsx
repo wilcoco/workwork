@@ -16,7 +16,7 @@ type KrRow = {
   target: number;
   weight: number | null;
   direction?: 'AT_LEAST' | 'AT_MOST' | null;
-  initiatives: Array<{ id: string; title: string; done?: boolean }>;
+  initiatives: Array<{ id: string; title: string; startAt?: string | null; endAt?: string | null; done?: boolean }>;
   latestValue?: number | null;
   latestPeriodEnd?: string | null;
   warn?: boolean;
@@ -69,7 +69,7 @@ export function TeamKpiBoard() {
               target: typeof kr.target === 'number' ? kr.target : 0,
               weight: typeof kr.weight === 'number' ? kr.weight : null,
               direction: (kr as any)?.direction ?? null,
-              initiatives: Array.isArray(kr.initiatives) ? kr.initiatives.map((ii: any) => ({ id: ii.id, title: ii.title })).filter((x: { id: string; title: string }) => !!x.title) : [],
+              initiatives: Array.isArray(kr.initiatives) ? kr.initiatives.map((ii: any) => ({ id: ii.id, title: ii.title, startAt: ii.startAt || null, endAt: ii.endAt || null })).filter((x: { id: string; title: string }) => !!x.title) : [],
             });
           }
         }
@@ -254,7 +254,12 @@ export function TeamKpiBoard() {
                           <ul style={{ margin: 0, paddingLeft: 16 }}>
                             {r.initiatives.map((it, i) => (
                               <li key={it.id}>
-                                {it.title} {it.done ? <span style={{ color: '#16a34a', fontWeight: 700 }}>(완료)</span> : null}
+                                {it.title} {(() => {
+                                  const fmt = (s?: string | null) => s ? `${new Date(s).getFullYear()}-${String(new Date(s).getMonth()+1).padStart(2,'0')}-${String(new Date(s).getDate()).padStart(2,'0')}` : '';
+                                  const s = fmt(it.startAt);
+                                  const e = fmt(it.endAt);
+                                  return (s || e) ? <span style={{ color: '#475569' }}> ({s}{s||e?' ~ ':''}{e})</span> : null;
+                                })()} {it.done ? <span style={{ color: '#16a34a', fontWeight: 700 }}>(완료)</span> : null}
                               </li>
                             ))}
                           </ul>
