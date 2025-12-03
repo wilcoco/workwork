@@ -298,6 +298,16 @@ export class OkrsController {
     return rec;
   }
 
+  @Get('krs/:id')
+  async getKr(@Param('id') id: string) {
+    const kr = await this.prisma.keyResult.findUnique({
+      where: { id },
+      select: { id: true, title: true, metric: true, target: true, unit: true, objectiveId: true },
+    });
+    if (!kr) throw new NotFoundException('key result not found');
+    return kr;
+  }
+
   @Delete('objectives/:id')
   async deleteObjective(@Param('id') id: string, @Query('userId') userId?: string, @Query('context') context?: string) {
     const exists = await this.prisma.objective.findUnique({ where: { id }, include: { orgUnit: true } });

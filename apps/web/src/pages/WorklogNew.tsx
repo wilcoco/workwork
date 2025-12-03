@@ -13,6 +13,7 @@ export function WorklogNew() {
   const [krId, setKrId] = useState('');
   const [krValue, setKrValue] = useState<string>('');
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
+  const [krAchieved, setKrAchieved] = useState<boolean>(false);
 
   // follow-up actions
   const [approverId, setApproverId] = useState('');
@@ -96,12 +97,26 @@ export function WorklogNew() {
           body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: initiativeId, actorId: createdById, worklogId, initiativeDone: true, note }),
         });
       }
-      if (krId && krValue !== '') {
-        await apiFetch('/api/progress', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subjectType: 'KR', subjectId: krId, actorId: createdById, worklogId, krValue: Number(krValue), note }),
-        });
+      if (krId && (krValue !== '' || krAchieved)) {
+        let valueToSend: number | null = null;
+        if (krValue !== '') {
+          valueToSend = Number(krValue);
+        } else if (krAchieved) {
+          try {
+            const r = await apiFetch(`/api/okrs/krs/${encodeURIComponent(krId)}`);
+            if (r.ok) {
+              const d = await r.json();
+              if (typeof d?.target === 'number') valueToSend = d.target;
+            }
+          } catch {}
+        }
+        if (valueToSend != null) {
+          await apiFetch('/api/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ subjectType: 'KR', subjectId: krId, actorId: createdById, worklogId, krValue: valueToSend, note }),
+          });
+        }
       }
       nav('/search?mode=list');
     } catch (err: any) {
@@ -155,9 +170,14 @@ export function WorklogNew() {
           <input type="number" step="any" value={krValue} onChange={(e) => setKrValue(e.target.value)} />
         </label>
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료 처리
-      </label>
+      <div style={{ display: 'grid', gap: 6 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료 처리
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={krAchieved} onChange={(e) => setKrAchieved(e.target.checked)} /> 목표 달성으로 기록(목표값 자동 입력)
+        </label>
+      </div>
 
       <h3>상신(승인 요청) 옵션</h3>
       <div style={{ display: 'flex', gap: 12 }}>

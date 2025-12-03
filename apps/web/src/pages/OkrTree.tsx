@@ -126,6 +126,17 @@ export function OkrTree() {
                   <div style={{ fontWeight: 600 }}>KR:</div>
                   <div>{kr.title}</div>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {(() => {
+                      const lv = krProg[kr.id]?.latestValue;
+                      const tgt = typeof kr.target === 'number' ? kr.target : null;
+                      const achieved = lv != null && tgt != null && lv >= tgt;
+                      if (lv == null || tgt == null) return null;
+                      return (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: achieved ? '#065f46' : '#991b1b', background: achieved ? '#d1fae5' : '#fee2e2', border: '1px solid', borderColor: achieved ? '#10b981' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>
+                          {achieved ? '달성' : '미달'}
+                        </span>
+                      );
+                    })()}
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>
                       {kr.metric}
                       {kr.target != null ? ` / ${kr.target}${kr.unit ? ' ' + kr.unit : ''}` : ''}

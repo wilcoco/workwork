@@ -41,6 +41,17 @@ function KrNode({ kr, krObjId, setKrObjId, krTitle, setKrTitle, krMetric, setKrM
         <div style={{ fontWeight: 600 }}>{kr.title}</div>
         <div style={{ fontSize: 15, color: '#111827', fontWeight: 500 }}>({kr.metric} / {kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {(() => {
+            const lv = krProg[kr.id]?.latestValue;
+            const tgt = typeof kr.target === 'number' ? kr.target : null;
+            const achieved = lv != null && tgt != null && lv >= tgt;
+            if (lv == null || tgt == null) return null;
+            return (
+              <span style={{ fontSize: 11, fontWeight: 700, color: achieved ? '#065f46' : '#991b1b', background: achieved ? '#d1fae5' : '#fee2e2', border: '1px solid', borderColor: achieved ? '#10b981' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>
+                {achieved ? '달성' : '미달'}
+              </span>
+            );
+          })()}
           <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
             {krProg[kr.id]?.latestValue == null ? '' : `내 입력: ${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
           </span>
