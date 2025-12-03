@@ -23,6 +23,10 @@ type KrRow = {
   bg?: 'red' | 'orange' | null;
   periods?: Array<{ label: string; value: number | null }>;
   history?: Array<{ label: string; value: number | null; createdAt?: string | null }>;
+  latestCreatedAt?: string | null;
+  stalenessDays?: number | null;
+  status?: 'On Track' | 'At Risk' | 'Off Track' | '-';
+  coverage?: { numActive: number; numTotal: number; pct: number } | null;
 };
 
 function toPillarLabel(p: Pillar | null | undefined): string {
@@ -35,6 +39,7 @@ export function TeamKpiBoard() {
   const [orgUnitId, setOrgUnitId] = useState('');
   const [rows, setRows] = useState<KrRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [groupShowLimit, setGroupShowLimit] = useState<Record<string, number>>({});
 
   useEffect(() => {
     async function loadOrgs() {
@@ -118,6 +123,15 @@ export function TeamKpiBoard() {
           return new Date(y, m, 0, 23, 59, 59, 999);
         }
 
+        function monthRange(d: Date): { from: string; to: string } {
+          const y = d.getFullYear();
+          const m = d.getMonth();
+          const from = new Date(y, m, 1);
+          const to = new Date(y, m + 1, 0, 23, 59, 59, 999);
+          const fmt = (x: Date) => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+          return { from: fmt(from), to: fmt(to) };
+        }
+
         const enhanced = await Promise.all(r.map(async (row) => {
           try {
             const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(row.id)}`);
@@ -125,6 +139,7 @@ export function TeamKpiBoard() {
             const latest = list[0] || null;
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
+            const latestCreatedAt = latest?.createdAt ?? null;
             // Compute warnings: only based on latest vs target and direction
             let warn = false;
             let bg: 'red' | 'orange' | null = null;
@@ -156,7 +171,35 @@ export function TeamKpiBoard() {
                 return { ...ii };
               }
             }));
-            return { ...row, latestValue, latestPeriodEnd, warn, bg, periods, history, initiatives: inits } as KrRow;
+            // staleness days
+            const stalenessDays = latestCreatedAt ? Math.floor((Date.now() - new Date(latestCreatedAt).getTime()) / (1000*60*60*24)) : null;
+            // status by variance threshold
+            let status: 'On Track' | 'At Risk' | 'Off Track' | '-' = '-';
+            if (latestValue != null && typeof row.target === 'number' && row.target !== 0) {
+              const dir = row.direction || 'AT_LEAST';
+              const diff = dir === 'AT_LEAST' ? (latestValue - row.target) : (row.target - latestValue);
+              const pct = diff / Math.abs(row.target);
+              status = pct >= 0 ? 'On Track' : (pct >= -0.10 ? 'At Risk' : 'Off Track');
+            }
+            // coverage this month: active initiatives with worklogs / total initiatives
+            let coverage: { numActive: number; numTotal: number; pct: number } | null = null;
+            try {
+              const { from, to } = monthRange(new Date());
+              const wl = await apiJson<{ items: any[] }>(`/api/worklogs/search?krId=${encodeURIComponent(row.id)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=1000`);
+              const set = new Set<string>();
+              for (const it of (wl.items || [])) {
+                const anyIt: any = it as any;
+                if (anyIt?.taskName && anyIt?.id) {
+                  // We don't have initiativeId in mapped item; fallback by taskName uniqueness
+                  set.add(anyIt.taskName as string);
+                }
+              }
+              const numActive = set.size;
+              const numTotal = (inits || []).length || 0;
+              const pct = numTotal > 0 ? Math.min(1, numActive / numTotal) : 0;
+              coverage = { numActive, numTotal, pct };
+            } catch {}
+            return { ...row, latestValue, latestPeriodEnd, latestCreatedAt, stalenessDays, status, warn, bg, periods, history, initiatives: inits, coverage } as KrRow;
           } catch {
             return { ...row } as KrRow;
           }
@@ -210,18 +253,28 @@ export function TeamKpiBoard() {
                     <th style={th}>전년 실적</th>
                     <th style={th}>금년 목표</th>
                     <th style={th}>기간별 실적</th>
+                    <th style={th}>커버리지</th>
                     <th style={th}>향상률</th>
                     <th style={th}>평가비중</th>
                     <th style={th}>주요 추진 계획</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((r) => {
+                  {(items.slice(0, groupShowLimit[pillarLabel] || 10)).map((r) => {
                     const delta = r.baseline == null ? null : (r.target - r.baseline);
                     const arrow = delta == null ? '' : (delta >= 0 ? '▲' : '▼');
                     return (
                       <tr key={r.id} style={r.bg === 'red' ? { background: '#fee2e2' } : r.bg === 'orange' ? { background: '#ffedd5' } : undefined}>
-                        <td style={td}>{r.kpiName}</td>
+                        <td style={td}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ fontWeight: 600 }}>{r.kpiName}</div>
+                            {r.status && r.status !== '-' && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: r.status === 'On Track' ? '#065f46' : r.status === 'At Risk' ? '#92400e' : '#991b1b', background: r.status === 'On Track' ? '#d1fae5' : r.status === 'At Risk' ? '#fef3c7' : '#fee2e2', border: '1px solid', borderColor: r.status === 'On Track' ? '#10b981' : r.status === 'At Risk' ? '#f59e0b' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>
+                                {r.status}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td style={td}>{r.unit}</td>
                         <td style={td}>{'월'}</td>
                         <td style={td}>{r.baseline == null ? '-' : r.baseline}</td>
@@ -234,7 +287,33 @@ export function TeamKpiBoard() {
                           return (
                             <details>
                               <summary style={{ cursor: 'pointer' }}>
-                                최근 {latest.label}: {latest.value == null ? '-' : latest.value} · 입력 {ts}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span>최근 {latest.label}: {latest.value == null ? '-' : latest.value} · 입력 {ts}</span>
+                                  {(() => {
+                                    // sparkline
+                                    const vals = h.slice(0, 6).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
+                                    const defined = vals.filter((v) => v != null) as number[];
+                                    if (!defined.length) return null;
+                                    const w = 60, he = 24, pad = 2;
+                                    const min = Math.min(...defined, 0);
+                                    const max = Math.max(...defined, r.target || 0);
+                                    const scaleY = (v: number) => {
+                                      if (max === min) return he/2;
+                                      return he - pad - ((v - min) / (max - min)) * (he - pad*2);
+                                    };
+                                    const pts = defined.map((v, i) => `${(i*(w/(defined.length-1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
+                                    const tgtY = scaleY(r.target);
+                                    return (
+                                      <svg width={w} height={he}>
+                                        <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
+                                        {r.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
+                                      </svg>
+                                    );
+                                  })()}
+                                  {typeof r.stalenessDays === 'number' && (
+                                    <span style={{ fontSize: 11, color: r.stalenessDays >= 30 ? '#991b1b' : r.stalenessDays >= 14 ? '#92400e' : '#475569' }}>⏱ {r.stalenessDays}일</span>
+                                  )}
+                                </div>
                               </summary>
                               <div style={{ marginTop: 6 }}>
                                 <ul style={{ margin: 0, paddingLeft: 16 }}>
@@ -246,6 +325,19 @@ export function TeamKpiBoard() {
                                 </ul>
                               </div>
                             </details>
+                          );
+                        })()}</td>
+                        <td style={td}>{(() => {
+                          const c = r.coverage;
+                          if (!c) return '-';
+                          const pct = Math.round((c.pct || 0) * 100);
+                          return (
+                            <div style={{ minWidth: 120 }}>
+                              <div style={{ height: 8, background: '#e5e7eb', borderRadius: 999, overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: pct >= 80 ? '#16a34a' : pct >= 50 ? '#f59e0b' : '#ef4444' }} />
+                              </div>
+                              <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{c.numActive}/{c.numTotal} ({pct}%)</div>
+                            </div>
                           );
                         })()}</td>
                         <td style={td}>{delta == null ? '-' : `${arrow} ${Math.abs(delta)}`}</td>
@@ -270,6 +362,11 @@ export function TeamKpiBoard() {
                 </tbody>
               </table>
             </div>
+            {items.length > (groupShowLimit[pillarLabel] || 10) && (
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <button className="btn" onClick={() => setGroupShowLimit((prev) => ({ ...prev, [pillarLabel]: (prev[pillarLabel] || 10) + 10 }))}>더보기</button>
+              </div>
+            )}
           </div>
         ))
       )}

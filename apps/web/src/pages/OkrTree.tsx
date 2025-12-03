@@ -10,7 +10,7 @@ export function OkrTree() {
   const defaultExpandDepth = 99; // 기본으로 대부분의 하위 트리를 펼침
   const [userId, setUserId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
-  const [krProg, setKrProg] = useState<Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }>>({});
+  const [krProg, setKrProg] = useState<Record<string, { latestValue: number | null; latestPeriodEnd: string | null; latestCreatedAt: string | null; warn: boolean; history: Array<{ label: string; value: number | null; createdAt?: string | null }>; stalenessDays: number | null; status: 'On Track' | 'At Risk' | 'Off Track' | '-' }>>({});
 
   function roleLabel(r?: string) {
     if (r === 'CEO') return '대표';
@@ -47,22 +47,39 @@ export function OkrTree() {
         for (const o of items) collect(o);
         const uid = userId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '');
         if (!uid) { setKrProg({}); return; }
+        function labelForPeriodMonthly(ps?: string) {
+          if (!ps) return '';
+          const d = new Date(ps);
+          const yy = String(d.getFullYear()).slice(2);
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          return `${yy}-${mm}`;
+        }
         const entries = await Promise.all(allKrs.map(async (k) => {
           try {
             const pr = await apiJson<{ items: any[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(k.id)}&actorId=${encodeURIComponent(uid)}`);
             const latest = (pr.items || [])[0] || null;
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
+            const latestCreatedAt = latest?.createdAt ?? null;
             let warn = false;
             if (latest && latestValue != null && latestPeriodEnd && typeof k.target === 'number') {
+              // direction unknown here; assume AT_LEAST for OKR default
               if (new Date(latestPeriodEnd) < new Date() && latestValue < (k.target as number)) warn = true;
             }
-            return [k.id, { latestValue, latestPeriodEnd, warn }] as const;
+            const history = (pr.items || []).map((e: any) => ({ label: labelForPeriodMonthly(e.periodStart), value: e.krValue ?? null, createdAt: e.createdAt || null }));
+            const stalenessDays = latestCreatedAt ? Math.floor((Date.now() - new Date(latestCreatedAt).getTime()) / (1000*60*60*24)) : null;
+            let status: 'On Track' | 'At Risk' | 'Off Track' | '-' = '-';
+            if (latestValue != null && typeof k.target === 'number' && k.target !== 0) {
+              const diff = (latestValue - (k.target as number));
+              const pct = diff / Math.abs(k.target as number);
+              status = pct >= 0 ? 'On Track' : (pct >= -0.10 ? 'At Risk' : 'Off Track');
+            }
+            return [k.id, { latestValue, latestPeriodEnd, latestCreatedAt, warn, history, stalenessDays, status }] as [string, { latestValue: number | null; latestPeriodEnd: string | null; latestCreatedAt: string | null; warn: boolean; history: Array<{ label: string; value: number | null; createdAt?: string | null }>; stalenessDays: number | null; status: 'On Track' | 'At Risk' | 'Off Track' | '-' }];
           } catch {
-            return [k.id, { latestValue: null, latestPeriodEnd: null, warn: false }] as const;
+            return [k.id, { latestValue: null, latestPeriodEnd: null, latestCreatedAt: null, warn: false, history: [] as Array<{ label: string; value: number | null; createdAt?: string | null }>, stalenessDays: null, status: '-' }] as [string, { latestValue: number | null; latestPeriodEnd: string | null; latestCreatedAt: string | null; warn: boolean; history: Array<{ label: string; value: number | null; createdAt?: string | null }>; stalenessDays: number | null; status: 'On Track' | 'At Risk' | 'Off Track' | '-' }];
           }
         }));
-        const map: Record<string, { latestValue: number | null; latestPeriodEnd: string | null; warn: boolean }> = {};
+        const map: Record<string, { latestValue: number | null; latestPeriodEnd: string | null; latestCreatedAt: string | null; warn: boolean; history: Array<{ label: string; value: number | null; createdAt?: string | null }>; stalenessDays: number | null; status: 'On Track' | 'At Risk' | 'Off Track' | '-' }> = {};
         for (const [id, v] of entries) map[id] = v;
         setKrProg(map);
       } catch {}
@@ -164,6 +181,38 @@ export function OkrTree() {
                       {kr.metric}
                       {kr.target != null ? ` / ${kr.target}${kr.unit ? ' ' + kr.unit : ''}` : ''}
                     </span>
+                    {(() => {
+                      const st = krProg[kr.id]?.status;
+                      return st && st !== '-' ? (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: st === 'On Track' ? '#065f46' : st === 'At Risk' ? '#92400e' : '#991b1b', background: st === 'On Track' ? '#d1fae5' : st === 'At Risk' ? '#fef3c7' : '#fee2e2', border: '1px solid', borderColor: st === 'On Track' ? '#10b981' : st === 'At Risk' ? '#f59e0b' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>
+                          {st}
+                        </span>
+                      ) : null;
+                    })()}
+                    {(() => {
+                      const h = krProg[kr.id]?.history || [];
+                      const vals = h.slice(0, 6).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
+                      const defined = vals.filter((v) => v != null) as number[];
+                      if (!defined.length) return null;
+                      const w = 60, he = 24, pad = 2;
+                      const min = Math.min(...defined, 0);
+                      const max = Math.max(...defined, (kr.target || 0) as number);
+                      const scaleY = (v: number) => {
+                        if (max === min) return he/2;
+                        return he - pad - ((v - min) / (max - min)) * (he - pad*2);
+                      };
+                      const pts = defined.map((v, i) => `${(i*(w/(defined.length-1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
+                      const tgtY = kr.target != null ? scaleY(kr.target) : null;
+                      return (
+                        <svg width={w} height={he}>
+                          <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
+                          {tgtY != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
+                        </svg>
+                      );
+                    })()}
+                    {typeof krProg[kr.id]?.stalenessDays === 'number' && (
+                      <span style={{ fontSize: 11, color: (krProg[kr.id]!.stalenessDays as number) >= 30 ? '#991b1b' : (krProg[kr.id]!.stalenessDays as number) >= 14 ? '#92400e' : '#475569' }}>⏱ {krProg[kr.id]?.stalenessDays}일</span>
+                    )}
                     <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
                       {'달성: '}{krProg[kr.id]?.latestValue == null ? '-' : `${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
                     </span>
