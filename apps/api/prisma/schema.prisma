@@ -67,6 +67,11 @@ enum KeyResultType {
   OPERATIONAL
 }
 
+enum ThresholdDirection {
+  AT_LEAST
+  AT_MOST
+}
+
 enum Pillar {
   Q
   C
@@ -158,6 +163,7 @@ model KeyResult {
   baseline     Float?
   cadence      Cadence?
   progressEntries ProgressEntry[]
+  direction    ThresholdDirection?
 }
 
 model Initiative {

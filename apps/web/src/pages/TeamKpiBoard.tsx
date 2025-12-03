@@ -15,6 +15,7 @@ type KrRow = {
   baseline: number | null;
   target: number;
   weight: number | null;
+  direction?: 'AT_LEAST' | 'AT_MOST' | null;
   initiatives: Array<{ id: string; title: string; done?: boolean }>;
   latestValue?: number | null;
   latestPeriodEnd?: string | null;
@@ -66,6 +67,7 @@ export function TeamKpiBoard() {
               baseline: typeof kr.baseline === 'number' ? kr.baseline : null,
               target: typeof kr.target === 'number' ? kr.target : 0,
               weight: typeof kr.weight === 'number' ? kr.weight : null,
+              direction: (kr as any)?.direction ?? null,
               initiatives: Array.isArray(kr.initiatives) ? kr.initiatives.map((ii: any) => ({ id: ii.id, title: ii.title })).filter((x: { id: string; title: string }) => !!x.title) : [],
             });
           }
@@ -133,9 +135,13 @@ export function TeamKpiBoard() {
             if (!hasEntryForLast && new Date() > lastEnd) {
               bg = 'red';
               warn = true;
-            } else if (latestValue != null && latestValue < row.target) {
-              bg = 'orange';
-              warn = true;
+            } else if (latestValue != null) {
+              const dir = row.direction || 'AT_LEAST';
+              const violate = dir === 'AT_LEAST' ? (latestValue < row.target) : (latestValue > row.target);
+              if (violate) {
+                bg = 'orange';
+                warn = true;
+              }
             }
             // group by cadence period label and take latest per period (list already desc by createdAt)
             const seen: Record<string, { label: string; value: number | null }> = {};

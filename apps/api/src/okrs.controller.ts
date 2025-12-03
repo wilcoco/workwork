@@ -30,6 +30,8 @@ class CreateKeyResultDto {
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
   @IsOptional() @IsNumber()
   baseline?: number;
+  @IsOptional() @IsEnum({ AT_LEAST: 'AT_LEAST', AT_MOST: 'AT_MOST' } as any)
+  direction?: 'AT_LEAST' | 'AT_MOST';
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
   cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
 }
@@ -54,6 +56,8 @@ class UpdateKeyResultDto {
   @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
   @IsOptional() @IsNumber() baseline?: number;
+  @IsOptional() @IsEnum({ AT_LEAST: 'AT_LEAST', AT_MOST: 'AT_MOST' } as any)
+  direction?: 'AT_LEAST' | 'AT_MOST';
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
   cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
 }
@@ -262,6 +266,7 @@ export class OkrsController {
         type: (dto.type as any) ?? undefined,
         pillar: (dto.pillar as any) ?? undefined,
         baseline: dto.baseline as any,
+        direction: (dto.direction as any) ?? undefined,
         cadence: (dto.cadence as any) ?? undefined,
       } as any),
     });
@@ -292,6 +297,7 @@ export class OkrsController {
       type: (dto.type as any) ?? undefined,
       pillar: (dto.pillar as any) ?? undefined,
       baseline: typeof dto.baseline === 'number' ? dto.baseline : undefined,
+      direction: (dto.direction as any) ?? undefined,
       cadence: (dto.cadence as any) ?? undefined,
     };
     const rec = await this.prisma.keyResult.update({ where: { id }, data });
@@ -388,6 +394,7 @@ export class OkrsController {
         baseline: kr.baseline,
         type: kr.type,
         pillar: kr.pillar,
+        direction: kr.direction,
         cadence: kr.cadence,
         orgUnitId: o.orgUnitId,
         children: (byKr[kr.id] || []).map(mapObjective),

@@ -47,9 +47,15 @@ function KrNode({ kr, parentEnd, krObjId, setKrObjId, krTitle, setKrTitle, krMet
           const passed = new Date() > deadline;
           const entered = !!lpe && lpe.getTime() >= deadline.getTime();
           if (passed && !entered) bg = '#fee2e2';
-          else if (lv != null && typeof kr.target === 'number' && lv < kr.target) bg = '#ffedd5';
-        } else if (lv != null && typeof kr.target === 'number' && lv < kr.target) {
-          bg = '#ffedd5';
+          else if (lv != null && typeof kr.target === 'number') {
+            const dir = (kr as any)?.direction || 'AT_LEAST';
+            const violate = dir === 'AT_LEAST' ? (lv < kr.target) : (lv > kr.target);
+            if (violate) bg = '#ffedd5';
+          }
+        } else if (lv != null && typeof kr.target === 'number') {
+          const dir = (kr as any)?.direction || 'AT_LEAST';
+          const violate = dir === 'AT_LEAST' ? (lv < kr.target) : (lv > kr.target);
+          if (violate) bg = '#ffedd5';
         }
         return (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, background: bg, borderRadius: 6, padding: bg ? '4px 6px' : undefined }}>
@@ -60,7 +66,8 @@ function KrNode({ kr, parentEnd, krObjId, setKrObjId, krTitle, setKrTitle, krMet
               {(() => {
                 const lv2 = krProg[kr.id]?.latestValue;
                 const tgt = typeof kr.target === 'number' ? kr.target : null;
-                const achieved = lv2 != null && tgt != null && lv2 >= tgt;
+                const dir = (kr as any)?.direction || 'AT_LEAST';
+                const achieved = lv2 != null && tgt != null && (dir === 'AT_LEAST' ? (lv2 >= tgt) : (lv2 <= tgt));
                 if (lv2 == null || tgt == null) return null;
                 return (
                   <span style={{ fontSize: 11, fontWeight: 700, color: achieved ? '#065f46' : '#991b1b', background: achieved ? '#d1fae5' : '#fee2e2', border: '1px solid', borderColor: achieved ? '#10b981' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>

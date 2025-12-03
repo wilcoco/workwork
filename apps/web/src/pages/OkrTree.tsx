@@ -130,9 +130,15 @@ export function OkrTree() {
                 const passed = new Date() > deadline;
                 const entered = !!lpe && lpe.getTime() >= deadline.getTime();
                 if (passed && !entered) bg = '#fee2e2';
-                else if (lv != null && typeof kr.target === 'number' && lv < kr.target) bg = '#ffedd5';
-              } else if (lv != null && typeof kr.target === 'number' && lv < kr.target) {
-                bg = '#ffedd5';
+                else if (lv != null && typeof kr.target === 'number') {
+                  const dir = (kr as any)?.direction || 'AT_LEAST';
+                  const violate = dir === 'AT_LEAST' ? (lv < kr.target) : (lv > kr.target);
+                  if (violate) bg = '#ffedd5';
+                }
+              } else if (lv != null && typeof kr.target === 'number') {
+                const dir = (kr as any)?.direction || 'AT_LEAST';
+                const violate = dir === 'AT_LEAST' ? (lv < kr.target) : (lv > kr.target);
+                if (violate) bg = '#ffedd5';
               }
               return (
               <div key={kr.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: bg }}>
@@ -143,7 +149,8 @@ export function OkrTree() {
                     {(() => {
                       const lv = krProg[kr.id]?.latestValue;
                       const tgt = typeof kr.target === 'number' ? kr.target : null;
-                      const achieved = lv != null && tgt != null && lv >= tgt;
+                      const dir = (kr as any)?.direction || 'AT_LEAST';
+                      const achieved = lv != null && tgt != null && (dir === 'AT_LEAST' ? (lv >= tgt) : (lv <= tgt));
                       if (lv == null || tgt == null) return null;
                       return (
                         <span style={{ fontSize: 11, fontWeight: 700, color: achieved ? '#065f46' : '#991b1b', background: achieved ? '#d1fae5' : '#fee2e2', border: '1px solid', borderColor: achieved ? '#10b981' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>

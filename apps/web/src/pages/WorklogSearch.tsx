@@ -29,6 +29,7 @@ export function WorklogSearch() {
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [mode, setMode] = useState<'feed' | 'list'>('feed');
   const [detail, setDetail] = useState<Item | null>(null);
+  const [kind, setKind] = useState<'' | 'OKR' | 'KPI'>('');
   const location = useLocation();
 
 
@@ -42,6 +43,7 @@ export function WorklogSearch() {
       if (from) params.set('from', from);
       if (to) params.set('to', to);
       if (q) params.set('q', q);
+      if (kind) params.set('kind', kind);
       const res = await apiJson<{ items: Item[] }>(`/api/worklogs/search?${params.toString()}`);
       setItems(res.items);
     } catch (e) {
@@ -146,6 +148,15 @@ export function WorklogSearch() {
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={input} />
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={input} />
           <input placeholder="검색어" value={q} onChange={(e) => setQ(e.target.value)} style={input} />
+        </div>
+        <div className="resp-3">
+          <select value={kind} onChange={(e) => setKind(e.target.value as any)} style={input}>
+            <option value="">종류(전체)</option>
+            <option value="OKR">OKR</option>
+            <option value="KPI">KPI</option>
+          </select>
+          <div />
+          <div />
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn" onClick={() => { setMode('feed'); search(); }} type="button">아이콘 보기</button>

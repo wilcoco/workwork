@@ -36,6 +36,7 @@ export function TeamKpiInput() {
   const [krUnit, setKrUnit] = useState('');
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'>('');
+  const [krDirection, setKrDirection] = useState<'AT_LEAST' | 'AT_MOST'>('AT_LEAST');
   const [taskRows, setTaskRows] = useState<Array<{ title: string; desc: string; months: boolean[] }>>([
     { title: '', desc: '', months: Array(12).fill(false) },
   ]);
@@ -140,6 +141,7 @@ export function TeamKpiInput() {
           unit: krUnit,
           pillar: krPillar,
           baseline: krBaseline === '' ? undefined : Number(krBaseline),
+          direction: krDirection,
           cadence: krCadence || undefined,
         }),
       });
@@ -169,7 +171,7 @@ export function TeamKpiInput() {
           }),
         });
       }
-      setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence('');
+      setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST');
       setTaskRows([{ title: '', desc: '', months: Array(12).fill(false) }]);
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
@@ -223,6 +225,12 @@ export function TeamKpiInput() {
           <input type="number" step="any" placeholder="기준값(작년)" value={krBaseline} onChange={(e) => setKrBaseline(e.target.value)} />
           <input type="number" step="any" placeholder="목표값" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} />
           <input placeholder="단위(예: %, 건)" value={krUnit} onChange={(e) => setKrUnit(e.target.value)} />
+        </div>
+        <div className="resp-2">
+          <select value={krDirection} onChange={(e) => setKrDirection(e.target.value as any)}>
+            <option value="AT_LEAST">이상 (≥ 목표가 좋음)</option>
+            <option value="AT_MOST">이하 (≤ 목표가 좋음)</option>
+          </select>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select value={krCadence} onChange={(e) => setKrCadence(e.target.value as any)}>

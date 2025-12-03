@@ -413,6 +413,7 @@ export class WorklogsController {
     @Query('q') q?: string,
     @Query('limit') limitStr?: string,
     @Query('cursor') cursor?: string,
+    @Query('kind') kind?: 'OKR' | 'KPI',
   ) {
     const limit = Math.min(parseInt(limitStr || '20', 10) || 20, 100);
     const where: any = {};
@@ -426,7 +427,11 @@ export class WorklogsController {
     if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
 
     const items = await this.prisma.worklog.findMany({
-      where,
+      where: {
+        ...where,
+        ...(kind === 'OKR' ? { initiative: { keyResult: { objective: { pillar: null } } } } : {}),
+        ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
+      },
       take: limit,
       skip: cursor ? 1 : 0,
       ...(cursor ? { cursor: { id: cursor } } : {}),
