@@ -98,7 +98,17 @@ export function TeamKpiBoard() {
             if (latest && latestValue != null && latestPeriodEnd) {
               if (new Date(latestPeriodEnd) < new Date() && latestValue < row.target) warn = true;
             }
-            const periods = list.slice(0, 6).map((e: any) => ({ label: labelForPeriod(row.cadence, e.periodStart, e.periodEnd), value: e.krValue ?? null }));
+            // group by cadence period label and take latest per period (list already desc by createdAt)
+            const seen: Record<string, { label: string; value: number | null }> = {};
+            for (const e of list) {
+              const label = labelForPeriod(row.cadence, e.periodStart, e.periodEnd);
+              if (!label) continue;
+              if (!seen[label]) seen[label] = { label, value: e.krValue ?? null };
+            }
+            const grouped = Object.values(seen);
+            // cap number of chips by cadence
+            const cap = row.cadence === 'DAILY' ? 14 : row.cadence === 'WEEKLY' ? 8 : row.cadence === 'QUARTERLY' ? 4 : 6;
+            const periods = grouped.slice(0, cap);
             // initiative done flags
             const inits = await Promise.all((row.initiatives || []).map(async (ii) => {
               try {
