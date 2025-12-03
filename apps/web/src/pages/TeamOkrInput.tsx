@@ -35,6 +35,7 @@ export function TeamOkrInput() {
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('');
   const [krWeight, setKrWeight] = useState<string>('');
+  const [krDirection, setKrDirection] = useState<'AT_LEAST' | 'AT_MOST'>('AT_LEAST');
 
   const [initKrId, setInitKrId] = useState('');
   const [initTitle, setInitTitle] = useState('');
@@ -120,11 +121,12 @@ export function TeamOkrInput() {
           unit: krUnit,
           type: krType,
           pillar: krPillar,
+          direction: krDirection,
           cadence: krCadence || undefined,
           weight: krWeight === '' ? undefined : Number(krWeight),
         }),
       });
-      setKrObjectiveId(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrUnit(''); setKrType('PROJECT'); setKrPillar('Q'); setKrCadence(''); setKrWeight('');
+      setKrObjectiveId(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrUnit(''); setKrType('PROJECT'); setKrPillar('Q'); setKrCadence(''); setKrWeight(''); setKrDirection('AT_LEAST');
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
     } catch (e: any) {
@@ -220,6 +222,12 @@ export function TeamOkrInput() {
           <input placeholder="메트릭(예: %, 건수)" value={krMetric} onChange={(e) => setKrMetric(e.target.value)} />
           <input type="number" step="any" placeholder="목표값" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} />
           <input placeholder="단위(예: %, 건)" value={krUnit} onChange={(e) => setKrUnit(e.target.value)} />
+        </div>
+        <div className="resp-2">
+          <select value={krDirection} onChange={(e) => setKrDirection(e.target.value as any)}>
+            <option value="AT_LEAST">이상 (≥ 목표가 좋음)</option>
+            <option value="AT_MOST">이하 (≤ 목표가 좋음)</option>
+          </select>
         </div>
         <div className="resp-3">
           <select value={krType} onChange={(e) => setKrType(e.target.value as any)}>

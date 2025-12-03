@@ -28,9 +28,9 @@ export function OkrInput() {
   const months2026 = useMemo(() => Array.from({ length: 12 }, (_, i) => new Date(2026, i, 1)), []);
   function toggleOMonth(i: number) { setOMonths(prev => prev.map((v, idx) => idx === i ? !v : v)); }
 
-  type Row = { title: string; metric: string; target: string; unit: string; months: boolean[] };
-  const [rows, setRows] = useState<Row[]>([{ title: '', metric: '', target: '', unit: '', months: Array(12).fill(false) }] );
-  function addRow() { setRows(prev => [...prev, { title: '', metric: '', target: '', unit: '', months: Array(12).fill(false) }]); }
+  type Row = { title: string; metric: string; target: string; unit: string; direction: 'AT_LEAST' | 'AT_MOST'; months: boolean[] };
+  const [rows, setRows] = useState<Row[]>([{ title: '', metric: '', target: '', unit: '', direction: 'AT_LEAST', months: Array(12).fill(false) }] );
+  function addRow() { setRows(prev => [...prev, { title: '', metric: '', target: '', unit: '', direction: 'AT_LEAST', months: Array(12).fill(false) }]); }
   function removeRow(i: number) { setRows(prev => prev.filter((_, idx) => idx !== i)); }
   function toggleRMonth(r: number, m: number) {
     setRows(prev => prev.map((row, i) => i === r ? { ...row, months: row.months.map((v, j) => j === m ? !v : v) } : row));
@@ -98,7 +98,7 @@ export function OkrInput() {
       for (const r of validRows) {
         const kr = await apiJson<{ id: string }>(`/api/okrs/objectives/${encodeURIComponent(obj.id)}/krs`, {
           method: 'POST',
-          body: JSON.stringify({ userId, title: r.title, metric: r.metric, target: Number(r.target), unit: r.unit }),
+          body: JSON.stringify({ userId, title: r.title, metric: r.metric, target: Number(r.target), unit: r.unit, direction: r.direction }),
         });
         const sel = r.months.map((v, i) => v ? i : -1).filter(i => i >= 0);
         if (sel.length) {
@@ -115,7 +115,7 @@ export function OkrInput() {
         }
       }
 
-      setOTitle(''); setODesc(''); setOMonths(Array(12).fill(false)); setRows([{ title: '', metric: '', target: '', unit: '', months: Array(12).fill(false) }]); setParentKrId('');
+      setOTitle(''); setODesc(''); setOMonths(Array(12).fill(false)); setRows([{ title: '', metric: '', target: '', unit: '', direction: 'AT_LEAST', months: Array(12).fill(false) }]); setParentKrId('');
       const mine = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(userId)}`);
       setMyObjectives(mine.items || []);
       setSuccess('OKR이 저장되었습니다');
@@ -200,6 +200,10 @@ export function OkrInput() {
                 <div className="resp-3">
                   <input type="number" step="any" value={r.target} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, target: e.target.value } : rr))} placeholder="측정 수치" style={input} />
                   <input value={r.unit} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, unit: e.target.value } : rr))} placeholder="단위" style={input} />
+                  <select value={r.direction} onChange={(e) => setRows(prev => prev.map((rr, idx) => idx === i ? { ...rr, direction: e.target.value as any } : rr))} style={{ ...input, appearance: 'auto' as any }}>
+                    <option value="AT_LEAST">이상 (≥ 목표가 좋음)</option>
+                    <option value="AT_MOST">이하 (≤ 목표가 좋음)</option>
+                  </select>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '140px repeat(12, 32px)', gap: 6, alignItems: 'center' }}>
                   <div />

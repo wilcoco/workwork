@@ -17,9 +17,9 @@ export function WorklogQuickNew() {
   const [teamName, setTeamName] = useState<string>('');
   const [orgUnitId, setOrgUnitId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
-  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string }>>([]);
-  const [teamKpis, setTeamKpis] = useState<Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string }>>([]);
-  const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string }>>([]);
+  const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
+  const [teamKpis, setTeamKpis] = useState<Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
+  const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [selection, setSelection] = useState<string>(''); // 'init:<id>'
   const [krValue, setKrValue] = useState<string>('');
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
@@ -49,10 +49,10 @@ export function WorklogQuickNew() {
         try {
           const mine = await apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`);
           const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(uid)}`);
-          const meta: Record<string, { objTitle: string; krTitle: string; krTarget: number | null; krUnit?: string }> = {};
+          const meta: Record<string, { objTitle: string; krTitle: string; krTarget: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = {};
           for (const o of (mokrs.items || [])) {
             for (const kr of (o.keyResults || [])) {
-              meta[kr.id] = { objTitle: o.title, krTitle: kr.title, krTarget: typeof kr.target === 'number' ? kr.target : null, krUnit: kr.unit };
+              meta[kr.id] = { objTitle: o.title, krTitle: kr.title, krTarget: typeof kr.target === 'number' ? kr.target : null, krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction };
             }
           }
           const its = (mine.items || []).map((ii: any) => {
@@ -63,19 +63,19 @@ export function WorklogQuickNew() {
             const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
             const mm = meta[ii.keyResultId as string];
             const title = mm ? `${mm.objTitle} / KR: ${mm.krTitle} / ${ii.title}` : (ii.title as string);
-            return { id: ii.id, title, period: pc, startAt: s, krId: ii.keyResultId, krTarget: mm?.krTarget ?? null, krUnit: mm?.krUnit };
+            return { id: ii.id, title, period: pc, startAt: s, krId: ii.keyResultId, krTarget: mm?.krTarget ?? null, krUnit: mm?.krUnit, krBaseline: mm?.krBaseline ?? null, krDirection: mm?.krDirection };
           });
           setMyTasks(its);
         } catch {}
         if (!ou) return;
         const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(ou)}`);
         const objs = res.items || [];
-        const tasks: Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string }> = [];
-        const kpis: Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string }> = [];
+        const tasks: Array<{ id: string; title: string; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = [];
+        const kpis: Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = [];
         for (const o of objs) {
           for (const kr of (o.keyResults || [])) {
             if (o.pillar) {
-              kpis.push({ id: kr.id, title: `${o.title} / KPI: ${kr.title}`, krTarget: (typeof kr.target === 'number' ? kr.target : null), krUnit: kr.unit });
+              kpis.push({ id: kr.id, title: `${o.title} / KPI: ${kr.title}`, krTarget: (typeof kr.target === 'number' ? kr.target : null), krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction });
             }
             for (const ii of (kr.initiatives || [])) {
               if (Array.isArray(ii.children)) {
@@ -97,7 +97,7 @@ export function WorklogQuickNew() {
                   const s = sD ? `${sD.getFullYear()}-${String(sD.getMonth()+1).padStart(2,'0')}-${String(sD.getDate()).padStart(2,'0')}` : '';
                   const e = eD ? `${eD.getFullYear()}-${String(eD.getMonth()+1).padStart(2,'0')}-${String(eD.getDate()).padStart(2,'0')}` : '';
                   const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
-                  tasks.push({ id: ch.id, title: `${o.title} / KR: ${kr.title} / ${ch.title}`, period: pc, startAt: s, krId: kr.id, krTarget: (typeof kr.target === 'number' ? kr.target : null), krUnit: kr.unit });
+                  tasks.push({ id: ch.id, title: `${o.title} / KR: ${kr.title} / ${ch.title}`, period: pc, startAt: s, krId: kr.id, krTarget: (typeof kr.target === 'number' ? kr.target : null), krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction });
                 }
               }
             }
@@ -304,6 +304,50 @@ export function WorklogQuickNew() {
             </select>
           </div>
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
+          {(() => {
+            if (!selection) return null;
+            const isKR = selection.startsWith('kr:');
+            const id = selection.substring(5);
+            let meta: { baseline?: number | null; target?: number | null; unit?: string; direction?: 'AT_LEAST' | 'AT_MOST' } | null = null;
+            if (isKR) {
+              const k = teamKpis.find((x) => x.id === id);
+              if (k) meta = { baseline: k.krBaseline ?? null, target: k.krTarget ?? null, unit: k.krUnit, direction: k.krDirection };
+            } else {
+              const t = [...teamTasks, ...myTasks].find((x) => x.id === id);
+              if (t) meta = { baseline: t.krBaseline ?? null, target: t.krTarget ?? null, unit: t.krUnit, direction: t.krDirection };
+            }
+            if (!meta) return null;
+            const dirLabel = meta.direction === 'AT_MOST' ? '이하 (≤ 목표가 좋음)' : '이상 (≥ 목표가 좋음)';
+            const inputDisabled = (() => {
+              if (!selection) return true;
+              if (isKR) return myRole !== 'MANAGER';
+              const sId = id;
+              const mine = myTasks.some((x) => x.id === sId);
+              const team = teamTasks.some((x) => x.id === sId);
+              if (mine) return false;
+              if (team) return myRole !== 'MANAGER';
+              return true;
+            })();
+            const achievedDisabled = inputDisabled;
+            return (
+              <div className="card" style={{ padding: 10, display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', color: '#334155', fontSize: 13 }}>
+                  <div>기준값: {meta.baseline == null ? '-' : meta.baseline}</div>
+                  <div>목표값: {meta.target == null ? '-' : meta.target}{meta.unit ? ` ${meta.unit}` : ''}</div>
+                  <div>기준: {dirLabel}</div>
+                </div>
+                <div className="resp-2">
+                  <label>
+                    달성값 입력(선택)
+                    <input type="number" step="any" value={krValue} onChange={(e) => setKrValue(e.target.value)} style={input} placeholder="예: 12.5" disabled={inputDisabled} />
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={krAchieved} onChange={(e) => setKrAchieved(e.target.checked)} disabled={achievedDisabled} /> 목표 달성으로 기록(목표값 자동 입력)
+                  </label>
+                </div>
+              </div>
+            );
+          })()}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontSize: 13, color: '#6b7280' }}>
               본문 작성 {plainMode ? '(텍스트 모드)' : '(리치 모드)'}
@@ -325,36 +369,10 @@ export function WorklogQuickNew() {
             )}
           </div>
           <div className="resp-2" style={{ marginTop: 6 }}>
-            <label>
-              지표값 입력(선택)
-              <input type="number" step="any" value={krValue} onChange={(e) => setKrValue(e.target.value)} style={input} placeholder="예: 12.5" disabled={(() => {
-                if (!selection) return true;
-                if (selection.startsWith('kr:')) return myRole !== 'MANAGER';
-                const id = selection.startsWith('init:') ? selection.substring(5) : '';
-                const mine = myTasks.some((x) => x.id === id);
-                const team = teamTasks.some((x) => x.id === id);
-                if (mine) return false; // own OKR allowed
-                if (team) return myRole !== 'MANAGER'; // team KPI (via initiative) only for manager
-                return true;
-              })()} />
+            <div />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료
             </label>
-            <div style={{ display: 'grid', gap: 6 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" checked={krAchieved} onChange={(e) => setKrAchieved(e.target.checked)} disabled={(() => {
-                  if (!selection) return true;
-                  if (selection.startsWith('kr:')) return myRole !== 'MANAGER';
-                  const id = selection.startsWith('init:') ? selection.substring(5) : '';
-                  const mine = myTasks.some((x) => x.id === id);
-                  const team = teamTasks.some((x) => x.id === id);
-                  if (mine) return false; // own OKR allowed
-                  if (team) return myRole !== 'MANAGER'; // team KPI only for manager
-                  return true;
-                })()} /> 목표 달성으로 기록(목표값 자동 입력)
-              </label>
-            </div>
           </div>
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>

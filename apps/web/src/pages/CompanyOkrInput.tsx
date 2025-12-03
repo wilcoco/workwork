@@ -26,6 +26,7 @@ export function CompanyOkrInput() {
   const [krType, setKrType] = useState<'PROJECT' | 'OPERATIONAL'>('OPERATIONAL');
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('');
+  const [krDirection, setKrDirection] = useState<'AT_LEAST' | 'AT_MOST'>('AT_LEAST');
 
   useEffect(() => {
     async function load() {
@@ -84,9 +85,9 @@ export function CompanyOkrInput() {
       const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
       await apiJson(`/api/okrs/objectives/${encodeURIComponent(krObjectiveId)}/krs`, {
         method: 'POST',
-        body: JSON.stringify({ userId, title: krTitle, metric: krMetric, target: Number(krTarget), unit: krUnit, type: krType, pillar: krPillar, baseline: krBaseline === '' ? undefined : Number(krBaseline), cadence: krCadence || undefined }),
+        body: JSON.stringify({ userId, title: krTitle, metric: krMetric, target: Number(krTarget), unit: krUnit, type: krType, pillar: krPillar, baseline: krBaseline === '' ? undefined : Number(krBaseline), direction: krDirection, cadence: krCadence || undefined }),
       });
-      setKrObjectiveId(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrType('OPERATIONAL'); setKrPillar('Q'); setKrCadence('');
+      setKrObjectiveId(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrType('OPERATIONAL'); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST');
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
     } catch (e: any) {
@@ -153,6 +154,12 @@ export function CompanyOkrInput() {
           <input placeholder="메트릭(예: %, 건수)" value={krMetric} onChange={(e) => setKrMetric(e.target.value)} />
           <input type="number" step="any" placeholder="베이스라인" value={krBaseline} onChange={(e) => setKrBaseline(e.target.value)} />
           <input type="number" step="any" placeholder="목표값" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} />
+        </div>
+        <div className="resp-2">
+          <select value={krDirection} onChange={(e) => setKrDirection(e.target.value as any)}>
+            <option value="AT_LEAST">이상 (≥ 목표가 좋음)</option>
+            <option value="AT_MOST">이하 (≤ 목표가 좋음)</option>
+          </select>
         </div>
         <div className="resp-3">
           <input placeholder="단위(예: %, 건)" value={krUnit} onChange={(e) => setKrUnit(e.target.value)} />
