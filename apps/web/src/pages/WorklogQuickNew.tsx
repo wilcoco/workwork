@@ -62,7 +62,7 @@ export function WorklogQuickNew() {
             const e = e0 ? `${e0.getFullYear()}-${String(e0.getMonth()+1).padStart(2,'0')}-${String(e0.getDate()).padStart(2,'0')}` : '';
             const pc = (s || e) ? ` (${s}${s || e ? ' ~ ' : ''}${e})` : '';
             const mm = meta[ii.keyResultId as string];
-            const title = mm ? `${mm.objTitle} / KR: ${mm.krTitle} / ${ii.title}` : (ii.title as string);
+            const title = mm ? `${mm.objTitle} / ${mm.krTitle}` : (ii.title as string);
             return { id: ii.id, title, period: pc, startAt: s, krId: ii.keyResultId, krTarget: mm?.krTarget ?? null, krUnit: mm?.krUnit, krBaseline: mm?.krBaseline ?? null, krDirection: mm?.krDirection };
           });
           setMyTasks(its);
@@ -288,7 +288,7 @@ export function WorklogQuickNew() {
                   const kpiKrIds = new Set(teamKpis.map((k) => k.id));
                   const list = myTasks.filter((t) => !t.krId || !kpiKrIds.has(t.krId));
                   return list.map((t) => (
-                    <option key={`init-${t.id}`} value={`init:${t.id}`}>{t.title}{t.period}</option>
+                    <option key={`init-${t.id}`} value={`init:${t.id}`}>{t.title}</option>
                   ));
                 })()}
               </optgroup>
@@ -301,8 +301,15 @@ export function WorklogQuickNew() {
                     for (const t of allTasks) {
                       if (t.krId === k.id && !seen.has(t.id)) {
                         seen.add(t.id);
+                        const parts = (t.title || '').split('/');
+                        const initLabel = parts.length > 1 ? parts[parts.length - 1].trim() : (t.title || '');
+                        const kpiPlain = (() => {
+                          const kp = (k.title || '').split('/');
+                          const last = kp[kp.length - 1] || '';
+                          return last.replace(/^\s*KPI:\s*/i, '').trim();
+                        })();
                         options.push(
-                          <option key={`init-${t.id}`} value={`init:${t.id}`}>{k.title} / {t.title}{t.period}</option>
+                          <option key={`init-${t.id}`} value={`init:${t.id}`}>{kpiPlain} / {initLabel}</option>
                         );
                       }
                     }
