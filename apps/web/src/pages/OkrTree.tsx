@@ -55,10 +55,10 @@ export function OkrTree() {
   useEffect(() => {
     (async () => {
       try {
-        const allKrs: Array<{ id: string; target: number | null }> = [];
+        const allKrs: Array<{ id: string; target: number | null; direction: 'AT_LEAST' | 'AT_MOST' | null }> = [];
         function collect(o: any) {
           for (const kr of (o?.keyResults || [])) {
-            allKrs.push({ id: kr.id, target: typeof kr.target === 'number' ? kr.target : null });
+            allKrs.push({ id: kr.id, target: typeof kr.target === 'number' ? kr.target : null, direction: (kr as any)?.direction ?? null });
             for (const child of (kr.children || [])) collect(child);
           }
         }
@@ -88,7 +88,8 @@ export function OkrTree() {
             const stalenessDays = latestCreatedAt ? Math.floor((Date.now() - new Date(latestCreatedAt).getTime()) / (1000*60*60*24)) : null;
             let status: 'On Track' | 'At Risk' | 'Off Track' | '-' = '-';
             if (latestValue != null && typeof k.target === 'number' && k.target !== 0) {
-              const diff = (latestValue - (k.target as number));
+              const dir = (k.direction || 'AT_LEAST') as 'AT_LEAST' | 'AT_MOST';
+              const diff = dir === 'AT_LEAST' ? (latestValue - (k.target as number)) : ((k.target as number) - latestValue);
               const pct = diff / Math.abs(k.target as number);
               status = pct >= 0 ? 'On Track' : (pct >= -0.10 ? 'At Risk' : 'Off Track');
             }
@@ -231,6 +232,14 @@ export function OkrTree() {
                     </span>
                     {(() => {
                       const st = krProg[kr.id]?.status;
+                      const h = krProg[kr.id]?.history || [];
+                      if (!h.length) {
+                        return (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', background: '#f1f5f9', border: '1px solid #e5e7eb', borderRadius: 999, padding: '2px 6px' }}>
+                            기록없음
+                          </span>
+                        );
+                      }
                       return st && st !== '-' ? (
                         <span style={{ fontSize: 11, fontWeight: 700, color: st === 'On Track' ? '#065f46' : st === 'At Risk' ? '#92400e' : '#991b1b', background: st === 'On Track' ? '#d1fae5' : st === 'At Risk' ? '#fef3c7' : '#fee2e2', border: '1px solid', borderColor: st === 'On Track' ? '#10b981' : st === 'At Risk' ? '#f59e0b' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>
                           {st}
