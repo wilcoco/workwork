@@ -12,6 +12,9 @@ export function Home() {
   const [error, setError] = useState<string | null>(null);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
+  const [filterTeam, setFilterTeam] = useState('');
+  const [filterName, setFilterName] = useState('');
+  const [viewMode, setViewMode] = useState<'summary'|'full'>('summary');
 
   useEffect(() => {
     (async () => {
@@ -43,13 +46,24 @@ export function Home() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <h2 style={{ margin: 0 }}>홈</h2>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <input value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} placeholder="팀 구분" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px' }} />
+        <input value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="이름 구분" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px' }} />
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button className={viewMode==='summary' ? 'btn btn-primary' : 'btn'} onClick={() => setViewMode('summary')}>요약</button>
+          <button className={viewMode==='full' ? 'btn btn-primary' : 'btn'} onClick={() => setViewMode('full')}>전체</button>
+        </div>
+      </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
           {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
-            <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
-              {worklogs.map((w) => {
+            <div style={{ maxHeight: viewMode==='summary' ? 360 : undefined, overflowY: viewMode==='summary' ? 'auto' : undefined, display: 'grid', gap: 8 }}>
+              {worklogs
+                .filter((w) => !filterTeam || (w.teamName||'').toLowerCase().includes(filterTeam.toLowerCase()))
+                .filter((w) => !filterName || (w.userName||'').toLowerCase().includes(filterName.toLowerCase()))
+                .map((w) => {
                 const anyW: any = w as any;
                 const attachments = anyW.attachments || {};
                 const files = attachments.files || [];
@@ -79,10 +93,12 @@ export function Home() {
                         <div style={{ fontSize: 12, color: '#475569' }}>{w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
                       </div>
                     </div>
-                    {contentHtml ? (
-                      <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(stripImgs(contentHtml)) }} />
-                    ) : (
-                      <div style={{ color: '#334155' }}>{contentText}</div>
+                    {viewMode === 'full' && (
+                      contentHtml ? (
+                        <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(stripImgs(contentHtml)) }} />
+                      ) : (
+                        <div style={{ color: '#334155' }}>{contentText}</div>
+                      )
                     )}
                   </div>
                 );
@@ -96,7 +112,7 @@ export function Home() {
           <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
           <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
             {comments.map((c) => (
-              <CommentWithContext key={c.id} c={c} />
+              <CommentWithContext key={c.id} c={c} filterTeam={filterTeam} filterName={filterName} />
             ))}
             {!comments.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
           </div>
@@ -183,7 +199,7 @@ function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
   }
 }
 
-function CommentWithContext({ c }: { c: FB }) {
+function CommentWithContext({ c, filterTeam, filterName }: { c: FB; filterTeam?: string; filterName?: string }) {
   const [wl, setWl] = useState<any | null>(null);
   const [prev, setPrev] = useState<Array<{ id: string; authorName?: string; content: string; createdAt: string }>>([]);
   useEffect(() => {
@@ -200,6 +216,8 @@ function CommentWithContext({ c }: { c: FB }) {
       } catch {}
     })();
   }, [c.subjectId, c.id]);
+  const matches = (!filterTeam || ((wl?.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))) && (!filterName || ((wl?.userName || '').toLowerCase().includes(filterName.toLowerCase())));
+  if ((filterTeam || filterName) && !matches) return null;
   const title = (wl?.note || '').split('\n')[0] || '';
   const contentHtml = wl?.attachments?.contentHtml || '';
   const contentText = (wl?.note || '').split('\n').slice(1).join('\n');
