@@ -474,10 +474,7 @@ export class WorklogsController {
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
     const where: any = {
-      OR: [
-        { date: { gte: from, lte: now } },
-        { AND: [{ date: null }, { createdAt: { gte: from, lte: now } }] },
-      ],
+      date: { gte: from, lte: now },
     };
     const items = await (this.prisma as any).worklog.findMany({
       where,
@@ -515,12 +512,7 @@ export class WorklogsController {
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
     const items = await (this.prisma as any).worklog.findMany({
-      where: {
-        OR: [
-          { date: { gte: from, lte: now } },
-          { AND: [{ date: null }, { createdAt: { gte: from, lte: now } }] },
-        ],
-      },
+      where: { date: { gte: from, lte: now } },
       include: { createdBy: { include: { orgUnit: true } } },
       orderBy: { date: 'desc' },
       take: 1000,
