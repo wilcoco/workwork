@@ -543,7 +543,11 @@ export class WorklogsController {
     const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요.';
     const user = `최근 ${days}일 업무일지 요약을 작성해 주세요. 팀별로 먼저 요약 후, 개인별 한줄 요약을 제시하고 마지막에 전체 하이라이트 3개와 리스크 3개, 다음 액션 3개를 제안해 주세요.\n\n데이터:\n${context}`;
     // Call OpenAI
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    const f: any = (globalThis as any).fetch;
+    if (!f) {
+      throw new BadRequestException('Server fetch not available. Please use Node 18+ or provide a fetch polyfill.');
+    }
+    const resp = await f('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
