@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
 
@@ -15,6 +15,25 @@ export function Home() {
   const [filterTeam, setFilterTeam] = useState('');
   const [filterName, setFilterName] = useState('');
   const [viewMode, setViewMode] = useState<'summary'|'full'>('summary');
+  const teamOptions = useMemo(() => {
+    const s = new Set<string>();
+    worklogs.forEach(w => { if (w.teamName) s.add(w.teamName); });
+    return Array.from(s).sort();
+  }, [worklogs]);
+  const nameOptions = useMemo(() => {
+    const s = new Set<string>();
+    worklogs.forEach(w => { if (w.userName) s.add(w.userName); });
+    return Array.from(s).sort();
+  }, [worklogs]);
+  const latestComments = useMemo(() => {
+    const map = new Map<string, { c: FB; t: number }>();
+    comments.forEach(c => {
+      const t = new Date(c.createdAt).getTime();
+      const cur = map.get(c.subjectId);
+      if (!cur || t > cur.t) map.set(c.subjectId, { c, t });
+    });
+    return Array.from(map.values()).sort((a,b) => b.t - a.t).map(x => x.c);
+  }, [comments]);
 
   useEffect(() => {
     (async () => {
@@ -47,8 +66,14 @@ export function Home() {
     <div style={{ display: 'grid', gap: 12 }}>
       <h2 style={{ margin: 0 }}>홈</h2>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} placeholder="팀 구분" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px' }} />
-        <input value={filterName} onChange={(e) => setFilterName(e.target.value)} placeholder="이름 구분" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px' }} />
+        <select value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any }}>
+          <option value="">팀 전체</option>
+          {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={filterName} onChange={(e) => setFilterName(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any }}>
+          <option value="">이름 전체</option>
+          {nameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className={viewMode==='summary' ? 'btn btn-primary' : 'btn'} onClick={() => setViewMode('summary')}>요약</button>
           <button className={viewMode==='full' ? 'btn btn-primary' : 'btn'} onClick={() => setViewMode('full')}>전체</button>
@@ -81,16 +106,18 @@ export function Home() {
                 const contentHtml = attachments.contentHtml || '';
                 const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                 return (
-                  <div key={w.id} style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: 10, display: 'grid', gap: 6, cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#fff', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {firstImg ? (
-                        <img src={firstImg} alt="thumb" style={{ width: 64, height: 64, borderRadius: 6, objectFit: 'cover', flex: '0 0 auto' }} />
+                        <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                       ) : (
-                        <div style={{ width: 64, height: 64, borderRadius: 6, background: '#f1f5f9', flex: '0 0 auto' }} />
+                        <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                       )}
-                      <div style={{ display: 'grid', gap: 2 }}>
-                        <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
-                        <div style={{ fontSize: 12, color: '#475569' }}>{w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                      <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                          <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                          <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                        </div>
                       </div>
                     </div>
                     {viewMode === 'full' && (
@@ -111,8 +138,8 @@ export function Home() {
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
           <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
-            {comments.map((c) => (
-              <CommentWithContext key={c.id} c={c} filterTeam={filterTeam} filterName={filterName} />
+            {latestComments.map((c) => (
+              <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
             ))}
             {!comments.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
           </div>
@@ -199,7 +226,7 @@ function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
   }
 }
 
-function CommentWithContext({ c, filterTeam, filterName }: { c: FB; filterTeam?: string; filterName?: string }) {
+function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; filterTeam?: string; filterName?: string; viewMode?: 'summary' | 'full' }) {
   const [wl, setWl] = useState<any | null>(null);
   const [prev, setPrev] = useState<Array<{ id: string; authorName?: string; content: string; createdAt: string }>>([]);
   useEffect(() => {
@@ -221,27 +248,52 @@ function CommentWithContext({ c, filterTeam, filterName }: { c: FB; filterTeam?:
   const title = (wl?.note || '').split('\n')[0] || '';
   const contentHtml = wl?.attachments?.contentHtml || '';
   const contentText = (wl?.note || '').split('\n').slice(1).join('\n');
+  const attachments = wl?.attachments || {};
+  const files = attachments?.files || [];
+  const firstImg = (() => {
+    const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
+    if (fileImg) return absLink(fileImg.url as string);
+    const html = attachments?.contentHtml || '';
+    if (html) {
+      const abs = absolutizeUploads(html);
+      const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (m && m[1]) return m[1];
+    }
+    return '';
+  })();
   return (
-    <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: 10, display: 'grid', gap: 6 }}>
-      <div style={{ fontWeight: 700 }}>{title || '(제목 없음)'}</div>
-      {contentHtml ? (
-        <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(stripImgs(contentHtml)) }} />
-      ) : (
-        <div style={{ color: '#334155' }}>{contentText}</div>
-      )}
-      {prev.length ? (
-        <div style={{ display: 'grid', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
-          {prev.map((p) => (
-            <div key={p.id}>
-              <div style={{ fontSize: 12, color: '#475569' }}>{p.authorName || '익명'} · {formatKstDatetime(p.createdAt)}</div>
-              <div style={{ whiteSpace: 'pre-wrap' }}>{p.content}</div>
-            </div>
-          ))}
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {firstImg ? (
+          <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+        ) : (
+          <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+        )}
+        <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <div style={{ fontWeight: 700 }}>{title || '(제목 없음)'}</div>
+            <div style={{ fontSize: 12, color: '#475569' }}>· {(wl?.userName || '')}{wl?.teamName ? ` · ${wl.teamName}` : ''} · {formatKstDatetime((wl?.date || wl?.createdAt || c.createdAt) as any)}</div>
+          </div>
         </div>
-      ) : null}
-      <div>
-        <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstDatetime(c.createdAt)}</div>
-        <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
+      </div>
+      {viewMode === 'full' && (
+        contentHtml ? (
+          <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(stripImgs(contentHtml)) }} />
+        ) : (
+          <div style={{ color: '#334155' }}>{contentText}</div>
+        )
+      )}
+      <div style={{ display: 'grid', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
+        {prev.map((p) => (
+          <div key={p.id}>
+            <div style={{ fontSize: 12, color: '#475569' }}>{p.authorName || '익명'} · {formatKstDatetime(p.createdAt)}</div>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{p.content}</div>
+          </div>
+        ))}
+        <div>
+          <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstDatetime(c.createdAt)}</div>
+          <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
+        </div>
       </div>
     </div>
   );
