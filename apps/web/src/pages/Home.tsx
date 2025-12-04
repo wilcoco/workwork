@@ -79,7 +79,7 @@ export function Home() {
                       </div>
                     </div>
                     {contentHtml ? (
-                      <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }} />
+                      <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(stripImgs(contentHtml)) }} />
                     ) : (
                       <div style={{ color: '#334155' }}>{contentText}</div>
                     )}
@@ -162,6 +162,11 @@ function absolutizeUploads(html: string): string {
   return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
 }
 
+function stripImgs(html: string): string {
+  if (!html) return html;
+  return html.replace(/<img\b[^>]*>/gi, '');
+}
+
 function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
   const target = e.target as HTMLElement | null;
   if (target && target.tagName === 'IMG') {
@@ -193,7 +198,7 @@ function CommentWithContext({ c }: { c: FB }) {
     <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: 10, display: 'grid', gap: 6 }}>
       <div style={{ fontWeight: 700 }}>{title || '(제목 없음)'}</div>
       {contentHtml ? (
-        <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }} />
+        <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(stripImgs(contentHtml)) }} />
       ) : (
         <div style={{ color: '#334155' }}>{contentText}</div>
       )}

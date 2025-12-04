@@ -138,6 +138,34 @@ export function OkrInput() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
       <section style={{ display: 'grid', gap: 8 }}>
+        <div style={card}>
+          <div style={{ fontWeight: 800, marginBottom: 6 }}>OKR 작성 안내</div>
+          <div style={{ display: 'grid', gap: 6, color: '#334155' }}>
+            <div>
+              <b>취지</b>: 회사 목표에 정렬된 결과(Outcome)에 집중하고, 측정 가능한 지표로 성과를 관리합니다. 분기·월 단위로 주기적으로 점검합니다.
+            </div>
+            <div>
+              <b>역할별 작성</b>:
+              <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                <li>대표/임원: 회사·실 단위 <b>Objective</b>를 정의하고, 방향성과 기준이 명확한 <b>KR</b>을 설정</li>
+                <li>팀장: 상위 KR을 선택해 팀 <b>Objective</b>를 작성하고 팀 <b>KR</b>로 전개</li>
+                <li>팀원: 상위 KR을 선택해 개인 <b>Objective</b>를 작성하고, 과제(이니셔티브) 월별 계획으로 연결</li>
+              </ul>
+            </div>
+            <div>
+              <b>상위에서 분기</b>: 상단의 <b>역할 선택</b> 후 <b>상위 O-KR 선택</b>에서 부모 KR을 지정하고, 자신의 Objective/KR을 작성합니다.
+            </div>
+            <div>
+              <b>좋은 KR 팁</b>: 방향(<code>이상</code>/<code>이하</code>)을 명확히, <code>metric</code>/<code>unit</code>/<code>target</code> 필수, 월 단위로 최신 기록 유지.
+            </div>
+            <div>
+              <b>입력 순서</b>: 역할 선택 → 상위 O-KR 선택 → Objective 제목/설명·기간 → KR 제목/지표/목표/단위/방향 → (필요시) 과제 기간 → 저장
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section style={{ display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>상위 선택</h3>
         <div style={card}>
           <div className="stack-1-2">
