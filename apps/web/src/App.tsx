@@ -197,6 +197,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         <Link to="/" className="logo" aria-label={`${brandLabel} 메인`}>
           <img src={logoSrc} alt={`${brandLabel} 로고`} />
         </Link>
+        <Link to="/" style={{ marginLeft: 12 }}>홈</Link>
         <NavDropdown label="업무일지">
           <Link to="/quick">작성</Link>
           <Link to="/search">조회</Link>
