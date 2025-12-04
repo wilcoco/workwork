@@ -18,6 +18,8 @@ import { OkrInstructions } from './pages/OkrInstructions';
 import { CompanyOkrInput } from './pages/CompanyOkrInput';
 import { TeamKpiInput } from './pages/TeamKpiInput';
 import { TeamKpiBoard } from './pages/TeamKpiBoard';
+import { WorklogStats } from './pages/WorklogStats';
+import { WorklogAi } from './pages/WorklogAi';
 import { TeamOkrInput } from './pages/TeamOkrInput';
 import { AdminOrgs } from './pages/AdminOrgs';
 import { ApprovalsSubmit } from './pages/ApprovalsSubmit';
@@ -103,6 +105,8 @@ export function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
+          <Route path="/worklogs/stats" element={<WorklogStats />} />
+          <Route path="/worklogs/ai" element={<WorklogAi />} />
           <Route path="/me/goals" element={<MeGoals />} />
           <Route path="/okr/input" element={<OkrInput />} />
           <Route path="/okr/tree" element={<OkrTree />} />
@@ -201,6 +205,8 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         <NavDropdown label="업무일지">
           <Link to="/quick">작성</Link>
           <Link to="/search">조회</Link>
+          <Link to="/worklogs/stats">업무 현황</Link>
+          <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
         <NavDropdown label="목표관리">
           <Link to="/okr/input">OKR 입력</Link>

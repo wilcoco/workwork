@@ -467,4 +467,111 @@ export class WorklogsController {
     const wl = await this.prisma.worklog.findUnique({ where: { id } });
     return wl;
   }
+
+  @Get('stats/weekly')
+  async weeklyStats(@Query('days') daysStr?: string) {
+    const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
+    const now = new Date();
+    const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+    const where: any = {
+      OR: [
+        { date: { gte: from, lte: now } },
+        { AND: [{ date: null }, { createdAt: { gte: from, lte: now } }] },
+      ],
+    };
+    const items = await (this.prisma as any).worklog.findMany({
+      where,
+      include: { createdBy: { include: { orgUnit: true } } },
+      orderBy: { date: 'desc' },
+      take: 2000,
+    });
+    type Bucket = { [userName: string]: number };
+    const byTeam = new Map<string, Bucket>();
+    for (const it of items) {
+      const team = (it as any)?.createdBy?.orgUnit?.name || '미지정팀';
+      const user = (it as any)?.createdBy?.name || '익명';
+      if (!byTeam.has(team)) byTeam.set(team, {});
+      const bucket = byTeam.get(team)!;
+      bucket[user] = (bucket[user] || 0) + 1;
+    }
+    const teams = Array.from(byTeam.entries()).map(([teamName, bucket]) => {
+      const members = Object.entries(bucket)
+        .map(([userName, count]) => ({ userName, count }))
+        .sort((a, b) => b.count - a.count);
+      const total = members.reduce((s, m) => s + m.count, 0);
+      return { teamName, total, members };
+    }).sort((a, b) => b.total - a.total);
+    const total = teams.reduce((s, t) => s + t.total, 0);
+    return { from: from.toISOString(), to: now.toISOString(), days, total, teams };
+  }
+
+  @Get('ai/summary')
+  async aiSummary(@Query('days') daysStr?: string) {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
+    if (!apiKey) {
+      throw new BadRequestException('Missing OPENAI_API_KEY (or *_CAMS / *_IAT). Set it as a Railway env var.');
+    }
+    const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
+    const now = new Date();
+    const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+    const items = await (this.prisma as any).worklog.findMany({
+      where: {
+        OR: [
+          { date: { gte: from, lte: now } },
+          { AND: [{ date: null }, { createdAt: { gte: from, lte: now } }] },
+        ],
+      },
+      include: { createdBy: { include: { orgUnit: true } } },
+      orderBy: { date: 'desc' },
+      take: 1000,
+    });
+    // Build compact context (limit per user)
+    const byTeamUser = new Map<string, Map<string, string[]>>();
+    for (const it of items) {
+      const team = (it as any)?.createdBy?.orgUnit?.name || '미지정팀';
+      const user = (it as any)?.createdBy?.name || '익명';
+      const lines = String(it.note || '').split(/\n+/);
+      const title = (lines[0] || '').slice(0, 120);
+      const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
+      if (!byTeamUser.has(team)) byTeamUser.set(team, new Map());
+      const inner = byTeamUser.get(team)!;
+      if (!inner.has(user)) inner.set(user, []);
+      const arr = inner.get(user)!;
+      if (arr.length < 6) arr.push(`- ${title}${excerpt ? ` — ${excerpt}` : ''}`);
+    }
+    const parts: string[] = [];
+    for (const [team, users] of byTeamUser) {
+      parts.push(`팀: ${team}`);
+      for (const [user, notes] of users) {
+        parts.push(`  구성원: ${user}`);
+        notes.forEach(n => parts.push(`    ${n}`));
+      }
+    }
+    const context = parts.join('\n');
+    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요.';
+    const user = `최근 ${days}일 업무일지 요약을 작성해 주세요. 팀별로 먼저 요약 후, 개인별 한줄 요약을 제시하고 마지막에 전체 하이라이트 3개와 리스크 3개, 다음 액션 3개를 제안해 주세요.\n\n데이터:\n${context}`;
+    // Call OpenAI
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: user },
+        ],
+        temperature: 0.2,
+      }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
+    }
+    const data = await resp.json();
+    const summary = String(data?.choices?.[0]?.message?.content || '').trim();
+    return { from: from.toISOString(), to: now.toISOString(), days, summary };
+  }
 }
