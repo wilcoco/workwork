@@ -15,6 +15,72 @@ type Item = {
   note?: string;
 };
 
+function CommentsBox({ worklogId }: { worklogId: string }) {
+  const [items, setItems] = useState<Array<{ id: string; authorName?: string; content: string; createdAt: string }>>([]);
+  const [text, setText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=${encodeURIComponent('Worklog')}&subjectId=${encodeURIComponent(worklogId)}&limit=100`);
+      setItems((r.items || []).map((x: any) => ({ id: x.id, authorName: x.authorName, content: x.content, createdAt: x.createdAt })));
+    } catch (e) {
+      setError('댓글 조회 실패');
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => { load(); }, [worklogId]);
+  async function onSubmit() {
+    if (!text.trim()) return;
+    const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+    if (!uid) { alert('로그인이 필요합니다'); return; }
+    setSubmitting(true);
+    try {
+      await apiJson(`/api/feedbacks`, {
+        method: 'POST',
+        body: JSON.stringify({ subjectType: 'Worklog', subjectId: worklogId, authorId: uid, type: 'GENERAL', content: text.trim() }),
+      });
+      setText('');
+      await load();
+    } catch (e) {
+      alert('댓글 등록 실패');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <div style={{ fontWeight: 700 }}>댓글</div>
+      {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
+        items.length ? (
+          <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
+            {items.map((c) => (
+              <div key={c.id} style={{ display: 'grid', gap: 2 }}>
+                <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstDatetime(c.createdAt)}</div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
+              </div>
+            ))}
+          </div>
+        ) : <div style={{ color: '#94a3b8' }}>등록된 댓글이 없습니다.</div>
+      )}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="댓글 입력..."
+          style={{ flex: 1, border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }}
+        />
+        <button className="btn btn-primary" disabled={submitting || !text.trim()} onClick={onSubmit}>{submitting ? '등록중…' : '등록'}</button>
+      </div>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+    </div>
+  );
+}
+
 export function WorklogSearch() {
   const [team, setTeam] = useState(''); // team name for API query
   const [user, setUser] = useState(''); // user name for API query
@@ -350,6 +416,9 @@ export function WorklogSearch() {
               </div>
             )}
             {it.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#0F3D73', background: '#E6EEF7', display: 'inline-block', padding: '4px 8px', borderRadius: 999, fontWeight: 600 }}>{it.taskName}</div>}
+            <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
+              <CommentsBox worklogId={it.id} />
+            </div>
           </div>
         ))}
         </div>
@@ -399,6 +468,9 @@ export function WorklogSearch() {
               </div>
             )}
             {detail.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#0F3D73', background: '#E6EEF7', display: 'inline-block', padding: '4px 8px', borderRadius: 999, fontWeight: 600 }}>{detail.taskName}</div>}
+            <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
+              <CommentsBox worklogId={detail.id} />
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button className="btn" onClick={() => setDetail(null)}>닫기</button>
             </div>

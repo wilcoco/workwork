@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -76,5 +76,36 @@ export class FeedbacksController {
       });
     }
     return fb;
+  }
+
+  @Get()
+  async list(
+    @Query('subjectType') subjectType?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('limit') limitStr?: string,
+  ) {
+    const limit = Math.min(parseInt(limitStr || '50', 10) || 50, 100);
+    const where: any = {};
+    if (subjectType) where.subjectType = subjectType;
+    if (subjectId) where.subjectId = subjectId;
+    const items = await this.prisma.feedback.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: { author: true },
+    });
+    return {
+      items: items.map((it: any) => ({
+        id: it.id,
+        subjectType: it.subjectType,
+        subjectId: it.subjectId,
+        authorId: it.authorId,
+        authorName: it.author?.name,
+        content: it.content,
+        rating: it.rating ?? null,
+        actionRequired: it.actionRequired ?? false,
+        createdAt: it.createdAt,
+      })),
+    };
   }
 }
