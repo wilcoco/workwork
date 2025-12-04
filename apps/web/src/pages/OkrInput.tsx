@@ -145,21 +145,61 @@ export function OkrInput() {
               <b>취지</b>: 회사 목표에 정렬된 결과(Outcome)에 집중하고, 측정 가능한 지표로 성과를 관리합니다. 분기·월 단위로 주기적으로 점검합니다.
             </div>
             <div>
-              <b>역할별 작성</b>:
+              <b>OKR을 쓰는 이유</b>:
               <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                <li>대표/임원: 회사·실 단위 <b>Objective</b>를 정의하고, 방향성과 기준이 명확한 <b>KR</b>을 설정</li>
-                <li>팀장: 상위 KR을 선택해 팀 <b>Objective</b>를 작성하고 팀 <b>KR</b>로 전개</li>
-                <li>팀원: 상위 KR을 선택해 개인 <b>Objective</b>를 작성하고, 과제(이니셔티브) 월별 계획으로 연결</li>
+                <li>정렬과 집중: 상향·하향 정렬로 모두가 같은 방향으로 일합니다.</li>
+                <li>결과 중심 학습: 결과(KR)로 주기적 리뷰를 돌며 개선합니다.</li>
+                <li>투명성과 책임: 목표·지표·진척이 명확해 자율·책임이 강화됩니다.</li>
               </ul>
             </div>
             <div>
-              <b>상위에서 분기</b>: 상단의 <b>역할 선택</b> 후 <b>상위 O-KR 선택</b>에서 부모 KR을 지정하고, 자신의 Objective/KR을 작성합니다.
+              <b>OKR vs KPI</b>:
+              <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                <li>OKR: 변화·개선 목표(전략적). 스토리 있는 Objective + 정량 KR, 분기/월 리뷰.</li>
+                <li>KPI: 일상 운영지표(상시 모니터링). 현상 유지 관리와 경보 성격.</li>
+                <li>운영: OKR은 변화를 만들고, KPI는 상태를 지킵니다. 둘 다 필요합니다.</li>
+              </ul>
+            </div>
+            <div>
+              <b>역할별 작성</b>:
+              <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                <li>대표/생산실장: 회사·실 단위 <b>Objective</b>를 정의하고, 방향성과 기준이 명확한 <b>KR</b>을 설정</li>
+                <li>생산팀장: 상위 KR 1개를 선택해 팀 <b>Objective</b>를 작성하고 팀 <b>KR</b>로 전개</li>
+                <li>도장담당: 상위 KR 1개를 선택해 개인 <b>Objective</b>를 작성하고, 과제(이니셔티브) 월별 계획으로 연결</li>
+              </ul>
+            </div>
+            <div>
+              <b>상위에서 분기</b>: 상단의 <b>역할 선택</b> 후 <b>상위 O-KR 선택</b>에서 <u>부모 KR 1개만</u> 지정하고, 자신의 Objective/KR을 작성합니다.
             </div>
             <div>
               <b>좋은 KR 팁</b>: 방향(<code>이상</code>/<code>이하</code>)을 명확히, <code>metric</code>/<code>unit</code>/<code>target</code> 필수, 월 단위로 최신 기록 유지.
             </div>
             <div>
               <b>입력 순서</b>: 역할 선택 → 상위 O-KR 선택 → Objective 제목/설명·기간 → KR 제목/지표/목표/단위/방향 → (필요시) 과제 기간 → 저장
+            </div>
+            <div>
+              <b>제조 예시(범퍼 사출·도장·조립, 단일 부모 KR 정렬)</b>:
+              <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                <li>
+                  <b>대표(CEO)</b> — Objective: 납기 준수와 품질 안정화로 수익성 개선<br/>
+                  KR-CEO-A: 전체 공정 불량률 0.6% 이하 / KR-CEO-B: 납기 준수율 98% 이상
+                </li>
+                <li>
+                  <b>생산실장</b> — 상위 KR 수신: [대표 · KR-CEO-A]<br/>
+                  Objective: 공정 품질 변동을 낮춰 회사 불량률 목표 달성<br/>
+                  주요 KR: 도장 불량률 0.5% 이하, 사출 불량률 0.7% 이하
+                </li>
+                <li>
+                  <b>생산팀장</b> — 상위 KR 수신: [생산실장 · 도장 불량률 0.5% 이하]<br/>
+                  Objective: 도장 품질 변동 절반으로 축소해 실 목표에 기여<br/>
+                  주요 KR: 도장 불량률 0.8%→0.4% 이하, 색상 교체 TAT 12→8분, 라인 OEE 70%→78% 이상
+                </li>
+                <li>
+                  <b>도장담당</b> — 상위 KR 수신: [생산팀장 · 도장 불량률 0.8%→0.4% 이하]<br/>
+                  Objective: 공정 조건 표준화로 불량·전환시간을 줄인다<br/>
+                  주요 KR: 반별 불량률 0.6% 이하, 교체 TAT 10→7분, 표준작업 준수율 95% 이상
+                </li>
+              </ul>
             </div>
           </div>
         </div>
