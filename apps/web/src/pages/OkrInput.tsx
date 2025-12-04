@@ -12,6 +12,7 @@ export function OkrInput() {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [myObjectives, setMyObjectives] = useState<any[]>([]);
+  const [showExample, setShowExample] = useState(false);
 
   function roleLabel(r?: string) {
     if (r === 'CEO') return '대표';
@@ -163,9 +164,9 @@ export function OkrInput() {
             <div>
               <b>역할별 작성</b>:
               <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                <li>대표/생산실장: 회사·실 단위 <b>Objective</b>를 정의하고, 방향성과 기준이 명확한 <b>KR</b>을 설정</li>
-                <li>생산팀장: 상위 KR 1개를 선택해 팀 <b>Objective</b>를 작성하고 팀 <b>KR</b>로 전개</li>
-                <li>도장담당: 상위 KR 1개를 선택해 개인 <b>Objective</b>를 작성하고, 과제(이니셔티브) 월별 계획으로 연결</li>
+                <li>대표/임원: 회사·실 단위 <b>Objective</b>를 정의하고, 방향성과 기준이 명확한 <b>KR</b>을 설정</li>
+                <li>팀장: 상위 KR 1개를 선택해 팀 <b>Objective</b>를 작성하고 팀 <b>KR</b>로 전개</li>
+                <li>팀원: 상위 KR 1개를 선택해 개인 <b>Objective</b>를 작성하고, 과제(이니셔티브) 월별 계획으로 연결</li>
               </ul>
             </div>
             <div>
@@ -178,28 +179,35 @@ export function OkrInput() {
               <b>입력 순서</b>: 역할 선택 → 상위 O-KR 선택 → Objective 제목/설명·기간 → KR 제목/지표/목표/단위/방향 → (필요시) 과제 기간 → 저장
             </div>
             <div>
-              <b>제조 예시(범퍼 사출·도장·조립, 단일 부모 KR 정렬)</b>:
-              <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                <li>
-                  <b>대표(CEO)</b> — Objective: 납기 준수와 품질 안정화로 수익성 개선<br/>
-                  KR-CEO-A: 전체 공정 불량률 0.6% 이하 / KR-CEO-B: 납기 준수율 98% 이상
-                </li>
-                <li>
-                  <b>생산실장</b> — 상위 KR 수신: [대표 · KR-CEO-A]<br/>
-                  Objective: 공정 품질 변동을 낮춰 회사 불량률 목표 달성<br/>
-                  주요 KR: 도장 불량률 0.5% 이하, 사출 불량률 0.7% 이하
-                </li>
-                <li>
-                  <b>생산팀장</b> — 상위 KR 수신: [생산실장 · 도장 불량률 0.5% 이하]<br/>
-                  Objective: 도장 품질 변동 절반으로 축소해 실 목표에 기여<br/>
-                  주요 KR: 도장 불량률 0.8%→0.4% 이하, 색상 교체 TAT 12→8분, 라인 OEE 70%→78% 이상
-                </li>
-                <li>
-                  <b>도장담당</b> — 상위 KR 수신: [생산팀장 · 도장 불량률 0.8%→0.4% 이하]<br/>
-                  Objective: 공정 조건 표준화로 불량·전환시간을 줄인다<br/>
-                  주요 KR: 반별 불량률 0.6% 이하, 교체 TAT 10→7분, 표준작업 준수율 95% 이상
-                </li>
-              </ul>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost" onClick={() => setShowExample(v => !v)}>{showExample ? '예시 닫기' : '예시 보기'}</button>
+              </div>
+              {showExample && (
+                <div>
+                  <b>제조 예시(범퍼 사출·도장·조립, 단일 부모 KR 정렬)</b>:
+                  <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                    <li>
+                      <b>대표(CEO)</b> — Objective: 납기 준수와 품질 안정화로 수익성 개선<br/>
+                      KR-CEO-A: 전체 공정 불량률 0.6% 이하 / KR-CEO-B: 납기 준수율 98% 이상
+                    </li>
+                    <li>
+                      <b>생산실장</b> — 상위 KR 수신: [대표 · KR-CEO-A]<br/>
+                      Objective: 공정 품질 변동을 낮춰 회사 불량률 목표 달성<br/>
+                      주요 KR: 도장 불량률 0.5% 이하, 사출 불량률 0.7% 이하
+                    </li>
+                    <li>
+                      <b>생산팀장</b> — 상위 KR 수신: [생산실장 · 도장 불량률 0.5% 이하]<br/>
+                      Objective: 도장 품질 변동 절반으로 축소해 실 목표에 기여<br/>
+                      주요 KR: 도장 불량률 0.8%→0.4% 이하, 색상 교체 TAT 12→8분, 라인 OEE 70%→78% 이상
+                    </li>
+                    <li>
+                      <b>도장담당</b> — 상위 KR 수신: [생산팀장 · 도장 불량률 0.8%→0.4% 이하]<br/>
+                      Objective: 공정 조건 표준화로 불량·전환시간을 줄인다<br/>
+                      주요 KR: 반별 불량률 0.6% 이하, 교체 TAT 10→7분, 표준작업 준수율 95% 이상
+                    </li>
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         </div>
