@@ -80,7 +80,7 @@ export function Home() {
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: viewMode==='full' ? '1fr' : '1fr 1fr' }}>
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
           {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
@@ -105,24 +105,30 @@ export function Home() {
                 })();
                 const contentHtml = attachments.contentHtml || '';
                 const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
+                const thumbSize = viewMode==='summary' ? 120 : 84;
+                const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
+                const snippet = (snippetSrc || '').trim();
                 return (
                   <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#fff', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       {firstImg ? (
-                        <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                        <img src={firstImg} alt="thumb" style={{ width: thumbSize, height: thumbSize, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                       ) : (
-                        <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                        <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                       )}
                       <div style={{ display: 'grid', gap: 4, flex: 1 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                           <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
                           <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
                         </div>
+                        {viewMode==='summary' && (
+                          <div style={{ color: '#334155' }}>{snippet}</div>
+                        )}
                       </div>
                     </div>
                     {viewMode === 'full' && (
                       contentHtml ? (
-                        <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(stripImgs(contentHtml)) }} />
+                        <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }} />
                       ) : (
                         <div style={{ color: '#334155' }}>{contentText}</div>
                       )
@@ -134,16 +140,17 @@ export function Home() {
             </div>
           )}
         </div>
-
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
-          <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
-            {latestComments.map((c) => (
-              <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
-            ))}
-            {!comments.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+        {viewMode!=='full' && (
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
+            <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
+              {latestComments.map((c) => (
+                <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
+              ))}
+              {!comments.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+            </div>
           </div>
-        </div>
+        )}
       </div>
       {zoomSrc && (
         <div className="image-overlay" onClick={() => setZoomSrc(null)}>
@@ -152,7 +159,7 @@ export function Home() {
       )}
       {detail && (
         <div className="image-overlay" onClick={() => setDetail(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 720, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 1200, width: '96%', maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
               <div style={{ width: 22, height: 22, borderRadius: 999, background: '#E2E8F0', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{String((detail as any).userName || '?').slice(0,1)}</div>
               <div>{(detail as any).userName || ''}</div>
@@ -217,6 +224,11 @@ function absolutizeUploads(html: string): string {
 function stripImgs(html: string): string {
   if (!html) return html;
   return html.replace(/<img\b[^>]*>/gi, '');
+}
+
+function htmlToText(html: string): string {
+  if (!html) return '';
+  return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
 }
 
 function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
