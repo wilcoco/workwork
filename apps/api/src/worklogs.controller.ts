@@ -35,6 +35,10 @@ class HelpItemDto {
   assigneeId?: string;
 
   @IsOptional()
+  @IsDateString()
+  dueAt?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(0)
   slaMinutes?: number;
@@ -277,6 +281,7 @@ export class WorklogsController {
             queue: h.queue,
             requesterId: dto.createdById,
             assigneeId: h.assigneeId,
+            dueAt: h.dueAt ? new Date(h.dueAt) : undefined,
             slaMinutes: h.slaMinutes,
           },
         });

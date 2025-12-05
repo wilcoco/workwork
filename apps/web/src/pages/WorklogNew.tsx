@@ -68,6 +68,7 @@ export function WorklogNew() {
             category: helpCategory,
             queue: helpQueue || undefined,
             assigneeId: helpAssigneeId || undefined,
+            dueAt: helpDueAt || undefined,
             slaMinutes: helpSla === '' ? undefined : Number(helpSla),
           },
         ];
