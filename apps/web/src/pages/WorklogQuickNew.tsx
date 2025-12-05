@@ -310,6 +310,15 @@ export function WorklogQuickNew() {
             </select>
           </div>
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
+          <div className="resp-2" style={{ marginTop: 6 }}>
+            <div />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 긴급 보고
+            </label>
+          </div>
           {(() => {
             if (!selection) return null;
             const isKR = selection.startsWith('kr:');
@@ -374,15 +383,7 @@ export function WorklogQuickNew() {
               <div ref={editorEl} style={{ minHeight: 260, width: '100%' }} />
             )}
           </div>
-          <div className="resp-2" style={{ marginTop: 6 }}>
-            <div />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 긴급 보고
-            </label>
-          </div>
+          
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
             <input type="file" multiple onChange={onAttachFiles} />

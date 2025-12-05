@@ -26,6 +26,7 @@ export function WorklogNew() {
   const [helpQueue, setHelpQueue] = useState('');
   const [helpAssigneeId, setHelpAssigneeId] = useState('');
   const [helpSla, setHelpSla] = useState<number | ''>('');
+  const [helpDueAt, setHelpDueAt] = useState('');
 
   // delegation (single item for MVP)
   const [parentType, setParentType] = useState('Initiative');
@@ -132,6 +133,46 @@ export function WorklogNew() {
     <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
       <h2>업무일지 작성</h2>
 
+      <div className="resp-2">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료 처리
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 긴급 보고
+        </label>
+      </div>
+
+      <div className="resp-2">
+        <label>
+          결재자 User ID(선택)
+          <input value={approverId} onChange={(e) => setApproverId(e.target.value)} />
+        </label>
+        <label>
+          결재 기한(ISO, 선택)
+          <input value={dueAt} onChange={(e) => setDueAt(e.target.value)} placeholder="2025-10-15T09:00:00Z" />
+        </label>
+        <label>
+          협조 카테고리(선택)
+          <input value={helpCategory} onChange={(e) => setHelpCategory(e.target.value)} />
+        </label>
+        <label>
+          협조 담당자 User ID(선택)
+          <input value={helpAssigneeId} onChange={(e) => setHelpAssigneeId(e.target.value)} />
+        </label>
+        <label>
+          협조 기한(ISO, 선택)
+          <input value={helpDueAt} onChange={(e) => setHelpDueAt(e.target.value)} placeholder="2025-10-16T09:00:00Z" />
+        </label>
+        <label>
+          할당 큐(선택)
+          <input value={helpQueue} onChange={(e) => setHelpQueue(e.target.value)} />
+        </label>
+        <label>
+          SLA(분, 선택)
+          <input type="number" min={0} value={helpSla} onChange={(e) => setHelpSla(e.target.value === '' ? '' : Number(e.target.value))} />
+        </label>
+      </div>
+
       <label>
         Initiative ID
         <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} required />
@@ -174,27 +215,11 @@ export function WorklogNew() {
       </div>
       <div style={{ display: 'grid', gap: 6 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료 처리
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={krAchieved} onChange={(e) => setKrAchieved(e.target.checked)} /> 목표 달성으로 기록(목표값 자동 입력)
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 긴급 보고
         </label>
       </div>
 
-      <h3>상신(승인 요청) 옵션</h3>
-      <div style={{ display: 'flex', gap: 12 }}>
-        <label>
-          Approver User ID
-          <input value={approverId} onChange={(e) => setApproverId(e.target.value)} />
-        </label>
-        <label>
-          DueAt (ISO)
-          <input value={dueAt} onChange={(e) => setDueAt(e.target.value)} placeholder="2025-10-15T09:00:00Z" />
-        </label>
-      </div>
+      
 
       <h3>공유 옵션</h3>
       <label>
@@ -202,25 +227,7 @@ export function WorklogNew() {
         <input value={watchers} onChange={(e) => setWatchers(e.target.value)} placeholder="u1,u2" />
       </label>
 
-      <h3>도움요청 옵션(단일)</h3>
-      <div className="resp-2">
-        <label>
-          카테고리
-          <input value={helpCategory} onChange={(e) => setHelpCategory(e.target.value)} />
-        </label>
-        <label>
-          큐(optional)
-          <input value={helpQueue} onChange={(e) => setHelpQueue(e.target.value)} />
-        </label>
-        <label>
-          담당자 User ID(optional)
-          <input value={helpAssigneeId} onChange={(e) => setHelpAssigneeId(e.target.value)} />
-        </label>
-        <label>
-          SLA(분, optional)
-          <input type="number" min={0} value={helpSla} onChange={(e) => setHelpSla(e.target.value === '' ? '' : Number(e.target.value))} />
-        </label>
-      </div>
+      
 
       <h3>위임 옵션(단일)</h3>
       <div className="resp-2">
