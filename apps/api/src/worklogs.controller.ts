@@ -522,13 +522,13 @@ export class WorklogsController {
   }
 
   @Get('stats/weekly')
-  async weeklyStats(@Query('days') daysStr?: string) {
+  async weeklyStats(@Query('days') daysStr?: string, @Query('team') teamName?: string, @Query('user') userName?: string) {
     const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
-    const where: any = {
-      date: { gte: from, lte: now },
-    };
+    const where: any = { date: { gte: from, lte: now } };
+    if (teamName) where.createdBy = { orgUnit: { name: teamName } };
+    if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
     const items = await (this.prisma as any).worklog.findMany({
       where,
       include: { createdBy: { include: { orgUnit: true } } },
@@ -556,7 +556,7 @@ export class WorklogsController {
   }
 
   @Get('ai/summary')
-  async aiSummary(@Query('days') daysStr?: string) {
+  async aiSummary(@Query('days') daysStr?: string, @Query('team') teamName?: string, @Query('user') userName?: string) {
     const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
     if (!apiKey) {
       throw new BadRequestException('Missing OPENAI_API_KEY (or *_CAMS / *_IAT). Set it as a Railway env var.');
@@ -564,8 +564,11 @@ export class WorklogsController {
     const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+    const where: any = { date: { gte: from, lte: now } };
+    if (teamName) where.createdBy = { orgUnit: { name: teamName } };
+    if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
     const items = await (this.prisma as any).worklog.findMany({
-      where: { date: { gte: from, lte: now } },
+      where,
       include: { createdBy: { include: { orgUnit: true } } },
       orderBy: { date: 'desc' },
       take: 1000,

@@ -6,12 +6,17 @@ export function WorklogStats() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<{ from: string; to: string; days: number; total: number; teams: Array<{ teamName: string; total: number; members: Array<{ userName: string; count: number }> }> } | null>(null);
+  const [team, setTeam] = useState('');
+  const [user, setUser] = useState('');
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const r = await apiJson(`/api/worklogs/stats/weekly?days=${encodeURIComponent(String(days))}`);
+      const qs = new URLSearchParams({ days: String(days) });
+      if (team) qs.set('team', team);
+      if (user) qs.set('user', user);
+      const r = await apiJson(`/api/worklogs/stats/weekly?${qs.toString()}`);
       setData(r);
     } catch (e: any) {
       setError(e?.message || '로드 실패');
@@ -20,7 +25,7 @@ export function WorklogStats() {
     }
   }
 
-  useEffect(() => { load(); }, [days]);
+  useEffect(() => { load(); }, [days, team, user]);
 
   const maxCount = useMemo(() => {
     if (!data) return 0;
@@ -31,11 +36,43 @@ export function WorklogStats() {
     return m;
   }, [data]);
 
+  const teamOptions = useMemo(() => {
+    const s = new Set<string>();
+    if (data) {
+      for (const t of data.teams) s.add(t.teamName);
+    }
+    return Array.from(s);
+  }, [data]);
+
+  const userOptions = useMemo(() => {
+    const s = new Set<string>();
+    if (data) {
+      for (const t of data.teams) {
+        if (!team || t.teamName === team) {
+          for (const m of t.members) s.add(m.userName);
+        }
+      }
+    }
+    return Array.from(s);
+  }, [data, team]);
+
   return (
     <div className="content" style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>업무 현황</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={team} onChange={(e) => { setTeam(e.target.value); }} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any }}>
+            <option value="">전체 팀</option>
+            {teamOptions.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select value={user} onChange={(e) => setUser(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any }}>
+            <option value="">전체 구성원</option>
+            {userOptions.map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </select>
           <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any }}>
             <option value={7}>최근 7일</option>
             <option value={14}>최근 14일</option>
