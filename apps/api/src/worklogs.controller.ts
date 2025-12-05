@@ -104,6 +104,10 @@ class CreateWorklogDto {
 
   @IsOptional()
   delegate?: DelegateItemDto[];
+
+  @IsOptional()
+  @IsString()
+  date?: string;
 }
 
 class CreateSimpleWorklogDto {
@@ -126,6 +130,23 @@ export class WorklogsController {
 
   @Post()
   async create(@Body() dto: CreateWorklogDto) {
+    // Resolve KST date (YYYY-MM-DD -> KST midnight; default: today @ KST midnight)
+    let dateVal: Date;
+    if (dto.date) {
+      const s = String(dto.date);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        dateVal = new Date(`${s}T00:00:00+09:00`);
+      } else {
+        dateVal = new Date(s);
+      }
+    } else {
+      const now = new Date();
+      const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      const y = kst.getUTCFullYear();
+      const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(kst.getUTCDate()).padStart(2, '0');
+      dateVal = new Date(`${y}-${m}-${d}T00:00:00+09:00`);
+    }
     // 1) Create worklog
     const wl = await this.prisma.worklog.create({
       data: {
@@ -136,6 +157,7 @@ export class WorklogsController {
         blockerCode: dto.blockerCode,
         note: dto.note,
         attachments: dto.attachments ?? undefined,
+        date: dateVal,
       },
     });
 
@@ -391,13 +413,30 @@ export class WorklogsController {
     if (!initiativeId) {
       throw new BadRequestException('initiativeId or taskName required');
     }
+    // Resolve Worklog.date in KST
+    let dateValSimple: Date;
+    if (dto.date) {
+      const s = String(dto.date);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        dateValSimple = new Date(`${s}T00:00:00+09:00`);
+      } else {
+        dateValSimple = new Date(s);
+      }
+    } else {
+      const now = new Date();
+      const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      const y = kst.getUTCFullYear();
+      const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(kst.getUTCDate()).padStart(2, '0');
+      dateValSimple = new Date(`${y}-${m}-${d}T00:00:00+09:00`);
+    }
     const wl = await this.prisma.worklog.create({
       data: {
         initiativeId: initiativeId,
         createdById: user.id,
         note,
         attachments: attachmentsJson as any,
-        date: dto.date ? new Date(dto.date) : undefined,
+        date: dateValSimple,
       },
     });
     await this.prisma.event.create({ data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { simple: true } } });
