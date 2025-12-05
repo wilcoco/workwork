@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 
@@ -37,6 +37,19 @@ export function WorklogNew() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; orgName: string }>>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await apiFetch('/api/users');
+        if (r.ok) {
+          const d = await r.json();
+          setUsers((d?.items || []).map((u: any) => ({ id: u.id, name: u.name, orgName: u.orgName || '' })));
+        }
+      } catch {}
+    })();
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +66,8 @@ export function WorklogNew() {
         urgent: urgent || undefined,
       };
       if (approverId) {
-        payload.report = { approverId, dueAt: dueAt || undefined };
+        const dueAtIso = dueAt ? (/^\d{4}-\d{2}-\d{2}$/.test(dueAt) ? `${dueAt}T00:00:00+09:00` : dueAt) : undefined;
+        payload.report = { approverId, dueAt: dueAtIso };
       }
       const watcherIds = watchers
         .split(',')
@@ -62,13 +76,14 @@ export function WorklogNew() {
       if (watcherIds.length) {
         payload.share = { watcherIds, scope: 'COMMENT' };
       }
-      if (helpCategory) {
+      if (helpCategory || helpAssigneeId || helpQueue || helpSla !== '' || helpDueAt) {
+        const helpDueAtIso = helpDueAt ? (/^\d{4}-\d{2}-\d{2}$/.test(helpDueAt) ? `${helpDueAt}T00:00:00+09:00` : helpDueAt) : undefined;
         payload.help = [
           {
             category: helpCategory,
             queue: helpQueue || undefined,
             assigneeId: helpAssigneeId || undefined,
-            dueAt: helpDueAt || undefined,
+            dueAt: helpDueAtIso,
             slaMinutes: helpSla === '' ? undefined : Number(helpSla),
           },
         ];
@@ -146,11 +161,16 @@ export function WorklogNew() {
       <div className="resp-2">
         <label>
           결재자 User ID(선택)
-          <input value={approverId} onChange={(e) => setApproverId(e.target.value)} />
+          <select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
+            <option value="">선택 안함</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
+            ))}
+          </select>
         </label>
         <label>
           결재 기한(ISO, 선택)
-          <input value={dueAt} onChange={(e) => setDueAt(e.target.value)} placeholder="2025-10-15T09:00:00Z" />
+          <input type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
         </label>
         <label>
           협조 카테고리(선택)
@@ -158,11 +178,16 @@ export function WorklogNew() {
         </label>
         <label>
           협조 담당자 User ID(선택)
-          <input value={helpAssigneeId} onChange={(e) => setHelpAssigneeId(e.target.value)} />
+          <select value={helpAssigneeId} onChange={(e) => setHelpAssigneeId(e.target.value)}>
+            <option value="">선택 안함</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
+            ))}
+          </select>
         </label>
         <label>
           협조 기한(ISO, 선택)
-          <input value={helpDueAt} onChange={(e) => setHelpDueAt(e.target.value)} placeholder="2025-10-16T09:00:00Z" />
+          <input type="date" value={helpDueAt} onChange={(e) => setHelpDueAt(e.target.value)} />
         </label>
         <label>
           할당 큐(선택)

@@ -20,6 +20,10 @@ class CreateHelpTicketDto {
   assigneeId?: string;
 
   @IsOptional()
+  @IsDateString()
+  dueAt?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(0)
   slaMinutes?: number;
@@ -139,6 +143,7 @@ export class HelpTicketsController {
         queue: dto.queue,
         requesterId: dto.requesterId,
         assigneeId: dto.assigneeId,
+        dueAt: dto.dueAt ? new Date(dto.dueAt) : undefined,
         slaMinutes: dto.slaMinutes,
       },
     });
