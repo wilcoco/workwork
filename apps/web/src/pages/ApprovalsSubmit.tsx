@@ -7,15 +7,12 @@ import { uploadFile, uploadFiles, type UploadResp } from '../lib/upload';
 import '../styles/editor.css';
 
 export function ApprovalsSubmit() {
-  const [subjectType, setSubjectType] = useState('Initiative');
-  const [subjectId, setSubjectId] = useState('');
   const [steps, setSteps] = useState<Array<{ id: string; name: string }>>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [dueAt, setDueAt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState('');
-  const [createNewDoc, setCreateNewDoc] = useState(true);
   const [teamName, setTeamName] = useState<string>(() => (typeof localStorage !== 'undefined' ? (localStorage.getItem('teamName') || '') : ''));
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
@@ -27,7 +24,6 @@ export function ApprovalsSubmit() {
   const requestedById = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
 
   useEffect(() => {
-    if (!createNewDoc) return;
     if (!editorEl.current) return;
     if (quillRef.current) return;
     const toolbar = [
@@ -51,7 +47,7 @@ export function ApprovalsSubmit() {
     } as any);
     q.on('text-change', () => setContentHtml(q.root.innerHTML));
     quillRef.current = q;
-  }, [createNewDoc]);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -132,50 +128,37 @@ export function ApprovalsSubmit() {
   }
 
   async function submit() {
-    const needsDoc = createNewDoc;
     if (!requestedById) { setError('로그인이 필요합니다.'); return; }
     const missing: string[] = [];
-    if (needsDoc) {
-      if (!teamName) missing.push('팀명');
-      if (!title) missing.push('제목');
-      if (!stripHtml(contentHtml)) missing.push('내용');
-    } else {
-      if (!subjectType) missing.push('대상 종류');
-      if (!subjectId) missing.push('대상 ID');
-    }
+    if (!teamName) missing.push('팀명');
+    if (!title) missing.push('제목');
+    if (!stripHtml(contentHtml)) missing.push('내용');
     if (steps.length === 0) missing.push('결재자');
     if (missing.length) { setError(`${missing.join(', ')} 입력이 필요합니다.`); return; }
     setLoading(true);
     setError(null);
     setOkMsg('');
     try {
-      let useSubjectType = subjectType;
-      let useSubjectId = subjectId;
-      if (needsDoc) {
-        const res = await apiJson<{ id: string }>(
-          '/api/worklogs/simple',
-          {
-            method: 'POST',
-            body: JSON.stringify({
-              userId: requestedById,
-              teamName,
-              taskName: title || 'Approval',
-              title,
-              content: stripHtml(contentHtml),
-              contentHtml: contentHtml || undefined,
-              attachments: { files: attachments },
-            }),
-          }
-        );
-        useSubjectType = 'Worklog';
-        useSubjectId = res.id;
-      }
-      const body: any = { subjectType: useSubjectType, subjectId: useSubjectId, requestedById };
+      const res = await apiJson<{ id: string }>(
+        '/api/worklogs/simple',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            userId: requestedById,
+            teamName,
+            taskName: title || 'Approval',
+            title,
+            content: stripHtml(contentHtml),
+            contentHtml: contentHtml || undefined,
+            attachments: { files: attachments },
+          }),
+        }
+      );
+      const body: any = { subjectType: 'Worklog', subjectId: res.id, requestedById };
       body.steps = steps.map((s) => ({ approverId: s.id }));
       if (dueAt) body.dueAt = new Date(dueAt).toISOString();
-      const res = await apiJson<any>('/api/approvals', { method: 'POST', body: JSON.stringify(body) });
-      setOkMsg(`요청 완료: ${res?.id || ''}`);
-      setSubjectId('');
+      const res2 = await apiJson<any>('/api/approvals', { method: 'POST', body: JSON.stringify(body) });
+      setOkMsg(`요청 완료: ${res2?.id || ''}`);
       setSteps([]);
       setDueAt('');
       setTitle('');
@@ -195,46 +178,14 @@ export function ApprovalsSubmit() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {okMsg && <div style={{ color: '#0F3D73' }}>{okMsg}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ margin: 0 }}>새 문서 작성</label>
-          <input type="checkbox" checked={createNewDoc} onChange={(e) => setCreateNewDoc(e.target.checked)} />
-        </div>
-        {!createNewDoc && (
-          <>
-            <label>대상 종류</label>
-            <input value={subjectType} onChange={(e) => setSubjectType(e.target.value)} style={input} />
-            <label>대상 ID</label>
-            <input value={subjectId} onChange={(e) => setSubjectId(e.target.value)} style={input} />
-          </>
-        )}
-        {createNewDoc && (
-          <div style={{ display: 'grid', gap: 8 }}>
-            <label>팀</label>
-            <select value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input}>
-              {teams.map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-            <label>제목</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} style={input} />
-            <label>내용</label>
-            <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden' }}>
-              <div ref={(r) => (editorEl.current = r)} style={{ minHeight: 240, width: '100%' }} />
-            </div>
-            <label>첨부 파일</label>
-            <input type="file" multiple onChange={onAttachFiles} />
-            {attachments.length > 0 && (
-              <div className="attachments">
-                {attachments.map((f, i) => (
-                  <div key={f.filename + i} className="attachment-item" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <a className="file-link" href={f.url} target="_blank" rel="noreferrer">{f.name}</a>
-                    <button type="button" className="btn btn-sm btn-danger" onClick={() => removeAttachment(i)}>삭제</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        <label>팀</label>
+        <select value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input}>
+          {teams.map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+        <label>제목</label>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} style={input} />
         <label>결재선</label>
         <div style={{ display: 'grid', gap: 8 }}>
           <div style={{ display: 'grid', gap: 6 }}>
@@ -262,6 +213,22 @@ export function ApprovalsSubmit() {
         </div>
         <label>기한(선택)</label>
         <input type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} style={input} />
+        <label>내용</label>
+        <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden' }}>
+          <div ref={(r) => (editorEl.current = r)} style={{ minHeight: 240, width: '100%' }} />
+        </div>
+        <label>첨부 파일</label>
+        <input type="file" multiple onChange={onAttachFiles} />
+        {attachments.length > 0 && (
+          <div className="attachments">
+            {attachments.map((f, i) => (
+              <div key={f.filename + i} className="attachment-item" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <a className="file-link" href={f.url} target="_blank" rel="noreferrer">{f.name}</a>
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => removeAttachment(i)}>삭제</button>
+              </div>
+            ))}
+          </div>
+        )}
         <button onClick={submit} disabled={!requestedById || loading} style={primaryBtn}>
           {loading ? '요청중…' : '결재 요청'}
         </button>
