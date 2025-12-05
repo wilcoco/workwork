@@ -209,6 +209,7 @@ model Worklog {
   createdBy          User      @relation("WorklogCreator", fields: [createdById], references: [id])
   attachments        Json?
   createdAt          DateTime  @default(now())
+  urgent             Boolean   @default(false)
   progressEntries    ProgressEntry[]
 }
 

@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { IsArray, IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
 class ReportDto {
@@ -108,6 +108,10 @@ class CreateWorklogDto {
   @IsOptional()
   @IsString()
   date?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  urgent?: boolean;
 }
 
 class CreateSimpleWorklogDto {
@@ -117,6 +121,7 @@ class CreateSimpleWorklogDto {
   @IsString() @IsNotEmpty() title!: string;
   @IsString() @IsNotEmpty() content!: string;
   @IsOptional() @IsDateString() date?: string;
+  @IsOptional() @IsBoolean() urgent?: boolean;
   @IsOptional() @IsString() contentHtml?: string;
   @IsOptional() attachments?: any;
   @IsOptional() @IsString() initiativeId?: string;
@@ -158,6 +163,7 @@ export class WorklogsController {
         note: dto.note,
         attachments: dto.attachments ?? undefined,
         date: dateVal,
+        urgent: !!dto.urgent,
       },
     });
 
@@ -437,6 +443,7 @@ export class WorklogsController {
         note,
         attachments: attachmentsJson as any,
         date: dateValSimple,
+        urgent: !!dto.urgent,
       },
     });
     await this.prisma.event.create({ data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { simple: true } } });
@@ -455,6 +462,7 @@ export class WorklogsController {
     @Query('kind') kind?: 'OKR' | 'KPI',
     @Query('krId') krId?: string,
     @Query('initiativeId') initiativeId?: string,
+    @Query('urgent') urgentStr?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '20', 10) || 20, 100);
     const where: any = {};
@@ -466,6 +474,11 @@ export class WorklogsController {
     if (q) where.note = { contains: q, mode: 'insensitive' as any };
     if (teamName) where.createdBy = { orgUnit: { name: teamName } };
     if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+    if (typeof urgentStr === 'string') {
+      const v = urgentStr.toLowerCase();
+      if (v === 'true' || v === '1') (where as any).urgent = true;
+      if (v === 'false' || v === '0') (where as any).urgent = false;
+    }
 
     const items = await this.prisma.worklog.findMany({
       where: {
@@ -496,6 +509,7 @@ export class WorklogsController {
         taskName: it.initiative?.title,
         attachments: (it as any).attachments ?? undefined,
         note: it.note ?? undefined,
+        urgent: (it as any).urgent ?? false,
       };
     });
     return { items: mapped, nextCursor };

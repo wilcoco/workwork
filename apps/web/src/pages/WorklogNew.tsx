@@ -14,6 +14,7 @@ export function WorklogNew() {
   const [krValue, setKrValue] = useState<string>('');
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
   const [krAchieved, setKrAchieved] = useState<boolean>(false);
+  const [urgent, setUrgent] = useState<boolean>(false);
 
   // follow-up actions
   const [approverId, setApproverId] = useState('');
@@ -48,6 +49,7 @@ export function WorklogNew() {
         timeSpentMinutes: Number(timeSpentMinutes) || 0,
         blockerCode: blockerCode || undefined,
         note: note || undefined,
+        urgent: urgent || undefined,
       };
       if (approverId) {
         payload.report = { approverId, dueAt: dueAt || undefined };
@@ -176,6 +178,9 @@ export function WorklogNew() {
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={krAchieved} onChange={(e) => setKrAchieved(e.target.checked)} /> 목표 달성으로 기록(목표값 자동 입력)
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 긴급 보고
         </label>
       </div>
 
