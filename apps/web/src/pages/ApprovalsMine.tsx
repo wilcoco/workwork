@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiJson } from '../lib/api';
+import { apiJson, apiUrl } from '../lib/api';
 
 export function ApprovalsMine() {
   const [userId, setUserId] = useState<string>('');
@@ -14,6 +14,11 @@ export function ApprovalsMine() {
     if (uid) void load(uid);
   }, []);
 
+  useEffect(() => {
+    if (userId) void load(userId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   async function load(reqUserId?: string) {
     const uid = reqUserId || userId;
     if (!uid) return;
@@ -21,7 +26,7 @@ export function ApprovalsMine() {
     setError(null);
     try {
       const list = await apiJson<{ items: any[] }>(`/api/approvals?requestedById=${encodeURIComponent(uid)}&limit=50`);
-      const baseItems = list.items || [];
+      const baseItems = (list.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       // enrich worklog subjects with title/date
       const enriched = await Promise.all(baseItems.map(async (a: any) => {
         let docTitle: string | undefined;
@@ -50,27 +55,43 @@ export function ApprovalsMine() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <h2 style={{ margin: 0 }}>올린 결재</h2>
-      <div style={{ display: 'flex', gap: 12 }}>
-        <input placeholder="내 User ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={input} />
-        <button onClick={() => load()} disabled={!userId || loading} style={primaryBtn}>{loading ? '로딩…' : '불러오기'}</button>
-      </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it) => {
           const meta = `작성자: ${it.requestedBy?.name || '-'}${it.currentApprover?.name ? ` · 현재 결재자: ${it.currentApprover.name}` : ''}`;
-          const snippet = (it._doc?.attachments?.contentHtml
-            ? stripImgs(String(it._doc.attachments.contentHtml)).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
-            : String(it._doc?.note || '').split('\n').slice(1).join('\n')
-          ).trim();
           return (
             <div key={it.id} style={card}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b>{it.docTitle || `${it.subjectType} / ${it.subjectId}`}</b>
+                <b>{it.docTitle || '문서 정보 없음'}</b>
                 <span style={chip}>{it.status}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
-              {snippet && <div style={{ color: '#334155', marginTop: 4 }}>{snippet}</div>}
+              {it._doc && (
+                it._doc.attachments?.contentHtml ? (
+                  <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(it._doc.attachments.contentHtml) }} />
+                ) : (
+                  <div style={{ color: '#334155', marginTop: 6 }}>{String(it._doc?.note || '').split('\n').slice(1).join('\n')}</div>
+                )
+              )}
+              {it._doc?.attachments?.files?.length ? (
+                <div className="attachments" style={{ marginTop: 8 }}>
+                  {it._doc.attachments.files.map((f: any, i: number) => {
+                    const url = absLink(f.url as string);
+                    const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
+                    const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+                    return (
+                      <div key={(f.filename || f.url) + i} className="attachment-item">
+                        {isImg ? (
+                          <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
+                        ) : (
+                          <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -118,4 +139,15 @@ const chip: React.CSSProperties = {
 function stripImgs(html: string): string {
   if (!html) return html;
   return html.replace(/<img\b[^>]*>/gi, '');
+}
+
+function absolutizeUploads(html: string): string {
+  if (!html) return html;
+  return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
+}
+
+function absLink(url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  return apiUrl(url);
 }

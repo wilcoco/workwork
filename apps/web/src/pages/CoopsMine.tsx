@@ -12,6 +12,11 @@ export function CoopsMine() {
     if (uid) setUserId(uid);
   }, []);
 
+  useEffect(() => {
+    if (userId) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   async function load() {
     if (!userId) return;
     setLoading(true);
@@ -21,7 +26,9 @@ export function CoopsMine() {
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const json = await res.json();
       const types = new Set(['HelpAccepted', 'HelpResolved', 'HelpDeclined']);
-      setItems((json?.items || []).filter((n: any) => types.has(n.type)));
+      const base = (json?.items || []).filter((n: any) => types.has(n.type));
+      base.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setItems(base);
     } catch (e: any) {
       setError(e?.message || '로드 실패');
     } finally {
@@ -32,14 +39,10 @@ export function CoopsMine() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <h2 style={{ margin: 0 }}>보낸 협조</h2>
-      <div style={{ display: 'flex', gap: 12 }}>
-        <input placeholder="내 User ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={input} />
-        <button onClick={load} disabled={!userId || loading} style={primaryBtn}>{loading ? '로딩…' : '불러오기'}</button>
-      </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((n) => {
-          const title = `티켓 ${n.subjectId}`;
+          const title = `협조 알림`;
           const meta = `${n.type}`;
           return (
             <div key={n.id} style={card}>

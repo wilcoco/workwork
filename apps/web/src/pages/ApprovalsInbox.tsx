@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch, apiJson } from '../lib/api';
+import { apiFetch, apiJson, apiUrl } from '../lib/api';
 
 export function ApprovalsInbox() {
   const [userId, setUserId] = useState<string>('');
@@ -12,6 +12,11 @@ export function ApprovalsInbox() {
     if (uid) setUserId(uid);
   }, []);
 
+  useEffect(() => {
+    if (userId) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   async function load() {
     if (!userId) return;
     setLoading(true);
@@ -20,7 +25,9 @@ export function ApprovalsInbox() {
       const res = await apiFetch(`/api/inbox?userId=${encodeURIComponent(userId)}&onlyUnread=false`);
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const json = await res.json();
-      const base = (json?.items || []).filter((n: any) => n.type === 'ApprovalRequested');
+      const base = (json?.items || [])
+        .filter((n: any) => n.type === 'ApprovalRequested')
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       // Enrich with underlying Worklog document when available
       const enriched = await Promise.all(base.map(async (n: any) => {
         let doc: any = null;
@@ -59,21 +66,13 @@ export function ApprovalsInbox() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <h2 style={{ margin: 0 }}>결재하기</h2>
-      <div style={{ display: 'flex', gap: 12 }}>
-        <input placeholder="내 User ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={input} />
-        <button onClick={load} disabled={!userId || loading} style={primaryBtn}>{loading ? '로딩…' : '불러오기'}</button>
-      </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((n) => {
           const wl = (n as any)._doc as any | null;
-          const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : `${n.subjectType} / ${n.subjectId}`;
+          const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : '문서 정보 없음';
           const meta = wl ? `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
           const when = wl?.date || wl?.createdAt || n.createdAt;
-          const contentHtml = wl?.attachments?.contentHtml || '';
-          const contentText = wl ? (wl.note || '').split('\n').slice(1).join('\n') : '';
-          const snippetSrc = contentHtml ? stripImgs(contentHtml).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&') : contentText;
-          const snippet = (snippetSrc || '').trim();
           return (
             <div key={n.id} style={card}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -81,7 +80,31 @@ export function ApprovalsInbox() {
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
-              {snippet && <div style={{ color: '#334155', marginTop: 4 }}>{snippet}</div>}
+              {wl && (
+                wl.attachments?.contentHtml ? (
+                  <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
+                ) : (
+                  <div style={{ color: '#334155', marginTop: 6 }}>{String(wl.note || '').split('\n').slice(1).join('\n')}</div>
+                )
+              )}
+              {wl?.attachments?.files?.length ? (
+                <div className="attachments" style={{ marginTop: 8 }}>
+                  {wl.attachments.files.map((f: any, i: number) => {
+                    const url = absLink(f.url as string);
+                    const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
+                    const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+                    return (
+                      <div key={(f.filename || f.url) + i} className="attachment-item">
+                        {isImg ? (
+                          <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
+                        ) : (
+                          <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button onClick={() => approve(n.payload?.requestId, n.id)} style={primaryBtn}>승인</button>
                 <button onClick={() => reject(n.payload?.requestId, n.id)} style={ghostBtn}>반려</button>
@@ -133,4 +156,15 @@ const card: React.CSSProperties = {
 function stripImgs(html: string): string {
   if (!html) return html;
   return html.replace(/<img\b[^>]*>/gi, '');
+}
+
+function absolutizeUploads(html: string): string {
+  if (!html) return html;
+  return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
+}
+
+function absLink(url: string): string {
+  if (!url) return url;
+  if (/^https?:\/\//i.test(url)) return url;
+  return apiUrl(url);
 }
