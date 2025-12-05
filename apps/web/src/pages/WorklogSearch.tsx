@@ -499,9 +499,8 @@ const primaryBtn: React.CSSProperties = {
 };
 
 const card: React.CSSProperties = {
-  background: '#FFFFFF',
-  border: '1px solid #E5E7EB',
-  borderLeft: '4px solid #0F3D73',
+  background: '#F8FAFC',
+  border: '1px solid #CBD5E1',
   borderRadius: 12,
   padding: 14,
   boxShadow: '0 2px 10px rgba(16, 24, 40, 0.06)'

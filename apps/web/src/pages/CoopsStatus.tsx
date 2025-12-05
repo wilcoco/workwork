@@ -102,16 +102,16 @@ const primaryBtn: React.CSSProperties = {
 };
 
 const card: React.CSSProperties = {
-  background: '#FFFFFF',
-  border: '1px solid #E5E7EB',
+  background: '#F8FAFC',
+  border: '1px solid #CBD5E1',
   borderRadius: 10,
   padding: 12,
   boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
 };
 
 const statCard: React.CSSProperties = {
-  background: '#FFFFFF',
-  border: '1px solid #E5E7EB',
+  background: '#F8FAFC',
+  border: '1px solid #CBD5E1',
   borderRadius: 10,
   padding: 12,
   textAlign: 'center' as const,

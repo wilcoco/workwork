@@ -85,69 +85,11 @@ export function Home() {
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: viewMode==='full' ? '1fr' : '1fr 1fr' }}>
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
-          {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
-            <div style={{ maxHeight: viewMode==='summary' ? 360 : undefined, overflowY: viewMode==='summary' ? 'auto' : undefined, display: 'grid', gap: 8 }}>
-              {worklogs
-                .filter((w) => !filterTeam || (w.teamName||'').toLowerCase().includes(filterTeam.toLowerCase()))
-                .filter((w) => !filterName || (w.userName||'').toLowerCase().includes(filterName.toLowerCase()))
-                .map((w) => {
-                const anyW: any = w as any;
-                const attachments = anyW.attachments || {};
-                const files = attachments.files || [];
-                const firstImg = (() => {
-                  const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-                  if (fileImg) return absLink(fileImg.url as string);
-                  const html = attachments.contentHtml || '';
-                  if (html) {
-                    const abs = absolutizeUploads(html);
-                    const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-                    if (m && m[1]) return m[1];
-                  }
-                  return '';
-                })();
-                const contentHtml = attachments.contentHtml || '';
-                const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
-                const thumbSize = viewMode==='summary' ? 120 : 84;
-                const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
-                const snippet = (snippetSrc || '').trim();
-                return (
-                  <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#fff', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {firstImg ? (
-                        <img src={firstImg} alt="thumb" style={{ width: thumbSize, height: thumbSize, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
-                      ) : (
-                        <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
-                      )}
-                      <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                          <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
-                          <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
-                        </div>
-                        {viewMode==='summary' && (
-                          <div style={{ color: '#334155' }}>{snippet}</div>
-                        )}
-                      </div>
-                    </div>
-                    {viewMode === 'full' && (
-                      contentHtml ? (
-                        <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }} />
-                      ) : (
-                        <div style={{ color: '#334155' }}>{contentText}</div>
-                      )
-                    )}
-                  </div>
-                );
-              })}
-              {!worklogs.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
-            </div>
-          )}
-        </div>
+      <div style={{ display: 'grid', gap: 12 }}>
+        <></>
         {viewMode!=='full' && (
           <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+            <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
               <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
               <div style={{ maxHeight: 280, overflowY: 'auto', display: 'grid', gap: 8 }}>
                 {urgentWls.map((w) => {
@@ -170,7 +112,7 @@ export function Home() {
                   const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                   const snippet = (snippetSrc || '').trim();
                   return (
-                    <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#fff', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                    <div key={w.id} style={{ border: '1px solid #CBD5E1', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#F8FAFC', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         {firstImg ? (
                           <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
@@ -191,7 +133,7 @@ export function Home() {
                 {!urgentWls.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
               </div>
             </div>
-            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12 }}>
+            <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
               <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
               <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
                 {latestComments.map((c) => (
@@ -200,6 +142,65 @@ export function Home() {
                 {!comments.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
               </div>
             </div>
+          </div>
+        )}
+      </div>
+      <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
+        {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {worklogs
+              .filter((w) => !filterTeam || (w.teamName||'').toLowerCase().includes(filterTeam.toLowerCase()))
+              .filter((w) => !filterName || (w.userName||'').toLowerCase().includes(filterName.toLowerCase()))
+              .map((w) => {
+              const anyW: any = w as any;
+              const attachments = anyW.attachments || {};
+              const files = attachments.files || [];
+              const firstImg = (() => {
+                const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
+                if (fileImg) return absLink(fileImg.url as string);
+                const html = attachments.contentHtml || '';
+                if (html) {
+                  const abs = absolutizeUploads(html);
+                  const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+                  if (m && m[1]) return m[1];
+                }
+                return '';
+              })();
+              const contentHtml = attachments.contentHtml || '';
+              const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
+              const thumbSize = viewMode==='summary' ? 120 : 84;
+              const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
+              const snippet = (snippetSrc || '').trim();
+              return (
+                <div key={w.id} style={{ border: '1px solid #CBD5E1', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#F8FAFC', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {firstImg ? (
+                      <img src={firstImg} alt="thumb" style={{ width: thumbSize, height: thumbSize, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                    ) : (
+                      <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                    )}
+                    <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                        <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                      </div>
+                      {viewMode==='summary' && (
+                        <div style={{ color: '#334155' }}>{snippet}</div>
+                      )}
+                    </div>
+                  </div>
+                  {viewMode === 'full' && (
+                    contentHtml ? (
+                      <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }} />
+                    ) : (
+                      <div style={{ color: '#334155' }}>{contentText}</div>
+                    )
+                  )}
+                </div>
+              );
+            })}
+            {!worklogs.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
           </div>
         )}
       </div>
@@ -325,7 +326,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
     return '';
   })();
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#fff' }}>
+    <div style={{ border: '1px solid #CBD5E1', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#F8FAFC' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {firstImg ? (
           <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />

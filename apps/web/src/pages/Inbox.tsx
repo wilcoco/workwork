@@ -43,7 +43,7 @@ export function Inbox() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((n) => (
-          <div key={n.id} style={{ ...card, background: n.readAt ? '#F8FAFC' : '#FFFFFF' }}>
+          <div key={n.id} style={card}>
             <div><b>유형:</b> {n.type}</div>
             <div><b>대상:</b> {n.subjectType} / {n.subjectId}</div>
             <div><b>시간:</b> {formatKstDatetime(n.createdAt)}</div>
@@ -83,8 +83,8 @@ const ghostBtn: React.CSSProperties = {
 };
 
 const card: React.CSSProperties = {
-  background: '#FFFFFF',
-  border: '1px solid #E5E7EB',
+  background: '#F8FAFC',
+  border: '1px solid #CBD5E1',
   borderRadius: 10,
   padding: 12,
   boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
