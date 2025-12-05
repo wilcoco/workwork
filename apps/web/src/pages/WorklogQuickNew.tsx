@@ -9,11 +9,7 @@ import { todayKstYmd } from '../lib/time';
 
 export function WorklogQuickNew() {
   const nav = useNavigate();
-  function firstDayKstYmd() {
-    const t = todayKstYmd();
-    return t.slice(0, 8) + '01';
-  }
-  const [date, setDate] = useState<string>(() => firstDayKstYmd());
+  const [date, setDate] = useState<string>(() => todayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [orgUnitId, setOrgUnitId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
@@ -273,19 +269,7 @@ export function WorklogQuickNew() {
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
-              const id = v.substring(5);
-              if (v.startsWith('init:')) {
-                const t = [...teamTasks, ...myTasks].find((x) => x.id === id);
-                if (t?.startAt) {
-                  const y = t.startAt.slice(0,4);
-                  const m = t.startAt.slice(5,7);
-                  setDate(`${y}-${m}-01`);
-                } else {
-                  setDate(firstDayKstYmd());
-                }
-              } else {
-                // KR selection: keep current date (manager chooses appropriate period start date)
-              }
+              // Keep current date as-is (default is today in KST)
             }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="" disabled>대상을 선택하세요</option>
               <optgroup label="나의 과제">
