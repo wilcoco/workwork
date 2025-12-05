@@ -20,6 +20,7 @@ export function WorklogQuickNew() {
   const [krValue, setKrValue] = useState<string>('');
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
   const [krAchieved, setKrAchieved] = useState<boolean>(false);
+  const [urgent, setUrgent] = useState<boolean>(false);
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<UploadResp[]>([]);
@@ -170,6 +171,7 @@ export function WorklogQuickNew() {
             contentHtml: plainMode ? undefined : (contentHtml || undefined),
             attachments: { files: attachments },
             date,
+            urgent,
           }),
         }
       );
@@ -376,6 +378,9 @@ export function WorklogQuickNew() {
             <div />
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 긴급 보고
             </label>
           </div>
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
