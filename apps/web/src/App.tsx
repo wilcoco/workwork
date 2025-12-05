@@ -217,17 +217,17 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         {SHOW_APPROVALS && (
           <NavDropdown label="결재">
             <Link to="/approvals/new">결재올리기</Link>
-            <Link to="/approvals/inbox">결재함</Link>
-            <Link to="/approvals/mine">내결재</Link>
-            <Link to="/approvals/status">결재현황</Link>
+            <Link to="/approvals/inbox">결재하기</Link>
+            <Link to="/approvals/mine">올린 결재</Link>
+            <Link to="/approvals/status">결제 통계</Link>
           </NavDropdown>
         )}
         {SHOW_COOPS && (
           <NavDropdown label="협조">
-            <Link to="/coops/request">협조요청</Link>
-            <Link to="/coops/inbox">내협조함</Link>
-            <Link to="/coops/mine">보낸협조</Link>
-            <Link to="/coops/status">협조현황</Link>
+            <Link to="/coops/request">요청 하기</Link>
+            <Link to="/coops/inbox">받은 협조</Link>
+            <Link to="/coops/mine">보낸 협조</Link>
+            <Link to="/coops/status">협조 통계</Link>
           </NavDropdown>
         )}
         <NavDropdown label="관리">

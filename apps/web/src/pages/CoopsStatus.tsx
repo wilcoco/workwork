@@ -42,7 +42,7 @@ export function CoopsStatus() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <h2 style={{ margin: 0 }}>협조 요청·수락 현황</h2>
+      <h2 style={{ margin: 0 }}>협조 통계</h2>
       <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
         <input placeholder="요청자 ID(선택)" value={filters.requesterId || ''} onChange={(e) => onChange('requesterId', e.target.value)} style={input} />
         <input placeholder="담당자 ID(선택)" value={filters.assigneeId || ''} onChange={(e) => onChange('assigneeId', e.target.value)} style={input} />

@@ -26,16 +26,18 @@ export function ApprovalsMine() {
       const enriched = await Promise.all(baseItems.map(async (a: any) => {
         let docTitle: string | undefined;
         let docDate: string | undefined;
+        let doc: any = null;
         if (a.subjectType === 'Worklog' && a.subjectId) {
           try {
             const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(a.subjectId)}`);
+            doc = wl;
             const note: string = wl?.note || '';
             const first = (note || '').split(/\n+/)[0] || '';
             docTitle = first || '(제목 없음)';
             if (wl?.date) docDate = wl.date;
           } catch {}
         }
-        return { ...a, docTitle, docDate };
+        return { ...a, docTitle, docDate, _doc: doc };
       }));
       setItems(enriched);
     } catch (e: any) {
@@ -47,27 +49,31 @@ export function ApprovalsMine() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <h2 style={{ margin: 0 }}>내가 올린 결재 진행</h2>
+      <h2 style={{ margin: 0 }}>올린 결재</h2>
       <div style={{ display: 'flex', gap: 12 }}>
         <input placeholder="내 User ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={input} />
         <button onClick={() => load()} disabled={!userId || loading} style={primaryBtn}>{loading ? '로딩…' : '불러오기'}</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.map((it) => (
-          <div key={it.id} style={card}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <b>{it.docTitle || `${it.subjectType} / ${it.subjectId}`}</b>
-              <span style={chip}>{it.status}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
+        {items.map((it) => {
+          const meta = `작성자: ${it.requestedBy?.name || '-'}${it.currentApprover?.name ? ` · 현재 결재자: ${it.currentApprover.name}` : ''}`;
+          const snippet = (it._doc?.attachments?.contentHtml
+            ? stripImgs(String(it._doc.attachments.contentHtml)).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+            : String(it._doc?.note || '').split('\n').slice(1).join('\n')
+          ).trim();
+          return (
+            <div key={it.id} style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <b>{it.docTitle || `${it.subjectType} / ${it.subjectId}`}</b>
+                <span style={chip}>{it.status}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
+              {snippet && <div style={{ color: '#334155', marginTop: 4 }}>{snippet}</div>}
             </div>
-            <div style={{ fontSize: 12, color: '#334155' }}>
-              작성자: {it.requestedBy?.name || '-'} ({it.requestedBy?.id || '-'})
-              {it.docDate ? <> · 문서일자: {new Date(it.docDate).toLocaleDateString()}</> : null}
-              {it.currentApprover?.name ? <> · 현재 결재자: {it.currentApprover.name}</> : null}
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {!items.length && <div>표시된 진행 내역 없음</div>}
       </div>
     </div>
@@ -108,3 +114,8 @@ const chip: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 700,
 };
+
+function stripImgs(html: string): string {
+  if (!html) return html;
+  return html.replace(/<img\b[^>]*>/gi, '');
+}

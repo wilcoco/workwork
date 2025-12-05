@@ -31,19 +31,26 @@ export function CoopsMine() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <h2 style={{ margin: 0 }}>내가 보낸 협조 진행</h2>
+      <h2 style={{ margin: 0 }}>보낸 협조</h2>
       <div style={{ display: 'flex', gap: 12 }}>
         <input placeholder="내 User ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={input} />
         <button onClick={load} disabled={!userId || loading} style={primaryBtn}>{loading ? '로딩…' : '불러오기'}</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.map((n) => (
-          <div key={n.id} style={card}>
-            <div><b>유형:</b> {n.type}</div>
-            <div><b>티켓:</b> {n.subjectId}</div>
-          </div>
-        ))}
+        {items.map((n) => {
+          const title = `티켓 ${n.subjectId}`;
+          const meta = `${n.type}`;
+          return (
+            <div key={n.id} style={card}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <b>{title}</b>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(n.createdAt).toLocaleString()}</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
+            </div>
+          );
+        })}
         {!items.length && <div>표시된 진행 내역 없음</div>}
       </div>
     </div>
