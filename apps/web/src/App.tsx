@@ -1,5 +1,5 @@
 import { BrowserRouter, Link, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { apiJson } from './lib/api';
 import { Home } from './pages/Home';
@@ -143,6 +143,7 @@ export function App() {
 
 function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean }) {
   const nav = useNavigate();
+  const location = useLocation();
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const userLogin = typeof localStorage !== 'undefined' ? localStorage.getItem('userLogin') || '' : '';
   const userName = typeof localStorage !== 'undefined' ? localStorage.getItem('userName') || '' : '';
@@ -195,27 +196,28 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
     }
     nav('/login');
   };
+  const activeStyle: CSSProperties = { fontWeight: 800, borderBottom: '2px solid #0F3D73', paddingBottom: 2 };
   return (
     <div className="header">
       <div className="container">
         <Link to="/" className="logo" aria-label={`${brandLabel} 메인`}>
           <img src={logoSrc} alt={`${brandLabel} 로고`} />
         </Link>
-        <Link to="/" style={{ marginLeft: 12 }}>홈</Link>
-        <NavDropdown label="업무일지">
+        <Link to="/" style={{ marginLeft: 12, ...(location.pathname === '/' ? activeStyle : {}) }}>홈</Link>
+        <NavDropdown label="업무일지" active={(location.pathname === '/quick') || location.pathname.startsWith('/search') || location.pathname.startsWith('/worklogs')}>
           <Link to="/quick">작성</Link>
           <Link to="/search">조회</Link>
           <Link to="/worklogs/stats">업무 현황</Link>
           <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
-        <NavDropdown label="목표관리">
+        <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr')}>
           <Link to="/okr/input">OKR 입력</Link>
           <Link to="/okr/tree">OKR 조회</Link>
           <Link to="/okr/team">팀 KPI 입력</Link>
           <Link to="/okr/team-board">팀 KPI 조회</Link>
         </NavDropdown>
         {SHOW_APPROVALS && (
-          <NavDropdown label="결재">
+          <NavDropdown label="결재" active={location.pathname.startsWith('/approvals')}>
             <Link to="/approvals/new">결재올리기</Link>
             <Link to="/approvals/inbox">결재하기</Link>
             <Link to="/approvals/mine">올린 결재</Link>
@@ -223,14 +225,14 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           </NavDropdown>
         )}
         {SHOW_COOPS && (
-          <NavDropdown label="협조">
+          <NavDropdown label="협조" active={location.pathname.startsWith('/coops')}>
             <Link to="/coops/request">요청 하기</Link>
             <Link to="/coops/inbox">받은 협조</Link>
             <Link to="/coops/mine">보낸 협조</Link>
             <Link to="/coops/status">협조 통계</Link>
           </NavDropdown>
         )}
-        <NavDropdown label="관리">
+        <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
           <Link to="/admin/orgs">조직관리</Link>
           <Link to="/admin/members">구성원</Link>
           <Link to="/admin/tools">시스템 도구</Link>
@@ -253,7 +255,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
   );
 }
 
-function NavDropdown({ label, children }: { label: string; children: any }) {
+function NavDropdown({ label, children, active }: { label: string; children: any; active?: boolean }) {
   const [open, setOpen] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement | null>(null);
   const summaryRef = useRef<HTMLElement | null>(null);
@@ -344,7 +346,7 @@ function NavDropdown({ label, children }: { label: string; children: any }) {
   return (
     <>
       <details ref={detailsRef} onToggle={onToggle} style={{ position: 'relative', marginLeft: 12 }}>
-        <summary ref={summaryRef} style={{ cursor: 'pointer', listStyle: 'none' }}>{label}</summary>
+        <summary ref={summaryRef} style={{ cursor: 'pointer', listStyle: 'none', ...(active ? { fontWeight: 800, borderBottom: '2px solid #0F3D73', paddingBottom: 2 } : {}) }}>{label}</summary>
       </details>
       {panel}
     </>
