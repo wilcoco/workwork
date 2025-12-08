@@ -199,7 +199,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
     }
     nav('/login');
   };
-  const activeStyle: CSSProperties = { fontWeight: 800, borderBottom: '2px solid #0F3D73', paddingBottom: 2 };
+  const activeStyle: CSSProperties = { borderBottom: '2px solid #0F3D73', paddingBottom: 2 };
   return (
     <div className="header">
       <div className="container">
@@ -349,7 +349,7 @@ function NavDropdown({ label, children, active }: { label: string; children: any
   return (
     <>
       <details ref={detailsRef} onToggle={onToggle} style={{ position: 'relative', marginLeft: 12 }}>
-        <summary ref={summaryRef} style={{ cursor: 'pointer', listStyle: 'none', ...(active ? { fontWeight: 800, borderBottom: '2px solid #0F3D73', paddingBottom: 2 } : {}) }}>{label}</summary>
+        <summary ref={summaryRef} style={{ cursor: 'pointer', listStyle: 'none', ...(active ? { borderBottom: '2px solid #0F3D73', paddingBottom: 2 } : {}) }}>{label}</summary>
       </details>
       {panel}
     </>

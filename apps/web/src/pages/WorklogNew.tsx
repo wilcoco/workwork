@@ -149,11 +149,11 @@ export function WorklogNew() {
     <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
       <h2>업무일지 작성</h2>
 
-      <div className="resp-2">
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', margin: '0 0 6px 0' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0 }}>
           <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} /> 과제 완료 처리
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, margin: 0 }}>
           <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} /> 긴급 보고
         </label>
       </div>

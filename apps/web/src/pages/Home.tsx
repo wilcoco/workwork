@@ -72,17 +72,17 @@ export function Home() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <select value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any }}>
+        <select value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', height: 34, appearance: 'auto' as any }}>
           <option value="">팀 전체</option>
           {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
-        <select value={filterName} onChange={(e) => setFilterName(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any }}>
+        <select value={filterName} onChange={(e) => setFilterName(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', height: 34, appearance: 'auto' as any }}>
           <option value="">이름 전체</option>
           {nameOptions.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button className={viewMode==='summary' ? 'btn btn-primary' : 'btn'} onClick={() => setViewMode('summary')}>요약</button>
-          <button className={viewMode==='full' ? 'btn btn-primary' : 'btn'} onClick={() => setViewMode('full')}>전체</button>
+          <button className={viewMode==='summary' ? 'btn btn-primary' : 'btn'} onClick={() => setViewMode('summary')} style={{ height: 34, padding: '0 10px' }}>요약</button>
+          <button className={viewMode==='full' ? 'btn btn-primary' : 'btn'} onClick={() => setViewMode('full')} style={{ height: 34, padding: '0 10px' }}>전체</button>
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
@@ -94,6 +94,10 @@ export function Home() {
               {worklogs
                 .filter((w) => !filterTeam || (w.teamName||'').toLowerCase().includes(filterTeam.toLowerCase()))
                 .filter((w) => !filterName || (w.userName||'').toLowerCase().includes(filterName.toLowerCase()))
+                .filter((w) => {
+                  const t = new Date(w.date).getTime();
+                  return (Date.now() - t) <= 3 * 24 * 60 * 60 * 1000;
+                })
                 .map((w) => {
                 const anyW: any = w as any;
                 const attachments = anyW.attachments || {};
