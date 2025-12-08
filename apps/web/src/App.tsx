@@ -95,6 +95,9 @@ export function App() {
     <BrowserRouter>
       <DeployBanner />
       <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
+      <div className="container">
+        <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
+      </div>
       <div className="container page">
         <Routes>
           <Route path="/" element={<Home />} />
@@ -353,3 +356,64 @@ function NavDropdown({ label, children, active }: { label: string; children: any
   );
 }
 
+function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean }) {
+  const location = useLocation();
+  const path = location.pathname || '/';
+  if (path === '/') return null;
+  const items: Array<{ to: string; label: string }> = (() => {
+    if (path === '/quick' || path.startsWith('/search') || path.startsWith('/worklogs')) {
+      return [
+        { to: '/quick', label: '작성' },
+        { to: '/search', label: '조회' },
+        { to: '/worklogs/stats', label: '업무 현황' },
+        { to: '/worklogs/ai', label: 'AI 분석' },
+      ];
+    }
+    if (path.startsWith('/okr')) {
+      return [
+        { to: '/okr/input', label: 'OKR 입력' },
+        { to: '/okr/tree', label: 'OKR 조회' },
+        { to: '/okr/team', label: '팀 KPI 입력' },
+        { to: '/okr/team-board', label: '팀 KPI 조회' },
+      ];
+    }
+    if (SHOW_APPROVALS && path.startsWith('/approvals')) {
+      return [
+        { to: '/approvals/new', label: '결재올리기' },
+        { to: '/approvals/inbox', label: '결재하기' },
+        { to: '/approvals/mine', label: '올린 결재' },
+        { to: '/approvals/status', label: '결제 통계' },
+      ];
+    }
+    if (SHOW_COOPS && path.startsWith('/coops')) {
+      return [
+        { to: '/coops/request', label: '요청 하기' },
+        { to: '/coops/inbox', label: '받은 협조' },
+        { to: '/coops/mine', label: '보낸 협조' },
+        { to: '/coops/status', label: '협조 통계' },
+      ];
+    }
+    if (path.startsWith('/admin')) {
+      return [
+        { to: '/admin/orgs', label: '조직관리' },
+        { to: '/admin/members', label: '구성원' },
+        { to: '/admin/tools', label: '시스템 도구' },
+      ];
+    }
+    if (path.startsWith('/inbox')) {
+      return [
+        { to: '/inbox', label: '알림함' },
+      ];
+    }
+    return [];
+  })();
+  if (!items.length) return null;
+  const activeStyle: CSSProperties = { fontWeight: 800, borderBottom: '2px solid #0F3D73', paddingBottom: 2 };
+  return (
+    <div style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid #E5E7EB', marginTop: 6 }}>
+      {items.map(it => (
+        <Link key={it.to} to={it.to} style={{ ...(path === it.to ? activeStyle : {}), color: '#0f172a' }}>{it.label}</Link>
+      ))}
+    </div>
+  );
+}

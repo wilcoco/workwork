@@ -13,6 +13,7 @@ export function Home() {
   const [error, setError] = useState<string | null>(null);
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
+  const [urgentOpen, setUrgentOpen] = useState(false);
   const [filterTeam, setFilterTeam] = useState('');
   const [filterName, setFilterName] = useState('');
   const [viewMode, setViewMode] = useState<'summary'|'full'>('summary');
@@ -147,8 +148,14 @@ export function Home() {
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
             <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
-            <div style={{ height: 220, overflowY: 'scroll', display: 'grid', gap: 8 }}>
-              {urgentWls.map((w) => {
+            <div style={{ display: 'grid', gap: 8 }}>
+              {urgentWls
+                .filter((w) => {
+                  const d = new Date(w.date).getTime();
+                  const threeDays = 3 * 24 * 60 * 60 * 1000;
+                  return Date.now() - d <= threeDays;
+                })
+                .map((w) => {
                 const anyW: any = w as any;
                 const attachments = anyW.attachments || {};
                 const files = attachments.files || [];
@@ -187,6 +194,9 @@ export function Home() {
                 );
               })}
               {!urgentWls.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
             </div>
           </div>
           <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
@@ -251,6 +261,55 @@ export function Home() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button className="btn" onClick={() => setDetail(null)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {urgentOpen && (
+        <div className="image-overlay" onClick={() => setUrgentOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 1000, width: '96%', maxHeight: '85vh', overflowY: 'auto', display: 'grid', gap: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>긴급 보고 전체</div>
+            {urgentWls.map((w) => {
+              const anyW: any = w as any;
+              const attachments = anyW.attachments || {};
+              const files = attachments.files || [];
+              const firstImg = (() => {
+                const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
+                if (fileImg) return absLink(fileImg.url as string);
+                const html = attachments.contentHtml || '';
+                if (html) {
+                  const abs = absolutizeUploads(html);
+                  const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+                  if (m && m[1]) return m[1];
+                }
+                return '';
+              })();
+              const contentHtml = attachments.contentHtml || '';
+              const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
+              const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
+              const snippet = (snippetSrc || '').trim();
+              return (
+                <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {firstImg ? (
+                      <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                    ) : (
+                      <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                    )}
+                    <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                        <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                      </div>
+                      <div style={{ color: '#334155' }}>{snippet}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {!urgentWls.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+              <button className="btn" onClick={() => setUrgentOpen(false)}>닫기</button>
             </div>
           </div>
         </div>
