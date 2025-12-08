@@ -86,7 +86,7 @@ export function Home() {
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1.8fr 1fr' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1.8fr 1fr', alignItems: 'start' }}>
         <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
           {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
@@ -146,8 +146,8 @@ export function Home() {
             </div>
           )}
         </div>
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
+        <div style={{ display: 'grid', gap: 12, alignContent: 'start', alignItems: 'start', alignSelf: 'start' }}>
+          <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
             <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
             <div style={{ display: 'grid', gap: 8 }}>
               {urgentWls
@@ -202,7 +202,7 @@ export function Home() {
               <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
             </div>
           </div>
-          <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
+          <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
             <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
             <div style={{ display: 'grid', gap: 8 }}>
               {latestComments
