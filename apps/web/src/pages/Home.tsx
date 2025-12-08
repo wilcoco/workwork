@@ -14,6 +14,7 @@ export function Home() {
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
   const [urgentOpen, setUrgentOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [filterTeam, setFilterTeam] = useState('');
   const [filterName, setFilterName] = useState('');
   const [viewMode, setViewMode] = useState<'summary'|'full'>('summary');
@@ -193,7 +194,9 @@ export function Home() {
                   </div>
                 );
               })}
-              {!urgentWls.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+              {urgentWls.filter((w) => (Date.now() - new Date(w.date).getTime()) <= 3*24*60*60*1000).length === 0 && (
+                <div style={{ color: '#94a3b8' }}>최근 3일간 긴급보고 없음</div>
+              )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
               <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
@@ -201,11 +204,18 @@ export function Home() {
           </div>
           <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
             <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
-            <div style={{ maxHeight: 360, overflowY: 'auto', display: 'grid', gap: 8 }}>
-              {latestComments.map((c) => (
-                <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
-              ))}
-              {!comments.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+            <div style={{ display: 'grid', gap: 8 }}>
+              {latestComments
+                .filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3*24*60*60*1000)
+                .map((c) => (
+                  <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
+                ))}
+              {latestComments.filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3*24*60*60*1000).length === 0 && (
+                <div style={{ color: '#94a3b8' }}>최근 3일간 댓글 없음</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+              <button className="btn" onClick={() => setCommentsOpen(true)}>더보기</button>
             </div>
           </div>
         </div>
@@ -214,6 +224,20 @@ export function Home() {
       {zoomSrc && (
         <div className="image-overlay" onClick={() => setZoomSrc(null)}>
           <img src={zoomSrc} alt="preview" />
+        </div>
+      )}
+      {commentsOpen && (
+        <div className="image-overlay" onClick={() => setCommentsOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 1000, width: '96%', maxHeight: '85vh', overflowY: 'auto', display: 'grid', gap: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>최근 댓글 전체</div>
+            {latestComments.map((c) => (
+              <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
+            ))}
+            {latestComments.length === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+              <button className="btn" onClick={() => setCommentsOpen(false)}>닫기</button>
+            </div>
+          </div>
         </div>
       )}
       {detail && (
