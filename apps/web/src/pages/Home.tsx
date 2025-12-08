@@ -147,7 +147,7 @@ export function Home() {
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
             <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
-            <div style={{ maxHeight: 280, overflowY: 'auto', display: 'grid', gap: 8 }}>
+            <div style={{ height: 220, overflowY: 'scroll', display: 'grid', gap: 8 }}>
               {urgentWls.map((w) => {
                 const anyW: any = w as any;
                 const attachments = anyW.attachments || {};
