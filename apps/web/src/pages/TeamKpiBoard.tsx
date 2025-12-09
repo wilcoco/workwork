@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+// TeamKpiBoard: 최근 실적 셀 레이아웃 조정용 빌드 트리거 주석
 
 type Pillar = 'Q' | 'C' | 'D' | 'DEV' | 'P';
 
@@ -286,50 +287,54 @@ export function TeamKpiBoard() {
                           const h = r.history || [];
                           if (!h.length) return '-';
                           const latest = h[0];
+                          const latestDate = latest.createdAt ? new Date(latest.createdAt).toISOString().slice(0,10) : '-';
                           return (
-                            <details>
-                              <summary style={{ cursor: 'pointer' }}>
-                                <div style={{ display: 'grid', gap: 4 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ color: '#334155' }}>25목표 {r.year25Target == null ? '-' : r.year25Target} / 25실적 {r.baseline == null ? '-' : r.baseline} / 26목표 {r.target == null ? '-' : r.target}{r.unit ? ' ' + r.unit : ''}</span>
-                                    {(() => {
-                                      // sparkline
-                                      const vals = h.slice(0, 6).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
-                                      const defined = vals.filter((v) => v != null) as number[];
-                                      if (!defined.length) return null;
-                                      const w = 60, he = 24, pad = 2;
-                                      const min = Math.min(...defined, 0);
-                                      const max = Math.max(...defined, r.target || 0);
-                                      const scaleY = (v: number) => {
-                                        if (max === min) return he/2;
-                                        return he - pad - ((v - min) / (max - min)) * (he - pad*2);
-                                      };
-                                      const pts = defined.map((v, i) => `${(i*(w/(defined.length-1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
-                                      const tgtY = scaleY(r.target || 0);
+                            <div style={{ display: 'grid', gap: 4 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span>{latest.value == null ? '-' : latest.value}</span>
+                                {(() => {
+                                  // sparkline (최근 값들의 흐름은 그대로 유지)
+                                  const vals = h.slice(0, 6).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
+                                  const defined = vals.filter((v) => v != null) as number[];
+                                  if (!defined.length) return null;
+                                  const w = 60, he = 24, pad = 2;
+                                  const min = Math.min(...defined, 0);
+                                  const max = Math.max(...defined, r.target || 0);
+                                  const scaleY = (v: number) => {
+                                    if (max === min) return he/2;
+                                    return he - pad - ((v - min) / (max - min)) * (he - pad*2);
+                                  };
+                                  const pts = defined.map((v, i) => `${(i*(w/(defined.length-1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
+                                  const tgtY = scaleY(r.target || 0);
+                                  return (
+                                    <svg width={w} height={he}>
+                                      <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
+                                      {r.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
+                                    </svg>
+                                  );
+                                })()}
+                                {typeof r.stalenessDays === 'number' && (
+                                  <span style={{ fontSize: 11, color: r.stalenessDays >= 30 ? '#991b1b' : r.stalenessDays >= 14 ? '#92400e' : '#475569' }}>⏱ {r.stalenessDays}일</span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>입력일자 {latestDate}</div>
+                              <details>
+                                <summary style={{ cursor: 'pointer', fontSize: 12, color: '#64748b' }}>더보기</summary>
+                                <div style={{ marginTop: 4 }}>
+                                  <ul style={{ margin: 0, paddingLeft: 16, display: 'grid', gap: 4 }}>
+                                    {h.map((e, i) => {
+                                      const d = e.createdAt ? new Date(e.createdAt).toISOString().slice(0,10) : '-';
                                       return (
-                                        <svg width={w} height={he}>
-                                          <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
-                                          {r.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
-                                        </svg>
+                                        <li key={i}>
+                                          <div>{e.value == null ? '-' : e.value}</div>
+                                          <div style={{ fontSize: 12, color: '#64748b' }}>입력일자 {d}</div>
+                                        </li>
                                       );
-                                    })()}
-                                    {typeof r.stalenessDays === 'number' && (
-                                      <span style={{ fontSize: 11, color: r.stalenessDays >= 30 ? '#991b1b' : r.stalenessDays >= 14 ? '#92400e' : '#475569' }}>⏱ {r.stalenessDays}일</span>
-                                    )}
-                                  </div>
-                                  <div style={{ fontSize: 12, color: '#64748b' }}>더보기</div>
-                                </div>
-                              </summary>
-                              <div style={{ marginTop: 6, display: 'grid', gap: 8 }}>
-                                <div>
-                                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                                    {h.map((e, i) => (
-                                      <li key={i}>{e.label}: {e.value == null ? '-' : e.value} · 입력 {e.createdAt ? new Date(e.createdAt).toISOString().slice(0,10) : '-'}</li>
-                                    ))}
+                                    })}
                                   </ul>
                                 </div>
-                              </div>
-                            </details>
+                              </details>
+                            </div>
                           );
                         })()}</td>
                         <td style={td}>{(() => {
