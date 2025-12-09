@@ -30,6 +30,8 @@ class CreateKeyResultDto {
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
   @IsOptional() @IsNumber()
   baseline?: number;
+  @IsOptional() @IsNumber()
+  year25Target?: number;
   @IsOptional() @IsEnum({ AT_LEAST: 'AT_LEAST', AT_MOST: 'AT_MOST' } as any)
   direction?: 'AT_LEAST' | 'AT_MOST';
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
@@ -56,6 +58,7 @@ class UpdateKeyResultDto {
   @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
   @IsOptional() @IsNumber() baseline?: number;
+  @IsOptional() @IsNumber() year25Target?: number;
   @IsOptional() @IsEnum({ AT_LEAST: 'AT_LEAST', AT_MOST: 'AT_MOST' } as any)
   direction?: 'AT_LEAST' | 'AT_MOST';
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
@@ -266,6 +269,7 @@ export class OkrsController {
         type: (dto.type as any) ?? undefined,
         pillar: (dto.pillar as any) ?? undefined,
         baseline: dto.baseline as any,
+        year25Target: (dto.year25Target as any) ?? undefined,
         direction: (dto.direction as any) ?? undefined,
         cadence: (dto.cadence as any) ?? undefined,
       } as any),
@@ -297,6 +301,7 @@ export class OkrsController {
       type: (dto.type as any) ?? undefined,
       pillar: (dto.pillar as any) ?? undefined,
       baseline: typeof dto.baseline === 'number' ? dto.baseline : undefined,
+      year25Target: typeof dto.year25Target === 'number' ? dto.year25Target : undefined,
       direction: (dto.direction as any) ?? undefined,
       cadence: (dto.cadence as any) ?? undefined,
     };
@@ -391,6 +396,7 @@ export class OkrsController {
         metric: kr.metric,
         target: kr.target,
         unit: kr.unit,
+        year25Target: (kr as any).year25Target,
         baseline: kr.baseline,
         type: kr.type,
         pillar: kr.pillar,

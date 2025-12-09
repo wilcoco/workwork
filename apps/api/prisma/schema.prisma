@@ -161,6 +161,7 @@ model KeyResult {
   alignedObjectives Objective[] @relation("ObjectiveAlignedToKR")
   pillar       Pillar?
   baseline     Float?
+  year25Target Float?
   cadence      Cadence?
   progressEntries ProgressEntry[]
   direction    ThresholdDirection?

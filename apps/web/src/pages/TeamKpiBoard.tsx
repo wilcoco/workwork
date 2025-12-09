@@ -13,6 +13,7 @@ type KrRow = {
   unit: string;
   cadence: string | '';
   baseline: number | null;
+  year25Target?: number | null;
   target: number;
   weight: number | null;
   direction?: 'AT_LEAST' | 'AT_MOST' | null;
@@ -40,6 +41,7 @@ export function TeamKpiBoard() {
   const [rows, setRows] = useState<KrRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [groupShowLimit, setGroupShowLimit] = useState<Record<string, number>>({});
+  const [histMore, setHistMore] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function loadOrgs() {
@@ -71,6 +73,7 @@ export function TeamKpiBoard() {
               unit: kr.unit || '-',
               cadence: kr.cadence || '',
               baseline: typeof kr.baseline === 'number' ? kr.baseline : null,
+              year25Target: typeof (kr as any).year25Target === 'number' ? (kr as any).year25Target : null,
               target: typeof kr.target === 'number' ? kr.target : 0,
               weight: typeof kr.weight === 'number' ? kr.weight : null,
               direction: (kr as any)?.direction ?? null,
@@ -249,9 +252,10 @@ export function TeamKpiBoard() {
                     <th style={th}>구 분</th>
                     <th style={th}>단위</th>
                     <th style={th}>관리 주기</th>
-                    <th style={th}>전년 실적</th>
-                    <th style={th}>금년 목표</th>
-                    <th style={th}>기간별 실적</th>
+                    <th style={th}>25년 목표</th>
+                    <th style={th}>25년 실적</th>
+                    <th style={th}>26년 목표</th>
+                    <th style={th}>최근 실적</th>
                     <th style={th}>커버리지</th>
                     <th style={th}>향상률</th>
                     <th style={th}>평가비중</th>
@@ -276,8 +280,9 @@ export function TeamKpiBoard() {
                         </td>
                         <td style={td}>{r.unit}</td>
                         <td style={td}>{'월'}</td>
+                        <td style={td}>{r.year25Target == null ? '-' : r.year25Target}</td>
                         <td style={td}>{r.baseline == null ? '-' : r.baseline}</td>
-                        <td style={td}>{r.target}</td>
+                        <td style={td}>{r.target == null ? '-' : r.target}</td>
                         <td style={td}>{(() => {
                           const h = r.history || [];
                           if (!h.length) return '-';
@@ -301,7 +306,7 @@ export function TeamKpiBoard() {
                                       return he - pad - ((v - min) / (max - min)) * (he - pad*2);
                                     };
                                     const pts = defined.map((v, i) => `${(i*(w/(defined.length-1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
-                                    const tgtY = scaleY(r.target);
+                                    const tgtY = scaleY(r.target || 0);
                                     return (
                                       <svg width={w} height={he}>
                                         <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
@@ -314,14 +319,27 @@ export function TeamKpiBoard() {
                                   )}
                                 </div>
                               </summary>
-                              <div style={{ marginTop: 6 }}>
-                                <ul style={{ margin: 0, paddingLeft: 16 }}>
-                                  {h.map((e, i) => (
-                                    <li key={i}>
-                                      {e.label}: {e.value == null ? '-' : e.value} · 입력 {e.createdAt ? new Date(e.createdAt).toLocaleString() : '-'}
-                                    </li>
-                                  ))}
-                                </ul>
+                              <div style={{ marginTop: 6, display: 'grid', gap: 8 }}>
+                                <div style={{ color: '#334155' }}>입력값: 25목표 {r.year25Target == null ? '-' : r.year25Target} / 25실적 {r.baseline == null ? '-' : r.baseline} / 26목표 {r.target == null ? '-' : r.target}{r.unit ? ' ' + r.unit : ''}</div>
+                                <div>
+                                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                    {h.slice(0, 8).map((e, i) => (
+                                      <li key={i}>입력일자 {e.createdAt ? new Date(e.createdAt).toISOString().slice(0,10) : '-'}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div>
+                                  <button className="btn btn-ghost" onClick={(ev) => { ev.preventDefault(); setHistMore((prev) => ({ ...prev, [r.id]: !prev[r.id] })); }}>{histMore[r.id] ? '접기' : '누적 더보기'}</button>
+                                </div>
+                                {histMore[r.id] && (
+                                  <div>
+                                    <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                      {h.map((e, i) => (
+                                        <li key={i}>{e.label}: {e.value == null ? '-' : e.value} · 입력 {e.createdAt ? new Date(e.createdAt).toLocaleString() : '-'}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
                               </div>
                             </details>
                           );

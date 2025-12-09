@@ -32,6 +32,7 @@ export function TeamKpiInput() {
   const [krTitle, setKrTitle] = useState('');
   const [krMetric, setKrMetric] = useState('');
   const [krBaseline, setKrBaseline] = useState<string>('');
+  const [krTarget25, setKrTarget25] = useState<string>('');
   const [krTarget, setKrTarget] = useState<string>('');
   const [krUnit, setKrUnit] = useState('');
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
@@ -141,6 +142,7 @@ export function TeamKpiInput() {
           unit: krUnit,
           pillar: krPillar,
           baseline: krBaseline === '' ? undefined : Number(krBaseline),
+          year25Target: krTarget25 === '' ? undefined : Number(krTarget25),
           direction: krDirection,
           cadence: krCadence || undefined,
         }),
@@ -171,7 +173,7 @@ export function TeamKpiInput() {
           }),
         });
       }
-      setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST');
+      setKrTitle(''); setKrMetric(''); setKrTarget25(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST');
       setTaskRows([{ title: '', desc: '', months: Array(12).fill(false) }]);
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
@@ -220,9 +222,10 @@ export function TeamKpiInput() {
         </div>
         <input placeholder="KPI명" value={krTitle} onChange={(e) => setKrTitle(e.target.value)} />
         <input placeholder="KPI 내용(산식)" value={krMetric} onChange={(e) => setKrMetric(e.target.value)} />
-        <div className="resp-3">
-          <input type="number" step="any" placeholder="기준값(작년)" value={krBaseline} onChange={(e) => setKrBaseline(e.target.value)} />
-          <input type="number" step="any" placeholder="목표값" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} />
+        <div className="resp-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+          <input type="number" step="any" placeholder="25년 목표" value={krTarget25} onChange={(e) => setKrTarget25(e.target.value)} />
+          <input type="number" step="any" placeholder="25년 실적" value={krBaseline} onChange={(e) => setKrBaseline(e.target.value)} />
+          <input type="number" step="any" placeholder="26년 목표" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} />
           <input placeholder="단위(예: %, 건)" value={krUnit} onChange={(e) => setKrUnit(e.target.value)} />
         </div>
         <div className="resp-2">
@@ -280,7 +283,7 @@ export function TeamKpiInput() {
                 {krs.map(({ kr, obj }: any) => (
                   <li key={kr.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                     <div style={{ fontWeight: 600 }}>{obj?.title ? `${obj.title} / KR: ${kr.title}` : `KR: ${kr.title}`}</div>
-                    <div style={{ color: '#334155' }}>({kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
+                    <div style={{ color: '#334155' }}>(25목표: {kr.year25Target != null ? kr.year25Target : '-'} / 25실적: {kr.baseline != null ? kr.baseline : '-'} / 26목표: {kr.target != null ? kr.target : '-'}{kr.unit ? ' ' + kr.unit : ''})</div>
                     <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}</div>
                     {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
                       <button
@@ -337,7 +340,7 @@ export function TeamKpiInput() {
                       <div style={{ display: 'grid', gap: 4 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                           <div style={{ fontWeight: 600 }}>{o.title} / KR: {kr.title}</div>
-                          <div style={{ color: '#334155' }}>({kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
+                          <div style={{ color: '#334155' }}>(25목표: {kr.year25Target != null ? kr.year25Target : '-'} / 25실적: {kr.baseline != null ? kr.baseline : '-'} / 26목표: {kr.target != null ? kr.target : '-'}{kr.unit ? ' ' + kr.unit : ''})</div>
                           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}{typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}</div>
                           {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
                             <button
