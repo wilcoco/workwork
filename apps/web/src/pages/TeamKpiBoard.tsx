@@ -287,12 +287,11 @@ export function TeamKpiBoard() {
                           const h = r.history || [];
                           if (!h.length) return '-';
                           const latest = h[0];
-                          const ts = latest.createdAt ? new Date(latest.createdAt).toISOString().slice(0,10) : '-';
                           return (
                             <details>
                               <summary style={{ cursor: 'pointer' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <span>최근 {latest.label}: {latest.value == null ? '-' : latest.value} · 입력 {ts}</span>
+                                  <span>{latest.value == null ? '-' : latest.value}</span>
                                   {(() => {
                                     // sparkline
                                     const vals = h.slice(0, 6).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
