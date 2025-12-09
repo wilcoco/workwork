@@ -255,7 +255,7 @@ export function TeamKpiBoard() {
                     <th style={th}>25년 목표</th>
                     <th style={th}>25년 실적</th>
                     <th style={th}>26년 목표</th>
-                    <th style={th}>최근 실적</th>
+                    <th style={th}>26년 실적</th>
                     <th style={th}>커버리지</th>
                     <th style={th}>향상률</th>
                     <th style={th}>평가비중</th>
