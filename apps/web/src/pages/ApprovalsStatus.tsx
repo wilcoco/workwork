@@ -40,7 +40,6 @@ export function ApprovalsStatus() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <h2 style={{ margin: 0 }}>결제 통계</h2>
       <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
         <input placeholder="요청자 ID(선택)" value={filters.requestedById || ''} onChange={(e) => onChange('requestedById', e.target.value)} style={input} />
         <input placeholder="현재 결재자 ID(선택)" value={filters.approverId || ''} onChange={(e) => onChange('approverId', e.target.value)} style={input} />

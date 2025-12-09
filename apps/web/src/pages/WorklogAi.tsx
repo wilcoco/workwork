@@ -52,8 +52,7 @@ export function WorklogAi() {
 
   return (
     <div className="content" style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>업무일지 AI 분석</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <select value={team} onChange={(e) => { setTeam(e.target.value); setUser(''); }} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any }}>
             <option value="">전체 팀</option>

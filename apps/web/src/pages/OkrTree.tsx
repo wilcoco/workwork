@@ -317,8 +317,7 @@ export function OkrTree() {
 
   return (
     <div className="content" style={{ display: 'grid', gap: 12, maxWidth: 1080, margin: '24px auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h2 style={{ margin: 0 }}>OKR 조회</h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <select value={filterDivisionId} onChange={(e) => { setFilterDivisionId(e.target.value); }}>
             <option value="">실(전체)</option>
