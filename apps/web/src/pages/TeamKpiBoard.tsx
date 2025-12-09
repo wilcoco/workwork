@@ -41,7 +41,6 @@ export function TeamKpiBoard() {
   const [rows, setRows] = useState<KrRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [groupShowLimit, setGroupShowLimit] = useState<Record<string, number>>({});
-  const [histMore, setHistMore] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     async function loadOrgs() {
@@ -290,55 +289,45 @@ export function TeamKpiBoard() {
                           return (
                             <details>
                               <summary style={{ cursor: 'pointer' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <span>{latest.value == null ? '-' : latest.value}</span>
-                                  {(() => {
-                                    // sparkline
-                                    const vals = h.slice(0, 6).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
-                                    const defined = vals.filter((v) => v != null) as number[];
-                                    if (!defined.length) return null;
-                                    const w = 60, he = 24, pad = 2;
-                                    const min = Math.min(...defined, 0);
-                                    const max = Math.max(...defined, r.target || 0);
-                                    const scaleY = (v: number) => {
-                                      if (max === min) return he/2;
-                                      return he - pad - ((v - min) / (max - min)) * (he - pad*2);
-                                    };
-                                    const pts = defined.map((v, i) => `${(i*(w/(defined.length-1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
-                                    const tgtY = scaleY(r.target || 0);
-                                    return (
-                                      <svg width={w} height={he}>
-                                        <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
-                                        {r.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
-                                      </svg>
-                                    );
-                                  })()}
-                                  {typeof r.stalenessDays === 'number' && (
-                                    <span style={{ fontSize: 11, color: r.stalenessDays >= 30 ? '#991b1b' : r.stalenessDays >= 14 ? '#92400e' : '#475569' }}>⏱ {r.stalenessDays}일</span>
-                                  )}
+                                <div style={{ display: 'grid', gap: 4 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ color: '#334155' }}>25목표 {r.year25Target == null ? '-' : r.year25Target} / 25실적 {r.baseline == null ? '-' : r.baseline} / 26목표 {r.target == null ? '-' : r.target}{r.unit ? ' ' + r.unit : ''}</span>
+                                    {(() => {
+                                      // sparkline
+                                      const vals = h.slice(0, 6).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
+                                      const defined = vals.filter((v) => v != null) as number[];
+                                      if (!defined.length) return null;
+                                      const w = 60, he = 24, pad = 2;
+                                      const min = Math.min(...defined, 0);
+                                      const max = Math.max(...defined, r.target || 0);
+                                      const scaleY = (v: number) => {
+                                        if (max === min) return he/2;
+                                        return he - pad - ((v - min) / (max - min)) * (he - pad*2);
+                                      };
+                                      const pts = defined.map((v, i) => `${(i*(w/(defined.length-1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
+                                      const tgtY = scaleY(r.target || 0);
+                                      return (
+                                        <svg width={w} height={he}>
+                                          <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
+                                          {r.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
+                                        </svg>
+                                      );
+                                    })()}
+                                    {typeof r.stalenessDays === 'number' && (
+                                      <span style={{ fontSize: 11, color: r.stalenessDays >= 30 ? '#991b1b' : r.stalenessDays >= 14 ? '#92400e' : '#475569' }}>⏱ {r.stalenessDays}일</span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: 12, color: '#64748b' }}>더보기</div>
                                 </div>
                               </summary>
                               <div style={{ marginTop: 6, display: 'grid', gap: 8 }}>
-                                <div style={{ color: '#334155' }}>입력값: 25목표 {r.year25Target == null ? '-' : r.year25Target} / 25실적 {r.baseline == null ? '-' : r.baseline} / 26목표 {r.target == null ? '-' : r.target}{r.unit ? ' ' + r.unit : ''}</div>
                                 <div>
                                   <ul style={{ margin: 0, paddingLeft: 16 }}>
-                                    {h.slice(0, 8).map((e, i) => (
-                                      <li key={i}>입력일자 {e.createdAt ? new Date(e.createdAt).toISOString().slice(0,10) : '-'}</li>
+                                    {h.map((e, i) => (
+                                      <li key={i}>{e.label}: {e.value == null ? '-' : e.value} · 입력 {e.createdAt ? new Date(e.createdAt).toISOString().slice(0,10) : '-'}</li>
                                     ))}
                                   </ul>
                                 </div>
-                                <div>
-                                  <button className="btn btn-ghost" onClick={(ev) => { ev.preventDefault(); setHistMore((prev) => ({ ...prev, [r.id]: !prev[r.id] })); }}>{histMore[r.id] ? '접기' : '누적 더보기'}</button>
-                                </div>
-                                {histMore[r.id] && (
-                                  <div>
-                                    <ul style={{ margin: 0, paddingLeft: 16 }}>
-                                      {h.map((e, i) => (
-                                        <li key={i}>{e.label}: {e.value == null ? '-' : e.value} · 입력 {e.createdAt ? new Date(e.createdAt).toISOString().slice(0,10) : '-'}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
                               </div>
                             </details>
                           );
