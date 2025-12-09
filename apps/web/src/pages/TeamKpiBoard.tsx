@@ -292,9 +292,6 @@ export function TeamKpiBoard() {
                             <div style={{ display: 'grid', gap: 4 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span>{latest.value == null ? '-' : latest.value}</span>
-                                {typeof r.stalenessDays === 'number' && (
-                                  <span style={{ fontSize: 11, color: r.stalenessDays >= 30 ? '#991b1b' : r.stalenessDays >= 14 ? '#92400e' : '#475569' }}>⏱ {r.stalenessDays}일</span>
-                                )}
                               </div>
                               <div style={{ fontSize: 12, color: '#64748b' }}>입력일자 {latestDate}</div>
                               <details>
