@@ -225,7 +225,6 @@ export function TeamKpiBoard() {
 
   return (
     <div style={{ maxWidth: 1100, margin: '24px auto', display: 'grid', gap: 12 }}>
-      <h2 style={{ margin: 0 }}>팀 KPI 보드</h2>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div className="card" style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
         <div>팀 선택</div>

@@ -173,7 +173,6 @@ export function ApprovalsSubmit() {
 
   return (
     <div style={{ display: 'grid', gap: 12, maxWidth: 640, margin: '24px auto' }}>
-      <h2 style={{ margin: 0 }}>결재 올리기</h2>
       {requestedById ? null : <div style={{ color: '#DC2626' }}>로그인이 필요합니다.</div>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {okMsg && <div style={{ color: '#0F3D73' }}>{okMsg}</div>}

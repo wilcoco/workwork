@@ -3,7 +3,6 @@ import React from 'react';
 export function OkrInstructions() {
   return (
     <div style={{ maxWidth: 980, margin: '24px auto', display: 'grid', gap: 16 }}>
-      <h2 style={{ margin: 0 }}>입력 안내: 전사 개선 목표 & KPI 체계</h2>
 
       <section className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>작성 취지</h3>

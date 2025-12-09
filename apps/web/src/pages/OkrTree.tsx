@@ -318,20 +318,20 @@ export function OkrTree() {
   return (
     <div className="content" style={{ display: 'grid', gap: 12, maxWidth: 1080, margin: '24px auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <select value={filterDivisionId} onChange={(e) => { setFilterDivisionId(e.target.value); }}>
+        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
+          <select value={filterDivisionId} onChange={(e) => { setFilterDivisionId(e.target.value); }} style={{ width: '100%' }}>
             <option value="">실(전체)</option>
             {divisions.map((d: any) => (
               <option key={d.id} value={d.id}>{d.name}</option>
             ))}
           </select>
-          <select value={filterTeamId} onChange={(e) => { setFilterTeamId(e.target.value); }}>
+          <select value={filterTeamId} onChange={(e) => { setFilterTeamId(e.target.value); }} style={{ width: '100%' }}>
             <option value="">팀(전체)</option>
             {teams.map((t: any) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
-          <select value={filterUserId} onChange={(e) => { setFilterUserId(e.target.value); }}>
+          <select value={filterUserId} onChange={(e) => { setFilterUserId(e.target.value); }} style={{ width: '100%' }}>
             <option value="">이름(전체)</option>
             {users.map((u: any) => (
               <option key={u.id} value={u.id}>{u.name}</option>

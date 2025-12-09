@@ -169,7 +169,6 @@ export function CoopsRequest() {
 
   return (
     <div style={{ display: 'grid', gap: 12, maxWidth: 740, margin: '24px auto' }}>
-      <h2 style={{ margin: 0 }}>업무 협조 요청</h2>
       {requesterId ? null : <div style={{ color: '#DC2626' }}>로그인이 필요합니다.</div>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {okMsg && <div style={{ color: '#0F3D73' }}>{okMsg}</div>}
