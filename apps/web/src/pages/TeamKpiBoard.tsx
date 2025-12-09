@@ -257,7 +257,6 @@ export function TeamKpiBoard() {
                     <th style={th}>26년 목표</th>
                     <th style={th}>26년 실적</th>
                     <th style={th}>그래프</th>
-                    <th style={th}>향상률</th>
                     <th style={th}>평가비중</th>
                     <th style={th}>주요 추진 계획</th>
                   </tr>
@@ -337,7 +336,6 @@ export function TeamKpiBoard() {
                             </div>
                           );
                         })()}</td>
-                        <td style={td}>{delta == null ? '-' : `${arrow} ${Math.abs(delta)}`}</td>
                         <td style={td}>{r.weight == null ? '-' : r.weight}</td>
                         <td style={td}>{r.initiatives.length ? (
                           <ul style={{ margin: 0, paddingLeft: 16 }}>
