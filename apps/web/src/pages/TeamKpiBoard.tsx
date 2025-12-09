@@ -287,7 +287,7 @@ export function TeamKpiBoard() {
                           const h = r.history || [];
                           if (!h.length) return '-';
                           const latest = h[0];
-                          const ts = latest.createdAt ? new Date(latest.createdAt).toLocaleString() : '-';
+                          const ts = latest.createdAt ? new Date(latest.createdAt).toISOString().slice(0,10) : '-';
                           return (
                             <details>
                               <summary style={{ cursor: 'pointer' }}>
@@ -335,7 +335,7 @@ export function TeamKpiBoard() {
                                   <div>
                                     <ul style={{ margin: 0, paddingLeft: 16 }}>
                                       {h.map((e, i) => (
-                                        <li key={i}>{e.label}: {e.value == null ? '-' : e.value} · 입력 {e.createdAt ? new Date(e.createdAt).toLocaleString() : '-'}</li>
+                                        <li key={i}>{e.label}: {e.value == null ? '-' : e.value} · 입력 {e.createdAt ? new Date(e.createdAt).toISOString().slice(0,10) : '-'}</li>
                                       ))}
                                     </ul>
                                   </div>
