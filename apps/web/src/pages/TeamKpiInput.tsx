@@ -184,7 +184,6 @@ export function TeamKpiInput() {
 
   return (
     <div style={{ maxWidth: 980, margin: '24px auto', display: 'grid', gap: 12 }}>
-      <h2 style={{ margin: 0 }}>팀 KPI 입력</h2>
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
       <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
