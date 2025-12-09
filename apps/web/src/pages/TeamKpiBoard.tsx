@@ -256,7 +256,7 @@ export function TeamKpiBoard() {
                     <th style={th}>25년 실적</th>
                     <th style={th}>26년 목표</th>
                     <th style={th}>26년 실적</th>
-                    <th style={th}>커버리지</th>
+                    <th style={th}>그래프</th>
                     <th style={th}>향상률</th>
                     <th style={th}>평가비중</th>
                     <th style={th}>주요 추진 계획</th>
@@ -292,27 +292,6 @@ export function TeamKpiBoard() {
                             <div style={{ display: 'grid', gap: 4 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span>{latest.value == null ? '-' : latest.value}</span>
-                                {(() => {
-                                  // sparkline (최근 값들의 흐름은 그대로 유지)
-                                  const vals = h.slice(0, 6).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
-                                  const defined = vals.filter((v) => v != null) as number[];
-                                  if (!defined.length) return null;
-                                  const w = 60, he = 24, pad = 2;
-                                  const min = Math.min(...defined, 0);
-                                  const max = Math.max(...defined, r.target || 0);
-                                  const scaleY = (v: number) => {
-                                    if (max === min) return he/2;
-                                    return he - pad - ((v - min) / (max - min)) * (he - pad*2);
-                                  };
-                                  const pts = defined.map((v, i) => `${(i*(w/(defined.length-1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
-                                  const tgtY = scaleY(r.target || 0);
-                                  return (
-                                    <svg width={w} height={he}>
-                                      <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
-                                      {r.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
-                                    </svg>
-                                  );
-                                })()}
                                 {typeof r.stalenessDays === 'number' && (
                                   <span style={{ fontSize: 11, color: r.stalenessDays >= 30 ? '#991b1b' : r.stalenessDays >= 14 ? '#92400e' : '#475569' }}>⏱ {r.stalenessDays}일</span>
                                 )}
@@ -338,15 +317,26 @@ export function TeamKpiBoard() {
                           );
                         })()}</td>
                         <td style={td}>{(() => {
-                          const c = r.coverage;
-                          if (!c) return '-';
-                          const pct = Math.round((c.pct || 0) * 100);
+                          const h = r.history || [];
+                          if (!h.length) return '-';
+                          const vals = h.slice(0, 12).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
+                          const defined = vals.filter((v) => v != null) as number[];
+                          if (!defined.length) return '-';
+                          const w = 140, he = 40, pad = 4;
+                          const min = Math.min(...defined, 0);
+                          const max = Math.max(...defined, r.target || 0);
+                          const scaleY = (v: number) => {
+                            if (max === min) return he / 2;
+                            return he - pad - ((v - min) / (max - min)) * (he - pad * 2);
+                          };
+                          const pts = defined.map((v, i) => `${(i * (w / Math.max(defined.length - 1, 1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
+                          const tgtY = scaleY(r.target || 0);
                           return (
-                            <div style={{ minWidth: 120 }}>
-                              <div style={{ height: 8, background: '#e5e7eb', borderRadius: 999, overflow: 'hidden' }}>
-                                <div style={{ width: `${pct}%`, height: '100%', background: pct >= 80 ? '#16a34a' : pct >= 50 ? '#f59e0b' : '#ef4444' }} />
-                              </div>
-                              <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{c.numActive}/{c.numTotal} ({pct}%)</div>
+                            <div style={{ minWidth: 140 }}>
+                              <svg width={w} height={he}>
+                                <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
+                                {r.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
+                              </svg>
                             </div>
                           );
                         })()}</td>
