@@ -110,6 +110,7 @@ export function WorklogSearch() {
     setError(null);
     try {
       const params = new URLSearchParams();
+      const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
       if (team) params.set('team', team);
       if (user) params.set('user', user);
       if (from) params.set('from', from);
@@ -118,6 +119,7 @@ export function WorklogSearch() {
       if (kind) params.set('kind', kind);
       if (krId) params.set('krId', krId);
       if (initiativeId) params.set('initiativeId', initiativeId);
+      if (viewerId) params.set('viewerId', viewerId);
       const res = await apiJson<{ items: Item[] }>(`/api/worklogs/search?${params.toString()}`);
       setItems(res.items);
     } catch (e) {
@@ -132,7 +134,9 @@ export function WorklogSearch() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<{ items: Item[] }>(`/api/worklogs/search?limit=60`);
+      const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+      const qs = viewerId ? `limit=60&viewerId=${encodeURIComponent(viewerId)}` : 'limit=60';
+      const res = await apiJson<{ items: Item[] }>(`/api/worklogs/search?${qs}`);
       setItems(res.items);
     } catch (e) {
       setError('조회 실패');

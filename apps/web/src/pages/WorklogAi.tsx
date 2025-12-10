@@ -15,10 +15,13 @@ export function WorklogAi() {
     setLoading(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ days: String(days) });
-      if (team) qs.set('team', team);
-      if (user) qs.set('user', user);
-      const r = await apiJson<{ from: string; to: string; days: number; summary: string }>(`/api/worklogs/ai/summary?${qs.toString()}`);
+      const params = new URLSearchParams();
+      const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+      params.set('days', String(days));
+      if (team) params.set('team', team);
+      if (user) params.set('user', user);
+      if (viewerId) params.set('viewerId', viewerId);
+      const r = await apiJson<{ from: string; to: string; days: number; summary: string }>(`/api/worklogs/ai/summary?${params.toString()}`);
       setSummary(r.summary || '');
       setRange({ from: r.from, to: r.to });
     } catch (e: any) {

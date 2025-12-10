@@ -30,6 +30,7 @@ export function WorklogQuickNew() {
   const [contentPlain, setContentPlain] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'>('ALL');
 
   useEffect(() => {
     const stored = localStorage.getItem('teamName') || '';
@@ -172,6 +173,7 @@ export function WorklogQuickNew() {
             attachments: { files: attachments },
             date,
             urgent,
+            visibility,
           }),
         }
       );
@@ -317,6 +319,16 @@ export function WorklogQuickNew() {
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
               <input type="checkbox" checked={initiativeDone} onChange={(e) => setInitiativeDone(e.target.checked)} style={{ width: 16, height: 16 }} /> 과제 완료
             </label>
+            <select
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as any)}
+              style={{ ...input, width: 'auto', paddingInline: 10 }}
+            >
+              <option value="ALL">조회 권한: 전체</option>
+              <option value="MANAGER_PLUS">조회 권한: 팀장이상</option>
+              <option value="EXEC_PLUS">조회 권한: 임원이상</option>
+              <option value="CEO_ONLY">조회 권한: 대표이사</option>
+            </select>
           </div>
           {(() => {
             if (!selection) return null;

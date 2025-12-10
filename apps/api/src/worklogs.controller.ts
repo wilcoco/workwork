@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
 class ReportDto {
@@ -116,6 +116,10 @@ class CreateWorklogDto {
   @IsOptional()
   @IsBoolean()
   urgent?: boolean;
+
+  @IsOptional()
+  @IsEnum({ ALL: 'ALL', MANAGER_PLUS: 'MANAGER_PLUS', EXEC_PLUS: 'EXEC_PLUS', CEO_ONLY: 'CEO_ONLY' } as any)
+  visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY';
 }
 
 class CreateSimpleWorklogDto {
@@ -131,6 +135,8 @@ class CreateSimpleWorklogDto {
   @IsOptional() @IsString() initiativeId?: string;
   @IsOptional() @IsString() userGoalId?: string;
   @IsOptional() @IsString() keyResultId?: string;
+  @IsOptional() @IsEnum({ ALL: 'ALL', MANAGER_PLUS: 'MANAGER_PLUS', EXEC_PLUS: 'EXEC_PLUS', CEO_ONLY: 'CEO_ONLY' } as any)
+  visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY';
 }
 
 @Controller('worklogs')
@@ -168,6 +174,7 @@ export class WorklogsController {
         attachments: dto.attachments ?? undefined,
         date: dateVal,
         urgent: !!dto.urgent,
+        visibility: (dto.visibility as any) ?? 'ALL',
       },
     });
 
@@ -449,6 +456,7 @@ export class WorklogsController {
         attachments: attachmentsJson as any,
         date: dateValSimple,
         urgent: !!dto.urgent,
+        visibility: (dto.visibility as any) ?? 'ALL',
       },
     });
     await this.prisma.event.create({ data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { simple: true } } });
@@ -468,6 +476,7 @@ export class WorklogsController {
     @Query('krId') krId?: string,
     @Query('initiativeId') initiativeId?: string,
     @Query('urgent') urgentStr?: string,
+    @Query('viewerId') viewerId?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '20', 10) || 20, 100);
     const where: any = {};
@@ -485,6 +494,23 @@ export class WorklogsController {
       if (v === 'false' || v === '0') (where as any).urgent = false;
     }
 
+    // Determine viewer visibility rights
+    let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
+    let viewer: any = null;
+    if (viewerId) {
+      viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
+      if (role === 'CEO') {
+        visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      } else if (role === 'EXEC') {
+        visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
+      } else if (role === 'MANAGER') {
+        visibilityIn = ['ALL', 'MANAGER_PLUS'];
+      } else {
+        visibilityIn = ['ALL'];
+      }
+    }
+
     const items = await this.prisma.worklog.findMany({
       where: {
         ...where,
@@ -492,6 +518,14 @@ export class WorklogsController {
         ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
         ...(krId ? { initiative: { keyResultId: krId } } : {}),
         ...(initiativeId ? { initiativeId } : {}),
+        ...(viewerId
+          ? {
+              OR: [
+                { createdById: viewerId },
+                { visibility: { in: visibilityIn as any } },
+              ],
+            }
+          : { visibility: { in: visibilityIn as any } }),
       },
       take: limit,
       skip: cursor ? 1 : 0,
@@ -527,15 +561,25 @@ export class WorklogsController {
   }
 
   @Get('stats/weekly')
-  async weeklyStats(@Query('days') daysStr?: string, @Query('team') teamName?: string, @Query('user') userName?: string) {
+  async weeklyStats(@Query('days') daysStr?: string, @Query('team') teamName?: string, @Query('user') userName?: string, @Query('viewerId') viewerId?: string) {
     const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
     const where: any = { date: { gte: from, lte: now } };
     if (teamName) where.createdBy = { orgUnit: { name: teamName } };
     if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+    // Visibility filter
+    let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
+    if (viewerId) {
+      const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
+      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
+      else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
+      else visibilityIn = ['ALL'];
+    }
     const items = await (this.prisma as any).worklog.findMany({
-      where,
+      where: { ...where, visibility: { in: visibilityIn as any } },
       include: { createdBy: { include: { orgUnit: true } } },
       orderBy: { date: 'desc' },
       take: 2000,
@@ -561,7 +605,7 @@ export class WorklogsController {
   }
 
   @Get('ai/summary')
-  async aiSummary(@Query('days') daysStr?: string, @Query('team') teamName?: string, @Query('user') userName?: string) {
+  async aiSummary(@Query('days') daysStr?: string, @Query('team') teamName?: string, @Query('user') userName?: string, @Query('viewerId') viewerId?: string) {
     const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
     if (!apiKey) {
       throw new BadRequestException('Missing OPENAI_API_KEY (or *_CAMS / *_IAT). Set it as a Railway env var.');
