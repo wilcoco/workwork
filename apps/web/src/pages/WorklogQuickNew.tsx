@@ -269,14 +269,14 @@ export function WorklogQuickNew() {
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>나의 과제 / KPI 및 과제</label>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제</label>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
               // Keep current date as-is (default is today in KST)
             }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="" disabled>대상을 선택하세요</option>
-              <optgroup label="나의 과제">
+              <optgroup label="OKR 과제">
                 {(() => {
                   const kpiKrIds = new Set(teamKpis.map((k) => k.id));
                   const list = myTasks.filter((t) => !t.krId || !kpiKrIds.has(t.krId));
@@ -289,7 +289,7 @@ export function WorklogQuickNew() {
                   });
                 })()}
               </optgroup>
-              <optgroup label="팀 KPI 및 과제">
+              <optgroup label="KPI 과제">
                 {teamKpis.length ? (
                   teamKpis.flatMap((k) => {
                     const options: JSX.Element[] = [];
