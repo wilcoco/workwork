@@ -59,6 +59,18 @@ export function ApprovalsMine() {
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it) => {
           const meta = `작성자: ${it.requestedBy?.name || '-'}${it.currentApprover?.name ? ` · 현재 결재자: ${it.currentApprover.name}` : ''}`;
+          const steps: any[] = Array.isArray(it.steps) ? it.steps : [];
+          const stepSummary = (() => {
+            if (!steps.length) return '';
+            const label = (s: any) => {
+              if (s.status === 'APPROVED') return '승인 완료';
+              if (s.status === 'REJECTED') return '반려';
+              if (s.status === 'EXPIRED') return '만료';
+              return '승인 대기';
+            };
+            const parts = steps.map((s) => `${s.stepNo}단계: ${label(s)}`);
+            return `결재선: ${parts.join(', ')}`;
+          })();
           return (
             <div key={it.id} style={card} onClick={() => setActive(it)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -67,6 +79,7 @@ export function ApprovalsMine() {
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
+              {stepSummary && <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{stepSummary}</div>}
               {it._doc && (
                 it._doc.attachments?.contentHtml ? (
                   <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(it._doc.attachments.contentHtml) }} />
@@ -139,24 +152,6 @@ export function ApprovalsMine() {
                       })}
                     </div>
                   ) : null}
-                  {Array.isArray(it.steps) && it.steps.length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>결재선 진행 상태</div>
-                      <div style={{ display: 'grid', gap: 4 }}>
-                        {it.steps.map((s: any) => (
-                          <div key={s.id} style={{ fontSize: 12, color: '#334155', padding: 6, borderRadius: 6, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                            <div>
-                              {s.stepNo}. {s.approverId} · {s.status}{' '}
-                              {s.actedAt ? `· ${new Date(s.actedAt).toLocaleString()}` : ''}
-                            </div>
-                            {s.comment ? (
-                              <div style={{ marginTop: 2, color: '#475569', whiteSpace: 'pre-wrap' }}>의견: {s.comment}</div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                     <button type="button" style={primaryBtn} onClick={() => setActive(null)}>닫기</button>
                   </div>
