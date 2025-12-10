@@ -6,6 +6,7 @@ export function CoopsInbox() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [active, setActive] = useState<any | null>(null);
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -69,7 +70,7 @@ export function CoopsInbox() {
           const meta = wl ? `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
           const when = wl?.date || wl?.createdAt || n.createdAt;
           return (
-            <div key={n.id} style={card}>
+            <div key={n.id} style={card} onClick={() => setActive(n)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b>{title}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
@@ -83,16 +84,52 @@ export function CoopsInbox() {
                 )
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button onClick={() => act('accept', n.payload?.ticketId, n.id)} style={primaryBtn}>수락</button>
-                <button onClick={() => act('start', n.payload?.ticketId)} style={ghostBtn}>시작</button>
-                <button onClick={() => act('resolve', n.payload?.ticketId)} style={ghostBtn}>완료</button>
-                <button onClick={() => act('decline', n.payload?.ticketId, n.id)} style={ghostBtn}>거절</button>
+                <button onClick={(e) => { e.stopPropagation(); act('accept', n.payload?.ticketId, n.id); }} style={primaryBtn}>수락</button>
+                <button onClick={(e) => { e.stopPropagation(); act('start', n.payload?.ticketId); }} style={ghostBtn}>시작</button>
+                <button onClick={(e) => { e.stopPropagation(); act('resolve', n.payload?.ticketId); }} style={ghostBtn}>완료</button>
+                <button onClick={(e) => { e.stopPropagation(); act('decline', n.payload?.ticketId, n.id); }} style={ghostBtn}>거절</button>
               </div>
             </div>
           );
         })}
         {!items.length && <div>내게 할당된 협조 없음</div>}
       </div>
+      {active && (
+        <div style={modalOverlay} onClick={() => setActive(null)}>
+          <div style={modalBody} onClick={(e) => e.stopPropagation()}>
+            {(() => {
+              const n = active;
+              const wl = (n as any)._doc as any | null;
+              const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : '문서 정보 없음';
+              const meta = wl ? `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
+              const when = wl?.date || wl?.createdAt || n.createdAt;
+              return (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <b>{title}</b>
+                    <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
+                  </div>
+                  {meta && <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>}
+                  {wl && (
+                    wl.attachments?.contentHtml ? (
+                      <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
+                    ) : (
+                      <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(wl.note || '').split('\n').slice(1).join('\n')}</div>
+                    )
+                  )}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
+                    <button onClick={() => act('accept', n.payload?.ticketId, n.id)} style={primaryBtn}>수락</button>
+                    <button onClick={() => act('start', n.payload?.ticketId)} style={ghostBtn}>시작</button>
+                    <button onClick={() => act('resolve', n.payload?.ticketId)} style={ghostBtn}>완료</button>
+                    <button onClick={() => act('decline', n.payload?.ticketId, n.id)} style={ghostBtn}>거절</button>
+                    <button onClick={() => setActive(null)} style={ghostBtn}>닫기</button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -129,6 +166,28 @@ const card: React.CSSProperties = {
   borderRadius: 10,
   padding: 12,
   boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
+};
+
+const modalOverlay: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.45)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 50,
+  padding: 16,
+};
+
+const modalBody: React.CSSProperties = {
+  background: '#FFFFFF',
+  borderRadius: 12,
+  maxWidth: 900,
+  width: '100%',
+  maxHeight: '80vh',
+  padding: 16,
+  overflow: 'auto',
+  boxShadow: '0 20px 40px rgba(15, 23, 42, 0.3)',
 };
 
 function stripImgs(html: string): string {

@@ -6,6 +6,7 @@ export function ApprovalsMine() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [active, setActive] = useState<any | null>(null);
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -59,7 +60,7 @@ export function ApprovalsMine() {
         {items.map((it) => {
           const meta = `작성자: ${it.requestedBy?.name || '-'}${it.currentApprover?.name ? ` · 현재 결재자: ${it.currentApprover.name}` : ''}`;
           return (
-            <div key={it.id} style={card}>
+            <div key={it.id} style={card} onClick={() => setActive(it)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b>{it.docTitle || '문서 정보 없음'}</b>
                 <span style={chip}>{it.status}</span>
@@ -96,6 +97,57 @@ export function ApprovalsMine() {
         })}
         {!items.length && <div>표시된 진행 내역 없음</div>}
       </div>
+      {active && (
+        <div style={modalOverlay} onClick={() => setActive(null)}>
+          <div style={modalBody} onClick={(e) => e.stopPropagation()}>
+            {(() => {
+              const it = active;
+              const wl = it._doc as any | null;
+              const title = it.docTitle || (wl?.title || '문서 정보 없음');
+              const when = it.docDate || it.createdAt;
+              const meta = `작성자: ${it.requestedBy?.name || '-'}${wl?.teamName ? ` · ${wl.teamName}` : ''}`;
+              return (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <b>{title}</b>
+                    <span style={chip}>{it.status}</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
+                  {wl && (
+                    wl.attachments?.contentHtml ? (
+                      <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
+                    ) : (
+                      <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(wl?.note || '').split('\n').slice(1).join('\n')}</div>
+                    )
+                  )}
+                  {wl?.attachments?.files?.length ? (
+                    <div className="attachments" style={{ marginTop: 8 }}>
+                      {wl.attachments.files.map((f: any, i: number) => {
+                        const url = absLink(f.url as string);
+                        const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
+                        const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+                        return (
+                          <div key={(f.filename || f.url) + i} className="attachment-item" style={{ marginBottom: 6 }}>
+                            {isImg ? (
+                              <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
+                            ) : (
+                              <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                    <button type="button" style={primaryBtn} onClick={() => setActive(null)}>닫기</button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -133,6 +185,28 @@ const chip: React.CSSProperties = {
   padding: '1px 8px',
   fontSize: 12,
   fontWeight: 700,
+};
+
+const modalOverlay: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.45)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 50,
+  padding: 16,
+};
+
+const modalBody: React.CSSProperties = {
+  background: '#FFFFFF',
+  borderRadius: 12,
+  maxWidth: 900,
+  width: '100%',
+  maxHeight: '80vh',
+  padding: 16,
+  overflow: 'auto',
+  boxShadow: '0 20px 40px rgba(15, 23, 42, 0.3)',
 };
 
 function stripImgs(html: string): string {

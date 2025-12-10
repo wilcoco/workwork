@@ -6,6 +6,7 @@ export function CoopsMine() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [active, setActive] = useState<any | null>(null);
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -44,7 +45,7 @@ export function CoopsMine() {
           const title = `협조 알림`;
           const meta = `${n.type}`;
           return (
-            <div key={n.id} style={card}>
+            <div key={n.id} style={card} onClick={() => setActive(n)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b>{title}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(n.createdAt).toLocaleString()}</span>
@@ -55,6 +56,22 @@ export function CoopsMine() {
         })}
         {!items.length && <div>표시된 진행 내역 없음</div>}
       </div>
+      {active && (
+        <div style={modalOverlay} onClick={() => setActive(null)}>
+          <div style={modalBody} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <b>협조 알림</b>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(active.createdAt).toLocaleString()}</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#334155' }}>{active.type}</div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                <button type="button" style={primaryBtn} onClick={() => setActive(null)}>닫기</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -82,4 +99,26 @@ const card: React.CSSProperties = {
   borderRadius: 10,
   padding: 12,
   boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
+};
+
+const modalOverlay: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(15, 23, 42, 0.45)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 50,
+  padding: 16,
+};
+
+const modalBody: React.CSSProperties = {
+  background: '#FFFFFF',
+  borderRadius: 12,
+  maxWidth: 600,
+  width: '100%',
+  maxHeight: '70vh',
+  padding: 16,
+  overflow: 'auto',
+  boxShadow: '0 20px 40px rgba(15, 23, 42, 0.3)',
 };
