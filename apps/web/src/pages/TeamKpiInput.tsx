@@ -126,6 +126,14 @@ export function TeamKpiInput() {
   async function createKr() {
     try {
       setError(null);
+      console.log('[TeamKpiInput] createKr clicked', {
+        userId,
+        orgUnitId,
+        krTitle,
+        krMetric,
+        krTarget,
+        krUnit,
+      });
       let objectiveId = (objectives.find((o: any) => !!o.pillar) as any)?.id;
       if (!objectiveId) {
         const now = new Date();
@@ -304,7 +312,7 @@ export function TeamKpiInput() {
           ))}
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" className="btn" onClick={() => setTaskRows((prev) => [...prev, { title: '', desc: '', months: Array(12).fill(false) }])}>과제 추가</button>
-            <button className="btn btn-primary" disabled={!userId || !orgUnitId || !krTitle || !krMetric || krTarget === '' || !krUnit} onClick={createKr}>KPI 생성</button>
+            <button type="button" className="btn btn-primary" disabled={!userId || !orgUnitId || !krTitle || !krMetric || krTarget === '' || !krUnit} onClick={createKr}>KPI 생성</button>
           </div>
         </div>
       </div>
