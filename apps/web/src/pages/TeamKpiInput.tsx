@@ -198,6 +198,7 @@ export function TeamKpiInput() {
       setTaskRows([{ title: '', desc: '', months: Array(12).fill(false) }]);
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
+      alert('KPI가 생성되었습니다.');
     } catch (e: any) {
       setError(e.message || 'KR 생성 실패');
     }
