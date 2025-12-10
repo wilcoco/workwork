@@ -114,7 +114,7 @@ export class ApprovalsController {
         dueAt: a.dueAt || null,
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
-        steps: (a.steps || []).map((s: any) => ({ id: s.id, stepNo: s.stepNo, approverId: s.approverId, status: s.status, actedAt: s.actedAt || null })),
+        steps: (a.steps || []).map((s: any) => ({ id: s.id, stepNo: s.stepNo, approverId: s.approverId, status: s.status, actedAt: s.actedAt || null, comment: s.comment || null })),
       })),
       nextCursor,
     };

@@ -7,6 +7,7 @@ export function ApprovalsInbox() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<any | null>(null);
+  const [comment, setComment] = useState<string>('');
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -53,14 +54,14 @@ export function ApprovalsInbox() {
     await load();
   }
 
-  async function approve(requestId: string, notificationId: string) {
-    await apiJson(`/api/approvals/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ actorId: userId }) });
+  async function approve(requestId: string, notificationId: string, cmt?: string) {
+    await apiJson(`/api/approvals/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: cmt || undefined }) });
     await markRead(notificationId);
   }
 
-  async function reject(requestId: string, notificationId: string) {
-    const comment = window.prompt('반려 사유를 입력하세요') || '';
-    await apiJson(`/api/approvals/${requestId}/reject`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment }) });
+  async function reject(requestId: string, notificationId: string, cmt?: string) {
+    const bodyComment = typeof cmt === 'string' ? cmt : (window.prompt('반려 사유를 입력하세요') || '');
+    await apiJson(`/api/approvals/${requestId}/reject`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: bodyComment }) });
     await markRead(notificationId);
   }
 
@@ -156,10 +157,39 @@ export function ApprovalsInbox() {
                       })}
                     </div>
                   ) : null}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
-                    <button onClick={() => approve(active.payload?.requestId, active.id)} style={primaryBtn}>승인</button>
-                    <button onClick={() => reject(active.payload?.requestId, active.id)} style={ghostBtn}>반려</button>
-                    <button onClick={() => setActive(null)} style={ghostBtn}>닫기</button>
+                  <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+                    <div>
+                      <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>결재 의견</label>
+                      <textarea
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        style={{ width: '100%', minHeight: 80, borderRadius: 8, border: '1px solid #CBD5E1', padding: 8, fontSize: 13 }}
+                        placeholder="승인 또는 반려 사유를 입력하세요"
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={async () => {
+                          await approve(active.payload?.requestId, active.id, comment);
+                          setComment('');
+                          setActive(null);
+                        }}
+                        style={primaryBtn}
+                      >
+                        승인
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await reject(active.payload?.requestId, active.id, comment || undefined);
+                          setComment('');
+                          setActive(null);
+                        }}
+                        style={ghostBtn}
+                      >
+                        반려
+                      </button>
+                      <button onClick={() => { setComment(''); setActive(null); }} style={ghostBtn}>닫기</button>
+                    </div>
                   </div>
                 </div>
               );

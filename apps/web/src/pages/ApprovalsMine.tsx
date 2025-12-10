@@ -139,6 +139,24 @@ export function ApprovalsMine() {
                       })}
                     </div>
                   ) : null}
+                  {Array.isArray(it.steps) && it.steps.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>결재선 진행 상태</div>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        {it.steps.map((s: any) => (
+                          <div key={s.id} style={{ fontSize: 12, color: '#334155', padding: 6, borderRadius: 6, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                            <div>
+                              {s.stepNo}. {s.approverId} · {s.status}{' '}
+                              {s.actedAt ? `· ${new Date(s.actedAt).toLocaleString()}` : ''}
+                            </div>
+                            {s.comment ? (
+                              <div style={{ marginTop: 2, color: '#475569', whiteSpace: 'pre-wrap' }}>의견: {s.comment}</div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                     <button type="button" style={primaryBtn} onClick={() => setActive(null)}>닫기</button>
                   </div>
