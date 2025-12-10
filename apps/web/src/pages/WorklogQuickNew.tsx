@@ -278,8 +278,13 @@ export function WorklogQuickNew() {
               <option value="" disabled>대상을 선택하세요</option>
               <optgroup label="OKR 과제">
                 {(() => {
-                  // OKR 과제에는 순수 OKR만 노출하고, KPI에 속한 과제는 모두 제외한다.
-                  const list = myTasks.filter((t) => !t.isKpi);
+                  // OKR 과제에는 순수 OKR만 노출하고, KPI에 속한 과제와 결재/협조(Auto Objective) 과제는 모두 제외한다.
+                  const list = myTasks.filter((t) => {
+                    if (t.isKpi) return false;
+                    const obj = String(t.objTitle || '');
+                    if (obj.startsWith('Auto Objective')) return false;
+                    return true;
+                  });
                   return list.map((t) => {
                     const initLabel = String(t.initTitle || (() => { const parts = String(t.title||'').split('/'); return parts.length>1? parts[parts.length-1].trim() : (t.title||''); })());
                     const prefix = `${t.objTitle || ''} / ${(t.isKpi ? 'KPI' : 'KR')}: ${t.krTitle || ''}`.trim();
