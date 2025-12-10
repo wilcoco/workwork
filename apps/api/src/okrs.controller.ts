@@ -36,6 +36,8 @@ class CreateKeyResultDto {
   direction?: 'AT_LEAST' | 'AT_MOST';
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
   cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
+  @IsOptional()
+  participants?: string[];
 }
 
 class UpdateObjectiveDto {
@@ -257,22 +259,35 @@ export class OkrsController {
         throw new ForbiddenException('not allowed to create team KPI');
       }
     }
-    const rec = await this.prisma.keyResult.create({
-      data: ({
-        objectiveId,
-        title: dto.title,
-        metric: (dto.metric ?? ''),
-        target: dto.target,
-        unit: dto.unit,
-        ownerId: dto.userId,
-        weight: dto.weight ?? 1,
-        type: (dto.type as any) ?? undefined,
-        pillar: (dto.pillar as any) ?? undefined,
-        baseline: dto.baseline as any,
-        year25Target: (dto.year25Target as any) ?? undefined,
-        direction: (dto.direction as any) ?? undefined,
-        cadence: (dto.cadence as any) ?? undefined,
-      } as any),
+    const rec = await this.prisma.$transaction(async (tx) => {
+      const kr = await tx.keyResult.create({
+        data: ({
+          objectiveId,
+          title: dto.title,
+          metric: (dto.metric ?? ''),
+          target: dto.target,
+          unit: dto.unit,
+          ownerId: dto.userId,
+          weight: dto.weight ?? 1,
+          type: (dto.type as any) ?? undefined,
+          pillar: (dto.pillar as any) ?? undefined,
+          baseline: dto.baseline as any,
+          year25Target: (dto.year25Target as any) ?? undefined,
+          direction: (dto.direction as any) ?? undefined,
+          cadence: (dto.cadence as any) ?? undefined,
+        } as any),
+      });
+      // Optional KPI participants: create KeyResultAssignment rows
+      if (Array.isArray(dto.participants) && dto.participants.length > 0) {
+        const uniq = Array.from(new Set(dto.participants.filter((id) => !!id)));
+        if (uniq.length > 0) {
+          await tx.keyResultAssignment.createMany({
+            data: uniq.map((uid) => ({ keyResultId: kr.id, userId: uid })),
+            skipDuplicates: true,
+          } as any);
+        }
+      }
+      return kr;
     });
     return rec;
   }
@@ -317,6 +332,36 @@ export class OkrsController {
     });
     if (!kr) throw new NotFoundException('key result not found');
     return kr;
+  }
+
+  // KPI only: objectives/KRs where the user is explicitly assigned as a participant
+  @Get('my-kpis')
+  async myKpis(@Query('userId') userId: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const assigns = await this.prisma.keyResultAssignment.findMany({
+      where: { userId },
+      include: {
+        keyResult: {
+          include: {
+            objective: true,
+            initiatives: { include: { children: true } },
+          },
+        },
+      },
+    });
+    const byObj: Record<string, any> = {};
+    for (const a of assigns) {
+      const kr = a.keyResult as any;
+      const obj = kr.objective as any;
+      if (!byObj[obj.id]) {
+        byObj[obj.id] = { ...obj, keyResults: [] as any[] };
+      }
+      // avoid duplicate KR entries if multiple assignments somehow exist
+      if (!(byObj[obj.id].keyResults as any[]).some((k: any) => k.id === kr.id)) {
+        byObj[obj.id].keyResults.push(kr);
+      }
+    }
+    return { items: Object.values(byObj) };
   }
 
   @Delete('objectives/:id')
@@ -430,7 +475,7 @@ export class OkrsController {
     const items = await this.prisma.objective.findMany({
       where,
       orderBy: { createdAt: 'asc' },
-      include: ({ keyResults: { include: { initiatives: { include: { children: true } } } }, owner: { select: { id: true, name: true, role: true } }, orgUnit: true } as any),
+      include: ({ keyResults: { include: { initiatives: { include: { children: true } }, assignments: { include: { user: true } } } }, owner: { select: { id: true, name: true, role: true } }, orgUnit: true } as any),
     });
     return { items };
   }

@@ -15,6 +15,7 @@ export function TeamKpiInput() {
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [parentKrs, setParentKrs] = useState<ParentKr[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
 
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
@@ -38,6 +39,7 @@ export function TeamKpiInput() {
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'>('');
   const [krDirection, setKrDirection] = useState<'AT_LEAST' | 'AT_MOST'>('AT_LEAST');
+  const [krParticipants, setKrParticipants] = useState<string[]>([]);
   const [taskRows, setTaskRows] = useState<Array<{ title: string; desc: string; months: boolean[] }>>([
     { title: '', desc: '', months: Array(12).fill(false) },
   ]);
@@ -76,6 +78,15 @@ export function TeamKpiInput() {
         setError(e.message || '로드 실패');
       }
     }
+    async function loadTeamMembers() {
+      try {
+        if (!orgUnitId) { setTeamMembers([]); return; }
+        const res = await apiJson<{ items: Array<{ id: string; name: string }> }>(`/api/users?orgUnitId=${encodeURIComponent(orgUnitId)}`);
+        setTeamMembers((res.items || []).map((u: any) => ({ id: u.id, name: u.name })));
+      } catch {
+        setTeamMembers([]);
+      }
+    }
     async function loadParentKrs() {
       try {
         if (!userId) return;
@@ -84,6 +95,7 @@ export function TeamKpiInput() {
       } catch {}
     }
     loadObjectives();
+    loadTeamMembers();
     loadParentKrs();
   }, [orgUnitId, userId]);
 
@@ -145,6 +157,7 @@ export function TeamKpiInput() {
           year25Target: krTarget25 === '' ? undefined : Number(krTarget25),
           direction: krDirection,
           cadence: krCadence || undefined,
+          participants: krParticipants.length ? krParticipants : undefined,
         }),
       });
       // Create initiatives for each task row
@@ -173,7 +186,7 @@ export function TeamKpiInput() {
           }),
         });
       }
-      setKrTitle(''); setKrMetric(''); setKrTarget25(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST');
+      setKrTitle(''); setKrMetric(''); setKrTarget25(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST'); setKrParticipants([]);
       setTaskRows([{ title: '', desc: '', months: Array(12).fill(false) }]);
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
@@ -243,6 +256,31 @@ export function TeamKpiInput() {
             <option value="YEARLY">연간</option>
           </select>
         </div>
+        {!!teamMembers.length && (
+          <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 8, paddingTop: 8, display: 'grid', gap: 4 }}>
+            <div style={{ fontSize: 12, color: '#64748b' }}>KPI 참여 팀원 선택</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {teamMembers.map((m) => {
+                const checked = krParticipants.includes(m.id);
+                return (
+                  <label key={m.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setKrParticipants((prev) => {
+                          if (e.target.checked) return prev.includes(m.id) ? prev : [...prev, m.id];
+                          return prev.filter((id) => id !== m.id);
+                        });
+                      }}
+                    />
+                    {m.name}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 10, paddingTop: 10, display: 'grid', gap: 8 }}>
           <h4 style={{ margin: 0 }}>추진 과제</h4>
           {taskRows.map((r, i) => (

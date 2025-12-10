@@ -68,8 +68,8 @@ export function WorklogQuickNew() {
           });
           setMyTasks(its);
         } catch {}
-        if (!ou) return;
-        const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(ou)}`);
+        // Load KPIs where I am explicitly assigned as participant (team KPI 포함)
+        const res = await apiJson<{ items: any[] }>(`/api/okrs/my-kpis?userId=${encodeURIComponent(uid)}`);
         const objs = res.items || [];
         const tasks: Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = [];
         const kpis: Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = [];

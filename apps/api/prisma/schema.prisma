@@ -119,6 +119,7 @@ model User {
   checklistTicks ChecklistTick[]
   userGoals UserGoal[]
   progressEntries ProgressEntry[]
+  keyResultAssignments KeyResultAssignment[]
 }
 
 model Objective {
@@ -165,6 +166,17 @@ model KeyResult {
   cadence      Cadence?
   progressEntries ProgressEntry[]
   direction    ThresholdDirection?
+  assignments  KeyResultAssignment[]
+}
+
+model KeyResultAssignment {
+  id          String   @id @default(cuid())
+  keyResultId String
+  keyResult   KeyResult @relation(fields: [keyResultId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  role        String?
+  createdAt   DateTime @default(now())
 }
 
 model Initiative {
