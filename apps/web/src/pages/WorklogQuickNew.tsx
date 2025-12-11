@@ -121,9 +121,10 @@ export function WorklogQuickNew() {
           const tickets = Object.values(dedup).map((t: any) => {
             const who = t.requester?.name || '요청자 미상';
             const cat = t.category || '일반 협조';
-            const wlTitle = t.worklogTitle || '';
-            const titlePart = wlTitle ? ` · ${wlTitle}` : '';
-            return { id: String(t.id), label: `협조: ${cat} · ${who}${titlePart}` };
+            const helpTitle = t.helpTitle || '';
+            const titlePart = helpTitle ? ` · ${helpTitle}` : '';
+            // 협조 제목 중심으로 표시: 협조: [카테고리] · [협조제목] · [요청자]
+            return { id: String(t.id), label: `협조: ${cat}${titlePart} · ${who}` };
           });
           setHelpTickets(tickets);
         } catch {}
