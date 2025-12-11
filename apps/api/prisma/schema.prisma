@@ -357,6 +357,8 @@ model HelpTicket {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   resolvedAt   DateTime?
+  worklogId    String?
+  worklog      Worklog?    @relation(fields: [worklogId], references: [id])
 }
 
 model Delegation {

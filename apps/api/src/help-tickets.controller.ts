@@ -92,7 +92,7 @@ export class HelpTicketsController {
       skip: q.cursor ? 1 : 0,
       ...(q.cursor ? { cursor: { id: q.cursor } } : {}),
       orderBy: { createdAt: 'desc' },
-      include: { requester: true, assignee: true },
+      include: { requester: true, assignee: true, worklog: true },
     });
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
     return {
@@ -103,6 +103,7 @@ export class HelpTicketsController {
         status: t.status,
         requester: t.requester ? { id: t.requester.id, name: t.requester.name } : null,
         assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null,
+        worklogTitle: (t as any).worklog?.title ?? null,
         slaMinutes: t.slaMinutes ?? undefined,
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
@@ -146,6 +147,7 @@ export class HelpTicketsController {
         // Prisma model has optional dueAt: DateTime?; only set when provided
         ...(dto.dueAt ? { dueAt: new Date(dto.dueAt) } : {}),
         slaMinutes: dto.slaMinutes,
+        worklogId: dto.worklogId,
       },
     });
     await this.prisma.event.create({
