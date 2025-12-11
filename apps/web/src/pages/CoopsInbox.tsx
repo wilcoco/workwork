@@ -23,7 +23,7 @@ export function CoopsInbox() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/inbox?userId=${encodeURIComponent(userId)}&onlyUnread=false`);
+      const res = await apiFetch(`/api/inbox?userId=${encodeURIComponent(userId)}&onlyUnread=true`);
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const json = await res.json();
       const base = (json?.items || [])
