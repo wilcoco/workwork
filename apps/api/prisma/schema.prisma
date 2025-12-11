@@ -225,6 +225,7 @@ model Worklog {
   urgent             Boolean   @default(false)
   progressEntries    ProgressEntry[]
   visibility         WorklogVisibility @default(ALL)
+  helpTickets        HelpTicket[]
 }
 
 model Event {
@@ -357,6 +358,8 @@ model HelpTicket {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   resolvedAt   DateTime?
+  worklogId    String?
+  worklog      Worklog?    @relation(fields: [worklogId], references: [id])
 }
 
 model Delegation {
