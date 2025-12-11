@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { IsDateString, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -95,15 +95,12 @@ export class HelpTicketsController {
       include: { requester: true, assignee: true },
     });
     const ticketIds = items.map((t) => t.id);
-    let worklogTitles: Record<string, string | null> = {};
+
+    // 협조 제목 (요청 시 작성한 업무일지) — HelpRequested 이벤트의 worklogId -> Worklog.note 첫 줄
+    let requestTitles: Record<string, string | null> = {};
     if (ticketIds.length > 0) {
-      // Find HelpRequested events to discover originating worklogIds
       const events = await this.prisma.event.findMany({
-        where: {
-          subjectType: 'HelpTicket',
-          activity: 'HelpRequested',
-          subjectId: { in: ticketIds },
-        },
+        where: { subjectType: 'HelpTicket', activity: 'HelpRequested', subjectId: { in: ticketIds } },
       });
       const byTicket: Record<string, string | undefined> = {};
       const wlIds = new Set<string>();
@@ -116,40 +113,81 @@ export class HelpTicketsController {
         }
       }
       if (wlIds.size > 0) {
-        const wls = await this.prisma.worklog.findMany({
-          where: { id: { in: Array.from(wlIds) } },
-          select: { id: true, note: true },
-        });
+        const wls = await this.prisma.worklog.findMany({ where: { id: { in: Array.from(wlIds) } }, select: { id: true, note: true } });
         const byWl: Record<string, string | null> = {};
         for (const w of wls) {
-          // 사용자가 입력한 협조 제목은 worklog.note 의 첫 줄 또는 전체 텍스트로 본다
           const raw = (w.note || '').trim();
           const title = raw.split('\n')[0] || raw || null;
           byWl[w.id] = title;
         }
-        worklogTitles = {};
+        requestTitles = {};
         for (const tId of ticketIds) {
           const wlId = byTicket[tId];
-          worklogTitles[tId] = wlId ? (byWl[wlId] ?? null) : null;
+          requestTitles[tId] = wlId ? (byWl[wlId] ?? null) : null;
         }
+      }
+    }
+
+    // 대응 업무일지 (assignee가 협조를 처리하며 작성한 업무일지) — HelpResolved 이벤트의 worklogId -> Worklog.note 첫 줄
+    let responseMap: Record<string, { id: string | null; title: string | null }> = {};
+    if (ticketIds.length > 0) {
+      const events = await this.prisma.event.findMany({
+        where: { subjectType: 'HelpTicket', activity: 'HelpResolved', subjectId: { in: ticketIds } },
+      });
+      const byTicketResp: Record<string, string | undefined> = {};
+      const respIds = new Set<string>();
+      for (const ev of events) {
+        const attrs: any = ev.attrs || {};
+        const wlId = attrs.worklogId as string | undefined;
+        if (wlId) {
+          byTicketResp[ev.subjectId] = wlId;
+          respIds.add(wlId);
+        }
+      }
+      let byWlResp: Record<string, string | null> = {};
+      if (respIds.size > 0) {
+        const wls = await this.prisma.worklog.findMany({ where: { id: { in: Array.from(respIds) } }, select: { id: true, note: true } });
+        byWlResp = {};
+        for (const w of wls) {
+          const raw = (w.note || '').trim();
+          const title = raw.split('\n')[0] || raw || null;
+          byWlResp[w.id] = title;
+        }
+      }
+      responseMap = {};
+      for (const tId of ticketIds) {
+        const wlId = byTicketResp[tId];
+        responseMap[tId] = wlId ? { id: wlId, title: byWlResp[wlId] ?? null } : { id: null, title: null };
       }
     }
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
     return {
-      items: items.map((t: any) => ({
-        id: t.id,
-        category: t.category,
-        queue: t.queue || null,
-        status: t.status,
-        requester: t.requester ? { id: t.requester.id, name: t.requester.name } : null,
-        assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null,
-        // 협조 제목: 협조 생성시 작성한 업무일지(메모) 첫 줄을 사용
-        helpTitle: worklogTitles[t.id] ?? null,
-        slaMinutes: t.slaMinutes ?? undefined,
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-        resolvedAt: t.resolvedAt || null,
-      })),
+      items: items.map((t: any) => {
+        const resp = responseMap[t.id] || { id: null, title: null };
+        let statusLabel: string;
+        if (t.status === 'OPEN') statusLabel = '미수신';
+        else if (t.status === 'DONE') statusLabel = '협조 완료';
+        else statusLabel = '수신';
+        return {
+          id: t.id,
+          category: t.category,
+          queue: t.queue || null,
+          status: t.status,
+          requester: t.requester ? { id: t.requester.id, name: t.requester.name } : null,
+          assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null,
+          // 협조 제목: 협조 생성시 작성한 업무일지(메모) 첫 줄을 사용
+          helpTitle: requestTitles[t.id] ?? null,
+          slaMinutes: t.slaMinutes ?? undefined,
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+          resolvedAt: t.resolvedAt || null,
+          // 보낸 협조 화면에서 사용할 부가 정보
+          assigneeName: t.assignee?.name ?? null,
+          statusLabel,
+          responseWorklogId: resp.id,
+          responseWorklogTitle: resp.title,
+        };
+      }),
       nextCursor,
     };
   }
@@ -287,7 +325,7 @@ export class HelpTicketsController {
   }
 
   @Post(':id/resolve')
-  async resolve(@Param('id') id: string, @Body() dto: ActDto) {
+  async resolve(@Param('id') id: string, @Body() dto: ActDto & { worklogId?: string }) {
     const ticket = await this.prisma.helpTicket.update({
       where: { id },
       data: { status: 'DONE', resolvedAt: new Date() },
@@ -298,6 +336,7 @@ export class HelpTicketsController {
         subjectId: ticket.id,
         activity: 'HelpResolved',
         userId: dto.actorId,
+        attrs: { worklogId: dto.worklogId },
       },
     });
     await this.prisma.notification.create({
