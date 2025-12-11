@@ -68,7 +68,10 @@ export function ApprovalsMine() {
               if (s.status === 'EXPIRED') return '만료';
               return '승인 대기';
             };
-            const parts = steps.map((s) => `${s.stepNo}단계: ${label(s)}`);
+            const parts = steps.map((s) => {
+              const name = s.approver?.name || '결재자';
+              return `${s.stepNo}단계: ${name} – ${label(s)}`;
+            });
             return `결재선: ${parts.join(', ')}`;
           })();
           return (

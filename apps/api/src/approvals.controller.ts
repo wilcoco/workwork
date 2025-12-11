@@ -100,7 +100,14 @@ export class ApprovalsController {
       skip: q.cursor ? 1 : 0,
       ...(q.cursor ? { cursor: { id: q.cursor } } : {}),
       orderBy: { createdAt: 'desc' },
-      include: { requestedBy: true, approver: true, steps: { orderBy: { stepNo: 'asc' } } },
+      include: {
+        requestedBy: true,
+        approver: true,
+        steps: {
+          orderBy: { stepNo: 'asc' },
+          include: { approver: true },
+        },
+      },
     });
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
     return {
@@ -114,7 +121,15 @@ export class ApprovalsController {
         dueAt: a.dueAt || null,
         createdAt: a.createdAt,
         updatedAt: a.updatedAt,
-        steps: (a.steps || []).map((s: any) => ({ id: s.id, stepNo: s.stepNo, approverId: s.approverId, status: s.status, actedAt: s.actedAt || null, comment: s.comment || null })),
+        steps: (a.steps || []).map((s: any) => ({
+          id: s.id,
+          stepNo: s.stepNo,
+          approverId: s.approverId,
+          approver: s.approver ? { id: s.approver.id, name: s.approver.name } : null,
+          status: s.status,
+          actedAt: s.actedAt || null,
+          comment: s.comment || null,
+        })),
       })),
       nextCursor,
     };
