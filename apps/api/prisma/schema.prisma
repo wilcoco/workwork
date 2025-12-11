@@ -225,6 +225,7 @@ model Worklog {
   urgent             Boolean   @default(false)
   progressEntries    ProgressEntry[]
   visibility         WorklogVisibility @default(ALL)
+  helpTickets        HelpTicket[] @relation("WorklogHelpTickets")
 }
 
 model Event {
@@ -358,7 +359,7 @@ model HelpTicket {
   updatedAt    DateTime    @updatedAt
   resolvedAt   DateTime?
   worklogId    String?
-  worklog      Worklog?    @relation(fields: [worklogId], references: [id])
+  worklog      Worklog?    @relation("WorklogHelpTickets", fields: [worklogId], references: [id])
 }
 
 model Delegation {
