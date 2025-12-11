@@ -92,8 +92,48 @@ export class HelpTicketsController {
       skip: q.cursor ? 1 : 0,
       ...(q.cursor ? { cursor: { id: q.cursor } } : {}),
       orderBy: { createdAt: 'desc' },
-      include: { requester: true, assignee: true, worklog: true },
+      include: { requester: true, assignee: true },
     });
+    const ticketIds = items.map((t) => t.id);
+    let worklogTitles: Record<string, string | null> = {};
+    if (ticketIds.length > 0) {
+      // Find HelpRequested events to discover originating worklogIds
+      const events = await this.prisma.event.findMany({
+        where: {
+          subjectType: 'HelpTicket',
+          activity: 'HelpRequested',
+          subjectId: { in: ticketIds },
+        },
+      });
+      const byTicket: Record<string, string | undefined> = {};
+      const wlIds = new Set<string>();
+      for (const ev of events) {
+        const attrs: any = ev.attrs || {};
+        const wlId = attrs.worklogId as string | undefined;
+        if (wlId) {
+          byTicket[ev.subjectId] = wlId;
+          wlIds.add(wlId);
+        }
+      }
+      if (wlIds.size > 0) {
+        const wls = await this.prisma.worklog.findMany({
+          where: { id: { in: Array.from(wlIds) } },
+          select: { id: true, note: true },
+        });
+        const byWl: Record<string, string | null> = {};
+        for (const w of wls) {
+          // 사용자가 입력한 협조 제목은 worklog.note 의 첫 줄 또는 전체 텍스트로 본다
+          const raw = (w.note || '').trim();
+          const title = raw.split('\n')[0] || raw || null;
+          byWl[w.id] = title;
+        }
+        worklogTitles = {};
+        for (const tId of ticketIds) {
+          const wlId = byTicket[tId];
+          worklogTitles[tId] = wlId ? (byWl[wlId] ?? null) : null;
+        }
+      }
+    }
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
     return {
       items: items.map((t: any) => ({
@@ -103,8 +143,8 @@ export class HelpTicketsController {
         status: t.status,
         requester: t.requester ? { id: t.requester.id, name: t.requester.name } : null,
         assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null,
-        // 협조 제목: 협조 생성시 작성한 업무일지 제목을 그대로 사용
-        helpTitle: (t as any).worklog?.title ?? null,
+        // 협조 제목: 협조 생성시 작성한 업무일지(메모) 첫 줄을 사용
+        helpTitle: worklogTitles[t.id] ?? null,
         slaMinutes: t.slaMinutes ?? undefined,
         createdAt: t.createdAt,
         updatedAt: t.updatedAt,
@@ -148,7 +188,6 @@ export class HelpTicketsController {
         // Prisma model has optional dueAt: DateTime?; only set when provided
         ...(dto.dueAt ? { dueAt: new Date(dto.dueAt) } : {}),
         slaMinutes: dto.slaMinutes,
-        worklogId: dto.worklogId,
       },
     });
     await this.prisma.event.create({
