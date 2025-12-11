@@ -44,7 +44,9 @@ export function CoopsMine() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<{ items: SentHelp[] }>(`/api/help-tickets/sent?requesterId=${encodeURIComponent(userId)}`);
+      const res = await apiJson<{ items: SentHelp[] }>(
+        `/api/help-tickets?requesterId=${encodeURIComponent(userId)}&limit=100`
+      );
       setItems(res.items || []);
     } catch (e: any) {
       setError(e?.message || '로드 실패');
