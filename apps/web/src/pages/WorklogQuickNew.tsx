@@ -15,6 +15,7 @@ export function WorklogQuickNew() {
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [teamKpis, setTeamKpis] = useState<Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
+  const [helpTickets, setHelpTickets] = useState<Array<{ id: string; label: string }>>([]);
   const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [selection, setSelection] = useState<string>(''); // 'init:<id>'
   const [krValue, setKrValue] = useState<string>('');
@@ -43,6 +44,7 @@ export function WorklogQuickNew() {
         const ou = me.orgUnitId || '';
         setOrgUnitId(ou);
         setMyRole((me as any)?.role || '');
+        const myId = me.id || uid;
         // Always load my own initiatives (personal OKR/KPI tasks) and enrich with my OKR metadata (O/KR)
         try {
           const mine = await apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`);
@@ -108,6 +110,21 @@ export function WorklogQuickNew() {
         }
         setTeamTasks(tasks);
         setTeamKpis(kpis);
+
+        // Load 협조(HelpTicket) assigned to me and 이미 수락/진행 중인 것들만 노출
+        try {
+          const acc = await apiJson<{ items: any[] }>(`/api/help-tickets?assigneeId=${encodeURIComponent(myId)}&status=ACCEPTED`);
+          const prog = await apiJson<{ items: any[] }>(`/api/help-tickets?assigneeId=${encodeURIComponent(myId)}&status=IN_PROGRESS`);
+          const all = [...(acc.items || []), ...(prog.items || [])];
+          const dedup: Record<string, any> = {};
+          for (const t of all) dedup[t.id] = t;
+          const tickets = Object.values(dedup).map((t: any) => {
+            const who = t.requester?.name || '요청자 미상';
+            const cat = t.category || '일반 협조';
+            return { id: String(t.id), label: `협조: ${cat} · ${who}` };
+          });
+          setHelpTickets(tickets);
+        } catch {}
       } catch {}
     })();
   }, []);
@@ -156,7 +173,7 @@ export function WorklogQuickNew() {
     try {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
-      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:'))) throw new Error('대상을 선택하세요');
+      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:'))) throw new Error('대상을 선택하세요');
       const wl = await apiJson<{ id: string }>(
         '/api/worklogs/simple',
         {
@@ -166,6 +183,7 @@ export function WorklogQuickNew() {
             teamName,
             initiativeId: selection.startsWith('init:') ? selection.substring(5) : undefined,
             keyResultId: selection.startsWith('kr:') ? selection.substring(3) : undefined,
+            // help: 선택 시에는 별도 링크 없이 일반 업무일지로만 기록
             taskName: selection.startsWith('kr:') ? (title || 'KPI 보고') : undefined,
             title,
             content: plainMode ? contentPlain : stripHtml(contentHtml),
@@ -178,16 +196,18 @@ export function WorklogQuickNew() {
         }
       );
       const isKR = selection.startsWith('kr:');
-      const selectedId = isKR ? selection.substring(3) : selection.substring(5);
-      const selected = isKR ? undefined : [...teamTasks, ...myTasks].find((x) => x.id === selectedId);
-      // Progress: initiative done
-      if (!isKR && initiativeDone) {
+      const isInit = selection.startsWith('init:');
+      const isHelp = selection.startsWith('help:');
+      const selectedId = isKR ? selection.substring(3) : isInit ? selection.substring(5) : selection.substring(5);
+      const selected = isInit ? [...teamTasks, ...myTasks].find((x) => x.id === selectedId) : undefined;
+      // Progress: initiative done (help 선택 시에는 제외)
+      if (isInit && initiativeDone) {
         await apiJson('/api/progress', {
           method: 'POST',
           body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: selectedId, actorId: userId, worklogId: wl.id, initiativeDone: true, note: title || undefined, at: date }),
         });
       }
-      // Progress: KR value (explicit or achieved)
+      // Progress: KR value (explicit or achieved) — help 선택 시에는 KR가 없으므로 그대로 조건 유지
       if ((isKR || selected?.krId) && (krValue !== '' || krAchieved)) {
         let valueToSend: number | null = null;
         if (krValue !== '') {
@@ -269,7 +289,7 @@ export function WorklogQuickNew() {
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제</label>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제 / 협조 추가</label>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
@@ -314,6 +334,13 @@ export function WorklogQuickNew() {
                   })
                 ) : null}
               </optgroup>
+              {helpTickets.length > 0 && (
+                <optgroup label="협조 추가">
+                  {helpTickets.map((t) => (
+                    <option key={`help-${t.id}`} value={`help:${t.id}`}>{t.label}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
