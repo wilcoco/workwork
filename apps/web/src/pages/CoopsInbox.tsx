@@ -53,11 +53,19 @@ export function CoopsInbox() {
   }
 
   async function act(kind: 'accept' | 'start' | 'resolve' | 'decline', ticketId: string, notificationId?: string) {
-    const body: any = { actorId: userId };
-    if (kind === 'decline') body.reason = window.prompt('거절 사유를 입력하세요') || '';
-    await apiJson(`/api/help-tickets/${ticketId}/${kind}`, { method: 'POST', body: JSON.stringify(body) });
-    if (notificationId) await markRead(notificationId);
-    await load();
+    try {
+      if (!ticketId) {
+        window.alert('티켓 ID가 없어 협조를 처리할 수 없습니다. 알림 payload를 확인해주세요.');
+        return;
+      }
+      const body: any = { actorId: userId };
+      if (kind === 'decline') body.reason = window.prompt('거절 사유를 입력하세요') || '';
+      await apiJson(`/api/help-tickets/${ticketId}/${kind}`, { method: 'POST', body: JSON.stringify(body) });
+      if (notificationId) await markRead(notificationId);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || '협조 처리 중 오류가 발생했습니다');
+    }
   }
 
   return (
