@@ -121,9 +121,7 @@ export function WorklogQuickNew() {
           const tickets = Object.values(dedup).map((t: any) => {
             const who = t.requester?.name || '요청자 미상';
             const cat = t.category || '일반 협조';
-            const wlTitle = t.worklogTitle || '';
-            const titlePart = wlTitle ? ` · ${wlTitle}` : '';
-            return { id: String(t.id), label: `협조: ${cat} · ${who}${titlePart}` };
+            return { id: String(t.id), label: `협조: ${cat} · ${who}` };
           });
           setHelpTickets(tickets);
         } catch {}
