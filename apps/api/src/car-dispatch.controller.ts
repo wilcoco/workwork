@@ -35,8 +35,8 @@ export class CarDispatchController {
         status: { in: ['PENDING', 'APPROVED'] as any },
         NOT: {
           OR: [
-            { endAt: { <=: startAt } },
-            { startAt: { >=: endAt } },
+            { endAt: { lte: startAt } },
+            { startAt: { gte: endAt } },
           ],
         },
       },
@@ -73,8 +73,8 @@ export class CarDispatchController {
 
     const items = await this.prisma.carDispatchRequest.findMany({
       where: {
-        startAt: { <=: end },
-        endAt: { >=: start },
+        startAt: { lte: end },
+        endAt: { gte: start },
       },
       orderBy: { startAt: 'asc' },
       include: { car: true, requester: true },
