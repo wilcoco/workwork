@@ -277,15 +277,16 @@ export class OkrsController {
           cadence: (dto.cadence as any) ?? undefined,
         } as any),
       });
-      // Optional KPI participants: create KeyResultAssignment rows
-      if (Array.isArray(dto.participants) && dto.participants.length > 0) {
-        const uniq = Array.from(new Set(dto.participants.filter((id) => !!id)));
-        if (uniq.length > 0) {
-          await tx.keyResultAssignment.createMany({
-            data: uniq.map((uid) => ({ keyResultId: kr.id, userId: uid })),
-            skipDuplicates: true,
-          } as any);
-        }
+      // KPI participants: always include creator (팀장) as default participant, plus any explicit participants
+      const baseIds: string[] = [];
+      if (dto.userId) baseIds.push(dto.userId);
+      if (Array.isArray(dto.participants)) baseIds.push(...dto.participants);
+      const uniq = Array.from(new Set(baseIds.filter((id) => !!id)));
+      if (uniq.length > 0) {
+        await (tx as any).keyResultAssignment.createMany({
+          data: uniq.map((uid) => ({ keyResultId: kr.id, userId: uid })),
+          skipDuplicates: true,
+        } as any);
       }
       return kr;
     });

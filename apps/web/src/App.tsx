@@ -33,6 +33,7 @@ import { CoopsStatus } from './pages/CoopsStatus';
 import { DEPLOY_TITLE, DEPLOY_DESC } from './deployInfo';
 import { AdminMembers } from './pages/AdminMembers';
 import { AdminTools } from './pages/AdminTools';
+import { CarDispatchCorporate } from './pages/CarDispatchCorporate';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -122,6 +123,8 @@ export function App() {
           <Route path="/admin/orgs" element={<AdminOrgs />} />
           <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="/admin/tools" element={<AdminTools />} />
+          <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
+          <Route path="/dispatch/logistics" element={<div>물류 배차 신청 (준비중)</div>} />
           {SHOW_APPROVALS && (
             <>
               <Route path="/approvals/new" element={<ApprovalsSubmit />} />
@@ -235,6 +238,10 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
             <Link to="/coops/status">협조 통계</Link>
           </NavDropdown>
         )}
+        <NavDropdown label="배차신청" active={location.pathname.startsWith('/dispatch')}>
+          <Link to="/dispatch/corporate">법인차량 신청</Link>
+          <Link to="/dispatch/logistics">물류 배차 신청</Link>
+        </NavDropdown>
         <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
           <Link to="/admin/orgs">조직관리</Link>
           <Link to="/admin/members">구성원</Link>
@@ -391,6 +398,12 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
         { to: '/coops/inbox', label: '받은 협조' },
         { to: '/coops/mine', label: '보낸 협조' },
         { to: '/coops/status', label: '협조 통계' },
+      ];
+    }
+    if (path.startsWith('/dispatch')) {
+      return [
+        { to: '/dispatch/corporate', label: '법인차량 신청' },
+        { to: '/dispatch/logistics', label: '물류 배차 신청' },
       ];
     }
     if (path.startsWith('/admin')) {

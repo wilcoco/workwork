@@ -228,6 +228,14 @@ export function WorklogQuickNew() {
           });
         }
       }
+      // Help: 협조 선택으로 생성된 업무일지인 경우, 해당 HelpTicket을 협조 완료로 표시하고 대응 업무일지 링크를 저장한다.
+      if (isHelp) {
+        const ticketId = selectedId;
+        await apiJson(`/api/help-tickets/${encodeURIComponent(ticketId)}/resolve`, {
+          method: 'POST',
+          body: JSON.stringify({ actorId: userId, worklogId: wl.id }),
+        });
+      }
       nav('/search?mode=list');
     } catch (err: any) {
       setError(err?.message || '저장 실패');

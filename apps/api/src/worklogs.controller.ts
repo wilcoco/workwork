@@ -579,7 +579,19 @@ export class WorklogsController {
       else visibilityIn = ['ALL'];
     }
     const items = await (this.prisma as any).worklog.findMany({
-      where: { ...where, visibility: { in: visibilityIn as any } },
+      where: viewerId
+        ? {
+            AND: [
+              where,
+              {
+                OR: [
+                  { createdById: viewerId },
+                  { visibility: { in: visibilityIn as any } },
+                ],
+              },
+            ],
+          }
+        : { ...where, visibility: { in: visibilityIn as any } },
       include: { createdBy: { include: { orgUnit: true } } },
       orderBy: { date: 'desc' },
       take: 2000,
