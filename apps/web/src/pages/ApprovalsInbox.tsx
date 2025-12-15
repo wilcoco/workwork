@@ -28,7 +28,8 @@ export function ApprovalsInbox() {
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const json = await res.json();
       const base = (json?.items || [])
-        .filter((n: any) => n.type === 'ApprovalRequested')
+        // Only show pending approval requests: type=ApprovalRequested and not yet read
+        .filter((n: any) => n.type === 'ApprovalRequested' && !n.readAt)
         .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       // Enrich with underlying document when available
       const enriched = await Promise.all(base.map(async (n: any) => {
