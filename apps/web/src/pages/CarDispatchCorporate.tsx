@@ -7,6 +7,12 @@ type Car = {
   type?: string | null;
 };
 
+type Approver = {
+  id: string;
+  name: string;
+  role: string;
+};
+
 type CalendarItem = {
   id: string;
   carId: string;
@@ -30,6 +36,8 @@ export function CarDispatchCorporate() {
   const [error, setError] = useState<string | null>(null);
 
   const [carId, setCarId] = useState('');
+  const [approvers, setApprovers] = useState<Approver[]>([]);
+  const [approverId, setApproverId] = useState('');
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('18:00');
@@ -42,6 +50,7 @@ export function CarDispatchCorporate() {
 
   useEffect(() => {
     void loadCars();
+    void loadApprovers();
   }, []);
 
   useEffect(() => {
@@ -55,6 +64,21 @@ export function CarDispatchCorporate() {
       setCars(res.items || []);
       if (!carId && res.items && res.items.length > 0) setCarId(res.items[0].id);
     } catch (e: any) {
+      console.error(e);
+    }
+  }
+
+  async function loadApprovers() {
+    try {
+      const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>(`/api/users`);
+      const cand = (res.items || []).filter((u) => u.role === 'CEO' || u.role === 'EXEC');
+      setApprovers(cand);
+      if (!approverId && cand.length > 0) {
+        const hong = cand.find((u) => u.name === '홍정수');
+        setApproverId((hong ?? cand[0]).id);
+      }
+    } catch (e) {
+      // 승인자 목록은 필수까지는 아니라서 조용히 무시
       console.error(e);
     }
   }
@@ -94,6 +118,7 @@ export function CarDispatchCorporate() {
         body: JSON.stringify({
           carId,
           requesterId: userId,
+          approverId: approverId || undefined,
           coRiders: coRiders || undefined,
           startAt: startAtIso,
           endAt: endAtIso,
@@ -172,6 +197,15 @@ export function CarDispatchCorporate() {
             <option value="">선택</option>
             {cars.map((c) => (
               <option key={c.id} value={c.id}>{c.name}{c.type ? ` (${c.type})` : ''}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span>승인자</span>
+          <select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
+            <option value="">선택</option>
+            {approvers.map((u) => (
+              <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
             ))}
           </select>
         </label>
