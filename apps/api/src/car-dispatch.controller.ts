@@ -37,48 +37,55 @@ export class CarDispatchController {
   // 신규 배차 신청 (선점 체크 포함)
   @Post()
   async create(@Body() dto: CreateCarDispatchDto) {
-    const startAt = new Date(dto.startAt);
-    const endAt = new Date(dto.endAt);
-    if (!(startAt instanceof Date) || isNaN(startAt.getTime()) || !(endAt instanceof Date) || isNaN(endAt.getTime())) {
-      throw new BadRequestException('유효하지 않은 일시입니다');
-    }
-    if (endAt <= startAt) {
-      throw new BadRequestException('종료 시간이 시작 시간보다 같거나 이를 수 없습니다');
-    }
+    try {
+      const startAt = new Date(dto.startAt);
+      const endAt = new Date(dto.endAt);
+      if (!(startAt instanceof Date) || isNaN(startAt.getTime()) || !(endAt instanceof Date) || isNaN(endAt.getTime())) {
+        throw new BadRequestException('유효하지 않은 일시입니다');
+      }
+      if (endAt <= startAt) {
+        throw new BadRequestException('종료 시간이 시작 시간보다 같거나 이를 수 없습니다');
+      }
 
-    // 동일 차량, 겹치는 시간대 PENDING/APPROVED 있으면 차단
-    const conflict = await this.prisma.carDispatchRequest.findFirst({
-      where: {
-        carId: dto.carId,
-        status: { in: ['PENDING', 'APPROVED'] as any },
-        NOT: {
-          OR: [
-            { endAt: { lte: startAt } },
-            { startAt: { gte: endAt } },
-          ],
+      // 동일 차량, 겹치는 시간대 PENDING/APPROVED 있으면 차단
+      const conflict = await this.prisma.carDispatchRequest.findFirst({
+        where: {
+          carId: dto.carId,
+          status: { in: ['PENDING', 'APPROVED'] as any },
+          NOT: {
+            OR: [
+              { endAt: { lte: startAt } },
+              { startAt: { gte: endAt } },
+            ],
+          },
         },
-      },
-    });
-    if (conflict) {
-      throw new BadRequestException('이미 배차된 시간입니다');
+      });
+      if (conflict) {
+        throw new BadRequestException('이미 배차된 시간입니다');
+      }
+
+      const approverId = dto.approverId || dto.requesterId;
+
+      const rec = await this.prisma.carDispatchRequest.create({
+        data: {
+          carId: dto.carId,
+          requesterId: dto.requesterId,
+          approverId,
+          coRiders: dto.coRiders,
+          startAt,
+          endAt,
+          destination: dto.destination,
+          purpose: dto.purpose,
+        },
+        include: { car: true },
+      });
+      return rec;
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to create car dispatch', e);
+      if (e instanceof BadRequestException) throw e;
+      throw new BadRequestException(e?.message || '배차 신청에 실패했습니다');
     }
-
-    const approverId = dto.approverId || dto.requesterId;
-
-    const rec = await this.prisma.carDispatchRequest.create({
-      data: {
-        carId: dto.carId,
-        requesterId: dto.requesterId,
-        approverId,
-        coRiders: dto.coRiders,
-        startAt,
-        endAt,
-        destination: dto.destination,
-        purpose: dto.purpose,
-      },
-      include: { car: true },
-    });
-    return rec;
   }
 
   // 월별 전체 배차 캘린더 (모든 차량)
