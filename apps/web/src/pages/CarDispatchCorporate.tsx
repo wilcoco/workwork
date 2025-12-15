@@ -246,9 +246,11 @@ export function CarDispatchCorporate() {
 }
 
 function toIso(date: string, time: string): string {
-  // date: YYYY-MM-DD, time: HH:MM
+  // date: YYYY-MM-DD, time: HH:MM (interpreted as KST, UTC+9)
   if (!date || !time) return '';
-  return `${date}T${time}:00`;
+  const isoKst = `${date}T${time}:00+09:00`;
+  const d = new Date(isoKst);
+  return d.toISOString();
 }
 
 function buildMonthGrid(month: string, items: CalendarItem[]) {
