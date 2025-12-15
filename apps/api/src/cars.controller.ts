@@ -1,10 +1,21 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
 class UpsertCarDto {
+  @IsString()
   name!: string;
+
+  @IsOptional()
+  @IsString()
   type?: string;
+
+  @IsOptional()
+  @IsString()
   plateNo?: string;
+
+  @IsOptional()
+  @IsBoolean()
   active?: boolean;
 }
 
@@ -20,9 +31,6 @@ export class CarsController {
 
   @Post()
   async create(@Body() dto: UpsertCarDto) {
-    if (!dto?.name || !dto.name.trim()) {
-      throw new BadRequestException('차량 이름은 필수입니다');
-    }
     try {
       const car = await this.prisma.car.create({
         data: {
@@ -42,9 +50,6 @@ export class CarsController {
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: UpsertCarDto) {
-    if (!dto?.name || !dto.name.trim()) {
-      throw new BadRequestException('차량 이름은 필수입니다');
-    }
     try {
       const car = await this.prisma.car.update({
         where: { id },
