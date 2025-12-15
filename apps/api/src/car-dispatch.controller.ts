@@ -63,11 +63,13 @@ export class CarDispatchController {
       throw new BadRequestException('이미 배차된 시간입니다');
     }
 
+    const approverId = dto.approverId || dto.requesterId;
+
     const rec = await this.prisma.carDispatchRequest.create({
       data: {
         carId: dto.carId,
         requesterId: dto.requesterId,
-        approverId: dto.approverId,
+        approverId,
         coRiders: dto.coRiders,
         startAt,
         endAt,
