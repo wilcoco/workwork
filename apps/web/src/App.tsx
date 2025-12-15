@@ -35,6 +35,7 @@ import { AdminMembers } from './pages/AdminMembers';
 import { AdminTools } from './pages/AdminTools';
 import { CarAdmin } from './pages/CarAdmin';
 import { CarDispatchCorporate } from './pages/CarDispatchCorporate';
+import { AttendanceRequest } from './pages/AttendanceRequest';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -126,7 +127,7 @@ export function App() {
           <Route path="/admin/tools" element={<AdminTools />} />
           <Route path="/admin/cars" element={<CarAdmin />} />
           <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
-          <Route path="/dispatch/logistics" element={<div>물류 배차 신청 (준비중)</div>} />
+          <Route path="/attendance/request" element={<AttendanceRequest />} />
           {SHOW_APPROVALS && (
             <>
               <Route path="/approvals/new" element={<ApprovalsSubmit />} />
@@ -240,9 +241,9 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
             <Link to="/coops/status">협조 통계</Link>
           </NavDropdown>
         )}
-        <NavDropdown label="배차신청" active={location.pathname.startsWith('/dispatch')}>
+        <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance')}>
           <Link to="/dispatch/corporate">법인차량 신청</Link>
-          <Link to="/dispatch/logistics">물류 배차 신청</Link>
+          <Link to="/attendance/request">근태 신청</Link>
         </NavDropdown>
         <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
           <Link to="/admin/orgs">조직관리</Link>
@@ -403,10 +404,10 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
         { to: '/coops/status', label: '협조 통계' },
       ];
     }
-    if (path.startsWith('/dispatch')) {
+    if (path.startsWith('/dispatch') || path.startsWith('/attendance')) {
       return [
         { to: '/dispatch/corporate', label: '법인차량 신청' },
-        { to: '/dispatch/logistics', label: '물류 배차 신청' },
+        { to: '/attendance/request', label: '근태 신청' },
       ];
     }
     if (path.startsWith('/admin')) {

@@ -122,6 +122,7 @@ model User {
   keyResultAssignments KeyResultAssignment[]
   carDispatchRequestsRequested CarDispatchRequest[] @relation("CarDispatchRequester")
   carDispatchRequestsToApprove CarDispatchRequest[] @relation("CarDispatchApprover")
+  attendanceRequests AttendanceRequest[]
 }
 
 model Objective {
@@ -302,6 +303,12 @@ enum DispatchStatus {
   CANCELLED
 }
 
+enum AttendanceType {
+  OT
+  VACATION
+  EARLY_LEAVE
+}
+
 model ApprovalRequest {
   id             String          @id @default(cuid())
   subjectType    String
@@ -475,4 +482,17 @@ model CarDispatchRequest {
   status      DispatchStatus  @default(PENDING)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+}
+
+model AttendanceRequest {
+  id        String         @id @default(cuid())
+  userId    String
+  user      User           @relation(fields: [userId], references: [id])
+  type      AttendanceType
+  date      DateTime
+  startAt   DateTime?
+  endAt     DateTime?
+  reason    String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 }
