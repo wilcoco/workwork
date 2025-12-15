@@ -180,7 +180,7 @@ export function CarDispatchCorporate() {
                                   fontSize: 10,
                                   padding: '2px 4px',
                                   borderRadius: 4,
-                                  background: ev.status === 'APPROVED' ? '#e0f2fe' : '#fef9c3',
+                                  background: ev.status === 'APPROVED' ? '#dcfce7' : '#fef9c3',
                                   border: '1px solid #cbd5e1',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
