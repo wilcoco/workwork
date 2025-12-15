@@ -1,14 +1,32 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
 class CreateCarDispatchDto {
+  @IsString()
   carId!: string;
+
+  @IsString()
   requesterId!: string;
+
+  @IsOptional()
+  @IsString()
   approverId!: string;
+
+  @IsOptional()
+  @IsString()
   coRiders?: string;
+
+  @IsString()
   startAt!: string; // ISO
+
+  @IsString()
   endAt!: string;   // ISO
+
+  @IsString()
   destination!: string;
+
+  @IsString()
   purpose!: string;
 }
 
