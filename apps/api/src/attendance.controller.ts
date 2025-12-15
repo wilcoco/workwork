@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -202,5 +202,26 @@ export class AttendanceController {
     });
 
     return { items: result };
+  }
+
+  @Get(':id')
+  async getOne(@Param('id') id: string) {
+    const rec = await this.prisma.attendanceRequest.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+    if (!rec) throw new BadRequestException('not found');
+
+    return {
+      id: rec.id,
+      type: rec.type,
+      date: rec.date,
+      startAt: rec.startAt,
+      endAt: rec.endAt,
+      reason: rec.reason,
+      requesterId: rec.userId,
+      requesterName: rec.user?.name ?? '',
+      createdAt: rec.createdAt,
+    };
   }
 }

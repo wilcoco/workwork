@@ -44,6 +44,10 @@ export function ApprovalsInbox() {
           try {
             doc = await apiJson<any>(`/api/car-dispatch/${encodeURIComponent(sid)}`);
           } catch {}
+        } else if (st === 'ATTENDANCE' && sid) {
+          try {
+            doc = await apiJson<any>(`/api/attendance/${encodeURIComponent(sid)}`);
+          } catch {}
         }
         return { ...n, _doc: doc };
       }));
@@ -96,6 +100,21 @@ export function ApprovalsInbox() {
             ].filter(Boolean);
             meta = parts.join(' · ');
             when = doc.createdAt || doc.startAt || when;
+          } else if (st === 'ATTENDANCE' && doc) {
+            const kind = doc.type === 'OT' ? 'OT' : doc.type === 'VACATION' ? '휴가' : '조퇴';
+            title = `근태 신청 - ${kind}`.trim();
+            const dateStr = doc.date ? new Date(doc.date).toLocaleDateString() : '';
+            const timeRange = doc.startAt && doc.endAt
+              ? `${new Date(doc.startAt).toLocaleTimeString()} ~ ${new Date(doc.endAt).toLocaleTimeString()}`
+              : (doc.type === 'VACATION' ? '종일' : '');
+            const parts = [
+              doc.requesterName || '',
+              dateStr,
+              timeRange,
+              doc.reason || '',
+            ].filter(Boolean);
+            meta = parts.join(' · ');
+            when = doc.createdAt || doc.date || when;
           } else if (st === 'Worklog' && doc) {
             const wl = doc;
             title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
@@ -169,6 +188,21 @@ export function ApprovalsInbox() {
                 ].filter(Boolean);
                 meta = parts.join(' · ');
                 when = doc.createdAt || doc.startAt || when;
+              } else if (st === 'ATTENDANCE' && doc) {
+                const kind = doc.type === 'OT' ? 'OT' : doc.type === 'VACATION' ? '휴가' : '조퇴';
+                title = `근태 신청 - ${kind}`.trim();
+                const dateStr = doc.date ? new Date(doc.date).toLocaleDateString() : '';
+                const timeRange = doc.startAt && doc.endAt
+                  ? `${new Date(doc.startAt).toLocaleTimeString()} ~ ${new Date(doc.endAt).toLocaleTimeString()}`
+                  : (doc.type === 'VACATION' ? '종일' : '');
+                const parts = [
+                  doc.requesterName || '',
+                  dateStr,
+                  timeRange,
+                  doc.reason || '',
+                ].filter(Boolean);
+                meta = parts.join(' · ');
+                when = doc.createdAt || doc.date || when;
               } else if (st === 'Worklog' && doc) {
                 const wl = doc;
                 title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
