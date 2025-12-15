@@ -30,13 +30,18 @@ export function ApprovalsInbox() {
       const base = (json?.items || [])
         .filter((n: any) => n.type === 'ApprovalRequested')
         .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      // Enrich with underlying Worklog document when available
+      // Enrich with underlying document when available
       const enriched = await Promise.all(base.map(async (n: any) => {
         let doc: any = null;
-        if ((n.subjectType === 'Worklog' || n.payload?.subjectType === 'Worklog') && (n.subjectId || n.payload?.subjectId)) {
-          const wid = n.subjectId || n.payload?.subjectId;
+        const st = n.subjectType || n.payload?.subjectType;
+        const sid = n.subjectId || n.payload?.subjectId;
+        if (st === 'Worklog' && sid) {
           try {
-            doc = await apiJson<any>(`/api/worklogs/${encodeURIComponent(wid)}`);
+            doc = await apiJson<any>(`/api/worklogs/${encodeURIComponent(sid)}`);
+          } catch {}
+        } else if (st === 'CAR_DISPATCH' && sid) {
+          try {
+            doc = await apiJson<any>(`/api/car-dispatch/${encodeURIComponent(sid)}`);
           } catch {}
         }
         return { ...n, _doc: doc };
@@ -70,10 +75,32 @@ export function ApprovalsInbox() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((n) => {
-          const wl = (n as any)._doc as any | null;
-          const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : '문서 정보 없음';
-          const meta = wl ? `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
-          const when = wl?.date || wl?.createdAt || n.createdAt;
+          const doc = (n as any)._doc as any | null;
+          const st = n.subjectType || n.payload?.subjectType;
+          let title = '문서 정보 없음';
+          let meta = '';
+          let when = n.createdAt as string | undefined;
+
+          if (st === 'CAR_DISPATCH' && doc) {
+            title = `배차 신청 - ${doc.carName || ''}`.trim();
+            const timeRange = doc.startAt && doc.endAt
+              ? `${new Date(doc.startAt).toLocaleString()} ~ ${new Date(doc.endAt).toLocaleString()}`
+              : '';
+            const parts = [
+              doc.requesterName || '',
+              timeRange,
+              doc.destination || '',
+              doc.purpose || '',
+              doc.coRiders ? `동승자: ${doc.coRiders}` : '',
+            ].filter(Boolean);
+            meta = parts.join(' · ');
+            when = doc.createdAt || doc.startAt || when;
+          } else if (st === 'Worklog' && doc) {
+            const wl = doc;
+            title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
+            meta = `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}`;
+            when = wl?.date || wl?.createdAt || when;
+          }
           return (
             <div key={n.id} style={card} onClick={() => setActive(n)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -81,16 +108,16 @@ export function ApprovalsInbox() {
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
-              {wl && (
-                wl.attachments?.contentHtml ? (
-                  <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
+              {st === 'Worklog' && doc && (
+                doc.attachments?.contentHtml ? (
+                  <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(doc.attachments.contentHtml) }} />
                 ) : (
-                  <div style={{ color: '#334155', marginTop: 6 }}>{String(wl.note || '').split('\n').slice(1).join('\n')}</div>
+                  <div style={{ color: '#334155', marginTop: 6 }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
                 )
               )}
-              {wl?.attachments?.files?.length ? (
+              {st === 'Worklog' && doc?.attachments?.files?.length ? (
                 <div className="attachments" style={{ marginTop: 8 }}>
-                  {wl.attachments.files.map((f: any, i: number) => {
+                  {doc.attachments.files.map((f: any, i: number) => {
                     const url = absLink(f.url as string);
                     const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
                     const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
@@ -121,10 +148,32 @@ export function ApprovalsInbox() {
           <div style={modalBody} onClick={(e) => e.stopPropagation()}>
             {(() => {
               const n = active;
-              const wl = (n as any)._doc as any | null;
-              const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : '문서 정보 없음';
-              const meta = wl ? `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
-              const when = wl?.date || wl?.createdAt || n.createdAt;
+              const doc = (n as any)._doc as any | null;
+              const st = n.subjectType || n.payload?.subjectType;
+              let title = '문서 정보 없음';
+              let meta = '';
+              let when = n.createdAt as string | undefined;
+
+              if (st === 'CAR_DISPATCH' && doc) {
+                title = `배차 신청 - ${doc.carName || ''}`.trim();
+                const timeRange = doc.startAt && doc.endAt
+                  ? `${new Date(doc.startAt).toLocaleString()} ~ ${new Date(doc.endAt).toLocaleString()}`
+                  : '';
+                const parts = [
+                  doc.requesterName || '',
+                  timeRange,
+                  doc.destination || '',
+                  doc.purpose || '',
+                  doc.coRiders ? `동승자: ${doc.coRiders}` : '',
+                ].filter(Boolean);
+                meta = parts.join(' · ');
+                when = doc.createdAt || doc.startAt || when;
+              } else if (st === 'Worklog' && doc) {
+                const wl = doc;
+                title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
+                meta = `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}`;
+                when = wl?.date || wl?.createdAt || when;
+              }
               return (
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -132,16 +181,16 @@ export function ApprovalsInbox() {
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
                   </div>
                   {meta && <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>}
-                  {wl && (
-                    wl.attachments?.contentHtml ? (
-                      <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
+                  {st === 'Worklog' && doc && (
+                    doc.attachments?.contentHtml ? (
+                      <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(doc.attachments.contentHtml) }} />
                     ) : (
-                      <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(wl.note || '').split('\n').slice(1).join('\n')}</div>
+                      <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
                     )
                   )}
-                  {wl?.attachments?.files?.length ? (
+                  {st === 'Worklog' && doc?.attachments?.files?.length ? (
                     <div className="attachments" style={{ marginTop: 8 }}>
-                      {wl.attachments.files.map((f: any, i: number) => {
+                      {doc.attachments.files.map((f: any, i: number) => {
                         const url = absLink(f.url as string);
                         const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
                         const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);

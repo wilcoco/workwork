@@ -165,6 +165,32 @@ export class CarDispatchController {
     };
   }
 
+  @Get(':id')
+  async getOne(@Param('id') id: string) {
+    const rec = await this.prisma.carDispatchRequest.findUnique({
+      where: { id },
+      include: { car: true, requester: true, approver: true },
+    });
+    if (!rec) throw new BadRequestException('not found');
+    return {
+      id: rec.id,
+      carId: rec.carId,
+      carName: rec.car?.name ?? '',
+      requesterId: rec.requesterId,
+      requesterName: rec.requester?.name ?? '',
+      approverId: rec.approverId,
+      approverName: rec.approver?.name ?? '',
+      coRiders: rec.coRiders || '',
+      startAt: rec.startAt,
+      endAt: rec.endAt,
+      destination: rec.destination,
+      purpose: rec.purpose,
+      status: rec.status,
+      createdAt: rec.createdAt,
+      updatedAt: rec.updatedAt,
+    };
+  }
+
   @Post(':id/approve')
   async approve(@Param('id') id: string) {
     const rec = await this.prisma.carDispatchRequest.update({
