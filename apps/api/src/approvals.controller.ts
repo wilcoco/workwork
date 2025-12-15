@@ -251,6 +251,9 @@ export class ApprovalsController {
     } else {
       // last step approved -> finalize
       const updated = await this.prisma.approvalRequest.update({ where: { id }, data: { status: 'APPROVED' } });
+      if (updated.subjectType === 'CAR_DISPATCH') {
+        await (this.prisma as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
+      }
       await this.prisma.event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id } } });
       await this.prisma.notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
       return updated;
@@ -278,6 +281,9 @@ export class ApprovalsController {
 
     await this.prisma.approvalStep.update({ where: { id: pending.id }, data: { status: 'REJECTED' as any, comment: dto.comment, actedAt: new Date() } });
     const updated = await this.prisma.approvalRequest.update({ where: { id }, data: { status: 'REJECTED' } });
+    if (updated.subjectType === 'CAR_DISPATCH') {
+      await (this.prisma as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
+    }
     await this.prisma.event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo, reason: dto.comment } } });
     await this.prisma.notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
     return updated;
