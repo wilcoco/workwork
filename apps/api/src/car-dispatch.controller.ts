@@ -65,20 +65,64 @@ export class CarDispatchController {
       }
 
       const approverId = dto.approverId || dto.requesterId;
+      const rec = await this.prisma.$transaction(async (tx) => {
+        // 1) 배차 요청 생성
+        const dispatch = await tx.carDispatchRequest.create({
+          data: {
+            carId: dto.carId,
+            requesterId: dto.requesterId,
+            approverId,
+            coRiders: dto.coRiders,
+            startAt,
+            endAt,
+            destination: dto.destination,
+            purpose: dto.purpose,
+          },
+          include: { car: true },
+        });
 
-      const rec = await this.prisma.carDispatchRequest.create({
-        data: {
-          carId: dto.carId,
-          requesterId: dto.requesterId,
-          approverId,
-          coRiders: dto.coRiders,
-          startAt,
-          endAt,
-          destination: dto.destination,
-          purpose: dto.purpose,
-        },
-        include: { car: true },
+        // 2) 결재 요청 생성 (단일 단계)
+        const approval = await tx.approvalRequest.create({
+          data: {
+            subjectType: 'CAR_DISPATCH',
+            subjectId: dispatch.id,
+            approverId,
+            requestedById: dto.requesterId,
+          },
+        });
+
+        await tx.approvalStep.create({
+          data: {
+            requestId: approval.id,
+            stepNo: 1,
+            approverId,
+            status: 'PENDING' as any,
+          },
+        });
+
+        // 3) 이벤트 & 알림 (기존 결재 모듈 패턴과 동일)
+        await tx.event.create({
+          data: {
+            subjectType: 'CAR_DISPATCH',
+            subjectId: dispatch.id,
+            activity: 'ApprovalRequested',
+            userId: dto.requesterId,
+            attrs: { approverId, requestId: approval.id, steps: 1 },
+          },
+        });
+        await tx.notification.create({
+          data: {
+            userId: approverId,
+            type: 'ApprovalRequested',
+            subjectType: 'CAR_DISPATCH',
+            subjectId: dispatch.id,
+            payload: { requestId: approval.id },
+          },
+        });
+
+        return dispatch;
       });
+
       return rec;
     } catch (e: any) {
       // eslint-disable-next-line no-console
