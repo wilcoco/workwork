@@ -10,7 +10,14 @@ type CalendarItem = {
   startAt?: string | null;
   endAt?: string | null;
   reason?: string | null;
+  requesterName?: string | null;
   overLimit: boolean;
+};
+
+type Approver = {
+  id: string;
+  name: string;
+  role: string;
 };
 
 export function AttendanceRequest() {
@@ -29,12 +36,32 @@ export function AttendanceRequest() {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const [approvers, setApprovers] = useState<Approver[]>([]);
+  const [approverId, setApproverId] = useState('');
+
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
 
   useEffect(() => {
+    void loadApprovers();
     void loadCalendar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendarMonth]);
+
+  async function loadApprovers() {
+    try {
+      const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>(`/api/users`);
+      const cand = (res.items || []).filter((u) => u.role === 'CEO' || u.role === 'EXEC' || u.role === 'MANAGER');
+      setApprovers(cand);
+      if (!approverId && cand.length > 0) {
+        const hong = cand.find((u) => u.name === '홍정수');
+        setApproverId((hong ?? cand[0]).id);
+      }
+    } catch (e) {
+      // 승인자 목록은 필수까지는 아니라서 조용히 무시
+      // eslint-disable-next-line no-console
+      console.error(e);
+    }
+  }
 
   async function loadCalendar() {
     if (!userId) return;
@@ -62,6 +89,10 @@ export function AttendanceRequest() {
       alert('유형과 날짜를 입력해 주세요');
       return;
     }
+    if (!approverId) {
+      alert('승인자를 선택해 주세요');
+      return;
+    }
     if ((type === 'OT' || type === 'EARLY_LEAVE') && (!startTime || !endTime)) {
       alert('시간을 입력해 주세요');
       return;
@@ -73,6 +104,7 @@ export function AttendanceRequest() {
         method: 'POST',
         body: JSON.stringify({
           userId,
+          approverId,
           type,
           date,
           startTime: type === 'VACATION' ? undefined : startTime,
@@ -157,6 +189,15 @@ export function AttendanceRequest() {
       <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
         <h2>근태 신청</h2>
         <label style={{ display: 'grid', gap: 4 }}>
+          <span>승인자</span>
+          <select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
+            <option value="">선택</option>
+            {approvers.map((u) => (
+              <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
           <span>유형</span>
           <select value={type} onChange={(e) => setType(e.target.value as AttendanceType)}>
             <option value="OT">OT 신청</option>
@@ -219,10 +260,16 @@ function buildMonthGrid(month: string, items: CalendarItem[]) {
 
 function buildLabel(ev: CalendarItem): string {
   const t = ev.type === 'OT' ? 'OT' : ev.type === 'VACATION' ? '휴가' : '조퇴';
-  if (ev.type === 'VACATION') return `${t} (종일)`;
-  const s = ev.startAt ? formatTime(ev.startAt) : '';
-  const e = ev.endAt ? formatTime(ev.endAt) : '';
-  return `${t} ${s}${e ? `~${e}` : ''}`;
+  let base: string;
+  if (ev.type === 'VACATION') {
+    base = `${t} (종일)`;
+  } else {
+    const s = ev.startAt ? formatTime(ev.startAt) : '';
+    const e = ev.endAt ? formatTime(ev.endAt) : '';
+    base = `${t} ${s}${e ? `~${e}` : ''}`;
+  }
+  if (ev.requesterName) return `${ev.requesterName} ${base}`;
+  return base;
 }
 
 function buildTitle(ev: CalendarItem): string {

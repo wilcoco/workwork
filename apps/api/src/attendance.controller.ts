@@ -6,6 +6,10 @@ class CreateAttendanceDto {
   @IsString()
   userId!: string;
 
+  @IsOptional()
+  @IsString()
+  approverId?: string;
+
   @IsString()
   @IsIn(['OT', 'VACATION', 'EARLY_LEAVE'])
   type!: 'OT' | 'VACATION' | 'EARLY_LEAVE';
@@ -51,16 +55,61 @@ export class AttendanceController {
         endAt = e;
       }
 
-      const rec = await this.prisma.attendanceRequest.create({
-        data: {
-          userId: dto.userId,
-          type: dto.type,
-          date: baseDate,
-          startAt,
-          endAt,
-          reason: dto.reason,
-        },
+      const approverId = dto.approverId || dto.userId;
+
+      const rec = await this.prisma.$transaction(async (tx) => {
+        const attendance = await tx.attendanceRequest.create({
+          data: {
+            userId: dto.userId,
+            type: dto.type,
+            date: baseDate,
+            startAt,
+            endAt,
+            reason: dto.reason,
+          },
+        });
+
+        const approval = await tx.approvalRequest.create({
+          data: {
+            subjectType: 'ATTENDANCE',
+            subjectId: attendance.id,
+            approverId,
+            requestedById: dto.userId,
+          },
+        });
+
+        await tx.approvalStep.create({
+          data: {
+            requestId: approval.id,
+            stepNo: 1,
+            approverId,
+            status: 'PENDING' as any,
+          },
+        });
+
+        await tx.event.create({
+          data: {
+            subjectType: 'ATTENDANCE',
+            subjectId: attendance.id,
+            activity: 'ApprovalRequested',
+            userId: dto.userId,
+            attrs: { approverId, requestId: approval.id, steps: 1 },
+          },
+        });
+
+        await tx.notification.create({
+          data: {
+            userId: approverId,
+            type: 'ApprovalRequested',
+            subjectType: 'ATTENDANCE',
+            subjectId: attendance.id,
+            payload: { requestId: approval.id, subjectType: 'ATTENDANCE' },
+          },
+        });
+
+        return attendance;
       });
+
       return rec;
     } catch (e: any) {
       // eslint-disable-next-line no-console
@@ -93,6 +142,7 @@ export class AttendanceController {
         date: { gte: rangeStart, lte: rangeEnd },
       },
       orderBy: { date: 'asc' },
+      include: { user: true },
     });
 
     type WeekAgg = { otHours: number; vacationHours: number; earlyLeaveHours: number };
@@ -134,7 +184,7 @@ export class AttendanceController {
       }
     }
 
-    const result = items.map((it: { id: string; type: 'OT' | 'VACATION' | 'EARLY_LEAVE'; date: Date; startAt: Date | null; endAt: Date | null; reason: string | null }) => {
+    const result = items.map((it: { id: string; type: 'OT' | 'VACATION' | 'EARLY_LEAVE'; date: Date; startAt: Date | null; endAt: Date | null; reason: string | null; user: { name: string } }) => {
       const weekKey = getWeekKey(it.date as any as Date);
       const agg = weekMap.get(weekKey) || { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
       const totalHours = 40 + agg.otHours - agg.vacationHours - agg.earlyLeaveHours;
@@ -146,6 +196,7 @@ export class AttendanceController {
         startAt: it.startAt,
         endAt: it.endAt,
         reason: it.reason,
+        requesterName: it.user?.name ?? '',
         overLimit,
       };
     });
