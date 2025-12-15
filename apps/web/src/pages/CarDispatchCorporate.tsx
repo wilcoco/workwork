@@ -174,8 +174,21 @@ export function CarDispatchCorporate() {
                           <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{cell.day}</div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {cell.items.map(ev => (
-                              <div key={ev.id} style={{ fontSize: 10, padding: '2px 4px', borderRadius: 4, background: ev.status === 'APPROVED' ? '#e0f2fe' : '#fef9c3', border: '1px solid #cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${ev.carName} · ${ev.requesterName} · ${formatTime(ev.startAt)}~${formatTime(ev.endAt)} · ${ev.destination} · ${ev.purpose}`}>
-                                {`${ev.carName} ${formatTime(ev.startAt)}~${formatTime(ev.endAt)}`}
+                              <div
+                                key={ev.id}
+                                style={{
+                                  fontSize: 10,
+                                  padding: '2px 4px',
+                                  borderRadius: 4,
+                                  background: ev.status === 'APPROVED' ? '#e0f2fe' : '#fef9c3',
+                                  border: '1px solid #cbd5e1',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={`${ev.carName} · ${ev.requesterName} · ${formatTime(ev.startAt)}~${formatTime(ev.endAt)} · ${ev.destination} · ${ev.purpose}`}
+                              >
+                                {`${ev.carName} ${ev.requesterName} ${formatTime(ev.startAt)}~${formatTime(ev.endAt)}`}
                               </div>
                             ))}
                           </div>
