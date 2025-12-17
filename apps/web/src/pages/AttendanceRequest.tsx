@@ -31,6 +31,7 @@ export function AttendanceRequest() {
   const [error, setError] = useState<string | null>(null);
   const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyDays, setWeeklyDays] = useState<{ date: string; totalHours: number }[]>([]);
 
   const [type, setType] = useState<AttendanceType>('OT');
   const [date, setDate] = useState('');
@@ -83,12 +84,14 @@ export function AttendanceRequest() {
           params.set('startTime', startTime);
           params.set('endTime', endTime);
         }
-        const res = await apiJson<{ weeklyHours: number }>(`/api/attendance/weekly-hours?${params.toString()}`);
+        const res = await apiJson<{ weeklyHours: number; days?: { date: string; totalHours: number }[] }>(`/api/attendance/weekly-hours?${params.toString()}`);
         setWeeklyHours(typeof res.weeklyHours === 'number' ? res.weeklyHours : null);
+        setWeeklyDays(Array.isArray(res.days) ? res.days : []);
       } catch (e) {
         // eslint-disable-next-line no-console
         console.error(e);
         setWeeklyHours(null);
+        setWeeklyDays([]);
       } finally {
         setWeeklyLoading(false);
       }
@@ -248,9 +251,19 @@ export function AttendanceRequest() {
           <span>일자</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            <span style={{ fontSize: 12, color: '#475569' }}>
-              해당 주 업무시간:{' '}
-              {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')} 
+            <span style={{ fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column' }}>
+              <span>
+                해당 주 업무시간:{' '}
+                {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')} 
+              </span>
+              {!weeklyLoading && weeklyDays.length > 0 && (
+                <span>
+                  {weeklyDays.map((d, idx) => {
+                    const label = d.totalHours.toFixed(1);
+                    return `${idx > 0 ? ' / ' : ''}${d.date.slice(5)}: ${label}h`;
+                  }).join('')}
+                </span>
+              )}
             </span>
           </div>
         </label>
