@@ -233,15 +233,15 @@ export class AttendanceController {
     if (!userId) throw new BadRequestException('userId가 필요합니다');
     if (!dateStr) throw new BadRequestException('date가 필요합니다');
 
-    // 기준 일자를 "캘린더 상의 날짜"로 보고, 월~일 주간을 계산한다.
+    // 기준 일자를 "캘린더 상의 날짜"로 보고, 토~금 주간을 계산한다.
     // DB에는 UTC로 저장되어 있으므로, 주간 범위도 UTC로 계산한다.
     const baseUtc = new Date(`${dateStr}T00:00:00Z`); // 해당 날짜의 UTC 자정
     if (isNaN(baseUtc.getTime())) throw new BadRequestException('유효하지 않은 date');
 
-    // 월요일 시작 주 (0=Sun..6=Sat)
+    // 토요일 시작 주 (0=Sun..6=Sat)
     const day = baseUtc.getUTCDay();
-    const diffToMon = day === 0 ? -6 : 1 - day; // 월요일까지의 오프셋
-    const weekStartUtc = new Date(Date.UTC(baseUtc.getUTCFullYear(), baseUtc.getUTCMonth(), baseUtc.getUTCDate() + diffToMon, 0, 0, 0, 0));
+    const diffToSat = -((day + 1) % 7); // 토요일까지의 오프셋
+    const weekStartUtc = new Date(Date.UTC(baseUtc.getUTCFullYear(), baseUtc.getUTCMonth(), baseUtc.getUTCDate() + diffToSat, 0, 0, 0, 0));
     const weekEndUtc = new Date(Date.UTC(weekStartUtc.getUTCFullYear(), weekStartUtc.getUTCMonth(), weekStartUtc.getUTCDate() + 6, 23, 59, 59, 999));
 
     // 주간 공휴일 조회 (법정/비법정 모두 근무일에서 제외)
@@ -284,7 +284,7 @@ export class AttendanceController {
     let otHours = 0;
     let vacationHours = 0;
     let earlyLeaveHours = 0;
-    let flexibleAdjust = 0; // FLEXIBLE가 있는 날은 기본 8시간 대신 실제 근무시간으로 대체
+    let flexibleAdjust = 0; // 유연근무는 기본 8시간으로 보고, 별도 조정은 사용하지 않는다 (향후 확장 대비 변수만 유지)
 
     // 일자별 세부 집계
     type DayAgg = { base: number; ot: number; vacation: number; earlyLeave: number; flexibleAdj: number };
@@ -329,12 +329,8 @@ export class AttendanceController {
           agg.earlyLeave += h;
         }
       } else if (it.type === 'FLEXIBLE') {
-        if (dow >= 1 && dow <= 5 && !holidaySet.has(key) && it.startAt && it.endAt) {
-          const h = hoursBetween(it.startAt, it.endAt);
-          const adj = h - 8;
-          flexibleAdjust += adj;
-          agg.flexibleAdj += adj;
-        }
+        // 현재 규칙: 유연근무가 있어도 해당 평일은 기본 8시간 근무로 본다.
+        // 실제 근무시간에 따른 추가/감산은 하지 않으므로 여기서는 조정하지 않는다.
       }
     }
 
@@ -369,18 +365,8 @@ export class AttendanceController {
         agg.earlyLeave += h;
       }
     } else if (type === 'FLEXIBLE') {
-      const d = new Date(`${dateStr}T00:00:00+09:00`);
-      const dow = d.getDay();
-      const key = d.toISOString().slice(0, 10);
-      if (dow >= 1 && dow <= 5 && !holidaySet.has(key) && startTime && endTime) {
-        const s = new Date(`${dateStr}T${startTime}:00+09:00`);
-        const e = new Date(`${dateStr}T${endTime}:00+09:00`);
-        const h = hoursBetween(s, e);
-        const adj = h - 8;
-        flexibleAdjust += adj;
-        const agg = getDayAgg(key);
-        agg.flexibleAdj += adj;
-      }
+      // 현재 규칙: 유연근무 선택 시에도 하루 기본 8시간으로만 계산하고,
+      // 주 52시간 계산에는 추가 가감하지 않는다.
     }
 
     const weeklyHours = (baseHours + flexibleAdjust) + otHours - vacationHours - earlyLeaveHours;

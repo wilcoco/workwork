@@ -99,6 +99,17 @@ export function AttendanceRequest() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, date, type, startTime, endTime]);
 
+  // FLEXIBLE: 시작 시간만 입력받고 종료시간은 +9시간으로 자동 설정
+  useEffect(() => {
+    if (type !== 'FLEXIBLE') return;
+    if (!startTime) return;
+    const [h, m] = startTime.split(':').map((v) => parseInt(v, 10));
+    if (Number.isNaN(h) || Number.isNaN(m)) return;
+    const endH = (h + 9) % 24;
+    const end = `${String(endH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    if (end !== endTime) setEndTime(end);
+  }, [type, startTime, endTime]);
+
   async function loadCalendar() {
     if (!userId) return;
     setLoading(true);
@@ -275,7 +286,12 @@ export function AttendanceRequest() {
             </label>
             <label style={{ display: 'grid', gap: 4, flex: 1 }}>
               <span>종료 시간</span>
-              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                disabled={type === 'FLEXIBLE'}
+              />
             </label>
           </div>
         )}
