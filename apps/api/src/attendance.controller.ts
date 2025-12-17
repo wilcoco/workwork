@@ -47,8 +47,9 @@ export class AttendanceController {
       let endAt: Date | undefined;
       if (dto.type === 'OT' || dto.type === 'EARLY_LEAVE' || dto.type === 'FLEXIBLE') {
         if (!dto.startTime || !dto.endTime) throw new BadRequestException('시간을 입력해 주세요');
-        const s = new Date(`${dto.date}T${dto.startTime}:00.000Z`);
-        const e = new Date(`${dto.date}T${dto.endTime}:00.000Z`);
+        // 입력된 시간은 한국 시간(KST) 기준으로 해석한다.
+        const s = new Date(`${dto.date}T${dto.startTime}:00+09:00`);
+        const e = new Date(`${dto.date}T${dto.endTime}:00+09:00`);
         if (isNaN(s.getTime()) || isNaN(e.getTime())) throw new BadRequestException('유효하지 않은 시간입니다');
         if (e <= s) throw new BadRequestException('종료 시간이 시작 시간보다 같거나 이를 수 없습니다');
         startAt = s;
