@@ -163,6 +163,21 @@ export class AttendanceController {
       return diffMs / (1000 * 60 * 60);
     };
 
+    const ids = items.map((it) => it.id);
+
+    const approvals = ids.length
+      ? await this.prisma.approvalRequest.findMany({
+          where: {
+            subjectType: 'ATTENDANCE',
+            subjectId: { in: ids },
+          },
+          select: { subjectId: true, status: true },
+        })
+      : [];
+
+    const statusMap = new Map<string, string>();
+    for (const a of approvals) statusMap.set(a.subjectId, a.status as any);
+
     for (const it of items) {
       const d = it.date;
       const weekKey = getWeekKey(d as any as Date);
@@ -189,6 +204,7 @@ export class AttendanceController {
       const agg = weekMap.get(weekKey) || { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
       const totalHours = 40 + agg.otHours - agg.vacationHours - agg.earlyLeaveHours;
       const overLimit = totalHours > 52;
+      const status = statusMap.get(it.id) || 'PENDING';
       return {
         id: it.id,
         type: it.type,
@@ -197,6 +213,7 @@ export class AttendanceController {
         endAt: it.endAt,
         reason: it.reason,
         requesterName: it.user?.name ?? '',
+        status,
         overLimit,
       };
     });

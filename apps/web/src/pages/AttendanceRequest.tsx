@@ -11,6 +11,7 @@ type CalendarItem = {
   endAt?: string | null;
   reason?: string | null;
   requesterName?: string | null;
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
   overLimit: boolean;
 };
 
@@ -164,7 +165,7 @@ export function AttendanceRequest() {
                                   fontSize: 10,
                                   padding: '2px 4px',
                                   borderRadius: 4,
-                                  background: ev.overLimit ? '#fee2e2' : '#fef9c3',
+                                  background: getBg(ev),
                                   border: '1px solid #cbd5e1',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
@@ -283,4 +284,14 @@ function formatTime(iso: string): string {
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
+}
+
+function getBg(ev: CalendarItem): string {
+  // 52시간 초과 경고는 항상 빨간색
+  if (ev.overLimit) return '#fee2e2';
+  // 결재 상태별 색상
+  if (ev.status === 'APPROVED') return '#dcfce7'; // 초록
+  if (ev.status === 'REJECTED') return '#fee2e2'; // 빨강
+  // PENDING, EXPIRED 등은 노랑
+  return '#fef9c3';
 }
