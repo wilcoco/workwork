@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 
-type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE';
+type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE';
 
 type CalendarItem = {
   id: string;
@@ -29,6 +29,8 @@ export function AttendanceRequest() {
   const [items, setItems] = useState<CalendarItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
 
   const [type, setType] = useState<AttendanceType>('OT');
   const [date, setDate] = useState('');
@@ -57,6 +59,37 @@ export function AttendanceRequest() {
         const hong = cand.find((u) => u.name === '홍정수');
         setApproverId((hong ?? cand[0]).id);
       }
+
+  // 선택한 일자/유형/시간 기준으로 해당 주 근무시간 조회
+  useEffect(() => {
+    if (!userId || !date) {
+      setWeeklyHours(null);
+      return;
+    }
+    void (async () => {
+      setWeeklyLoading(true);
+      try {
+        const params = new URLSearchParams({
+          userId,
+          date,
+        });
+        if (type) params.set('type', type);
+        if (type !== 'VACATION' && startTime && endTime) {
+          params.set('startTime', startTime);
+          params.set('endTime', endTime);
+        }
+        const res = await apiJson<{ weeklyHours: number }>(`/api/attendance/weekly-hours?${params.toString()}`);
+        setWeeklyHours(typeof res.weeklyHours === 'number' ? res.weeklyHours : null);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error(e);
+        setWeeklyHours(null);
+      } finally {
+        setWeeklyLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, date, type, startTime, endTime]);
     } catch (e) {
       // 승인자 목록은 필수까지는 아니라서 조용히 무시
       // eslint-disable-next-line no-console
@@ -94,8 +127,13 @@ export function AttendanceRequest() {
       alert('승인자를 선택해 주세요');
       return;
     }
-    if ((type === 'OT' || type === 'EARLY_LEAVE') && (!startTime || !endTime)) {
+    if ((type === 'OT' || type === 'EARLY_LEAVE' || type === 'FLEXIBLE') && (!startTime || !endTime)) {
       alert('시간을 입력해 주세요');
+      return;
+    }
+
+    if (weeklyHours !== null && weeklyHours > 52) {
+      alert('해당 주 업무시간이 52시간을 초과하여 신청할 수 없습니다');
       return;
     }
     setSubmitting(true);
@@ -204,11 +242,18 @@ export function AttendanceRequest() {
             <option value="OT">OT 신청</option>
             <option value="VACATION">휴가 신청</option>
             <option value="EARLY_LEAVE">조퇴 신청</option>
+            <option value="FLEXIBLE">유연 근무 신청</option>
           </select>
         </label>
         <label style={{ display: 'grid', gap: 4 }}>
           <span>일자</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <span style={{ fontSize: 12, color: '#475569' }}>
+              해당 주 업무시간:{' '}
+              {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')} 
+            </span>
+          </div>
         </label>
         {type !== 'VACATION' && (
           <div style={{ display: 'flex', gap: 8 }}>

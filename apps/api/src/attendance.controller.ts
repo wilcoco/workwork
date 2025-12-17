@@ -11,8 +11,8 @@ class CreateAttendanceDto {
   approverId?: string;
 
   @IsString()
-  @IsIn(['OT', 'VACATION', 'EARLY_LEAVE'])
-  type!: 'OT' | 'VACATION' | 'EARLY_LEAVE';
+  @IsIn(['OT', 'VACATION', 'EARLY_LEAVE', 'FLEXIBLE'])
+  type!: 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE';
 
   @IsString()
   date!: string; // YYYY-MM-DD
@@ -45,7 +45,7 @@ export class AttendanceController {
 
       let startAt: Date | undefined;
       let endAt: Date | undefined;
-      if (dto.type === 'OT' || dto.type === 'EARLY_LEAVE') {
+      if (dto.type === 'OT' || dto.type === 'EARLY_LEAVE' || dto.type === 'FLEXIBLE') {
         if (!dto.startTime || !dto.endTime) throw new BadRequestException('시간을 입력해 주세요');
         const s = new Date(`${dto.date}T${dto.startTime}:00.000Z`);
         const e = new Date(`${dto.date}T${dto.endTime}:00.000Z`);
@@ -57,7 +57,7 @@ export class AttendanceController {
 
       const approverId = dto.approverId || dto.userId;
 
-      const rec = await this.prisma.$transaction(async (tx) => {
+      const rec = await (this.prisma as any).$transaction(async (tx: any) => {
         const attendance = await tx.attendanceRequest.create({
           data: {
             userId: dto.userId,
@@ -136,7 +136,7 @@ export class AttendanceController {
     const rangeEnd = new Date(monthEnd);
     rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 7);
 
-    const items = await this.prisma.attendanceRequest.findMany({
+    const items = await (this.prisma as any).attendanceRequest.findMany({
       where: {
         userId,
         date: { gte: rangeStart, lte: rangeEnd },
@@ -163,7 +163,7 @@ export class AttendanceController {
       return diffMs / (1000 * 60 * 60);
     };
 
-    const ids = items.map((it) => it.id);
+    const ids = items.map((it: any) => it.id as string);
 
     const approvals = ids.length
       ? await this.prisma.approvalRequest.findMany({
@@ -221,9 +221,140 @@ export class AttendanceController {
     return { items: result };
   }
 
+  @Get('weekly-hours')
+  async weeklyHours(
+    @Query('userId') userId?: string,
+    @Query('date') dateStr?: string, // 기준 일자 (YYYY-MM-DD)
+    @Query('type') type?: 'OT' | 'VACATION' | 'EARLY_LEAVE',
+    @Query('startTime') startTime?: string, // HH:MM
+    @Query('endTime') endTime?: string,   // HH:MM
+  ) {
+    if (!userId) throw new BadRequestException('userId가 필요합니다');
+    if (!dateStr) throw new BadRequestException('date가 필요합니다');
+
+    // 기준 일자를 KST로 해석하여 해당 주(월~일) 범위를 계산
+    const baseKst = new Date(`${dateStr}T00:00:00+09:00`);
+    if (isNaN(baseKst.getTime())) throw new BadRequestException('유효하지 않은 date');
+
+    const day = baseKst.getDay(); // 0=Sun..6=Sat
+    const diffToMon = day === 0 ? -6 : 1 - day; // 월요일까지의 오프셋
+    const weekStartK = new Date(baseKst.getFullYear(), baseKst.getMonth(), baseKst.getDate() + diffToMon, 0, 0, 0, 0);
+    const weekEndK = new Date(weekStartK.getFullYear(), weekStartK.getMonth(), weekStartK.getDate() + 6, 23, 59, 59, 999);
+
+    const weekStartUtc = new Date(weekStartK.getTime() - 9 * 60 * 60 * 1000);
+    const weekEndUtc = new Date(weekEndK.getTime() - 9 * 60 * 60 * 1000);
+
+    // 주간 공휴일 조회 (법정/비법정 모두 근무일에서 제외)
+    const holidays = await (this.prisma as any).holiday.findMany({
+      where: {
+        date: { gte: weekStartUtc, lte: weekEndUtc },
+      },
+    });
+    const holidaySet = new Set<string>();
+    for (const h of holidays as any[]) {
+      const d = new Date(h.date);
+      holidaySet.add(d.toISOString().slice(0, 10));
+    }
+
+    // 기본 근무시간: 해당 주의 평일(월~금) 중 공휴일이 아닌 날 8시간/일
+    let baseHours = 0;
+    for (let i = 0; i < 7; i += 1) {
+      const d = new Date(weekStartK.getFullYear(), weekStartK.getMonth(), weekStartK.getDate() + i, 0, 0, 0, 0);
+      const dow = d.getDay();
+      const key = d.toISOString().slice(0, 10);
+      if (dow >= 1 && dow <= 5 && !holidaySet.has(key)) {
+        baseHours += 8;
+      }
+    }
+
+    // 해당 주의 근태 신청 내역 (기존 OT/휴가/조퇴)
+    const records = await (this.prisma as any).attendanceRequest.findMany({
+      where: {
+        userId,
+        date: { gte: weekStartUtc, lte: weekEndUtc },
+      },
+      orderBy: { date: 'asc' },
+    });
+
+    let otHours = 0;
+    let vacationHours = 0;
+    let earlyLeaveHours = 0;
+    let flexibleAdjust = 0; // FLEXIBLE가 있는 날은 기본 8시간 대신 실제 근무시간으로 대체
+
+    const hoursBetween = (s: Date, e: Date): number => {
+      const diffMs = e.getTime() - s.getTime();
+      if (diffMs <= 0) return 0;
+      return diffMs / (1000 * 60 * 60);
+    };
+
+    for (const it of records as any[]) {
+      if (it.type === 'OT') {
+        if (it.startAt && it.endAt) otHours += hoursBetween(it.startAt, it.endAt);
+      } else if (it.type === 'VACATION') {
+        // 휴가 1일 = 8시간 차감 (평일 기준, 공휴일은 이미 base에서 빠져 있으므로 추가 차감 없음)
+        const d = new Date(it.date);
+        const dow = d.getDay();
+        const key = d.toISOString().slice(0, 10);
+        if (dow >= 1 && dow <= 5 && !holidaySet.has(key)) vacationHours += 8;
+      } else if (it.type === 'EARLY_LEAVE') {
+        if (it.startAt && it.endAt) earlyLeaveHours += hoursBetween(it.startAt, it.endAt);
+      } else if (it.type === 'FLEXIBLE') {
+        const d = new Date(it.date);
+        const dow = d.getDay();
+        const key = d.toISOString().slice(0, 10);
+        if (dow >= 1 && dow <= 5 && !holidaySet.has(key) && it.startAt && it.endAt) {
+          const h = hoursBetween(it.startAt, it.endAt);
+          flexibleAdjust += (h - 8);
+        }
+      }
+    }
+
+    // 현재 화면에서 선택 중인 신규 신청(아직 DB에 없는 것)을 가상으로 반영
+    if (type === 'OT') {
+      if (startTime && endTime) {
+        const s = new Date(`${dateStr}T${startTime}:00+09:00`);
+        const e = new Date(`${dateStr}T${endTime}:00+09:00`);
+        otHours += hoursBetween(s, e);
+      }
+    } else if (type === 'VACATION') {
+      const d = new Date(`${dateStr}T00:00:00+09:00`);
+      const dow = d.getDay();
+      if (dow >= 1 && dow <= 5) vacationHours += 8;
+    } else if (type === 'EARLY_LEAVE') {
+      if (startTime && endTime) {
+        const s = new Date(`${dateStr}T${startTime}:00+09:00`);
+        const e = new Date(`${dateStr}T${endTime}:00+09:00`);
+        earlyLeaveHours += hoursBetween(s, e);
+      }
+    } else if (type === 'FLEXIBLE') {
+      const d = new Date(`${dateStr}T00:00:00+09:00`);
+      const dow = d.getDay();
+      const key = d.toISOString().slice(0, 10);
+      if (dow >= 1 && dow <= 5 && !holidaySet.has(key) && startTime && endTime) {
+        const s = new Date(`${dateStr}T${startTime}:00+09:00`);
+        const e = new Date(`${dateStr}T${endTime}:00+09:00`);
+        const h = hoursBetween(s, e);
+        flexibleAdjust += (h - 8);
+      }
+    }
+
+    const weeklyHours = (baseHours + flexibleAdjust) + otHours - vacationHours - earlyLeaveHours;
+
+    return {
+      userId,
+      weekStart: weekStartUtc,
+      weekEnd: weekEndUtc,
+      baseHours,
+      otHours,
+      vacationHours,
+      earlyLeaveHours,
+      weeklyHours,
+    };
+  }
+
   @Get(':id')
   async getOne(@Param('id') id: string) {
-    const rec = await this.prisma.attendanceRequest.findUnique({
+    const rec = await (this.prisma as any).attendanceRequest.findUnique({
       where: { id },
       include: { user: true },
     });

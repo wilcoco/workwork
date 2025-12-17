@@ -22,6 +22,7 @@ import { ProgressController } from './progress.controller';
 import { CarsController } from './cars.controller';
 import { CarDispatchController } from './car-dispatch.controller';
 import { AttendanceController } from './attendance.controller';
+import { HolidaysController } from './holidays.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -47,6 +48,7 @@ import { AttendanceController } from './attendance.controller';
     CarsController,
     CarDispatchController,
     AttendanceController,
+    HolidaysController,
   ],
   providers: [PrismaService],
 })

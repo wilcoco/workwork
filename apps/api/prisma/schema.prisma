@@ -307,6 +307,7 @@ enum AttendanceType {
   OT
   VACATION
   EARLY_LEAVE
+  FLEXIBLE
 }
 
 model ApprovalRequest {
@@ -495,4 +496,13 @@ model AttendanceRequest {
   reason    String?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique
+  name      String
+  isLegal   Boolean  @default(true)
+  createdBy String
+  createdAt DateTime @default(now())
 }
