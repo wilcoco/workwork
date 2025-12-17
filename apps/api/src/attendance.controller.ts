@@ -232,17 +232,16 @@ export class AttendanceController {
     if (!userId) throw new BadRequestException('userId가 필요합니다');
     if (!dateStr) throw new BadRequestException('date가 필요합니다');
 
-    // 기준 일자를 KST로 해석하여 해당 주(월~일) 범위를 계산
-    const baseKst = new Date(`${dateStr}T00:00:00+09:00`);
-    if (isNaN(baseKst.getTime())) throw new BadRequestException('유효하지 않은 date');
+    // 기준 일자를 "캘린더 상의 날짜"로 보고, 월~일 주간을 계산한다.
+    // DB에는 UTC로 저장되어 있으므로, 주간 범위도 UTC로 계산한다.
+    const baseUtc = new Date(`${dateStr}T00:00:00Z`); // 해당 날짜의 UTC 자정
+    if (isNaN(baseUtc.getTime())) throw new BadRequestException('유효하지 않은 date');
 
-    const day = baseKst.getDay(); // 0=Sun..6=Sat
+    // 월요일 시작 주 (0=Sun..6=Sat)
+    const day = baseUtc.getUTCDay();
     const diffToMon = day === 0 ? -6 : 1 - day; // 월요일까지의 오프셋
-    const weekStartK = new Date(baseKst.getFullYear(), baseKst.getMonth(), baseKst.getDate() + diffToMon, 0, 0, 0, 0);
-    const weekEndK = new Date(weekStartK.getFullYear(), weekStartK.getMonth(), weekStartK.getDate() + 6, 23, 59, 59, 999);
-
-    const weekStartUtc = new Date(weekStartK.getTime() - 9 * 60 * 60 * 1000);
-    const weekEndUtc = new Date(weekEndK.getTime() - 9 * 60 * 60 * 1000);
+    const weekStartUtc = new Date(Date.UTC(baseUtc.getUTCFullYear(), baseUtc.getUTCMonth(), baseUtc.getUTCDate() + diffToMon, 0, 0, 0, 0));
+    const weekEndUtc = new Date(Date.UTC(weekStartUtc.getUTCFullYear(), weekStartUtc.getUTCMonth(), weekStartUtc.getUTCDate() + 6, 23, 59, 59, 999));
 
     // 주간 공휴일 조회 (법정/비법정 모두 근무일에서 제외)
     const holidays = await (this.prisma as any).holiday.findMany({
@@ -256,14 +255,14 @@ export class AttendanceController {
       holidaySet.add(d.toISOString().slice(0, 10));
     }
 
-    // 기본 근무시간: 해당 주의 평일(월~금) 중 공휴일이 아닌 날 8시간/일
-    // 동시에 일자별 baseHours를 기록해 둔다.
+    // 기본 근무시간: 해당 주의 평일(월~금) 중 공휴일이 아닌 날 8시간/일 (KST 캘린더 기준과 동일하게 취급)
+    // 동시에 일자별 baseHours를 기록해 둔다. (키는 YYYY-MM-DD)
     let baseHours = 0;
     const dayBaseMap = new Map<string, number>(); // YYYY-MM-DD -> baseHours
     for (let i = 0; i < 7; i += 1) {
-      const d = new Date(weekStartK.getFullYear(), weekStartK.getMonth(), weekStartK.getDate() + i, 0, 0, 0, 0);
-      const dow = d.getDay();
-      const key = d.toISOString().slice(0, 10);
+      const d = new Date(Date.UTC(weekStartUtc.getUTCFullYear(), weekStartUtc.getUTCMonth(), weekStartUtc.getUTCDate() + i, 0, 0, 0, 0));
+      const dow = d.getUTCDay();
+      const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
       let h = 0;
       if (dow >= 1 && dow <= 5 && !holidaySet.has(key)) {
         h = 8;
@@ -388,7 +387,7 @@ export class AttendanceController {
     // 일자별 totalHours 계산 (UI에서 breakdown 용도)
     const days: { date: string; totalHours: number }[] = [];
     for (let i = 0; i < 7; i += 1) {
-      const d = new Date(weekStartK.getFullYear(), weekStartK.getMonth(), weekStartK.getDate() + i, 0, 0, 0, 0);
+      const d = new Date(Date.UTC(weekStartUtc.getUTCFullYear(), weekStartUtc.getUTCMonth(), weekStartUtc.getUTCDate() + i, 0, 0, 0, 0));
       const key = d.toISOString().slice(0, 10);
       const agg = getDayAgg(key);
       const total = (agg.base + agg.flexibleAdj) + agg.ot - agg.vacation - agg.earlyLeave;
