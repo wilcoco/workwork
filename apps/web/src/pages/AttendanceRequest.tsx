@@ -59,8 +59,13 @@ export function AttendanceRequest() {
         const hong = cand.find((u) => u.name === '홍정수');
         setApproverId((hong ?? cand[0]).id);
       }
+    } catch (e) {
+      // 승인자 목록은 필수까지는 아니라서 조용히 무시
+      // eslint-disable-next-line no-console
+      console.error(e);
+    }
+  }
 
-  // 선택한 일자/유형/시간 기준으로 해당 주 근무시간 조회
   useEffect(() => {
     if (!userId || !date) {
       setWeeklyHours(null);
@@ -90,12 +95,6 @@ export function AttendanceRequest() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, date, type, startTime, endTime]);
-    } catch (e) {
-      // 승인자 목록은 필수까지는 아니라서 조용히 무시
-      // eslint-disable-next-line no-console
-      console.error(e);
-    }
-  }
 
   async function loadCalendar() {
     if (!userId) return;
