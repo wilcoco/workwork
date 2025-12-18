@@ -47,10 +47,27 @@ export function CarDispatchCorporate() {
   const [submitting, setSubmitting] = useState(false);
 
   const userId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     void loadCars();
     void loadApprovers();
+  }, []);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -145,72 +162,73 @@ export function CarDispatchCorporate() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-          <button type="button" onClick={() => changeMonth(-1)} style={{ marginRight: 8 }}>◀</button>
-          <b>{calendarMonth}</b>
-          <button type="button" onClick={() => changeMonth(1)} style={{ marginLeft: 8 }}>▶</button>
-        </div>
-        {error && <div style={{ color: 'red', marginBottom: 4 }}>{error}</div>}
-        {loading ? (
-          <div>달력 로딩중…</div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 520 }}>
-              <thead>
-                <tr>
-                  {['일','월','화','수','목','금','토'].map((d) => (
-                    <th key={d} style={{ borderBottom: '1px solid #e5e7eb', padding: 4, fontSize: 12 }}>{d}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {weeks.map((week, wi) => (
-                  <tr key={wi}>
-                    {week.map((cell, ci) => (
-                      <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 4, height: 80 }}>
-                        {cell && (
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{cell.day}</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              {cell.items.map(ev => (
-                                <div
-                                  key={ev.id}
-                                  style={{
-                                    fontSize: 10,
-                                    padding: '2px 4px',
-                                    borderRadius: 4,
-                                    background:
-                                      ev.status === 'APPROVED'
-                                        ? '#dcfce7' // green
-                                        : ev.status === 'REJECTED'
-                                          ? '#fee2e2' // red
-                                          : '#fef9c3', // pending = yellow
-                                    border: '1px solid #cbd5e1',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                  }}
-                                  title={`${ev.carName} · ${ev.requesterName} · ${formatTime(ev.startAt)}~${formatTime(ev.endAt)} · ${ev.destination} · ${ev.purpose}`}
-                                >
-                                  {`${ev.carName} ${ev.requesterName} ${formatTime(ev.startAt)}~${formatTime(ev.endAt)}`}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </td>
+    <div className="content" style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', alignItems: 'flex-start' }}>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <button type="button" onClick={() => changeMonth(-1)} style={{ marginRight: 8 }}>◀</button>
+            <b>{calendarMonth}</b>
+            <button type="button" onClick={() => changeMonth(1)} style={{ marginLeft: 8 }}>▶</button>
+          </div>
+          {error && <div style={{ color: 'red', marginBottom: 4 }}>{error}</div>}
+          {loading ? (
+            <div>달력 로딩중…</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 520 }}>
+                <thead>
+                  <tr>
+                    {['일','월','화','수','목','금','토'].map((d) => (
+                      <th key={d} style={{ borderBottom: '1px solid #e5e7eb', padding: 4, fontSize: 12 }}>{d}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
-        <h2>법인차량 신청</h2>
+                </thead>
+                <tbody>
+                  {weeks.map((week, wi) => (
+                    <tr key={wi}>
+                      {week.map((cell, ci) => (
+                        <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 4, height: 80 }}>
+                          {cell && (
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{cell.day}</div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {cell.items.map(ev => (
+                                  <div
+                                    key={ev.id}
+                                    style={{
+                                      fontSize: 10,
+                                      padding: '2px 4px',
+                                      borderRadius: 4,
+                                      background:
+                                        ev.status === 'APPROVED'
+                                          ? '#dcfce7' // green
+                                          : ev.status === 'REJECTED'
+                                            ? '#fee2e2' // red
+                                            : '#fef9c3', // pending = yellow
+                                      border: '1px solid #cbd5e1',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                    }}
+                                    title={`${ev.carName} · ${ev.requesterName} · ${formatTime(ev.startAt)}~${formatTime(ev.endAt)} · ${ev.destination} · ${ev.purpose}`}
+                                  >
+                                    {`${ev.carName} ${ev.requesterName} ${formatTime(ev.startAt)}~${formatTime(ev.endAt)}`}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520, border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff' }}>
+          <h2 style={{ marginTop: 0 }}>법인차량 신청</h2>
         <label style={{ display: 'grid', gap: 4 }}>
           <span>차량 선택</span>
           <select value={carId} onChange={(e) => setCarId(e.target.value)}>
@@ -260,7 +278,8 @@ export function CarDispatchCorporate() {
             {submitting ? '신청 중…' : '배차 신청'}
           </button>
         </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
