@@ -272,8 +272,8 @@ export function AttendanceRequest() {
               ▶
             </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, whiteSpace: 'nowrap' }}>
+            <label style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: '#64748b' }}>구성원</span>
               <select
                 value={filterUserId}
@@ -294,7 +294,7 @@ export function AttendanceRequest() {
                 ))}
               </select>
             </label>
-            <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: '#64748b' }}>유형</span>
               <select
                 value={filterType}
