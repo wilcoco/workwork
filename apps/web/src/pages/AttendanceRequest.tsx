@@ -35,7 +35,7 @@ export function AttendanceRequest() {
 
   const [type, setType] = useState<AttendanceType>('OT');
   const [date, setDate] = useState('');
-  const [startTime, setStartTime] = useState('18:00');
+  const [startTime, setStartTime] = useState('17:00');
   const [endTime, setEndTime] = useState('21:00');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -137,6 +137,15 @@ export function AttendanceRequest() {
     const end = `${String(endH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     if (end !== endTime) setEndTime(end);
   }, [type, startTime, endTime]);
+
+  // 근태 유형 변경 시 기본 시작 시간을 설정
+  useEffect(() => {
+    if (type === 'OT') {
+      setStartTime('17:00');
+    } else if (type === 'FLEXIBLE') {
+      setStartTime('10:00');
+    }
+  }, [type]);
 
   async function loadCalendar() {
     if (!userId) return;
