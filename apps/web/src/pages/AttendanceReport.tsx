@@ -23,6 +23,23 @@ export function AttendanceReport() {
   const [items, setItems] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     void loadReport();
@@ -52,7 +69,7 @@ export function AttendanceReport() {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>근태 월 리포트</h2>
         <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
           <span>월</span>
@@ -63,32 +80,34 @@ export function AttendanceReport() {
       {loading ? (
         <div>리포트 로딩중…</div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead>
-            <tr>
-              <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', padding: 4 }}>구성원</th>
-              <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>총 OT시간</th>
-              <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>총 조퇴시간</th>
-              <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>휴가일수</th>
-              <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>평균 주당 근무시간</th>
-              <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', padding: 4 }}>주별 근무시간</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((it) => (
-              <tr key={it.userId}>
-                <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4 }}>{it.userName || it.userId}</td>
-                <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.otHoursTotal.toFixed(1)}</td>
-                <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.earlyLeaveHoursTotal.toFixed(1)}</td>
-                <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.vacationDays}</td>
-                <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.avgWeekly.toFixed(1)}</td>
-                <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4 }}>
-                  {it.weekly.map((w) => `${w.weekKey}: ${w.weeklyHours.toFixed(1)}h`).join(' / ')}
-                </td>
+        <div style={{ width: '100%', overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', padding: 4 }}>구성원</th>
+                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>총 OT시간</th>
+                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>총 조퇴시간</th>
+                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>휴가일수</th>
+                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>평균 주당 근무시간</th>
+                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', padding: 4 }}>주별 근무시간</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((it) => (
+                <tr key={it.userId}>
+                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4 }}>{it.userName || it.userId}</td>
+                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.otHoursTotal.toFixed(1)}</td>
+                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.earlyLeaveHoursTotal.toFixed(1)}</td>
+                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.vacationDays}</td>
+                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.avgWeekly.toFixed(1)}</td>
+                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4 }}>
+                    {it.weekly.map((w) => `${w.weekKey}: ${w.weeklyHours.toFixed(1)}h`).join(' / ')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

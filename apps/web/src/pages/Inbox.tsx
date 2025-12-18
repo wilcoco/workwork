@@ -7,6 +7,7 @@ export function Inbox() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   async function load() {
     if (!userId) return;
@@ -30,14 +31,35 @@ export function Inbox() {
   }
 
   useEffect(() => {
-    // noop
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
   }, []);
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <h2>인박스</h2>
-      <div style={{ display: 'flex', gap: 12 }}>
-        <input placeholder="내 User ID" value={userId} onChange={(e) => setUserId(e.target.value)} style={input} />
+      <div style={{ display: 'flex', gap: 12, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        <input
+          placeholder="내 User ID"
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+          style={{
+            ...input,
+            flex: isMobile ? '1 1 100%' : '0 0 auto',
+            minWidth: isMobile ? '100%' : undefined,
+          }}
+        />
         <button onClick={load} disabled={!userId || loading} style={primaryBtn}>{loading ? '로딩...' : '불러오기'}</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}

@@ -7,6 +7,23 @@ export function ApprovalsStatus() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setFilters((f) => ({ ...f }));
@@ -40,7 +57,7 @@ export function ApprovalsStatus() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
+      <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'repeat(5, minmax(0, 1fr))' }}>
         <input placeholder="요청자 ID(선택)" value={filters.requestedById || ''} onChange={(e) => onChange('requestedById', e.target.value)} style={input} />
         <input placeholder="현재 결재자 ID(선택)" value={filters.approverId || ''} onChange={(e) => onChange('approverId', e.target.value)} style={input} />
         <input placeholder="Subject Type(선택)" value={filters.subjectType || ''} onChange={(e) => onChange('subjectType', e.target.value)} style={input} />
@@ -51,7 +68,7 @@ export function ApprovalsStatus() {
         <button onClick={load} disabled={loading} style={primaryBtn}>{loading ? '로딩…' : '현황 불러오기'}</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+      <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'repeat(4, minmax(0, 1fr))' }}>
         {['PENDING','APPROVED','REJECTED','EXPIRED'].map((s) => (
           <div key={s} style={statCard}>
             <div style={{ fontSize: 12, color: '#64748b' }}>{s}</div>
