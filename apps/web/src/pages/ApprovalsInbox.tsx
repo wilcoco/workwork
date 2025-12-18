@@ -101,12 +101,19 @@ export function ApprovalsInbox() {
             meta = parts.join(' · ');
             when = doc.createdAt || doc.startAt || when;
           } else if (st === 'ATTENDANCE' && doc) {
-            const kind = doc.type === 'OT' ? 'OT' : doc.type === 'VACATION' ? '휴가' : '조퇴';
+            let kind: string;
+            if (doc.type === 'OT') kind = 'OT';
+            else if (doc.type === 'VACATION') kind = '휴가';
+            else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
+            else if (doc.type === 'FLEXIBLE') kind = '유연근무';
+            else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
+            else kind = doc.type;
+
             title = `근태 신청 - ${kind}`.trim();
             const dateStr = doc.date ? new Date(doc.date).toLocaleDateString() : '';
             const timeRange = doc.startAt && doc.endAt
               ? `${new Date(doc.startAt).toLocaleTimeString()} ~ ${new Date(doc.endAt).toLocaleTimeString()}`
-              : (doc.type === 'VACATION' ? '종일' : '');
+              : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
             const parts = [
               doc.requesterName || '',
               dateStr,
@@ -189,12 +196,19 @@ export function ApprovalsInbox() {
                 meta = parts.join(' · ');
                 when = doc.createdAt || doc.startAt || when;
               } else if (st === 'ATTENDANCE' && doc) {
-                const kind = doc.type === 'OT' ? 'OT' : doc.type === 'VACATION' ? '휴가' : '조퇴';
+                let kind: string;
+                if (doc.type === 'OT') kind = 'OT';
+                else if (doc.type === 'VACATION') kind = '휴가';
+                else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
+                else if (doc.type === 'FLEXIBLE') kind = '유연근무';
+                else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
+                else kind = doc.type;
+
                 title = `근태 신청 - ${kind}`.trim();
                 const dateStr = doc.date ? new Date(doc.date).toLocaleDateString() : '';
                 const timeRange = doc.startAt && doc.endAt
                   ? `${new Date(doc.startAt).toLocaleTimeString()} ~ ${new Date(doc.endAt).toLocaleTimeString()}`
-                  : (doc.type === 'VACATION' ? '종일' : '');
+                  : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
                 const parts = [
                   doc.requesterName || '',
                   dateStr,
