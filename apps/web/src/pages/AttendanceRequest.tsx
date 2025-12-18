@@ -44,6 +44,7 @@ export function AttendanceRequest() {
   const [approverId, setApproverId] = useState('');
   const [members, setMembers] = useState<Approver[]>([]);
   const [filterUserId, setFilterUserId] = useState(''); // 캘린더용 구성원 필터 (''이면 전체)
+  const [filterType, setFilterType] = useState<'ALL' | AttendanceType>('ALL');
 
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
 
@@ -135,7 +136,12 @@ export function AttendanceRequest() {
     }
   }
 
-  const weeks = useMemo(() => buildMonthGrid(calendarMonth, items), [calendarMonth, items]);
+  const filteredItems = useMemo(() => {
+    if (filterType === 'ALL') return items;
+    return items.filter((it) => it.type === filterType);
+  }, [items, filterType]);
+
+  const weeks = useMemo(() => buildMonthGrid(calendarMonth, filteredItems), [calendarMonth, filteredItems]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -200,20 +206,35 @@ export function AttendanceRequest() {
             <b>{calendarMonth}</b>
             <button type="button" onClick={() => changeMonth(1)} style={{ marginLeft: 8 }}>▶</button>
           </div>
-          <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span>구성원</span>
-            <select
-              value={filterUserId}
-              onChange={(e) => {
-                setFilterUserId(e.target.value);
-              }}
-            >
-              <option value="">전체</option>
-              {members.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span>구성원</span>
+              <select
+                value={filterUserId}
+                onChange={(e) => {
+                  setFilterUserId(e.target.value);
+                }}
+              >
+                <option value="">전체</option>
+                {members.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span>유형</span>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as any)}
+              >
+                <option value="ALL">전체</option>
+                <option value="OT">OT</option>
+                <option value="VACATION">휴가</option>
+                <option value="EARLY_LEAVE">조퇴</option>
+                <option value="FLEXIBLE">유연근무</option>
+              </select>
+            </label>
+          </div>
         </div>
         {error && <div style={{ color: 'red', marginBottom: 4 }}>{error}</div>}
         {loading ? (
