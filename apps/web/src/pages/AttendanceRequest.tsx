@@ -51,7 +51,7 @@ export function AttendanceRequest() {
     void loadApprovers();
     void loadCalendar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calendarMonth]);
+  }, [calendarMonth, filterUserId]);
 
   // 최초 로드 시 캘린더 필터 기본값을 본인으로 설정
   useEffect(() => {
@@ -206,7 +206,6 @@ export function AttendanceRequest() {
               value={filterUserId}
               onChange={(e) => {
                 setFilterUserId(e.target.value);
-                void loadCalendar();
               }}
             >
               <option value="">전체</option>
