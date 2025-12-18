@@ -42,6 +42,8 @@ export function AttendanceRequest() {
 
   const [approvers, setApprovers] = useState<Approver[]>([]);
   const [approverId, setApproverId] = useState('');
+  const [members, setMembers] = useState<Approver[]>([]);
+  const [filterUserId, setFilterUserId] = useState(''); // 캘린더용 구성원 필터 (''이면 전체)
 
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
 
@@ -51,10 +53,17 @@ export function AttendanceRequest() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendarMonth]);
 
+  // 최초 로드 시 캘린더 필터 기본값을 본인으로 설정
+  useEffect(() => {
+    if (userId && !filterUserId) setFilterUserId(userId);
+  }, [userId, filterUserId]);
+
   async function loadApprovers() {
     try {
       const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>(`/api/users`);
-      const cand = (res.items || []).filter((u) => u.role === 'CEO' || u.role === 'EXEC' || u.role === 'MANAGER');
+      const all = res.items || [];
+      setMembers(all);
+      const cand = all.filter((u) => u.role === 'CEO' || u.role === 'EXEC' || u.role === 'MANAGER');
       setApprovers(cand);
       if (!approverId && cand.length > 0) {
         const hong = cand.find((u) => u.name === '홍정수');
@@ -115,7 +124,9 @@ export function AttendanceRequest() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<{ items: CalendarItem[] }>(`/api/attendance/calendar?month=${encodeURIComponent(calendarMonth)}&userId=${encodeURIComponent(userId)}`);
+      const params = new URLSearchParams({ month: calendarMonth });
+      if (filterUserId) params.set('userId', filterUserId);
+      const res = await apiJson<{ items: CalendarItem[] }>(`/api/attendance/calendar?${params.toString()}`);
       setItems(res.items || []);
     } catch (e: any) {
       setError(e?.message || '근태 달력을 불러오지 못했습니다');
@@ -183,10 +194,27 @@ export function AttendanceRequest() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-          <button type="button" onClick={() => changeMonth(-1)} style={{ marginRight: 8 }}>◀</button>
-          <b>{calendarMonth}</b>
-          <button type="button" onClick={() => changeMonth(1)} style={{ marginLeft: 8 }}>▶</button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div>
+            <button type="button" onClick={() => changeMonth(-1)} style={{ marginRight: 8 }}>◀</button>
+            <b>{calendarMonth}</b>
+            <button type="button" onClick={() => changeMonth(1)} style={{ marginLeft: 8 }}>▶</button>
+          </div>
+          <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>구성원</span>
+            <select
+              value={filterUserId}
+              onChange={(e) => {
+                setFilterUserId(e.target.value);
+                void loadCalendar();
+              }}
+            >
+              <option value="">전체</option>
+              {members.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </label>
         </div>
         {error && <div style={{ color: 'red', marginBottom: 4 }}>{error}</div>}
         {loading ? (

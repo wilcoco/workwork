@@ -122,7 +122,6 @@ export class AttendanceController {
 
   @Get('calendar')
   async calendar(@Query('month') month?: string, @Query('userId') userId?: string) {
-    if (!userId) throw new BadRequestException('userId가 필요합니다');
     const base = month ? new Date(month + '-01T00:00:00.000Z') : new Date();
     if (isNaN(base.getTime())) throw new BadRequestException('유효하지 않은 month');
 
@@ -139,7 +138,7 @@ export class AttendanceController {
 
     const items = await (this.prisma as any).attendanceRequest.findMany({
       where: {
-        userId,
+        ...(userId ? { userId } : {}),
         date: { gte: rangeStart, lte: rangeEnd },
       },
       orderBy: { date: 'asc' },
