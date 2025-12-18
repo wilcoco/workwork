@@ -36,6 +36,8 @@ import { AdminTools } from './pages/AdminTools';
 import { CarAdmin } from './pages/CarAdmin';
 import { CarDispatchCorporate } from './pages/CarDispatchCorporate';
 import { AttendanceRequest } from './pages/AttendanceRequest';
+import { AttendanceReport } from './pages/AttendanceReport';
+import { AdminHolidays } from './pages/AdminHolidays';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -126,8 +128,10 @@ export function App() {
           <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="/admin/tools" element={<AdminTools />} />
           <Route path="/admin/cars" element={<CarAdmin />} />
+          <Route path="/admin/holidays" element={<AdminHolidays />} />
           <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
           <Route path="/attendance/request" element={<AttendanceRequest />} />
+          <Route path="/attendance/report" element={<AttendanceReport />} />
           {SHOW_APPROVALS && (
             <>
               <Route path="/approvals/new" element={<ApprovalsSubmit />} />
@@ -244,10 +248,12 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance')}>
           <Link to="/dispatch/corporate">법인차량 신청</Link>
           <Link to="/attendance/request">근태 신청</Link>
+          <Link to="/attendance/report">근태 리포트</Link>
         </NavDropdown>
         <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
           <Link to="/admin/orgs">조직관리</Link>
           <Link to="/admin/members">구성원</Link>
+          <Link to="/admin/holidays">휴일 캘린더</Link>
           <Link to="/admin/cars">차량 관리</Link>
           <Link to="/admin/tools">시스템 도구</Link>
         </NavDropdown>
@@ -408,12 +414,14 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
       return [
         { to: '/dispatch/corporate', label: '법인차량 신청' },
         { to: '/attendance/request', label: '근태 신청' },
+        { to: '/attendance/report', label: '근태 리포트' },
       ];
     }
     if (path.startsWith('/admin')) {
       return [
         { to: '/admin/orgs', label: '조직관리' },
         { to: '/admin/members', label: '구성원' },
+        { to: '/admin/holidays', label: '휴일 캘린더' },
         { to: '/admin/tools', label: '시스템 도구' },
       ];
     }

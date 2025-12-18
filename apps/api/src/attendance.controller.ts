@@ -393,6 +393,115 @@ export class AttendanceController {
     };
   }
 
+  @Get('monthly-report')
+  async monthlyReport(@Query('month') month?: string) {
+    const base = month ? new Date(month + '-01T00:00:00.000Z') : new Date();
+    if (isNaN(base.getTime())) throw new BadRequestException('유효하지 않은 month');
+
+    const year = base.getUTCFullYear();
+    const mon = base.getUTCMonth();
+    const monthStart = new Date(Date.UTC(year, mon, 1, 0, 0, 0, 0));
+    const monthEnd = new Date(Date.UTC(year, mon + 1, 0, 23, 59, 59, 999));
+
+    const items = await (this.prisma as any).attendanceRequest.findMany({
+      where: { date: { gte: monthStart, lte: monthEnd } },
+      orderBy: { date: 'asc' },
+      include: { user: true },
+    });
+
+    type WeekAgg = { otHours: number; vacationDays: number; earlyLeaveHours: number };
+    type UserAgg = {
+      userId: string;
+      userName: string;
+      otHoursTotal: number;
+      vacationDays: number;
+      earlyLeaveHoursTotal: number;
+      weekly: { weekKey: string; weeklyHours: number }[];
+    };
+
+    const userWeekMap = new Map<string, Map<string, WeekAgg>>(); // userId -> weekKey -> agg
+
+    const getWeekKey = (d: Date): string => {
+      // 토요일 시작 주 (0=Sun..6=Sat)
+      const day = d.getUTCDay();
+      const diffToSat = -((day + 1) % 7);
+      const sat = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + diffToSat, 0, 0, 0, 0));
+      return sat.toISOString().slice(0, 10); // YYYY-MM-DD (토요일 날짜)
+    };
+
+    const hoursBetween = (s: Date, e: Date): number => {
+      const diffMs = e.getTime() - s.getTime();
+      if (diffMs <= 0) return 0;
+      return diffMs / (1000 * 60 * 60);
+    };
+
+    for (const it of items) {
+      const uId = it.userId as string;
+      if (!uId) continue;
+      const d = it.date as any as Date;
+      const weekKey = getWeekKey(d);
+
+      let weekMap = userWeekMap.get(uId);
+      if (!weekMap) {
+        weekMap = new Map<string, WeekAgg>();
+        userWeekMap.set(uId, weekMap);
+      }
+      let agg = weekMap.get(weekKey);
+      if (!agg) {
+        agg = { otHours: 0, vacationDays: 0, earlyLeaveHours: 0 };
+        weekMap.set(weekKey, agg);
+      }
+
+      if (it.type === 'OT') {
+        if (it.startAt && it.endAt) {
+          agg.otHours += hoursBetween(it.startAt as any as Date, it.endAt as any as Date);
+        }
+      } else if (it.type === 'VACATION') {
+        agg.vacationDays += 1;
+      } else if (it.type === 'EARLY_LEAVE') {
+        if (it.startAt && it.endAt) {
+          agg.earlyLeaveHours += hoursBetween(it.startAt as any as Date, it.endAt as any as Date);
+        }
+      }
+    }
+
+    const userIds = Array.from(new Set(items.map((it: any) => it.userId).filter(Boolean))) as string[];
+    const result: UserAgg[] = [];
+
+    for (const userId of userIds) {
+      const userItems = items.filter((it: any) => it.userId === userId);
+      const name = userItems[0]?.user?.name ?? '';
+      const weekMap = userWeekMap.get(userId) ?? new Map<string, WeekAgg>();
+
+      let otHoursTotal = 0;
+      let vacationDays = 0;
+      let earlyLeaveHoursTotal = 0;
+      const weekly: { weekKey: string; weeklyHours: number }[] = [];
+
+      const sortedWeeks = Array.from(weekMap.entries()).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      for (const [weekKey, agg] of sortedWeeks) {
+        otHoursTotal += agg.otHours;
+        vacationDays += agg.vacationDays;
+        earlyLeaveHoursTotal += agg.earlyLeaveHours;
+
+        // 단순화된 주당 근무시간: 기본 40시간에서 휴가/조퇴를 빼고 OT를 더한다.
+        const weeklyHours = 40 + agg.otHours - (agg.vacationDays * 8) - agg.earlyLeaveHours;
+        weekly.push({ weekKey, weeklyHours });
+      }
+
+      result.push({
+        userId,
+        userName: name,
+        otHoursTotal,
+        vacationDays,
+        earlyLeaveHoursTotal,
+        weekly,
+      });
+    }
+
+    return { month: month || `${year}-${String(mon + 1).padStart(2, '0')}`, items: result };
+  }
+
   @Get(':id')
   async getOne(@Param('id') id: string) {
     const rec = await (this.prisma as any).attendanceRequest.findUnique({
