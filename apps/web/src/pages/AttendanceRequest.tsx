@@ -46,12 +46,14 @@ export function AttendanceRequest() {
   const [members, setMembers] = useState<Approver[]>([]);
   const [filterUserId, setFilterUserId] = useState(''); // 캘린더용 구성원 필터 (''이면 전체)
   const [filterType, setFilterType] = useState<'ALL' | AttendanceType>('ALL');
+  const [holidays, setHolidays] = useState<string[]>([]); // YYYY-MM-DD 목록
 
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
 
   useEffect(() => {
     void loadApprovers();
     void loadCalendar();
+    void loadHolidays();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calendarMonth, filterUserId]);
 
@@ -73,6 +75,21 @@ export function AttendanceRequest() {
       }
     } catch (e) {
       // 승인자 목록은 필수까지는 아니라서 조용히 무시
+      // eslint-disable-next-line no-console
+      console.error(e);
+    }
+  }
+
+  async function loadHolidays() {
+    try {
+      const [yStr] = calendarMonth.split('-');
+      const year = parseInt(yStr, 10);
+      if (!year || Number.isNaN(year)) return;
+      const res = await apiJson<{ items: { date: string }[] }>(`/api/holidays?year=${year}`);
+      const days = (res.items || []).map((h) => (h.date || '').slice(0, 10)).filter(Boolean);
+      setHolidays(days);
+    } catch (e) {
+      // 공휴일 정보는 보조용이므로 실패해도 치명적이지 않다.
       // eslint-disable-next-line no-console
       console.error(e);
     }
@@ -142,7 +159,7 @@ export function AttendanceRequest() {
     return items.filter((it) => it.type === filterType);
   }, [items, filterType]);
 
-  const weeks = useMemo(() => buildMonthGrid(calendarMonth, filteredItems), [calendarMonth, filteredItems]);
+  const weeks = useMemo(() => buildMonthGrid(calendarMonth, filteredItems, holidays), [calendarMonth, filteredItems, holidays]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -263,7 +280,16 @@ export function AttendanceRequest() {
                     <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 4, height: 80 }}>
                       {cell && (
                         <div>
-                          <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{cell.day}</div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              fontWeight: cell.isHoliday ? 700 : 600,
+                              marginBottom: 2,
+                              color: cell.isHoliday ? '#dc2626' : undefined,
+                            }}
+                          >
+                            {cell.day}
+                          </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             {cell.items.map(ev => (
                               <div
@@ -376,25 +402,30 @@ export function AttendanceRequest() {
   );
 }
 
-function buildMonthGrid(month: string, items: CalendarItem[]) {
+function buildMonthGrid(month: string, items: CalendarItem[], holidays: string[]) {
   const [y, m] = month.split('-').map((v) => parseInt(v, 10));
   const first = new Date(y, m - 1, 1);
   const firstWeekday = first.getDay(); // 0=Sun
   const daysInMonth = new Date(y, m, 0).getDate();
-  const cells: Array<{ day: number; items: CalendarItem[] } | null> = [];
+  type Cell = { day: number; items: CalendarItem[]; isHoliday: boolean };
+  const holidaySet = new Set(holidays);
+  const cells: Array<Cell | null> = [];
   for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
   for (let d = 1; d <= daysInMonth; d += 1) {
     const dayDate = new Date(y, m - 1, d);
     const dayStart = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 0, 0, 0, 0);
     const dayEnd = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 23, 59, 59, 999);
+    const key = dayDate.toISOString().slice(0, 10);
+    const dow = dayDate.getDay(); // 0=Sun,6=Sat
     const evs = items.filter((it) => {
       const base = new Date(it.date);
       return base >= dayStart && base <= dayEnd;
     });
-    cells.push({ day: d, items: evs });
+    const isHoliday = holidaySet.has(key) || dow === 0 || dow === 6;
+    cells.push({ day: d, items: evs, isHoliday });
   }
   while (cells.length % 7 !== 0) cells.push(null);
-  const weeks: Array<Array<{ day: number; items: CalendarItem[] } | null>> = [];
+  const weeks: Array<Array<Cell | null>> = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return weeks;
 }
