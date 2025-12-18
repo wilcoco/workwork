@@ -234,19 +234,58 @@ export function AttendanceRequest() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div>
-            <button type="button" onClick={() => changeMonth(-1)} style={{ marginRight: 8 }}>◀</button>
-            <b>{calendarMonth}</b>
-            <button type="button" onClick={() => changeMonth(1)} style={{ marginLeft: 8 }}>▶</button>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+            padding: '4px 4px 8px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => changeMonth(-1)}
+              style={{
+                marginRight: 2,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 18,
+              }}
+            >
+              ◀
+            </button>
+            <span style={{ fontSize: 20, fontWeight: 700 }}>{calendarMonth}</span>
+            <button
+              type="button"
+              onClick={() => changeMonth(1)}
+              style={{
+                marginLeft: 2,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontSize: 18,
+              }}
+            >
+              ▶
+            </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span>구성원</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color: '#64748b' }}>구성원</span>
               <select
                 value={filterUserId}
                 onChange={(e) => {
                   setFilterUserId(e.target.value);
+                }}
+                style={{
+                  minWidth: 120,
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  border: '1px solid #CBD5E1',
+                  fontSize: 13,
                 }}
               >
                 <option value="">전체</option>
@@ -255,11 +294,18 @@ export function AttendanceRequest() {
                 ))}
               </select>
             </label>
-            <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span>유형</span>
+            <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color: '#64748b' }}>유형</span>
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as any)}
+                style={{
+                  minWidth: 110,
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  border: '1px solid #CBD5E1',
+                  fontSize: 13,
+                }}
               >
                 <option value="ALL">전체</option>
                 <option value="OT">OT</option>
