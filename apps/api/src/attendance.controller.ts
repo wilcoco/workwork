@@ -64,6 +64,30 @@ export class AttendanceController {
       const approverId = dto.approverId || dto.userId;
 
       const rec = await (this.prisma as any).$transaction(async (tx: any) => {
+        // 휴가와 다른 근태는 같은 날에 함께 신청할 수 없다.
+        if (dto.type === 'VACATION') {
+          const existing = await tx.attendanceRequest.findFirst({
+            where: {
+              userId: dto.userId,
+              date: baseDate,
+            },
+          });
+          if (existing) {
+            throw new BadRequestException('해당 일자에 이미 다른 근태 신청이 있어 휴가를 신청할 수 없습니다');
+          }
+        } else {
+          const vacation = await tx.attendanceRequest.findFirst({
+            where: {
+              userId: dto.userId,
+              type: 'VACATION',
+              date: baseDate,
+            },
+          });
+          if (vacation) {
+            throw new BadRequestException('해당 일자에 이미 휴가가 신청되어 있어 다른 근태를 신청할 수 없습니다');
+          }
+        }
+
         // 휴일 대체 신청: HOLIDAY_WORK + HOLIDAY_REST 두 건 생성
         let attendance = null as any;
         if (dto.type === 'HOLIDAY_WORK') {
@@ -94,6 +118,28 @@ export class AttendanceController {
           const holidayRest = await (tx as any).holiday.findUnique({ where: { date: restDateUtc } });
           if (!(dowRest >= 1 && dowRest <= 5) || holidayRest) {
             throw new BadRequestException('대체 휴일은 평일(월~금)이고 공휴일이 아니어야 합니다');
+          }
+
+          // 근무일/대체 휴무일 모두 휴가와는 함께 신청할 수 없다.
+          const vacationOnWork = await tx.attendanceRequest.findFirst({
+            where: {
+              userId: dto.userId,
+              type: 'VACATION',
+              date: workDateUtc,
+            },
+          });
+          if (vacationOnWork) {
+            throw new BadRequestException('해당 휴일 근무일에 이미 휴가가 신청되어 있어 휴일 대체 신청을 할 수 없습니다');
+          }
+          const vacationOnRest = await tx.attendanceRequest.findFirst({
+            where: {
+              userId: dto.userId,
+              type: 'VACATION',
+              date: restDateUtc,
+            },
+          });
+          if (vacationOnRest) {
+            throw new BadRequestException('대체 휴일로 지정한 날에 이미 휴가가 신청되어 있어 휴일 대체 신청을 할 수 없습니다');
           }
 
           // 근무일 레코드 (HOLIDAY_WORK)
