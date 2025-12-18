@@ -10,6 +10,7 @@ export function WorklogAi() {
   const [team, setTeam] = useState('');
   const [user, setUser] = useState('');
   const [options, setOptions] = useState<{ teams: string[]; users: string[] }>({ teams: [], users: [] });
+  const [isMobile, setIsMobile] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -49,6 +50,22 @@ export function WorklogAi() {
     })();
   }, [days, team]);
 
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
+  }, []);
+
   const filteredUsers = useMemo(() => {
     return options.users;
   }, [options.users]);
@@ -56,7 +73,7 @@ export function WorklogAi() {
   return (
     <div className="content" style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
+        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
           <select value={team} onChange={(e) => { setTeam(e.target.value); setUser(''); }} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any, width: '100%' }}>
             <option value="">전체 팀</option>
             {options.teams.map((t) => (

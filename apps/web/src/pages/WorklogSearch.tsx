@@ -21,6 +21,7 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   async function load() {
     setLoading(true);
     setError(null);
@@ -34,6 +35,22 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
     }
   }
   useEffect(() => { load(); }, [worklogId]);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
+  }, []);
   async function onSubmit() {
     if (!text.trim()) return;
     const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -67,12 +84,18 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
           </div>
         ) : <div style={{ color: '#94a3b8' }}>등록된 댓글이 없습니다.</div>
       )}
-      <div style={{ display: 'flex', gap: 6 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="댓글 입력..."
-          style={{ flex: 1, border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }}
+          style={{
+            flex: isMobile ? '1 1 100%' : 1,
+            minWidth: isMobile ? '100%' : 0,
+            border: '1px solid #CBD5E1',
+            borderRadius: 8,
+            padding: '8px 10px',
+          }}
         />
         <button className="btn btn-primary" disabled={submitting || !text.trim()} onClick={onSubmit}>{submitting ? '등록중…' : '등록'}</button>
       </div>

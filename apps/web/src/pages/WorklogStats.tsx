@@ -8,6 +8,7 @@ export function WorklogStats() {
   const [data, setData] = useState<{ from: string; to: string; days: number; total: number; teams: Array<{ teamName: string; total: number; members: Array<{ userName: string; count: number }> }> } | null>(null);
   const [team, setTeam] = useState('');
   const [user, setUser] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -26,6 +27,22 @@ export function WorklogStats() {
   }
 
   useEffect(() => { load(); }, [days, team, user]);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
+  }, []);
 
   const maxCount = useMemo(() => {
     if (!data) return 0;
@@ -59,7 +76,7 @@ export function WorklogStats() {
   return (
     <div className="content" style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
+        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
           <select value={team} onChange={(e) => { setTeam(e.target.value); }} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any, width: '100%' }}>
             <option value="">전체 팀</option>
             {teamOptions.map((t) => (

@@ -148,7 +148,7 @@ export function WorklogNew() {
   return (
     <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'nowrap', margin: 0 }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', margin: 0 }}>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: 0 }}>
           <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} style={{ width: 20, height: 20 }} /> 긴급 보고
         </label>
