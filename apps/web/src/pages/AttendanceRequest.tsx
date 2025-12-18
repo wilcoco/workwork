@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 
-type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE';
+type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'HOLIDAY_REST';
 
 type CalendarItem = {
   id: string;
@@ -39,6 +39,7 @@ export function AttendanceRequest() {
   const [endTime, setEndTime] = useState('21:00');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [altRestDate, setAltRestDate] = useState(''); // 휴일 대체 신청용: 같은 주 평일 휴식일
 
   const [approvers, setApprovers] = useState<Approver[]>([]);
   const [approverId, setApproverId] = useState('');
@@ -153,11 +154,17 @@ export function AttendanceRequest() {
       alert('유형과 날짜를 입력해 주세요');
       return;
     }
+    if (type === 'HOLIDAY_WORK') {
+      if (!altRestDate) {
+        alert('대체 휴일(같은 주 평일)을 선택해 주세요');
+        return;
+      }
+    }
     if (!approverId) {
       alert('승인자를 선택해 주세요');
       return;
     }
-    if ((type === 'OT' || type === 'EARLY_LEAVE' || type === 'FLEXIBLE') && (!startTime || !endTime)) {
+    if ((type === 'OT' || type === 'EARLY_LEAVE' || type === 'FLEXIBLE' || type === 'HOLIDAY_WORK') && (!startTime || !endTime)) {
       alert('시간을 입력해 주세요');
       return;
     }
@@ -179,6 +186,7 @@ export function AttendanceRequest() {
           startTime: type === 'VACATION' ? undefined : startTime,
           endTime: type === 'VACATION' ? undefined : endTime,
           reason: reason || undefined,
+          altRestDate: type === 'HOLIDAY_WORK' ? (altRestDate || undefined) : undefined,
         }),
       });
       await loadCalendar();
@@ -304,6 +312,7 @@ export function AttendanceRequest() {
             <option value="VACATION">휴가 신청</option>
             <option value="EARLY_LEAVE">조퇴 신청</option>
             <option value="FLEXIBLE">유연 근무 신청</option>
+            <option value="HOLIDAY_WORK">휴일 대체 신청</option>
           </select>
         </label>
         <label style={{ display: 'grid', gap: 4 }}>
@@ -326,6 +335,16 @@ export function AttendanceRequest() {
             </span>
           </div>
         </label>
+        {type === 'HOLIDAY_WORK' && (
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>대체 휴일 (같은 주 평일)</span>
+            <input
+              type="date"
+              value={altRestDate}
+              onChange={(e) => setAltRestDate(e.target.value)}
+            />
+          </label>
+        )}
         {type !== 'VACATION' && (
           <div style={{ display: 'flex', gap: 8 }}>
             <label style={{ display: 'grid', gap: 4, flex: 1 }}>
@@ -381,9 +400,17 @@ function buildMonthGrid(month: string, items: CalendarItem[]) {
 }
 
 function buildLabel(ev: CalendarItem): string {
-  const t = ev.type === 'OT' ? 'OT' : ev.type === 'VACATION' ? '휴가' : '조퇴';
+  let t: string;
+  if (ev.type === 'OT') t = 'OT';
+  else if (ev.type === 'VACATION') t = '휴가';
+  else if (ev.type === 'EARLY_LEAVE') t = '조퇴';
+  else if (ev.type === 'FLEXIBLE') t = '유연근무';
+  else if (ev.type === 'HOLIDAY_WORK') t = '대체 업무일';
+  else if (ev.type === 'HOLIDAY_REST') t = '대체 근무일';
+  else t = ev.type;
+
   let base: string;
-  if (ev.type === 'VACATION') {
+  if (ev.type === 'VACATION' || ev.type === 'HOLIDAY_REST') {
     base = `${t} (종일)`;
   } else {
     const s = ev.startAt ? formatTime(ev.startAt) : '';

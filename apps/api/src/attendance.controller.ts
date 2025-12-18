@@ -11,8 +11,8 @@ class CreateAttendanceDto {
   approverId?: string;
 
   @IsString()
-  @IsIn(['OT', 'VACATION', 'EARLY_LEAVE', 'FLEXIBLE'])
-  type!: 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE';
+  @IsIn(['OT', 'VACATION', 'EARLY_LEAVE', 'FLEXIBLE', 'HOLIDAY_WORK'])
+  type!: 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK';
 
   @IsString()
   date!: string; // YYYY-MM-DD
@@ -28,6 +28,11 @@ class CreateAttendanceDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  // 휴일 대체 신청 전용: 휴일 근무일 = date, 대체 휴무일 = altRestDate
+  @IsOptional()
+  @IsString()
+  altRestDate?: string; // YYYY-MM-DD
 }
 
 @Controller('attendance')
@@ -45,7 +50,7 @@ export class AttendanceController {
 
       let startAt: Date | undefined;
       let endAt: Date | undefined;
-      if (dto.type === 'OT' || dto.type === 'EARLY_LEAVE' || dto.type === 'FLEXIBLE') {
+      if (dto.type === 'OT' || dto.type === 'EARLY_LEAVE' || dto.type === 'FLEXIBLE' || dto.type === 'HOLIDAY_WORK') {
         if (!dto.startTime || !dto.endTime) throw new BadRequestException('시간을 입력해 주세요');
         // 입력된 시간은 한국 시간(KST) 기준으로 해석한다.
         const s = new Date(`${dto.date}T${dto.startTime}:00+09:00`);
@@ -59,16 +64,73 @@ export class AttendanceController {
       const approverId = dto.approverId || dto.userId;
 
       const rec = await (this.prisma as any).$transaction(async (tx: any) => {
-        const attendance = await tx.attendanceRequest.create({
-          data: {
-            userId: dto.userId,
-            type: dto.type,
-            date: baseDate,
-            startAt,
-            endAt,
-            reason: dto.reason,
-          },
-        });
+        // 휴일 대체 신청: HOLIDAY_WORK + HOLIDAY_REST 두 건 생성
+        let attendance = null as any;
+        if (dto.type === 'HOLIDAY_WORK') {
+          if (!dto.altRestDate) throw new BadRequestException('대체 휴일을 선택해 주세요');
+
+          const workDateUtc = baseDate;
+          const restDateUtc = new Date(`${dto.altRestDate}T00:00:00.000Z`);
+          if (isNaN(restDateUtc.getTime())) throw new BadRequestException('유효하지 않은 대체 휴일입니다');
+
+          const holidayRec = await (tx as any).holiday.findUnique({ where: { date: workDateUtc } });
+          const dowWork = workDateUtc.getUTCDay();
+          if (!(dowWork === 0 || dowWork === 6 || holidayRec)) {
+            throw new BadRequestException('휴일 대체 신청의 근무일은 토/일/공휴일만 가능합니다');
+          }
+
+          // 같은 주(토~금)인지 확인
+          const getWeekKey = (d: Date): string => {
+            const day = d.getUTCDay();
+            const diffToSat = -((day + 1) % 7);
+            const sat = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + diffToSat, 0, 0, 0, 0));
+            return sat.toISOString().slice(0, 10);
+          };
+          const wk1 = getWeekKey(workDateUtc);
+          const wk2 = getWeekKey(restDateUtc);
+          if (wk1 !== wk2) throw new BadRequestException('대체 휴일은 같은 주(토~금) 안의 평일이어야 합니다');
+
+          const dowRest = restDateUtc.getUTCDay();
+          const holidayRest = await (tx as any).holiday.findUnique({ where: { date: restDateUtc } });
+          if (!(dowRest >= 1 && dowRest <= 5) || holidayRest) {
+            throw new BadRequestException('대체 휴일은 평일(월~금)이고 공휴일이 아니어야 합니다');
+          }
+
+          // 근무일 레코드 (HOLIDAY_WORK)
+          const workReq = await tx.attendanceRequest.create({
+            data: {
+              userId: dto.userId,
+              type: 'HOLIDAY_WORK',
+              date: workDateUtc,
+              startAt,
+              endAt,
+              reason: dto.reason ? `${dto.reason} (대체휴일: ${dto.altRestDate})` : `대체휴일: ${dto.altRestDate}`,
+            },
+          });
+
+          // 대체 휴무일 레코드 (HOLIDAY_REST)
+          await tx.attendanceRequest.create({
+            data: {
+              userId: dto.userId,
+              type: 'HOLIDAY_REST',
+              date: restDateUtc,
+              reason: dto.reason ? `${dto.reason} (휴일근무: ${dto.date})` : `휴일근무: ${dto.date}`,
+            },
+          });
+
+          attendance = workReq;
+        } else {
+          attendance = await tx.attendanceRequest.create({
+            data: {
+              userId: dto.userId,
+              type: dto.type,
+              date: baseDate,
+              startAt,
+              endAt,
+              reason: dto.reason,
+            },
+          });
+        }
 
         const approval = await tx.approvalRequest.create({
           data: {
@@ -186,11 +248,11 @@ export class AttendanceController {
         agg = { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
         weekMap.set(weekKey, agg);
       }
-      if (it.type === 'OT') {
+      if (it.type === 'OT' || it.type === 'HOLIDAY_WORK') {
         if (it.startAt && it.endAt) {
           agg.otHours += hoursBetween(it.startAt as any as Date, it.endAt as any as Date);
         }
-      } else if (it.type === 'VACATION') {
+      } else if (it.type === 'VACATION' || it.type === 'HOLIDAY_REST') {
         agg.vacationHours += 8; // 1일 8시간
       } else if (it.type === 'EARLY_LEAVE') {
         if (it.startAt && it.endAt) {
@@ -199,7 +261,7 @@ export class AttendanceController {
       }
     }
 
-    const result = items.map((it: { id: string; type: 'OT' | 'VACATION' | 'EARLY_LEAVE'; date: Date; startAt: Date | null; endAt: Date | null; reason: string | null; user: { name: string } }) => {
+    const result = items.map((it: { id: string; type: string; date: Date; startAt: Date | null; endAt: Date | null; reason: string | null; user: { name: string } }) => {
       const weekKey = getWeekKey(it.date as any as Date);
       const agg = weekMap.get(weekKey) || { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
       const totalHours = 40 + agg.otHours - agg.vacationHours - agg.earlyLeaveHours;
@@ -225,7 +287,7 @@ export class AttendanceController {
   async weeklyHours(
     @Query('userId') userId?: string,
     @Query('date') dateStr?: string, // 기준 일자 (YYYY-MM-DD)
-    @Query('type') type?: 'OT' | 'VACATION' | 'EARLY_LEAVE',
+    @Query('type') type?: 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'HOLIDAY_WORK',
     @Query('startTime') startTime?: string, // HH:MM
     @Query('endTime') endTime?: string,   // HH:MM
   ) {
@@ -271,7 +333,7 @@ export class AttendanceController {
       baseHours += h;
     }
 
-    // 해당 주의 근태 신청 내역 (기존 OT/휴가/조퇴)
+    // 해당 주의 근태 신청 내역 (OT/휴가/조퇴/유연근무/휴일대체)
     const records = await (this.prisma as any).attendanceRequest.findMany({
       where: {
         userId,
@@ -315,7 +377,7 @@ export class AttendanceController {
           otHours += h;
           agg.ot += h;
         }
-      } else if (it.type === 'VACATION') {
+      } else if (it.type === 'VACATION' || it.type === 'HOLIDAY_REST') {
         // 휴가 1일 = 8시간 차감 (평일 기준, 공휴일은 이미 base에서 빠져 있으므로 추가 차감 없음)
         if (dow >= 1 && dow <= 5 && !holidaySet.has(key)) {
           vacationHours += 8;
@@ -330,11 +392,17 @@ export class AttendanceController {
       } else if (it.type === 'FLEXIBLE') {
         // 현재 규칙: 유연근무가 있어도 해당 평일은 기본 8시간 근무로 본다.
         // 실제 근무시간에 따른 추가/감산은 하지 않으므로 여기서는 조정하지 않는다.
+      } else if (it.type === 'HOLIDAY_WORK') {
+        if (it.startAt && it.endAt) {
+          const h = hoursBetween(it.startAt, it.endAt);
+          otHours += h;
+          agg.ot += h;
+        }
       }
     }
 
     // 현재 화면에서 선택 중인 신규 신청(아직 DB에 없는 것)을 가상으로 반영
-    if (type === 'OT') {
+    if (type === 'OT' || type === 'HOLIDAY_WORK') {
       if (startTime && endTime) {
         const s = new Date(`${dateStr}T${startTime}:00+09:00`);
         const e = new Date(`${dateStr}T${endTime}:00+09:00`);
