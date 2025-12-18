@@ -156,55 +156,57 @@ export function CarDispatchCorporate() {
         {loading ? (
           <div>달력 로딩중…</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-            <thead>
-              <tr>
-                {['일','월','화','수','목','금','토'].map((d) => (
-                  <th key={d} style={{ borderBottom: '1px solid #e5e7eb', padding: 4, fontSize: 12 }}>{d}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {weeks.map((week, wi) => (
-                <tr key={wi}>
-                  {week.map((cell, ci) => (
-                    <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 4, height: 80 }}>
-                      {cell && (
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{cell.day}</div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {cell.items.map(ev => (
-                              <div
-                                key={ev.id}
-                                style={{
-                                  fontSize: 10,
-                                  padding: '2px 4px',
-                                  borderRadius: 4,
-                                  background:
-                                    ev.status === 'APPROVED'
-                                      ? '#dcfce7' // green
-                                      : ev.status === 'REJECTED'
-                                        ? '#fee2e2' // red
-                                        : '#fef9c3', // pending = yellow
-                                  border: '1px solid #cbd5e1',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                                title={`${ev.carName} · ${ev.requesterName} · ${formatTime(ev.startAt)}~${formatTime(ev.endAt)} · ${ev.destination} · ${ev.purpose}`}
-                              >
-                                {`${ev.carName} ${ev.requesterName} ${formatTime(ev.startAt)}~${formatTime(ev.endAt)}`}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 520 }}>
+              <thead>
+                <tr>
+                  {['일','월','화','수','목','금','토'].map((d) => (
+                    <th key={d} style={{ borderBottom: '1px solid #e5e7eb', padding: 4, fontSize: 12 }}>{d}</th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {weeks.map((week, wi) => (
+                  <tr key={wi}>
+                    {week.map((cell, ci) => (
+                      <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 4, height: 80 }}>
+                        {cell && (
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{cell.day}</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              {cell.items.map(ev => (
+                                <div
+                                  key={ev.id}
+                                  style={{
+                                    fontSize: 10,
+                                    padding: '2px 4px',
+                                    borderRadius: 4,
+                                    background:
+                                      ev.status === 'APPROVED'
+                                        ? '#dcfce7' // green
+                                        : ev.status === 'REJECTED'
+                                          ? '#fee2e2' // red
+                                          : '#fef9c3', // pending = yellow
+                                    border: '1px solid #cbd5e1',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                  title={`${ev.carName} · ${ev.requesterName} · ${formatTime(ev.startAt)}~${formatTime(ev.endAt)} · ${ev.destination} · ${ev.purpose}`}
+                                >
+                                  {`${ev.carName} ${ev.requesterName} ${formatTime(ev.startAt)}~${formatTime(ev.endAt)}`}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
       <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
@@ -231,7 +233,7 @@ export function CarDispatchCorporate() {
           <span>필요 일자</span>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <label style={{ display: 'grid', gap: 4, flex: 1 }}>
             <span>시작 시간</span>
             <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
