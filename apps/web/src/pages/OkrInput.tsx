@@ -249,14 +249,18 @@ export function OkrInput() {
         <div style={card}>
           <input value={oTitle} onChange={(e) => setOTitle(e.target.value)} placeholder="Objective 제목" style={input} />
           <textarea value={oDesc} onChange={(e) => setODesc(e.target.value)} placeholder="Objective 내용" style={{ ...input, minHeight: 80 }} />
-          <div style={{ display: 'grid', gridTemplateColumns: '120px repeat(12, 32px)', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(80px, 1fr) repeat(12, minmax(18px, 1fr))', gap: 8, alignItems: 'center' }}>
             <div style={{ fontSize: 13, color: '#6b7280' }}>기간(2026)</div>
             {months2026.map((_, i) => (
               <div key={`ol-${i}`} style={{ textAlign: 'center', fontSize: 12, color: '#64748b' }}>{i + 1}</div>
             ))}
             <div style={{ gridColumn: '1 / span 1' }} />
             {oMonths.map((on, i) => (
-              <div key={`om-${i}`} onClick={() => toggleOMonth(i)} style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
+              <div
+                key={`om-${i}`}
+                onClick={() => toggleOMonth(i)}
+                style={{ width: '100%', height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }}
+              />
             ))}
           </div>
         </div>
@@ -280,14 +284,18 @@ export function OkrInput() {
                     <option value="AT_MOST">이하 (≤ 목표가 좋음)</option>
                   </select>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '140px repeat(12, 32px)', gap: 6, alignItems: 'center' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 1fr) repeat(12, minmax(18px, 1fr))', gap: 6, alignItems: 'center' }}>
                   <div />
                   {months2026.map((_, m) => (
                     <div key={`ml-${i}-${m}`} style={{ textAlign: 'center', fontSize: 12, color: '#64748b' }}>{m + 1}</div>
                   ))}
                   <div style={{ gridColumn: '1 / span 1' }} />
                   {r.months.map((on, m) => (
-                    <div key={`mm-${i}-${m}`} onClick={() => toggleRMonth(i, m)} style={{ width: 32, height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }} />
+                    <div
+                      key={`mm-${i}-${m}`}
+                      onClick={() => toggleRMonth(i, m)}
+                      style={{ width: '100%', height: 20, border: '1px solid #e5e7eb', borderRadius: 4, background: on ? '#0F3D73' : '#f8fafc', cursor: 'pointer' }}
+                    />
                   ))}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

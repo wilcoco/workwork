@@ -16,6 +16,7 @@ export function OkrTree() {
   const [filterDivisionId, setFilterDivisionId] = useState<string>('');
   const [filterTeamId, setFilterTeamId] = useState<string>('');
   const [filterUserId, setFilterUserId] = useState<string>('');
+  const [isMobile, setIsMobile] = useState(false);
 
   function roleLabel(r?: string) {
     if (r === 'CEO') return '대표';
@@ -37,6 +38,22 @@ export function OkrTree() {
         setLoading(false);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -318,7 +335,7 @@ export function OkrTree() {
   return (
     <div className="content" style={{ display: 'grid', gap: 12, maxWidth: 1080, margin: '24px auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
+        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
           <select value={filterDivisionId} onChange={(e) => { setFilterDivisionId(e.target.value); }} style={{ width: '100%' }}>
             <option value="">실(전체)</option>
             {divisions.map((d: any) => (
