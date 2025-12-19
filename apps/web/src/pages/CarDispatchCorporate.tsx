@@ -175,7 +175,7 @@ export function CarDispatchCorporate() {
             <div>달력 로딩중…</div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 520 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 420 }}>
                 <thead>
                   <tr>
                     {['일','월','화','수','목','금','토'].map((d) => (
