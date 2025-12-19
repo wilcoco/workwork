@@ -196,7 +196,7 @@ export function CarDispatchCorporate() {
                                   <div
                                     key={ev.id}
                                     style={{
-                                      fontSize: 10,
+                                      fontSize: isMobile ? 9 : 10,
                                       padding: '2px 4px',
                                       borderRadius: 4,
                                       background:
@@ -206,9 +206,9 @@ export function CarDispatchCorporate() {
                                             ? '#fee2e2' // red
                                             : '#fef9c3', // pending = yellow
                                       border: '1px solid #cbd5e1',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
+                                      overflow: isMobile ? 'visible' : 'hidden',
+                                      textOverflow: isMobile ? 'clip' : 'ellipsis',
+                                      whiteSpace: isMobile ? 'normal' : 'nowrap',
                                     }}
                                     title={`${ev.carName} · ${ev.requesterName} · ${formatTime(ev.startAt)}~${formatTime(ev.endAt)} · ${ev.destination} · ${ev.purpose}`}
                                   >
