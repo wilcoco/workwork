@@ -435,7 +435,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
   if (!items.length) return null;
   const activeStyle: CSSProperties = { fontWeight: 800, borderBottom: '2px solid #0F3D73', paddingBottom: 2 };
   return (
-    <div style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid #E5E7EB', marginTop: 6 }}>
+    <div style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid #E5E7EB', marginTop: 6, flexWrap: 'wrap' }}>
       {items.map(it => (
         <Link key={it.to} to={it.to} style={{ ...(path === it.to ? activeStyle : {}), color: '#0f172a' }}>{it.label}</Link>
       ))}
