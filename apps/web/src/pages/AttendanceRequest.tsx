@@ -250,7 +250,7 @@ export function AttendanceRequest() {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div>
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff' }}>
         <div
           style={{
             display: 'flex',
@@ -338,15 +338,16 @@ export function AttendanceRequest() {
         {loading ? (
           <div>달력 로딩중…</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-            <thead>
-              <tr>
-                {['일','월','화','수','목','금','토'].map((d) => (
-                  <th key={d} style={{ borderBottom: '1px solid #e5e7eb', padding: 4, fontSize: 12 }}>{d}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <thead>
+                <tr>
+                  {['일','월','화','수','목','금','토'].map((d) => (
+                    <th key={d} style={{ borderBottom: '1px solid #e5e7eb', padding: 3, fontSize: 11 }}>{d}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
               {weeks.map((week, wi) => (
                 <tr key={wi}>
                   {week.map((cell, ci) => (
@@ -398,8 +399,9 @@ export function AttendanceRequest() {
                   ))}
                 </tr>
               ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
       <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
