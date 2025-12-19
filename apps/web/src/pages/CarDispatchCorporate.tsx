@@ -175,11 +175,11 @@ export function CarDispatchCorporate() {
             <div>달력 로딩중…</div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 420 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                 <thead>
                   <tr>
                     {['일','월','화','수','목','금','토'].map((d) => (
-                      <th key={d} style={{ borderBottom: '1px solid #e5e7eb', padding: 4, fontSize: 12 }}>{d}</th>
+                      <th key={d} style={{ borderBottom: '1px solid #e5e7eb', padding: 3, fontSize: 11 }}>{d}</th>
                     ))}
                   </tr>
                 </thead>
@@ -187,7 +187,7 @@ export function CarDispatchCorporate() {
                   {weeks.map((week, wi) => (
                     <tr key={wi}>
                       {week.map((cell, ci) => (
-                        <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 4, height: 80 }}>
+                        <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 3, height: 70 }}>
                           {cell && (
                             <div>
                               <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{cell.day}</div>
