@@ -258,9 +258,10 @@ export function AttendanceRequest() {
             justifyContent: 'space-between',
             marginBottom: 12,
             padding: '4px 4px 8px',
+            gap: 8,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => changeMonth(-1)}
@@ -274,7 +275,7 @@ export function AttendanceRequest() {
             >
               ◀
             </button>
-            <span style={{ fontSize: 20, fontWeight: 700 }}>{calendarMonth}</span>
+            <span style={{ fontSize: 18, fontWeight: 700 }}>{calendarMonth}</span>
             <button
               type="button"
               onClick={() => changeMonth(1)}
@@ -289,8 +290,8 @@ export function AttendanceRequest() {
               ▶
             </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <label style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ color: '#64748b' }}>구성원</span>
               <select
                 value={filterUserId}
@@ -298,11 +299,11 @@ export function AttendanceRequest() {
                   setFilterUserId(e.target.value);
                 }}
                 style={{
-                  minWidth: 100,
-                  padding: '6px 10px',
+                  minWidth: 90,
+                  padding: '4px 10px',
                   borderRadius: 999,
                   border: '1px solid #CBD5E1',
-                  fontSize: 13,
+                  fontSize: 12,
                 }}
               >
                 <option value="">전체</option>
@@ -311,17 +312,17 @@ export function AttendanceRequest() {
                 ))}
               </select>
             </label>
-            <label style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ color: '#64748b' }}>유형</span>
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as any)}
                 style={{
-                  minWidth: 90,
-                  padding: '6px 10px',
+                  minWidth: 80,
+                  padding: '4px 10px',
                   borderRadius: 999,
                   border: '1px solid #CBD5E1',
-                  fontSize: 13,
+                  fontSize: 12,
                 }}
               >
                 <option value="ALL">전체</option>
@@ -376,7 +377,7 @@ export function AttendanceRequest() {
                               <div
                                 key={ev.id}
                                 style={{
-                                  fontSize: isMobile ? 9 : 10,
+                                  fontSize: isMobile ? 8 : 9,
                                   padding: '2px 4px',
                                   borderRadius: 4,
                                   background: getBg(ev),

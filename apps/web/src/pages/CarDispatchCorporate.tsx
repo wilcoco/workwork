@@ -187,7 +187,16 @@ export function CarDispatchCorporate() {
                   {weeks.map((week, wi) => (
                     <tr key={wi}>
                       {week.map((cell, ci) => (
-                        <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 3, height: 70 }}>
+                        <td
+                          key={ci}
+                          style={{
+                            verticalAlign: 'top',
+                            borderBottom: '1px solid #f1f5f9',
+                            borderRight: '1px solid #f1f5f9',
+                            padding: 3,
+                            height: isMobile ? 'auto' : 70,
+                          }}
+                        >
                           {cell && (
                             <div>
                               <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>{cell.day}</div>
@@ -196,7 +205,7 @@ export function CarDispatchCorporate() {
                                   <div
                                     key={ev.id}
                                     style={{
-                                      fontSize: isMobile ? 9 : 10,
+                                      fontSize: isMobile ? 8 : 9,
                                       padding: '2px 4px',
                                       borderRadius: 4,
                                       background:
