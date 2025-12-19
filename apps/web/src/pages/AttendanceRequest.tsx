@@ -47,6 +47,7 @@ export function AttendanceRequest() {
   const [filterUserId, setFilterUserId] = useState(''); // 캘린더용 구성원 필터 (''이면 전체)
   const [filterType, setFilterType] = useState<'ALL' | AttendanceType>('ALL');
   const [holidays, setHolidays] = useState<string[]>([]); // YYYY-MM-DD 목록
+  const [isMobile, setIsMobile] = useState(false);
 
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
 
@@ -61,6 +62,22 @@ export function AttendanceRequest() {
   useEffect(() => {
     if (userId && !filterUserId) setFilterUserId(userId);
   }, [userId, filterUserId]);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', update);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', update);
+      }
+    };
+  }, []);
 
   async function loadApprovers() {
     try {
@@ -272,7 +289,7 @@ export function AttendanceRequest() {
               ▶
             </button>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20, whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
             <label style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ color: '#64748b' }}>구성원</span>
               <select
@@ -350,14 +367,14 @@ export function AttendanceRequest() {
                               <div
                                 key={ev.id}
                                 style={{
-                                  fontSize: 10,
+                                  fontSize: isMobile ? 9 : 10,
                                   padding: '2px 4px',
                                   borderRadius: 4,
                                   background: getBg(ev),
                                   border: '1px solid #cbd5e1',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
+                                  overflow: isMobile ? 'visible' : 'hidden',
+                                  textOverflow: isMobile ? 'clip' : 'ellipsis',
+                                  whiteSpace: isMobile ? 'normal' : 'nowrap',
                                 }}
                                 title={buildTitle(ev)}
                               >
