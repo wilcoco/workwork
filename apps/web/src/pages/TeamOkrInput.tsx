@@ -162,7 +162,7 @@ export function TeamOkrInput() {
       {error && <div style={{ color: '#red' }}>{error}</div>}
 
       <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <div>팀(조직) 선택</div>
           <select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
             <option value="">선택</option>
@@ -192,7 +192,7 @@ export function TeamOkrInput() {
           </select>
         </div>
         <input placeholder="설명(선택)" value={oDesc} onChange={(e) => setODesc(e.target.value)} />
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input type="date" value={oStart} onChange={(e) => setOStart(e.target.value)} />
           <input type="date" value={oEnd} onChange={(e) => setOEnd(e.target.value)} />
           <button className="btn btn-primary" disabled={!userId || !orgUnitId || !oTitle || !oStart || !oEnd} onClick={createObjective}>생성</button>
@@ -257,7 +257,7 @@ export function TeamOkrInput() {
           </select>
           <input placeholder="과제 제목" value={initTitle} onChange={(e) => setInitTitle(e.target.value)} />
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input type="date" value={initStart} onChange={(e) => setInitStart(e.target.value)} />
           <input type="date" value={initEnd} onChange={(e) => setInitEnd(e.target.value)} />
           <select value={initCadence} onChange={(e) => setInitCadence(e.target.value as any)}>

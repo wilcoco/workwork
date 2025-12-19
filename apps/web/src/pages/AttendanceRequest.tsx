@@ -349,7 +349,16 @@ export function AttendanceRequest() {
               {weeks.map((week, wi) => (
                 <tr key={wi}>
                   {week.map((cell, ci) => (
-                    <td key={ci} style={{ verticalAlign: 'top', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', padding: 4, height: 80 }}>
+                    <td
+                      key={ci}
+                      style={{
+                        verticalAlign: 'top',
+                        borderBottom: '1px solid #f1f5f9',
+                        borderRight: '1px solid #f1f5f9',
+                        padding: 4,
+                        height: isMobile ? 'auto' : 80,
+                      }}
+                    >
                       {cell && (
                         <div>
                           <div
