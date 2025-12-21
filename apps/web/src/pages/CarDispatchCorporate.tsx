@@ -164,9 +164,8 @@ export function CarDispatchCorporate() {
   }
 
   return (
-    <>
-      <div className="content" style={{ display: 'grid', gap: 16 }}>
-        <div style={{ display: 'grid', gap: 16, gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', alignItems: 'flex-start' }}>
+    <div className="content" style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', alignItems: 'flex-start' }}>
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
             <button type="button" onClick={() => changeMonth(-1)} style={{ marginRight: 8 }}>◀</button>
@@ -297,11 +296,9 @@ export function CarDispatchCorporate() {
             </button>
           </div>
         </form>
-        </div>
-      </div>
       </div>
       {selectedEvent ? (
-      <div
+        <div
         style={{
           position: 'fixed',
           inset: 0,
@@ -353,7 +350,7 @@ export function CarDispatchCorporate() {
         </div>
       </div>
       ) : null}
-    </>
+    </div>
   );
 }
 
