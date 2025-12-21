@@ -48,6 +48,7 @@ export function AttendanceRequest() {
   const [filterType, setFilterType] = useState<'ALL' | AttendanceType>('ALL');
   const [holidays, setHolidays] = useState<string[]>([]); // YYYY-MM-DD 목록
   const [isMobile, setIsMobile] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<{ ev: CalendarItem; dateLabel: string } | null>(null);
 
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
 
@@ -385,11 +386,17 @@ export function AttendanceRequest() {
                                   border: '1px solid #cbd5e1',
                                   overflow: isMobile ? 'visible' : 'hidden',
                                   textOverflow: isMobile ? 'clip' : 'ellipsis',
-                                  whiteSpace: isMobile ? 'normal' : 'nowrap',
+                                  whiteSpace: 'normal',
+                                  cursor: 'pointer',
                                 }}
                                 title={buildTitle(ev)}
+                                onClick={() => {
+                                  const dateLabel = `${calendarMonth}-${String(cell.day).padStart(2, '0')}`;
+                                  setSelectedEvent({ ev, dateLabel });
+                                }}
                               >
-                                {buildLabel(ev)}
+                                <span>{getAttendanceTypeLabel(ev)}</span>
+                                {ev.requesterName && <span>{ev.requesterName}</span>}
                               </div>
                             ))}
                           </div>
@@ -482,6 +489,66 @@ export function AttendanceRequest() {
           </button>
         </div>
       </form>
+      {selectedEvent ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2500,
+            padding: 16,
+          }}
+          onClick={() => setSelectedEvent(null)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: 12,
+              padding: 16,
+              minWidth: 260,
+              maxWidth: 360,
+              boxShadow: '0 12px 32px rgba(15,23,42,0.35)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              const { ev, dateLabel } = selectedEvent;
+              const typeLabel = getAttendanceTypeLabel(ev);
+              const hasTime = ev.startAt || ev.endAt;
+              return (
+                <>
+                  <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>{dateLabel}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
+                    {typeLabel}{ev.requesterName ? ` - ${ev.requesterName}` : ''}
+                  </div>
+                  <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+                    {ev.requesterName && (
+                      <div><strong>신청자</strong> {ev.requesterName}</div>
+                    )}
+                    {hasTime && (
+                      <div>
+                        <strong>시간</strong>{' '}
+                        {ev.startAt ? formatTime(ev.startAt) : ''}
+                        {ev.endAt ? `~${formatTime(ev.endAt)}` : ''}
+                      </div>
+                    )}
+                    {ev.reason && (
+                      <div><strong>사유</strong> {ev.reason}</div>
+                    )}
+                    <div><strong>상태</strong> {ev.status ?? 'PENDING'}</div>
+                  </div>
+                </>
+              );
+            })()}
+            <div style={{ marginTop: 12, textAlign: 'right' }}>
+              <button type="button" className="btn btn-sm" onClick={() => setSelectedEvent(null)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -540,6 +607,16 @@ function buildTitle(ev: CalendarItem): string {
   const base = buildLabel(ev);
   if (ev.reason) return `${base} · ${ev.reason}`;
   return base;
+}
+
+function getAttendanceTypeLabel(ev: CalendarItem): string {
+  if (ev.type === 'OT') return 'OT';
+  if (ev.type === 'VACATION') return '휴가';
+  if (ev.type === 'EARLY_LEAVE') return '조퇴';
+  if (ev.type === 'FLEXIBLE') return '유연근무';
+  if (ev.type === 'HOLIDAY_WORK') return '대체 업무일';
+  if (ev.type === 'HOLIDAY_REST') return '대체 근무일';
+  return ev.type;
 }
 
 function formatTime(iso: string): string {

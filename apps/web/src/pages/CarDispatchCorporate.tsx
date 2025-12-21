@@ -23,6 +23,7 @@ type CalendarItem = {
   requesterName: string;
   destination: string;
   purpose: string;
+  coRiders?: string | null;
 };
 
 export function CarDispatchCorporate() {
@@ -48,6 +49,7 @@ export function CarDispatchCorporate() {
 
   const userId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
   const [isMobile, setIsMobile] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<{ ev: CalendarItem; dateLabel: string } | null>(null);
 
   useEffect(() => {
     void loadCars();
@@ -162,8 +164,9 @@ export function CarDispatchCorporate() {
   }
 
   return (
-    <div className="content" style={{ display: 'grid', gap: 16 }}>
-      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', alignItems: 'flex-start' }}>
+    <>
+      <div className="content" style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'grid', gap: 16, gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr', alignItems: 'flex-start' }}>
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff' }}>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
             <button type="button" onClick={() => changeMonth(-1)} style={{ marginRight: 8 }}>◀</button>
@@ -217,11 +220,17 @@ export function CarDispatchCorporate() {
                                       border: '1px solid #cbd5e1',
                                       overflow: isMobile ? 'visible' : 'hidden',
                                       textOverflow: isMobile ? 'clip' : 'ellipsis',
-                                      whiteSpace: isMobile ? 'normal' : 'nowrap',
+                                      whiteSpace: 'normal',
+                                      cursor: 'pointer',
                                     }}
-                                    title={`${ev.carName} · ${ev.requesterName} · ${formatTime(ev.startAt)}~${formatTime(ev.endAt)} · ${ev.destination} · ${ev.purpose}`}
+                                    title={`${ev.carName} · ${ev.requesterName}`}
+                                    onClick={() => {
+                                      const dateLabel = `${calendarMonth}-${String(cell.day).padStart(2, '0')}`;
+                                      setSelectedEvent({ ev, dateLabel });
+                                    }}
                                   >
-                                    {`${ev.carName} ${ev.requesterName} ${formatTime(ev.startAt)}~${formatTime(ev.endAt)}`}
+                                    <span>{ev.carName}</span>
+                                    <span>{ev.requesterName}</span>
                                   </div>
                                 ))}
                               </div>
@@ -238,58 +247,113 @@ export function CarDispatchCorporate() {
         </div>
         <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520, border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#ffffff' }}>
           <h2 style={{ marginTop: 0 }}>법인차량 신청</h2>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>차량 선택</span>
-          <select value={carId} onChange={(e) => setCarId(e.target.value)}>
-            <option value="">선택</option>
-            {cars.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}{c.type ? ` (${c.type})` : ''}</option>
-            ))}
-          </select>
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>승인자</span>
-          <select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
-            <option value="">선택</option>
-            {approvers.map((u) => (
-              <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-            ))}
-          </select>
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>필요 일자</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <label style={{ display: 'grid', gap: 4, flex: 1 }}>
-            <span>시작 시간</span>
-            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>차량 선택</span>
+            <select value={carId} onChange={(e) => setCarId(e.target.value)}>
+              <option value="">선택</option>
+              {cars.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}{c.type ? ` (${c.type})` : ''}</option>
+              ))}
+            </select>
           </label>
-          <label style={{ display: 'grid', gap: 4, flex: 1 }}>
-            <span>종료 시간</span>
-            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>승인자</span>
+            <select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
+              <option value="">선택</option>
+              {approvers.map((u) => (
+                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+              ))}
+            </select>
           </label>
-        </div>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>동승자</span>
-          <input type="text" placeholder="동승자 이름들" value={coRiders} onChange={(e) => setCoRiders(e.target.value)} />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>목적지</span>
-          <input type="text" value={destination} onChange={(e) => setDestination(e.target.value)} />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>목적</span>
-          <input type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} />
-        </label>
-        <div style={{ marginTop: 8 }}>
-          <button type="submit" disabled={submitting}>
-            {submitting ? '신청 중…' : '배차 신청'}
-          </button>
-        </div>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>필요 일자</span>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <label style={{ display: 'grid', gap: 4, flex: 1 }}>
+              <span>시작 시간</span>
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            </label>
+            <label style={{ display: 'grid', gap: 4, flex: 1 }}>
+              <span>종료 시간</span>
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </label>
+          </div>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>동승자</span>
+            <input type="text" placeholder="동승자 이름들" value={coRiders} onChange={(e) => setCoRiders(e.target.value)} />
+          </label>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>목적지</span>
+            <input type="text" value={destination} onChange={(e) => setDestination(e.target.value)} />
+          </label>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>목적</span>
+            <input type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} />
+          </label>
+          <div style={{ marginTop: 8 }}>
+            <button type="submit" disabled={submitting}>
+              {submitting ? '신청 중…' : '배차 신청'}
+            </button>
+          </div>
         </form>
+        </div>
       </div>
-    </div>
+      </div>
+      {selectedEvent ? (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15,23,42,0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2500,
+          padding: 16,
+        }}
+        onClick={() => setSelectedEvent(null)}
+      >
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: 12,
+            padding: 16,
+            minWidth: 260,
+            maxWidth: 360,
+            boxShadow: '0 12px 32px rgba(15,23,42,0.35)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {(() => {
+            const { ev, dateLabel } = selectedEvent;
+            return (
+              <>
+                <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>{dateLabel}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
+                  {ev.carName}
+                </div>
+                <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+                  <div><strong>신청자</strong> {ev.requesterName}</div>
+                  <div>
+                    <strong>시간</strong> {formatTime(ev.startAt)}~{formatTime(ev.endAt)}
+                  </div>
+                  <div><strong>목적지</strong> {ev.destination}</div>
+                  {ev.coRiders && (
+                    <div><strong>동승자</strong> {ev.coRiders}</div>
+                  )}
+                  <div><strong>목적</strong> {ev.purpose}</div>
+                </div>
+              </>
+            );
+          })()}
+          <div style={{ marginTop: 12, textAlign: 'right' }}>
+            <button type="button" className="btn btn-sm" onClick={() => setSelectedEvent(null)}>닫기</button>
+          </div>
+        </div>
+      </div>
+      ) : null}
+    </>
   );
 }
 
