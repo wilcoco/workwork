@@ -170,6 +170,7 @@ model KeyResult {
   progressEntries ProgressEntry[]
   direction    ThresholdDirection?
   assignments  KeyResultAssignment[]
+  analysis25   String?
 }
 
 model KeyResultAssignment {

@@ -18,6 +18,7 @@ type KrRow = {
   target: number;
   weight: number | null;
   direction?: 'AT_LEAST' | 'AT_MOST' | null;
+  analysis25?: string | null;
   initiatives: Array<{ id: string; title: string; startAt?: string | null; endAt?: string | null; done?: boolean }>;
   latestValue?: number | null;
   latestPeriodEnd?: string | null;
@@ -77,6 +78,7 @@ export function TeamKpiBoard() {
               target: typeof kr.target === 'number' ? kr.target : 0,
               weight: typeof kr.weight === 'number' ? kr.weight : null,
               direction: (kr as any)?.direction ?? null,
+              analysis25: (kr as any)?.analysis25 ?? null,
               initiatives: Array.isArray(kr.initiatives) ? kr.initiatives.map((ii: any) => ({ id: ii.id, title: ii.title, startAt: ii.startAt || null, endAt: ii.endAt || null })).filter((x: { id: string; title: string }) => !!x.title) : [],
             });
           }
@@ -276,6 +278,9 @@ export function TeamKpiBoard() {
                               </span>
                             )}
                           </div>
+                          {r.analysis25 && (
+                            <div style={{ marginTop: 4, fontSize: 12, color: '#4b5563' }}>{r.analysis25}</div>
+                          )}
                         </td>
                         <td style={td}>{r.unit}</td>
                         <td style={td}>{'월'}</td>

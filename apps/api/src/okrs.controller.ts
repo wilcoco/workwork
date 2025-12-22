@@ -12,7 +12,7 @@ class CreateObjectiveDto {
   @IsOptional() @IsString() orgUnitId?: string;
   // Optional: create multiple KRs together
   // Using any[] for simplicity; validated minimally at runtime
-  @IsOptional() krs?: Array<{ title: string; metric: string; target: number; unit: string; type?: 'PROJECT' | 'OPERATIONAL' }>;
+  @IsOptional() krs?: Array<{ title: string; metric: string; target: number; unit: string; type?: 'PROJECT' | 'OPERATIONAL'; analysis25?: string }>;
   @IsOptional() @IsEnum({ Q: 'Q', C: 'C', D: 'D', DEV: 'DEV', P: 'P' } as any)
   pillar?: 'Q' | 'C' | 'D' | 'DEV' | 'P';
 }
@@ -38,6 +38,8 @@ class CreateKeyResultDto {
   cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
   @IsOptional()
   participants?: string[];
+  @IsOptional() @IsString()
+  analysis25?: string;
 }
 
 class UpdateObjectiveDto {
@@ -65,6 +67,7 @@ class UpdateKeyResultDto {
   direction?: 'AT_LEAST' | 'AT_MOST';
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
   cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
+  @IsOptional() @IsString() analysis25?: string;
 }
 
 @Controller('okrs')
@@ -278,6 +281,7 @@ export class OkrsController {
           year25Target: (dto.year25Target as any) ?? undefined,
           direction: (dto.direction as any) ?? undefined,
           cadence: (dto.cadence as any) ?? undefined,
+          analysis25: dto.analysis25 ?? undefined,
         } as any),
       });
       // KPI participants: always include creator (팀장) as default participant, plus any explicit participants
@@ -323,6 +327,7 @@ export class OkrsController {
       year25Target: typeof dto.year25Target === 'number' ? dto.year25Target : undefined,
       direction: (dto.direction as any) ?? undefined,
       cadence: (dto.cadence as any) ?? undefined,
+      analysis25: typeof dto.analysis25 === 'string' ? dto.analysis25 : undefined,
     };
     const rec = await this.prisma.keyResult.update({ where: { id }, data });
     return rec;

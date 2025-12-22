@@ -169,6 +169,7 @@ export function TeamKpiInput() {
           cadence: krCadence || undefined,
           weight: krWeight === '' ? undefined : Number(krWeight),
           participants: krParticipants.length ? krParticipants : undefined,
+          analysis25: krAnalysis25 || undefined,
         }),
       });
       // Create initiatives for each task row
