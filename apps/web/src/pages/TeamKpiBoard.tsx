@@ -256,6 +256,7 @@ export function TeamKpiBoard() {
                     <th style={th}>관리 주기</th>
                     <th style={th}>25년 목표</th>
                     <th style={th}>25년 실적</th>
+                    <th style={th}>25년 성과 분석</th>
                     <th style={th}>26년 목표</th>
                     <th style={th}>26년 실적</th>
                     <th style={th}>그래프</th>
@@ -278,14 +279,12 @@ export function TeamKpiBoard() {
                               </span>
                             )}
                           </div>
-                          {r.analysis25 && (
-                            <div style={{ marginTop: 4, fontSize: 12, color: '#4b5563' }}>{r.analysis25}</div>
-                          )}
                         </td>
                         <td style={td}>{r.unit}</td>
                         <td style={td}>{'월'}</td>
                         <td style={td}>{r.year25Target == null ? '-' : r.year25Target}</td>
                         <td style={td}>{r.baseline == null ? '-' : r.baseline}</td>
+                        <td style={td}>{r.analysis25 ? r.analysis25 : '-'}</td>
                         <td style={td}>{r.target == null ? '-' : r.target}</td>
                         <td style={td}>{(() => {
                           const h = r.history || [];
