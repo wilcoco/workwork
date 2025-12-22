@@ -228,8 +228,9 @@ export function CarDispatchCorporate() {
                                       setSelectedEvent({ ev, dateLabel });
                                     }}
                                   >
-                                    <span>{ev.carName}</span>
-                                    <span>{ev.requesterName}</span>
+                                    {ev.carName}
+                                    <br />
+                                    {ev.requesterName}
                                   </div>
                                 ))}
                               </div>

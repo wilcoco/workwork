@@ -104,142 +104,297 @@ export function Home() {
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : '1.8fr 1fr', alignItems: 'start' }}>
-        <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
-          {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
-            <div style={{ display: 'grid', gap: 8 }}>
-              {worklogs
-                .filter((w) => !filterTeam || (w.teamName||'').toLowerCase().includes(filterTeam.toLowerCase()))
-                .filter((w) => !filterName || (w.userName||'').toLowerCase().includes(filterName.toLowerCase()))
-                .filter((w) => {
-                  const t = new Date(w.date).getTime();
-                  return (Date.now() - t) <= 3 * 24 * 60 * 60 * 1000;
-                })
-                .map((w) => {
-                const anyW: any = w as any;
-                const attachments = anyW.attachments || {};
-                const files = attachments.files || [];
-                const firstImg = (() => {
-                  const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-                  if (fileImg) return absLink(fileImg.url as string);
-                  const html = attachments.contentHtml || '';
-                  if (html) {
-                    const abs = absolutizeUploads(html);
-                    const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-                    if (m && m[1]) return m[1];
-                  }
-                  return '';
-                })();
-                const contentHtml = attachments.contentHtml || '';
-                const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
-                const thumbSize = viewMode==='summary' ? 120 : 84;
-                const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
-                const snippet = (snippetSrc || '').trim();
-                return (
-                  <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {firstImg ? (
-                        <img src={firstImg} alt="thumb" style={{ width: thumbSize, height: thumbSize, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
-                      ) : (
-                        <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
-                      )}
-                      <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                          <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
-                          <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+        {isMobile ? (
+          <>
+            {/* 모바일: 긴급 보고 / 최근 댓글 먼저, 그 다음 최근 업무일지 */}
+            <div style={{ display: 'grid', gap: 12, alignContent: 'start', alignItems: 'start', alignSelf: 'start' }}>
+              <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {urgentWls
+                    .filter((w) => {
+                      const d = new Date(w.date).getTime();
+                      const threeDays = 3 * 24 * 60 * 60 * 1000;
+                      return Date.now() - d <= threeDays;
+                    })
+                    .map((w) => {
+                      const anyW: any = w as any;
+                      const attachments = anyW.attachments || {};
+                      const files = attachments.files || [];
+                      const firstImg = (() => {
+                        const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
+                        if (fileImg) return absLink(fileImg.url as string);
+                        const html = attachments.contentHtml || '';
+                        if (html) {
+                          const abs = absolutizeUploads(html);
+                          const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+                          if (m && m[1]) return m[1];
+                        }
+                        return '';
+                      })();
+                      const contentHtml = attachments.contentHtml || '';
+                      const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
+                      const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
+                      const snippet = (snippetSrc || '').trim();
+                      return (
+                        <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {firstImg ? (
+                              <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                            ) : (
+                              <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                            )}
+                            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                              </div>
+                              <div style={{ color: '#334155' }}>{snippet}</div>
+                            </div>
+                          </div>
                         </div>
-                        {viewMode==='summary' && (
-                          <div style={{ color: '#334155' }}>{snippet}</div>
-                        )}
-                      </div>
-                    </div>
-                    {viewMode === 'full' && (
-                      contentHtml ? (
-                        <div className="rich-content" onClick={(e) => { e.stopPropagation(); onContentClick(e); }} style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }} />
-                      ) : (
-                        <div style={{ color: '#334155' }}>{contentText}</div>
-                      )
-                    )}
-                  </div>
-                );
-              })}
-              {!worklogs.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                      );
+                    })}
+                  {urgentWls.filter((w) => (Date.now() - new Date(w.date).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
+                    <div style={{ color: '#94a3b8' }}>최근 3일간 긴급보고 없음</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
+                </div>
+              </div>
+              <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {latestComments
+                    .filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3 * 24 * 60 * 60 * 1000)
+                    .map((c) => (
+                      <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
+                    ))}
+                  {latestComments.filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
+                    <div style={{ color: '#94a3b8' }}>최근 3일간 댓글 없음</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <button className="btn" onClick={() => setCommentsOpen(true)}>더보기</button>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
-        <div style={{ display: 'grid', gap: 12, alignContent: 'start', alignItems: 'start', alignSelf: 'start' }}>
-          <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {urgentWls
-                .filter((w) => {
-                  const d = new Date(w.date).getTime();
-                  const threeDays = 3 * 24 * 60 * 60 * 1000;
-                  return Date.now() - d <= threeDays;
-                })
-                .map((w) => {
-                const anyW: any = w as any;
-                const attachments = anyW.attachments || {};
-                const files = attachments.files || [];
-                const firstImg = (() => {
-                  const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-                  if (fileImg) return absLink(fileImg.url as string);
-                  const html = attachments.contentHtml || '';
-                  if (html) {
-                    const abs = absolutizeUploads(html);
-                    const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-                    if (m && m[1]) return m[1];
-                  }
-                  return '';
-                })();
-                const contentHtml = attachments.contentHtml || '';
-                const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
-                const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
-                const snippet = (snippetSrc || '').trim();
-                return (
-                  <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {firstImg ? (
-                        <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
-                      ) : (
-                        <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
-                      )}
-                      <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                          <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
-                          <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+            <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
+              {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {worklogs
+                    .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
+                    .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
+                    .filter((w) => {
+                      const t = new Date(w.date).getTime();
+                      return (Date.now() - t) <= 3 * 24 * 60 * 60 * 1000;
+                    })
+                    .map((w) => {
+                      const anyW: any = w as any;
+                      const attachments = anyW.attachments || {};
+                      const files = attachments.files || [];
+                      const firstImg = (() => {
+                        const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
+                        if (fileImg) return absLink(fileImg.url as string);
+                        const html = attachments.contentHtml || '';
+                        if (html) {
+                          const abs = absolutizeUploads(html);
+                          const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+                          if (m && m[1]) return m[1];
+                        }
+                        return '';
+                      })();
+                      const contentHtml = attachments.contentHtml || '';
+                      const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
+                      const thumbSize = viewMode==='summary' ? 120 : 84;
+                      const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
+                      const snippet = (snippetSrc || '').trim();
+                      return (
+                        <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {firstImg ? (
+                              <img src={firstImg} alt="thumb" style={{ width: thumbSize, height: thumbSize, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                            ) : (
+                              <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                            )}
+                            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                              </div>
+                              {viewMode==='summary' && (
+                                <div style={{ color: '#334155' }}>{snippet}</div>
+                              )}
+                            </div>
+                          </div>
+                          {viewMode === 'full' && (
+                            contentHtml ? (
+                              <div
+                                className="rich-content"
+                                onClick={(e) => { e.stopPropagation(); onContentClick(e); }}
+                                style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }}
+                                dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }}
+                              />
+                            ) : (
+                              <div style={{ color: '#334155' }}>{contentText}</div>
+                            )
+                          )}
                         </div>
-                        <div style={{ color: '#334155' }}>{snippet}</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {urgentWls.filter((w) => (Date.now() - new Date(w.date).getTime()) <= 3*24*60*60*1000).length === 0 && (
-                <div style={{ color: '#94a3b8' }}>최근 3일간 긴급보고 없음</div>
+                      );
+                    })}
+                  {!worklogs.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                </div>
               )}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-              <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
-            </div>
-          </div>
-          <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              {latestComments
-                .filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3*24*60*60*1000)
-                .map((c) => (
-                  <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
-                ))}
-              {latestComments.filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3*24*60*60*1000).length === 0 && (
-                <div style={{ color: '#94a3b8' }}>최근 3일간 댓글 없음</div>
+          </>
+        ) : (
+          <>
+            {/* 데스크탑: 최근 업무일지 왼쪽, 긴급 보고 / 최근 댓글 오른쪽 */}
+            <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
+              {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {worklogs
+                    .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
+                    .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
+                    .filter((w) => {
+                      const t = new Date(w.date).getTime();
+                      return (Date.now() - t) <= 3 * 24 * 60 * 60 * 1000;
+                    })
+                    .map((w) => {
+                      const anyW: any = w as any;
+                      const attachments = anyW.attachments || {};
+                      const files = attachments.files || [];
+                      const firstImg = (() => {
+                        const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
+                        if (fileImg) return absLink(fileImg.url as string);
+                        const html = attachments.contentHtml || '';
+                        if (html) {
+                          const abs = absolutizeUploads(html);
+                          const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+                          if (m && m[1]) return m[1];
+                        }
+                        return '';
+                      })();
+                      const contentHtml = attachments.contentHtml || '';
+                      const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
+                      const thumbSize = viewMode==='summary' ? 120 : 84;
+                      const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
+                      const snippet = (snippetSrc || '').trim();
+                      return (
+                        <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {firstImg ? (
+                              <img src={firstImg} alt="thumb" style={{ width: thumbSize, height: thumbSize, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                            ) : (
+                              <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                            )}
+                            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                              </div>
+                              {viewMode==='summary' && (
+                                <div style={{ color: '#334155' }}>{snippet}</div>
+                              )}
+                            </div>
+                          </div>
+                          {viewMode === 'full' && (
+                            contentHtml ? (
+                              <div
+                                className="rich-content"
+                                onClick={(e) => { e.stopPropagation(); onContentClick(e); }}
+                                style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }}
+                                dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }}
+                              />
+                            ) : (
+                              <div style={{ color: '#334155' }}>{contentText}</div>
+                            )
+                          )}
+                        </div>
+                      );
+                    })}
+                  {!worklogs.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                </div>
               )}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-              <button className="btn" onClick={() => setCommentsOpen(true)}>더보기</button>
+            <div style={{ display: 'grid', gap: 12, alignContent: 'start', alignItems: 'start', alignSelf: 'start' }}>
+              <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {urgentWls
+                    .filter((w) => {
+                      const d = new Date(w.date).getTime();
+                      const threeDays = 3 * 24 * 60 * 60 * 1000;
+                      return Date.now() - d <= threeDays;
+                    })
+                    .map((w) => {
+                      const anyW: any = w as any;
+                      const attachments = anyW.attachments || {};
+                      const files = attachments.files || [];
+                      const firstImg = (() => {
+                        const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
+                        if (fileImg) return absLink(fileImg.url as string);
+                        const html = attachments.contentHtml || '';
+                        if (html) {
+                          const abs = absolutizeUploads(html);
+                          const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+                          if (m && m[1]) return m[1];
+                        }
+                        return '';
+                      })();
+                      const contentHtml = attachments.contentHtml || '';
+                      const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
+                      const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
+                      const snippet = (snippetSrc || '').trim();
+                      return (
+                        <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            {firstImg ? (
+                              <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                            ) : (
+                              <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                            )}
+                            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                              </div>
+                              <div style={{ color: '#334155' }}>{snippet}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  {urgentWls.filter((w) => (Date.now() - new Date(w.date).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
+                    <div style={{ color: '#94a3b8' }}>최근 3일간 긴급보고 없음</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
+                </div>
+              </div>
+              <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {latestComments
+                    .filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3 * 24 * 60 * 60 * 1000)
+                    .map((c) => (
+                      <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
+                    ))}
+                  {latestComments.filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
+                    <div style={{ color: '#94a3b8' }}>최근 3일간 댓글 없음</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <button className="btn" onClick={() => setCommentsOpen(true)}>더보기</button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
       
       {zoomSrc && (

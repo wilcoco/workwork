@@ -395,8 +395,8 @@ export function AttendanceRequest() {
                                   setSelectedEvent({ ev, dateLabel });
                                 }}
                               >
-                                <span>{getAttendanceTypeLabel(ev)}</span>
-                                {ev.requesterName && <span>{ev.requesterName}</span>}
+                                {getAttendanceTypeLabel(ev)}
+                                {ev.requesterName && <><br />{ev.requesterName}</>}
                               </div>
                             ))}
                           </div>
