@@ -43,6 +43,13 @@ export function TeamKpiBoard() {
   const [rows, setRows] = useState<KrRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [groupShowLimit, setGroupShowLimit] = useState<Record<string, number>>({});
+  const [selectedKr, setSelectedKr] = useState<KrRow | null>(null);
+  const [editYear25Target, setEditYear25Target] = useState<string>('');
+  const [editBaseline, setEditBaseline] = useState<string>('');
+  const [editTarget, setEditTarget] = useState<string>('');
+  const [editAnalysis25, setEditAnalysis25] = useState<string>('');
+  const [editWeight, setEditWeight] = useState<string>('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     async function loadOrgs() {
@@ -216,7 +223,7 @@ export function TeamKpiBoard() {
       }
     }
     loadBoard();
-  }, [orgUnitId]);
+  }, [orgUnitId, refreshKey]);
 
   const grouped = useMemo(() => {
     const map: Record<string, KrRow[]> = {};
@@ -227,6 +234,92 @@ export function TeamKpiBoard() {
     }
     return map;
   }, [rows]);
+
+  function renderHistorySummary(row: KrRow) {
+    const h = row.history || [];
+    if (!h.length) return <span>-</span>;
+    const latest = h[0];
+    const latestDate = latest.createdAt ? new Date(latest.createdAt).toISOString().slice(0, 10) : '-';
+    return (
+      <div style={{ display: 'grid', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{latest.value == null ? '-' : latest.value}</span>
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b' }}>입력일자 {latestDate}</div>
+        <details>
+          <summary style={{ cursor: 'pointer', fontSize: 12, color: '#64748b' }}>더보기</summary>
+          <div style={{ marginTop: 4 }}>
+            <ul style={{ margin: 0, paddingLeft: 16, display: 'grid', gap: 4 }}>
+              {h.map((e, i) => {
+                const d = e.createdAt ? new Date(e.createdAt).toISOString().slice(0, 10) : '-';
+                return (
+                  <li key={i}>
+                    <div>{e.value == null ? '-' : e.value}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>입력일자 {d}</div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </details>
+      </div>
+    );
+  }
+
+  function renderHistorySparkline(row: KrRow) {
+    const h = row.history || [];
+    if (!h.length) return <span>-</span>;
+    const vals = h.slice(0, 12).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
+    const defined = vals.filter((v) => v != null) as number[];
+    if (!defined.length) return <span>-</span>;
+    const w = 200, he = 40, pad = 4;
+    const min = Math.min(...defined, 0);
+    const max = Math.max(...defined, row.target || 0);
+    const scaleY = (v: number) => {
+      if (max === min) return he / 2;
+      return he - pad - ((v - min) / (max - min)) * (he - pad * 2);
+    };
+    const pts = defined.map((v, i) => `${(i * (w / Math.max(defined.length - 1, 1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
+    const tgtY = scaleY(row.target || 0);
+    return (
+      <div style={{ minWidth: w }}>
+        <svg width={w} height={he}>
+          <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
+          {row.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
+        </svg>
+      </div>
+    );
+  }
+
+  function openEdit(row: KrRow) {
+    setSelectedKr(row);
+    setEditYear25Target(row.year25Target != null ? String(row.year25Target) : '');
+    setEditBaseline(row.baseline != null ? String(row.baseline) : '');
+    setEditTarget(typeof row.target === 'number' ? String(row.target) : '');
+    setEditAnalysis25(row.analysis25 || '');
+    setEditWeight(row.weight != null ? String(row.weight) : '');
+  }
+
+  async function saveEdit() {
+    if (!selectedKr) return;
+    try {
+      const body: any = {
+        year25Target: editYear25Target === '' ? undefined : Number(editYear25Target),
+        baseline: editBaseline === '' ? undefined : Number(editBaseline),
+        target: editTarget === '' ? undefined : Number(editTarget),
+        analysis25: editAnalysis25 || undefined,
+        weight: editWeight === '' ? undefined : Number(editWeight),
+      };
+      await apiJson(`/api/okrs/krs/${encodeURIComponent(selectedKr.id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+      setSelectedKr(null);
+      setRefreshKey((k) => k + 1);
+    } catch (e: any) {
+      alert(e?.message || '저장 실패');
+    }
+  }
 
   return (
     <div style={{ maxWidth: 1100, margin: '24px auto', display: 'grid', gap: 12 }}>
@@ -258,8 +351,6 @@ export function TeamKpiBoard() {
                     <th style={th}>25년 실적</th>
                     <th style={th}>25년 성과 분석</th>
                     <th style={th}>26년 목표</th>
-                    <th style={th}>26년 실적</th>
-                    <th style={th}>그래프</th>
                     <th style={th}>평가비중</th>
                     <th style={th}>주요 추진 계획</th>
                   </tr>
@@ -272,7 +363,9 @@ export function TeamKpiBoard() {
                       <tr key={r.id} style={r.bg === 'red' ? { background: '#fee2e2' } : r.bg === 'orange' ? { background: '#ffedd5' } : undefined}>
                         <td style={td}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{ fontWeight: 600 }}>{r.kpiName}</div>
+                            <button type="button" onClick={() => openEdit(r)} style={{ all: 'unset', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}>
+                              {r.kpiName}
+                            </button>
                             {r.status && r.status !== '-' && (
                               <span style={{ fontSize: 11, fontWeight: 700, color: r.status === 'On Track' ? '#065f46' : r.status === 'At Risk' ? '#92400e' : '#991b1b', background: r.status === 'On Track' ? '#d1fae5' : r.status === 'At Risk' ? '#fef3c7' : '#fee2e2', border: '1px solid', borderColor: r.status === 'On Track' ? '#10b981' : r.status === 'At Risk' ? '#f59e0b' : '#ef4444', borderRadius: 999, padding: '2px 6px' }}>
                                 {r.status}
@@ -286,60 +379,6 @@ export function TeamKpiBoard() {
                         <td style={td}>{r.baseline == null ? '-' : r.baseline}</td>
                         <td style={td}>{r.analysis25 ? r.analysis25 : '-'}</td>
                         <td style={td}>{r.target == null ? '-' : r.target}</td>
-                        <td style={td}>{(() => {
-                          const h = r.history || [];
-                          if (!h.length) return '-';
-                          const latest = h[0];
-                          const latestDate = latest.createdAt ? new Date(latest.createdAt).toISOString().slice(0,10) : '-';
-                          return (
-                            <div style={{ display: 'grid', gap: 4 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <span>{latest.value == null ? '-' : latest.value}</span>
-                              </div>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>입력일자 {latestDate}</div>
-                              <details>
-                                <summary style={{ cursor: 'pointer', fontSize: 12, color: '#64748b' }}>더보기</summary>
-                                <div style={{ marginTop: 4 }}>
-                                  <ul style={{ margin: 0, paddingLeft: 16, display: 'grid', gap: 4 }}>
-                                    {h.map((e, i) => {
-                                      const d = e.createdAt ? new Date(e.createdAt).toISOString().slice(0,10) : '-';
-                                      return (
-                                        <li key={i}>
-                                          <div>{e.value == null ? '-' : e.value}</div>
-                                          <div style={{ fontSize: 12, color: '#64748b' }}>입력일자 {d}</div>
-                                        </li>
-                                      );
-                                    })}
-                                  </ul>
-                                </div>
-                              </details>
-                            </div>
-                          );
-                        })()}</td>
-                        <td style={td}>{(() => {
-                          const h = r.history || [];
-                          if (!h.length) return '-';
-                          const vals = h.slice(0, 12).map((e) => (typeof e.value === 'number' ? e.value : null)).reverse();
-                          const defined = vals.filter((v) => v != null) as number[];
-                          if (!defined.length) return '-';
-                          const w = 140, he = 40, pad = 4;
-                          const min = Math.min(...defined, 0);
-                          const max = Math.max(...defined, r.target || 0);
-                          const scaleY = (v: number) => {
-                            if (max === min) return he / 2;
-                            return he - pad - ((v - min) / (max - min)) * (he - pad * 2);
-                          };
-                          const pts = defined.map((v, i) => `${(i * (w / Math.max(defined.length - 1, 1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
-                          const tgtY = scaleY(r.target || 0);
-                          return (
-                            <div style={{ minWidth: 140 }}>
-                              <svg width={w} height={he}>
-                                <polyline fill="none" stroke="#0F3D73" strokeWidth="1.5" points={pts} />
-                                {r.target != null && <line x1={0} x2={w} y1={tgtY} y2={tgtY} stroke="#94a3b8" strokeDasharray="2,2" />}
-                              </svg>
-                            </div>
-                          );
-                        })()}</td>
                         <td style={td}>{r.weight == null ? '-' : r.weight}</td>
                         <td style={td}>{r.initiatives.length ? (
                           <ul style={{ margin: 0, paddingLeft: 16 }}>
@@ -368,6 +407,61 @@ export function TeamKpiBoard() {
             )}
           </div>
         ))
+      )}
+      {selectedKr && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 40 }}>
+          <div style={{ background: 'white', borderRadius: 8, padding: 16, width: 'min(540px, 100%)', maxHeight: '80vh', overflowY: 'auto', display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>KPI 편집</h3>
+              <button className="btn btn-ghost" onClick={() => setSelectedKr(null)}>닫기</button>
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div><b>구분</b><div>{selectedKr.kpiName}</div></div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: '#64748b' }}>25년 목표</label>
+                    <input type="number" value={editYear25Target} onChange={(e) => setEditYear25Target(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: '#64748b' }}>25년 실적</label>
+                    <input type="number" value={editBaseline} onChange={(e) => setEditBaseline(e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: '#64748b' }}>25년 성과 분석</label>
+                  <textarea value={editAnalysis25} onChange={(e) => setEditAnalysis25(e.target.value)} rows={3} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: '#64748b' }}>26년 목표</label>
+                    <input type="number" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: '#64748b' }}>평가비중(%)</label>
+                    <input type="number" value={editWeight} onChange={(e) => setEditWeight(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: '#64748b' }}>26년 실적 (입력 히스토리)</label>
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, marginTop: 4 }}>
+                  {renderHistorySummary(selectedKr)}
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: '#64748b' }}>그래프</label>
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, marginTop: 4 }}>
+                  {renderHistorySparkline(selectedKr)}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn" onClick={() => setSelectedKr(null)}>취소</button>
+              <button className="btn btn-primary" onClick={saveEdit}>저장</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
