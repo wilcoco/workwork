@@ -27,6 +27,7 @@ export function CompanyOkrInput() {
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'DAILY' | 'WEEKLY' | 'MONTHLY'>('');
   const [krDirection, setKrDirection] = useState<'AT_LEAST' | 'AT_MOST'>('AT_LEAST');
+  const [krWeight, setKrWeight] = useState<string>('');
 
   useEffect(() => {
     async function load() {
@@ -85,9 +86,21 @@ export function CompanyOkrInput() {
       const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
       await apiJson(`/api/okrs/objectives/${encodeURIComponent(krObjectiveId)}/krs`, {
         method: 'POST',
-        body: JSON.stringify({ userId, title: krTitle, metric: krMetric, target: Number(krTarget), unit: krUnit, type: krType, pillar: krPillar, baseline: krBaseline === '' ? undefined : Number(krBaseline), direction: krDirection, cadence: krCadence || undefined }),
+        body: JSON.stringify({
+          userId,
+          title: krTitle,
+          metric: krMetric,
+          target: Number(krTarget),
+          unit: krUnit,
+          type: krType,
+          pillar: krPillar,
+          baseline: krBaseline === '' ? undefined : Number(krBaseline),
+          direction: krDirection,
+          cadence: krCadence || undefined,
+          weight: krType === 'OPERATIONAL' && krWeight !== '' ? Number(krWeight) : undefined,
+        }),
       });
-      setKrObjectiveId(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrType('OPERATIONAL'); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST');
+      setKrObjectiveId(''); setKrTitle(''); setKrMetric(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrType('OPERATIONAL'); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST'); setKrWeight('');
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
     } catch (e: any) {
@@ -173,6 +186,18 @@ export function CompanyOkrInput() {
             <option value="MONTHLY">월</option>
           </select>
         </div>
+        {krType === 'OPERATIONAL' && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              type="number"
+              step="any"
+              placeholder="평가 비중(%) - KPI 전용"
+              value={krWeight}
+              onChange={(e) => setKrWeight(e.target.value)}
+              style={{ maxWidth: 200 }}
+            />
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button className="btn btn-primary" disabled={!krObjectiveId || !krTitle || !krMetric || !krTarget || !krUnit} onClick={createKr}>KR 생성</button>
         </div>
@@ -211,7 +236,11 @@ export function CompanyOkrInput() {
                         <span style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #F59E0B', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>지표</span>
                         <div style={{ fontWeight: 600 }}>{kr.title}</div>
                         <div style={{ color: '#334155' }}>({kr.metric} / {kr.baseline != null ? `${kr.baseline} → ` : ''}{kr.target}{kr.unit ? ' ' + kr.unit : ''})</div>
-                        <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}</div>
+                        <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>
+                          {kr.pillar || '-'}
+                          {kr.cadence ? ` · ${kr.cadence}` : ''}
+                          {typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}
+                        </div>
                         {myRole === 'CEO' && (
                           <button
                             className="btn btn-ghost"
