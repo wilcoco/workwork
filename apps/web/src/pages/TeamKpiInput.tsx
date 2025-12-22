@@ -39,6 +39,7 @@ export function TeamKpiInput() {
   const [krPillar, setKrPillar] = useState<Pillar>('Q');
   const [krCadence, setKrCadence] = useState<'' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'>('');
   const [krDirection, setKrDirection] = useState<'AT_LEAST' | 'AT_MOST'>('AT_LEAST');
+  const [krWeight, setKrWeight] = useState<string>('');
   const [krParticipants, setKrParticipants] = useState<string[]>([]);
   const [taskRows, setTaskRows] = useState<Array<{ title: string; desc: string; months: boolean[] }>>([
     { title: '', desc: '', months: Array(12).fill(false) },
@@ -165,6 +166,7 @@ export function TeamKpiInput() {
           year25Target: krTarget25 === '' ? undefined : Number(krTarget25),
           direction: krDirection,
           cadence: krCadence || undefined,
+          weight: krWeight === '' ? undefined : Number(krWeight),
           participants: krParticipants.length ? krParticipants : undefined,
         }),
       });
@@ -194,7 +196,7 @@ export function TeamKpiInput() {
           }),
         });
       }
-      setKrTitle(''); setKrMetric(''); setKrTarget25(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST'); setKrParticipants([]);
+      setKrTitle(''); setKrMetric(''); setKrTarget25(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST'); setKrWeight(''); setKrParticipants([]);
       setTaskRows([{ title: '', desc: '', months: Array(12).fill(false) }]);
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
@@ -244,11 +246,12 @@ export function TeamKpiInput() {
         </div>
         <input placeholder="KPI명" value={krTitle} onChange={(e) => setKrTitle(e.target.value)} />
         <input placeholder="KPI 내용(산식)" value={krMetric} onChange={(e) => setKrMetric(e.target.value)} />
-        <div className="resp-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+        <div className="resp-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8 }}>
           <input type="number" step="any" placeholder="25년 목표" value={krTarget25} onChange={(e) => setKrTarget25(e.target.value)} />
           <input type="number" step="any" placeholder="25년 실적" value={krBaseline} onChange={(e) => setKrBaseline(e.target.value)} />
           <input type="number" step="any" placeholder="26년 목표" value={krTarget} onChange={(e) => setKrTarget(e.target.value)} />
           <input placeholder="단위(예: %, 건)" value={krUnit} onChange={(e) => setKrUnit(e.target.value)} />
+          <input type="number" step="any" placeholder="평가 비중(%)" value={krWeight} onChange={(e) => setKrWeight(e.target.value)} />
         </div>
         <div className="resp-2">
           <select value={krDirection} onChange={(e) => setKrDirection(e.target.value as any)}>
@@ -331,7 +334,11 @@ export function TeamKpiInput() {
                   <li key={kr.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                     <div style={{ fontWeight: 600 }}>{obj?.title ? `${obj.title} / KR: ${kr.title}` : `KR: ${kr.title}`}</div>
                     <div style={{ color: '#334155' }}>(25목표: {kr.year25Target != null ? kr.year25Target : '-'} / 25실적: {kr.baseline != null ? kr.baseline : '-'} / 26목표: {kr.target != null ? kr.target : '-'}{kr.unit ? ' ' + kr.unit : ''})</div>
-                    <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}</div>
+                    <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>
+                      {kr.pillar || '-'}
+                      {kr.cadence ? ` · ${kr.cadence}` : ''}
+                      {typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}
+                    </div>
                     {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
                       <button
                         className="btn btn-ghost"
