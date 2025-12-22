@@ -40,6 +40,7 @@ export function TeamKpiInput() {
   const [krCadence, setKrCadence] = useState<'' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY'>('');
   const [krDirection, setKrDirection] = useState<'AT_LEAST' | 'AT_MOST'>('AT_LEAST');
   const [krWeight, setKrWeight] = useState<string>('');
+  const [krAnalysis25, setKrAnalysis25] = useState<string>('');
   const [krParticipants, setKrParticipants] = useState<string[]>([]);
   const [taskRows, setTaskRows] = useState<Array<{ title: string; desc: string; months: boolean[] }>>([
     { title: '', desc: '', months: Array(12).fill(false) },
@@ -196,7 +197,7 @@ export function TeamKpiInput() {
           }),
         });
       }
-      setKrTitle(''); setKrMetric(''); setKrTarget25(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST'); setKrWeight(''); setKrParticipants([]);
+      setKrTitle(''); setKrMetric(''); setKrTarget25(''); setKrTarget(''); setKrBaseline(''); setKrUnit(''); setKrPillar('Q'); setKrCadence(''); setKrDirection('AT_LEAST'); setKrWeight(''); setKrParticipants([]); setKrAnalysis25('');
       setTaskRows([{ title: '', desc: '', months: Array(12).fill(false) }]);
       const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
       setObjectives(res.items || []);
@@ -259,14 +260,22 @@ export function TeamKpiInput() {
             <option value="AT_MOST">이하 (≤ 목표가 좋음)</option>
           </select>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <select value={krCadence} onChange={(e) => setKrCadence(e.target.value as any)}>
-            <option value="">평가 주기(선택)</option>
-            <option value="MONTHLY">월</option>
-            <option value="QUARTERLY">분기</option>
-            <option value="HALF_YEARLY">반기</option>
-            <option value="YEARLY">연간</option>
-          </select>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select value={krCadence} onChange={(e) => setKrCadence(e.target.value as any)}>
+              <option value="">평가 주기(선택)</option>
+              <option value="MONTHLY">월</option>
+              <option value="QUARTERLY">분기</option>
+              <option value="HALF_YEARLY">반기</option>
+              <option value="YEARLY">연간</option>
+            </select>
+          </div>
+          <textarea
+            placeholder="25년 실적 분석"
+            value={krAnalysis25}
+            onChange={(e) => setKrAnalysis25(e.target.value)}
+            rows={2}
+          />
         </div>
         {!!teamMembers.length && (
           <div style={{ borderTop: '1px solid #e5e7eb', marginTop: 8, paddingTop: 8, display: 'grid', gap: 4 }}>
