@@ -115,6 +115,9 @@ export class OkrsController {
     for (const ii of inits) {
       await this.deleteInitiativeCascade(ii.id, tx);
     }
+    // Delete progress entries and assignments pointing to this KR (e.g., team KPI progress)
+    await tx.progressEntry.deleteMany({ where: { keyResultId: id } });
+    await (tx as any).keyResultAssignment.deleteMany({ where: { keyResultId: id } });
     // Delete the KR itself
     await tx.keyResult.delete({ where: { id } });
   }
