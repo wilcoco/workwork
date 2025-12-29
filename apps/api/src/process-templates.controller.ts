@@ -65,6 +65,7 @@ export class ProcessTemplatesController {
               create: tasks.map((t: any, idx: number) => ({
                 name: t.name,
                 description: t.description,
+                stageLabel: t.stageLabel,
                 taskType: t.taskType,
                 orderHint: t.orderHint ?? idx,
                 predecessorIds: t.predecessorIds,
@@ -140,6 +141,7 @@ export class ProcessTemplatesController {
             processTemplateId: id,
             name: t.name,
             description: t.description,
+            stageLabel: t.stageLabel,
             taskType: t.taskType,
             orderHint: t.orderHint ?? idx,
             predecessorIds: t.predecessorIds,

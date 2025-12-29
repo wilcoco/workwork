@@ -7,6 +7,7 @@ interface ProcessTaskTemplateDto {
   description?: string;
   taskType: 'COOPERATION' | 'WORKLOG' | 'APPROVAL' | 'TASK';
   orderHint?: number;
+   stageLabel?: string;
   predecessorIds?: string;
   assigneeType?: 'USER' | 'ORG_UNIT' | 'ROLE';
   assigneeUserId?: string;
@@ -134,10 +135,7 @@ export function ProcessTemplates() {
       setSelectedId(created.id || null);
     }
     await loadList();
-    if (selectedId) {
-      const found = items.find((x) => x.id === selectedId);
-      if (found) editTemplate(found);
-    }
+    alert('업무 프로세스 템플릿이 저장되었습니다.');
   }
 
   async function removeTemplate(id?: string) {
@@ -293,11 +291,14 @@ export function ProcessTemplates() {
                 <h3>세부 과제(단계) 정의</h3>
                 <button className="btn" onClick={addTask}>과제 추가</button>
               </div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
+                단계(스테이지)와 선행 과제를 활용해 흐름을 정의합니다. 예: 1단계 안에 1-1, 1-2, 결재 과제를 모두 두고, 2단계 과제의 선행 과제로 1-1/1-2/결재를 모두 지정하면 이들이 전부 완료된 뒤에만 2단계가 시작됩니다.
+              </div>
               <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
                 {editing.tasks.map((t, idx) => (
                   <div key={idx} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <b>#{idx + 1}</b>
+                      <b>#{idx + 1}{t.stageLabel ? ` · ${t.stageLabel}` : ''}</b>
                       <button className="btn btn-ghost" onClick={() => removeTask(idx)}>삭제</button>
                     </div>
                     <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
@@ -331,6 +332,14 @@ export function ProcessTemplates() {
                     </div>
                     <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                       <div>
+                        <label>단계(스테이지)</label>
+                        <input
+                          placeholder="예: 1단계, 2단계, 마무리단계"
+                          value={t.stageLabel || ''}
+                          onChange={(e) => updateTask(idx, { stageLabel: e.target.value })}
+                        />
+                      </div>
+                      <div>
                         <label>담당자 유형</label>
                         <select
                           value={t.assigneeType || ''}
@@ -353,7 +362,7 @@ export function ProcessTemplates() {
                       <div>
                         <label>선행 과제 IDs</label>
                         <input
-                          placeholder="콤마로 구분된 task id들"
+                          placeholder="이 과제 전에 반드시 끝나야 하는 과제 id들 (콤마로 구분)"
                           value={t.predecessorIds || ''}
                           onChange={(e) => updateTask(idx, { predecessorIds: e.target.value })}
                         />

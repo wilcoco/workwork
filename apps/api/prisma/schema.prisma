@@ -563,6 +563,7 @@ model ProcessTaskTemplate {
   description            String?
   taskType               TaskType          @default(TASK)
   orderHint              Int               @default(0)
+  stageLabel             String?
   predecessorIds         String?           // comma-separated template IDs
   assigneeType           AssigneeType?
   assigneeUserId         String?
