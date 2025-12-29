@@ -38,6 +38,7 @@ import { CarDispatchCorporate } from './pages/CarDispatchCorporate';
 import { AttendanceRequest } from './pages/AttendanceRequest';
 import { AttendanceReport } from './pages/AttendanceReport';
 import { AdminHolidays } from './pages/AdminHolidays';
+import { ProcessTemplates } from './pages/ProcessTemplates';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -132,6 +133,7 @@ export function App() {
           <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
           <Route path="/attendance/request" element={<AttendanceRequest />} />
           <Route path="/attendance/report" element={<AttendanceReport />} />
+          <Route path="/process/templates" element={<ProcessTemplates />} />
           {SHOW_APPROVALS && (
             <>
               <Route path="/approvals/new" element={<ApprovalsSubmit />} />
@@ -249,6 +251,9 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           <Link to="/dispatch/corporate">법인차량 신청</Link>
           <Link to="/attendance/request">근태 신청</Link>
           <Link to="/attendance/report">근태 리포트</Link>
+        </NavDropdown>
+        <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
+          <Link to="/process/templates">프로세스 템플릿</Link>
         </NavDropdown>
         <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
           <Link to="/admin/orgs">조직관리</Link>
@@ -423,6 +428,11 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
         { to: '/admin/members', label: '구성원' },
         { to: '/admin/holidays', label: '휴일 캘린더' },
         { to: '/admin/tools', label: '시스템 도구' },
+      ];
+    }
+    if (path.startsWith('/process')) {
+      return [
+        { to: '/process/templates', label: '프로세스 템플릿' },
       ];
     }
     if (path.startsWith('/inbox')) {

@@ -91,6 +91,7 @@ model OrgUnit {
   manager   User?     @relation("OrgManager", fields: [managerId], references: [id])
   users     User[]
   objectives Objective[]
+  processTemplates ProcessTemplate[]
 }
 
 model User {
@@ -123,6 +124,7 @@ model User {
   carDispatchRequestsRequested CarDispatchRequest[] @relation("CarDispatchRequester")
   carDispatchRequestsToApprove CarDispatchRequest[] @relation("CarDispatchApprover")
   attendanceRequests AttendanceRequest[]
+  processTemplatesOwned ProcessTemplate[]
 }
 
 model Objective {
@@ -313,6 +315,36 @@ enum AttendanceType {
   HOLIDAY_REST
 }
 
+enum ProcessType {
+  RECURRING
+  PROJECT
+}
+
+enum ProcessVisibility {
+  PUBLIC
+  ORG_UNIT
+  PRIVATE
+}
+
+enum TaskType {
+  COOPERATION
+  WORKLOG
+  APPROVAL
+  TASK
+}
+
+enum AssigneeType {
+  USER
+  ORG_UNIT
+  ROLE
+}
+
+enum ApprovalRouteType {
+  ORG_CHART
+  ROLE_BASED
+  CUSTOM_USERS
+}
+
 model ApprovalRequest {
   id             String          @id @default(cuid())
   subjectType    String
@@ -499,6 +531,57 @@ model AttendanceRequest {
   reason    String?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+}
+
+model ProcessTemplate {
+  id                         String             @id @default(cuid())
+  title                      String
+  description                String?
+  type                       ProcessType        @default(PROJECT)
+  ownerId                    String
+  owner                      User               @relation(fields: [ownerId], references: [id])
+  visibility                 ProcessVisibility  @default(PUBLIC)
+  orgUnitId                  String?
+  orgUnit                    OrgUnit?           @relation(fields: [orgUnitId], references: [id])
+  recurrenceType             String?
+  recurrenceDetail           String?
+  resultInputRequired        Boolean            @default(false)
+  expectedDurationDays       Int?
+  expectedCompletionCriteria String?
+  allowExtendDeadline        Boolean            @default(true)
+  status                     String             @default("ACTIVE")
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+  tasks                      ProcessTaskTemplate[]
+}
+
+model ProcessTaskTemplate {
+  id                     String            @id @default(cuid())
+  processTemplateId      String
+  processTemplate        ProcessTemplate   @relation(fields: [processTemplateId], references: [id])
+  name                   String
+  description            String?
+  taskType               TaskType          @default(TASK)
+  orderHint              Int               @default(0)
+  predecessorIds         String?           // comma-separated template IDs
+  assigneeType           AssigneeType?
+  assigneeUserId         String?
+  assigneeOrgUnitId      String?
+  assigneeRoleCode       String?
+  cooperationTargetType  AssigneeType?
+  cooperationTargetUserId String?
+  cooperationTargetOrgUnitId String?
+  cooperationTargetRoleCode String?
+  expectedOutput         String?
+  worklogTemplateHint    String?
+  linkToKpiType          String?
+  approvalRouteType      ApprovalRouteType?
+  approvalRoleCodes      String?           // comma-separated role codes
+  approvalUserIds        String?           // comma-separated user IDs
+  isFinalApproval        Boolean           @default(false)
+  deadlineOffsetDays     Int?
+  slaHours               Int?
+  allowDelayReasonRequired Boolean        @default(false)
 }
 
 model Holiday {
