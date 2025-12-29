@@ -24,6 +24,7 @@ import { CarDispatchController } from './car-dispatch.controller';
 import { AttendanceController } from './attendance.controller';
 import { HolidaysController } from './holidays.controller';
 import { ProcessTemplatesController } from './process-templates.controller';
+import { ProcessesController } from './processes.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -51,6 +52,7 @@ import { ProcessTemplatesController } from './process-templates.controller';
     AttendanceController,
     HolidaysController,
     ProcessTemplatesController,
+    ProcessesController,
   ],
   providers: [PrismaService],
 })
