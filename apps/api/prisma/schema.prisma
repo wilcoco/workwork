@@ -125,6 +125,7 @@ model User {
   carDispatchRequestsToApprove CarDispatchRequest[] @relation("CarDispatchApprover")
   attendanceRequests AttendanceRequest[]
   processTemplatesOwned ProcessTemplate[]
+  processInstancesStarted ProcessInstance[] @relation("ProcessInstanceStartedBy")
 }
 
 model Objective {
@@ -553,6 +554,7 @@ model ProcessTemplate {
   createdAt                  DateTime           @default(now())
   updatedAt                  DateTime           @updatedAt
   tasks                      ProcessTaskTemplate[]
+  instances                  ProcessInstance[]
 }
 
 model ProcessTaskTemplate {
@@ -583,6 +585,51 @@ model ProcessTaskTemplate {
   deadlineOffsetDays     Int?
   slaHours               Int?
   allowDelayReasonRequired Boolean        @default(false)
+  taskInstances          ProcessTaskInstance[]
+}
+
+model ProcessInstance {
+  id              String            @id @default(cuid())
+  templateId      String
+  template        ProcessTemplate   @relation(fields: [templateId], references: [id])
+  title           String
+  startedById     String
+  startedBy       User             @relation("ProcessInstanceStartedBy", fields: [startedById], references: [id])
+  status          String           @default("ACTIVE")
+  startAt         DateTime         @default(now())
+  endAt           DateTime?
+  expectedEndAt   DateTime?
+  itemCode        String?          // 품번 등 기준 정보 코드
+  moldCode        String?          // 금형 번호
+  carModelCode    String?          // 차종 코드
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  tasks           ProcessTaskInstance[]
+}
+
+model ProcessTaskInstance {
+  id                String              @id @default(cuid())
+  instanceId        String
+  instance          ProcessInstance     @relation(fields: [instanceId], references: [id])
+  taskTemplateId    String
+  taskTemplate      ProcessTaskTemplate @relation(fields: [taskTemplateId], references: [id])
+  name              String
+  stageLabel        String?
+  taskType          TaskType
+  status            String             @default("NOT_STARTED")
+  plannedStartAt    DateTime?
+  plannedEndAt      DateTime?
+  actualStartAt     DateTime?
+  actualEndAt       DateTime?
+  deadlineAt        DateTime?
+  worklogId         String?
+  cooperationId     String?
+  approvalRequestId String?
+  assigneeId        String?
+  decidedById       String?
+  decisionReason    String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 }
 
 model Holiday {
