@@ -49,6 +49,7 @@ export function TeamKpiBoard() {
   const [editTarget, setEditTarget] = useState<string>('');
   const [editAnalysis25, setEditAnalysis25] = useState<string>('');
   const [editWeight, setEditWeight] = useState<string>('');
+  const [editInits, setEditInits] = useState<Array<{ id: string; title: string }>>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -298,6 +299,7 @@ export function TeamKpiBoard() {
     setEditTarget(typeof row.target === 'number' ? String(row.target) : '');
     setEditAnalysis25(row.analysis25 || '');
     setEditWeight(row.weight != null ? String(row.weight) : '');
+    setEditInits((row.initiatives || []).map((ii) => ({ id: ii.id, title: ii.title })));
   }
 
   async function saveEdit() {
@@ -314,6 +316,13 @@ export function TeamKpiBoard() {
         method: 'PUT',
         body: JSON.stringify(body),
       });
+      // Update initiatives (주요 추진 계획) titles
+      for (const it of editInits) {
+        await apiJson(`/api/initiatives/${encodeURIComponent(it.id)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ title: it.title || undefined }),
+        });
+      }
       setSelectedKr(null);
       setRefreshKey((k) => k + 1);
     } catch (e: any) {
@@ -444,15 +453,25 @@ export function TeamKpiBoard() {
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: 12, color: '#64748b' }}>26년 실적 (입력 히스토리)</label>
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, marginTop: 4 }}>
-                  {renderHistorySummary(selectedKr)}
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: '#64748b' }}>그래프</label>
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, marginTop: 4 }}>
-                  {renderHistorySparkline(selectedKr)}
+                <label style={{ fontSize: 12, color: '#64748b' }}>주요 추진 계획</label>
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, marginTop: 4, display: 'grid', gap: 6 }}>
+                  {editInits.length === 0 ? (
+                    <div style={{ fontSize: 12, color: '#9ca3af' }}>등록된 추진 계획이 없습니다.</div>
+                  ) : (
+                    editInits.map((it, idx) => (
+                      <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 12, color: '#9ca3af', minWidth: 18 }}>{idx + 1}.</span>
+                        <input
+                          value={it.title}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setEditInits((prev) => prev.map((p) => (p.id === it.id ? { ...p, title: v } : p)));
+                          }}
+                          style={{ flex: 1 }}
+                        />
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
