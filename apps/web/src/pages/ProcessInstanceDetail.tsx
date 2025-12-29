@@ -21,6 +21,7 @@ interface ProcInst {
   itemCode?: string;
   moldCode?: string;
   carModelCode?: string;
+  initiativeId?: string;
   template: { id: string; title: string };
   tasks: ProcTask[];
 }
@@ -67,7 +68,8 @@ export function ProcessInstanceDetail() {
 
   const onExecute = async (t: ProcTask) => {
     if (!id) return;
-    const q = `?processInstanceId=${encodeURIComponent(id)}&taskInstanceId=${encodeURIComponent(t.id)}`;
+    const initiativeParam = inst?.initiativeId ? `&initiativeId=${encodeURIComponent(inst.initiativeId)}` : '';
+    const q = `?processInstanceId=${encodeURIComponent(id)}&taskInstanceId=${encodeURIComponent(t.id)}${initiativeParam}`;
     if (t.taskType === 'WORKLOG') {
       try { await apiJson(`/api/processes/${encodeURIComponent(id)}/tasks/${encodeURIComponent(t.id)}/start`, { method: 'POST' }); } catch {}
       nav(`/worklogs/new${q}`);
