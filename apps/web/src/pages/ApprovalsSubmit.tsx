@@ -7,6 +7,9 @@ import { uploadFile, uploadFiles, type UploadResp } from '../lib/upload';
 import '../styles/editor.css';
 
 export function ApprovalsSubmit() {
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const processInstanceId = params?.get('processInstanceId') || '';
+  const taskInstanceId = params?.get('taskInstanceId') || '';
   const [steps, setSteps] = useState<Array<{ id: string; name: string }>>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [dueAt, setDueAt] = useState('');
@@ -158,6 +161,15 @@ export function ApprovalsSubmit() {
       body.steps = steps.map((s) => ({ approverId: s.id }));
       if (dueAt) body.dueAt = new Date(dueAt).toISOString();
       const res2 = await apiJson<any>('/api/approvals', { method: 'POST', body: JSON.stringify(body) });
+      // If invoked from a process task, complete it with approvalRequestId
+      if (processInstanceId && taskInstanceId && res2?.id) {
+        try {
+          await apiJson(`/api/processes/${encodeURIComponent(processInstanceId)}/tasks/${encodeURIComponent(taskInstanceId)}/complete`, {
+            method: 'POST',
+            body: JSON.stringify({ approvalRequestId: res2.id }),
+          });
+        } catch {}
+      }
       setOkMsg(`요청 완료: ${res2?.id || ''}`);
       setSteps([]);
       setDueAt('');

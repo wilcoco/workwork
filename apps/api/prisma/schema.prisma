@@ -563,6 +563,7 @@ model ProcessTaskTemplate {
   processTemplate        ProcessTemplate   @relation(fields: [processTemplateId], references: [id])
   name                   String
   description            String?
+  assigneeHint           String?
   taskType               TaskType          @default(TASK)
   orderHint              Int               @default(0)
   stageLabel             String?
@@ -638,5 +639,26 @@ model Holiday {
   name      String
   isLegal   Boolean  @default(true)
   createdBy String
+  createdAt DateTime @default(now())
+}
+
+model Item {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model Mold {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model CarModel {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
   createdAt DateTime @default(now())
 }

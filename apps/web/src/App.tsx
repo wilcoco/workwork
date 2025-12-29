@@ -40,6 +40,8 @@ import { AttendanceReport } from './pages/AttendanceReport';
 import { AdminHolidays } from './pages/AdminHolidays';
 import { ProcessInstances } from './pages/ProcessInstances';
 import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
+import { ProcessInbox } from './pages/ProcessInbox';
+import { ProcessStart } from './pages/ProcessStart';
 import { ProcessTemplates } from './pages/ProcessTemplates';
 
 function DeployBanner() {
@@ -137,6 +139,8 @@ export function App() {
           <Route path="/attendance/report" element={<AttendanceReport />} />
           <Route path="/process/instances" element={<ProcessInstances />} />
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
+          <Route path="/process/inbox" element={<ProcessInbox />} />
+          <Route path="/process/start" element={<ProcessStart />} />
           <Route path="/process/templates" element={<ProcessTemplates />} />
           {SHOW_APPROVALS && (
             <>
@@ -257,6 +261,8 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           <Link to="/attendance/report">근태 리포트</Link>
         </NavDropdown>
         <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
+          <Link to="/process/start">새 프로세스 시작</Link>
+          <Link to="/process/inbox">내 할 일</Link>
           <Link to="/process/instances">진행 중 프로세스</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
         </NavDropdown>
@@ -437,6 +443,8 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
     }
     if (path.startsWith('/process')) {
       return [
+        { to: '/process/start', label: '새 프로세스 시작' },
+        { to: '/process/inbox', label: '내 할 일' },
         { to: '/process/instances', label: '진행 중 프로세스' },
         { to: '/process/templates', label: '프로세스 템플릿' },
       ];

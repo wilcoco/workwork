@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
 interface ProcTask {
@@ -27,6 +27,7 @@ interface ProcInst {
 
 export function ProcessInstanceDetail() {
   const { id } = useParams<{ id: string }>();
+  const nav = useNavigate();
   const [inst, setInst] = useState<ProcInst | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -57,6 +58,39 @@ export function ProcessInstanceDetail() {
 
   if (loading && !inst) return <div>불러오는 중...</div>;
   if (!inst) return <div>존재하지 않는 프로세스입니다.</div>;
+
+  async function reload() {
+    if (!id) return;
+    const data = await apiJson<ProcInst>(`/api/processes/${encodeURIComponent(id)}`);
+    setInst(data || null);
+  }
+
+  const onExecute = async (t: ProcTask) => {
+    if (!id) return;
+    const q = `?processInstanceId=${encodeURIComponent(id)}&taskInstanceId=${encodeURIComponent(t.id)}`;
+    if (t.taskType === 'WORKLOG') {
+      try { await apiJson(`/api/processes/${encodeURIComponent(id)}/tasks/${encodeURIComponent(t.id)}/start`, { method: 'POST' }); } catch {}
+      nav(`/worklogs/new${q}`);
+      return;
+    }
+    if (t.taskType === 'COOPERATION') {
+      try { await apiJson(`/api/processes/${encodeURIComponent(id)}/tasks/${encodeURIComponent(t.id)}/start`, { method: 'POST' }); } catch {}
+      nav(`/coops/request${q}`);
+      return;
+    }
+    if (t.taskType === 'APPROVAL') {
+      try { await apiJson(`/api/processes/${encodeURIComponent(id)}/tasks/${encodeURIComponent(t.id)}/start`, { method: 'POST' }); } catch {}
+      nav(`/approvals/new${q}`);
+      return;
+    }
+    // TASK: 바로 완료 처리
+    try {
+      await apiJson(`/api/processes/${encodeURIComponent(id)}/tasks/${encodeURIComponent(t.id)}/complete`, { method: 'POST' });
+      await reload();
+    } catch {
+      // ignore
+    }
+  };
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -93,7 +127,9 @@ export function ProcessInstanceDetail() {
                     <div style={{ fontSize: 12, color: '#6b7280' }}>{t.taskType} · {t.status}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {t.status === 'READY' && <button className="btn btn-primary" disabled>실행</button>}
+                    {t.status === 'READY' && (
+                      <button className="btn btn-primary" onClick={() => onExecute(t)}>실행</button>
+                    )}
                   </div>
                 </div>
               ))}

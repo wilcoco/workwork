@@ -4,6 +4,9 @@ import { apiFetch } from '../lib/api';
 
 export function WorklogNew() {
   const nav = useNavigate();
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const processInstanceId = params?.get('processInstanceId') || '';
+  const taskInstanceId = params?.get('taskInstanceId') || '';
   const [initiativeId, setInitiativeId] = useState('');
   const [createdById, setCreatedById] = useState('');
   const [progressPct, setProgressPct] = useState<number>(0);
@@ -108,6 +111,16 @@ export function WorklogNew() {
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const data = await res.json();
       const worklogId = data?.worklog?.id || data?.id;
+      // If invoked from a process task, mark task as completed with linkage
+      if (processInstanceId && taskInstanceId && worklogId) {
+        try {
+          await apiFetch(`/api/processes/${encodeURIComponent(processInstanceId)}/tasks/${encodeURIComponent(taskInstanceId)}/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ worklogId }),
+          });
+        } catch {}
+      }
       // Optional: record progress entries
       if (initiativeDone) {
         await apiFetch('/api/progress', {

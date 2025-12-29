@@ -44,15 +44,12 @@ export function ProcessTemplates() {
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string }>>([]);
-  const [startOpen, setStartOpen] = useState(false);
-  const [startTitle, setStartTitle] = useState('');
-  const [startItemCode, setStartItemCode] = useState('');
-  const [startMoldCode, setStartMoldCode] = useState('');
-  const [startCarModelCode, setStartCarModelCode] = useState('');
+  const [itemsMaster, setItemsMaster] = useState<Array<{ code: string; name: string }>>([]);
+  const [moldsMaster, setMoldsMaster] = useState<Array<{ code: string; name: string }>>([]);
+  const [carModelsMaster, setCarModelsMaster] = useState<Array<{ code: string; name: string }>>([]);
 
   useEffect(() => {
     loadList();
-    loadUsersOrgs();
   }, []);
 
   async function loadList() {
@@ -64,16 +61,7 @@ export function ProcessTemplates() {
       setLoading(false);
     }
   }
-  async function loadUsersOrgs() {
-    try {
-      const ul = await apiJson<{ items: Array<{ id: string; name: string; orgName?: string }> }>(`/api/users`);
-      setUsers(ul?.items || []);
-    } catch {}
-    try {
-      const ol = await apiJson<{ items: Array<{ id: string; name: string }> }>(`/api/orgs`);
-      setOrgs(ol?.items || []);
-    } catch {}
-  }
+  
 
   function newTemplate() {
     if (!userId) {
@@ -158,32 +146,7 @@ export function ProcessTemplates() {
     alert('업무 프로세스 템플릿이 저장되었습니다.');
   }
 
-  async function startInstance() {
-    if (!editing) return;
-    if (!startTitle.trim()) {
-      alert('세부 제목을 입력하세요.');
-      return;
-    }
-    if (!userId) {
-      alert('로그인이 필요합니다.');
-      return;
-    }
-    const body = {
-      templateId: editing.id,
-      title: startTitle,
-      startedById: userId,
-      itemCode: startItemCode || undefined,
-      moldCode: startMoldCode || undefined,
-      carModelCode: startCarModelCode || undefined,
-    };
-    const inst = await apiJson<any>(`/api/processes`, { method: 'POST', body: JSON.stringify(body) });
-    setStartOpen(false);
-    setStartTitle('');
-    setStartItemCode('');
-    setStartMoldCode('');
-    setStartCarModelCode('');
-    if (inst?.id) nav(`/process/instances/${inst.id}`);
-  }
+  
 
   async function removeTemplate(id?: string) {
     if (!id) return;
@@ -230,36 +193,8 @@ export function ProcessTemplates() {
           <div style={{ display: 'grid', gap: 12 }}>
             <h2>업무 프로세스 정의</h2>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button className="btn" onClick={() => setStartOpen((v) => !v)} disabled={!editing?.id}>이 템플릿으로 시작</button>
+              <button className="btn" onClick={() => editing?.id && nav(`/process/start?templateId=${encodeURIComponent(editing.id)}`)} disabled={!editing?.id}>이 템플릿으로 시작</button>
             </div>
-            {startOpen && (
-              <div style={{ display: 'grid', gap: 6, border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, background: '#fbfbfb' }}>
-                <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-                  <div>
-                    <label>세부 제목</label>
-                    <input value={startTitle} onChange={(e) => setStartTitle(e.target.value)} placeholder="예: 2025-01-10 M123 2라인 이관" />
-                  </div>
-                  <div>
-                    <label>품번(Item Code)</label>
-                    <input value={startItemCode} onChange={(e) => setStartItemCode(e.target.value)} placeholder="예: ITEM-001" />
-                  </div>
-                </div>
-                <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-                  <div>
-                    <label>금형 번호(Mold)</label>
-                    <input value={startMoldCode} onChange={(e) => setStartMoldCode(e.target.value)} placeholder="예: M123" />
-                  </div>
-                  <div>
-                    <label>차종(Car Model)</label>
-                    <input value={startCarModelCode} onChange={(e) => setStartCarModelCode(e.target.value)} placeholder="예: SONATA" />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                  <button className="btn btn-outline" onClick={() => setStartOpen(false)}>취소</button>
-                  <button className="btn btn-primary" onClick={startInstance}>시작</button>
-                </div>
-              </div>
-            )}
             <div>
               <label>업무프로세스 제목</label>
               <input
@@ -417,54 +352,7 @@ export function ProcessTemplates() {
                           onChange={(e) => updateTask(idx, { stageLabel: e.target.value })}
                         />
                       </div>
-                      <div>
-                        <label>담당자 유형</label>
-                        <select
-                          value={t.assigneeType || ''}
-                          onChange={(e) => updateTask(idx, { assigneeType: e.target.value as any, assigneeUserId: undefined, assigneeOrgUnitId: undefined, assigneeRoleCode: undefined })}
-                        >
-                          <option value="">미정</option>
-                          <option value="USER">개인</option>
-                          <option value="ORG_UNIT">조직</option>
-                          <option value="ROLE">역할</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label>담당자 선택</label>
-                        {t.assigneeType === 'USER' ? (
-                          <select
-                            value={t.assigneeUserId || ''}
-                            onChange={(e) => updateTask(idx, { assigneeUserId: e.target.value, assigneeOrgUnitId: undefined, assigneeRoleCode: undefined })}
-                          >
-                            <option value="">선택</option>
-                            {users.map((u) => (
-                              <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
-                            ))}
-                          </select>
-                        ) : t.assigneeType === 'ORG_UNIT' ? (
-                          <select
-                            value={t.assigneeOrgUnitId || ''}
-                            onChange={(e) => updateTask(idx, { assigneeOrgUnitId: e.target.value, assigneeUserId: undefined, assigneeRoleCode: undefined })}
-                          >
-                            <option value="">선택</option>
-                            {orgs.map((o) => (
-                              <option key={o.id} value={o.id}>{o.name}</option>
-                            ))}
-                          </select>
-                        ) : t.assigneeType === 'ROLE' ? (
-                          <input
-                            placeholder="역할 코드(예: TEAM_LEAD)"
-                            value={t.assigneeRoleCode || ''}
-                            onChange={(e) => updateTask(idx, { assigneeRoleCode: e.target.value, assigneeUserId: undefined, assigneeOrgUnitId: undefined })}
-                          />
-                        ) : (
-                          <input
-                            placeholder="userId / orgUnitId / roleCode 중 택1"
-                            value={t.assigneeUserId || t.assigneeOrgUnitId || t.assigneeRoleCode || ''}
-                            onChange={(e) => updateTask(idx, { assigneeUserId: e.target.value })}
-                          />
-                        )}
-                      </div>
+                      
                       <div>
                         <label>선행 과제 IDs</label>
                         <input

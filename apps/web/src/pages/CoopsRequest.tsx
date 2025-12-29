@@ -6,6 +6,9 @@ import { uploadFile, uploadFiles, type UploadResp } from '../lib/upload';
 import '../styles/editor.css';
 
 export function CoopsRequest() {
+  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const processInstanceId = params?.get('processInstanceId') || '';
+  const taskInstanceId = params?.get('taskInstanceId') || '';
   const [category, setCategory] = useState('General');
   const [queue, setQueue] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
@@ -153,6 +156,15 @@ export function CoopsRequest() {
       if (dueDate) body.dueAt = /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? `${dueDate}T00:00:00+09:00` : dueDate;
       const res = await apiJson<any>('/api/help-tickets', { method: 'POST', body: JSON.stringify(body) });
       setOkMsg(`요청 생성: ${res?.id || ''}`);
+      // If invoked from a process task, complete it with cooperationId
+      if (processInstanceId && taskInstanceId && res?.id) {
+        try {
+          await apiJson(`/api/processes/${encodeURIComponent(processInstanceId)}/tasks/${encodeURIComponent(taskInstanceId)}/complete`, {
+            method: 'POST',
+            body: JSON.stringify({ cooperationId: res.id }),
+          });
+        } catch {}
+      }
       setQueue('');
       setAssigneeId('');
       setSlaMinutes('');
