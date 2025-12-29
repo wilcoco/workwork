@@ -214,6 +214,8 @@ model Initiative {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   progressEntries ProgressEntry[]
+  processInstances ProcessInstance[]
+  processTaskInstances ProcessTaskInstance[]
 }
 
 model Worklog {
@@ -603,6 +605,8 @@ model ProcessInstance {
   itemCode        String?          // 품번 등 기준 정보 코드
   moldCode        String?          // 금형 번호
   carModelCode    String?          // 차종 코드
+  initiativeId    String?
+  initiative      Initiative?      @relation(fields: [initiativeId], references: [id])
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   tasks           ProcessTaskInstance[]
@@ -629,6 +633,8 @@ model ProcessTaskInstance {
   assigneeId        String?
   decidedById       String?
   decisionReason    String?
+  initiativeId      String?
+  initiative        Initiative?        @relation(fields: [initiativeId], references: [id])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }

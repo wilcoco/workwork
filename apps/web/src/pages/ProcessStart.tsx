@@ -40,6 +40,8 @@ export function ProcessStart() {
   const selected = useMemo(() => templates.find(t => t.id === tplId) || null, [templates, tplId]);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [assignees, setAssignees] = useState<Record<string, string>>({});
+  const [initiativeId, setInitiativeId] = useState('');
+  const [myInits, setMyInits] = useState<Array<{ id: string; title: string }>>([]);
 
   useEffect(() => {
     (async () => {
@@ -80,6 +82,16 @@ export function ProcessStart() {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      if (!userId) return;
+      try {
+        const res = await apiJson<{ items: Array<{ id: string; title: string }> }>(`/api/initiatives/my?userId=${encodeURIComponent(userId)}`);
+        setMyInits(res?.items || []);
+      } catch {}
+    })();
+  }, [userId]);
+
   async function start() {
     if (!userId) { alert('로그인이 필요합니다.'); return; }
     if (!tplId) { alert('템플릿을 선택하세요.'); return; }
@@ -96,6 +108,7 @@ export function ProcessStart() {
       moldCode: moldCode || undefined,
       carModelCode: carModelCode || undefined,
       taskAssignees,
+      initiativeId: initiativeId || undefined,
     };
     const inst = await apiJson<any>(`/api/processes`, { method: 'POST', body: JSON.stringify(body) });
     if (inst?.id) nav(`/process/instances/${inst.id}`);
@@ -164,6 +177,20 @@ export function ProcessStart() {
                   </select>
                   {!carModelCode && (
                     <input value={carModelCode} onChange={(e) => setCarModelCode(e.target.value)} placeholder="예: SONATA" />
+                  )}
+                </label>
+              </div>
+              <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                <label>
+                  연결할 과제(Initiative)
+                  <select value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)}>
+                    <option value="">직접 입력</option>
+                    {myInits.map(it => (
+                      <option key={it.id} value={it.id}>{it.title}</option>
+                    ))}
+                  </select>
+                  {!initiativeId && (
+                    <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} placeholder="Initiative ID 직접 입력" />
                   )}
                 </label>
               </div>

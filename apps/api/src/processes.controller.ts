@@ -79,6 +79,7 @@ export class ProcessesController {
       moldCode,
       carModelCode,
       taskAssignees,
+      initiativeId,
     } = body || {};
 
     if (!templateId) throw new Error('templateId is required');
@@ -118,6 +119,7 @@ export class ProcessesController {
           itemCode: itemCode || undefined,
           moldCode: moldCode || undefined,
           carModelCode: carModelCode || undefined,
+          initiativeId: initiativeId || undefined,
         },
       });
 
@@ -148,6 +150,7 @@ export class ProcessesController {
           taskType: t.taskType,
           status: initialStatus,
           assigneeId,
+          initiativeId: initiativeId || undefined,
         } as any;
       });
 
