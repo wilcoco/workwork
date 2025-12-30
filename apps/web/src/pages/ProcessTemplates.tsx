@@ -27,6 +27,7 @@ interface ProcessTemplateDto {
   orgUnitId?: string;
   recurrenceType?: string;
   recurrenceDetail?: string;
+  bpmnJson?: any;
   resultInputRequired?: boolean;
   expectedDurationDays?: number;
   expectedCompletionCriteria?: string;
@@ -47,6 +48,7 @@ export function ProcessTemplates() {
   const [itemsMaster, setItemsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [moldsMaster, setMoldsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [carModelsMaster, setCarModelsMaster] = useState<Array<{ code: string; name: string }>>([]);
+  const [bpmnJsonText, setBpmnJsonText] = useState('');
 
   useEffect(() => {
     loadList();
@@ -85,6 +87,7 @@ export function ProcessTemplates() {
     };
     setSelectedId(null);
     setEditing(t);
+    setBpmnJsonText('');
   }
 
   function editTemplate(t: ProcessTemplateDto) {
@@ -96,6 +99,11 @@ export function ProcessTemplates() {
         orderHint: x.orderHint ?? idx,
       })),
     });
+    try {
+      setBpmnJsonText(t && (t as any).bpmnJson ? JSON.stringify((t as any).bpmnJson, null, 2) : '');
+    } catch {
+      setBpmnJsonText('');
+    }
   }
 
   function updateTask(idx: number, patch: Partial<ProcessTaskTemplateDto>) {
@@ -126,8 +134,18 @@ export function ProcessTemplates() {
       alert('업무프로세스 제목을 입력하세요.');
       return;
     }
+    let bpmnObj: any = undefined;
+    if (bpmnJsonText.trim()) {
+      try {
+        bpmnObj = JSON.parse(bpmnJsonText);
+      } catch {
+        alert('BPMN JSON이 유효하지 않습니다.');
+        return;
+      }
+    }
     const body = {
       ...editing,
+      bpmnJson: bpmnObj,
       tasks: editing.tasks,
     };
     if (editing.id) {
@@ -299,6 +317,16 @@ export function ProcessTemplates() {
                 </div>
               </div>
             )}
+            <div>
+              <label>BPMN JSON (선택)</label>
+              <textarea
+                value={bpmnJsonText}
+                onChange={(e) => setBpmnJsonText(e.target.value)}
+                rows={8}
+                placeholder='{ "nodes": [], "edges": [] }'
+              />
+              <div style={{ fontSize: 12, color: '#6b7280' }}>입력 시 저장할 때 아래 과제 목록은 BPMN 기준으로 재생성됩니다.</div>
+            </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <h3>세부 과제(단계) 정의</h3>
