@@ -126,6 +126,8 @@ model User {
   attendanceRequests AttendanceRequest[]
   processTemplatesOwned ProcessTemplate[]
   processInstancesStarted ProcessInstance[] @relation("ProcessInstanceStartedBy")
+  processInstancesModified ProcessInstance[] @relation("ProcessInstanceModifiedBy")
+  processStopEvents ProcessStopEvent[] @relation("ProcessStop_on_User")
 }
 
 model Objective {
@@ -573,6 +575,7 @@ model ProcessTaskTemplate {
   predecessorIds         String?           // comma-separated template IDs
   predecessorMode        String?           // 'ALL'(default) or 'ANY' (for XOR joins)
   xorGroupKey            String?
+  xorCondition           String?
   assigneeType           AssigneeType?
   assigneeUserId         String?
   assigneeOrgUnitId      String?
@@ -612,12 +615,13 @@ model ProcessInstance {
   initiativeId    String?
   initiative      Initiative?      @relation(fields: [initiativeId], references: [id])
   modifiedById    String?
-  modifiedBy      User?            @relation(fields: [modifiedById], references: [id])
+  modifiedBy      User?            @relation("ProcessInstanceModifiedBy", fields: [modifiedById], references: [id])
   modifiedAt      DateTime?
   modificationReason String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   tasks           ProcessTaskInstance[]
+  stopEvents      ProcessStopEvent[] @relation("ProcessStop_on_Instance")
 }
 
 model ProcessTaskInstance {
@@ -655,9 +659,9 @@ enum StopType {
 model ProcessStopEvent {
   id               String         @id @default(cuid())
   processInstanceId String
-  processInstance  ProcessInstance @relation(fields: [processInstanceId], references: [id])
+  processInstance  ProcessInstance @relation("ProcessStop_on_Instance", fields: [processInstanceId], references: [id])
   stoppedById      String
-  stoppedBy        User           @relation(fields: [stoppedById], references: [id])
+  stoppedBy        User           @relation("ProcessStop_on_User", fields: [stoppedById], references: [id])
   stopType         StopType
   reason           String
   stoppedAt        DateTime       @default(now())

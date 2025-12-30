@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
 @Controller('process-templates')
@@ -10,11 +10,14 @@ export class ProcessTemplatesController {
     const nodes: Record<string, any> = {};
     for (const n of bpmn.nodes) if (n && n.id) nodes[String(n.id)] = n;
     const incoming = new Map<string, string[]>();
+    const outgoing = new Map<string, any[]>();
     for (const e of bpmn.edges) {
       const tgt = String(e.target);
       const src = String(e.source);
       if (!incoming.has(tgt)) incoming.set(tgt, []);
       incoming.get(tgt)!.push(src);
+      if (!outgoing.has(src)) outgoing.set(src, []);
+      outgoing.get(src)!.push(e);
     }
     const isTask = (n: any) => n && String(n.type).toLowerCase() === 'task';
     const isGateway = (n: any) => n && String(n.type).toLowerCase().startsWith('gateway');
@@ -43,10 +46,17 @@ export class ProcessTemplatesController {
       const preds = Array.from(collectUpstreamTasks(String(n.id)));
       const immPreds: string[] = incoming.get(String(n.id)) || [];
       let xorKey: string | undefined = undefined;
+      let xorCond: string | undefined = undefined;
       const anyXor = immPreds.some((pid) => {
         const pn = nodes[pid];
         const hit = pn && String(pn.type).toLowerCase() === 'gateway_xor';
-        if (hit && !xorKey) xorKey = String(pn.id);
+        if (hit && !xorKey) {
+          xorKey = String(pn.id);
+          // capture the edge condition from XOR gateway to this task
+          const outs = outgoing.get(String(pn.id)) || [];
+          const edge = outs.find((e: any) => String(e.target) === String(n.id));
+          if (edge && edge.condition) xorCond = String(edge.condition);
+        }
         return hit;
       });
       return {
@@ -59,6 +69,7 @@ export class ProcessTemplatesController {
         predecessorIds: preds.length ? preds.join(',') : undefined,
         predecessorMode: anyXor ? 'ANY' : undefined,
         xorGroupKey: xorKey,
+        xorCondition: xorCond,
         expectedOutput: n.expectedOutput,
         worklogTemplateHint: n.worklogTemplateHint,
         linkToKpiType: n.linkToKpiType,
@@ -260,5 +271,27 @@ export class ProcessTemplatesController {
     await this.prisma.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
     await this.prisma.processTemplate.delete({ where: { id } });
     return { ok: true };
+  }
+
+  private async isExecOrCeo(userId: string): Promise<boolean> {
+    const u = await this.prisma.user.findUnique({ where: { id: userId } });
+    const role = String(u?.role || '').toUpperCase();
+    return role === 'CEO' || role === 'EXEC';
+  }
+
+  @Post(':id/promote')
+  async promote(@Param('id') id: string, @Body() body: any) {
+    const { actorId, visibility } = body || {};
+    if (!actorId) throw new BadRequestException('actorId required');
+    const ok = await this.isExecOrCeo(actorId);
+    if (!ok) throw new ForbiddenException('not allowed');
+    const vis = String(visibility || 'PUBLIC').toUpperCase();
+    if (!['PUBLIC', 'ORG_UNIT'].includes(vis)) throw new BadRequestException('invalid visibility');
+    const updated = await this.prisma.processTemplate.update({
+      where: { id },
+      data: { status: 'ACTIVE', visibility: vis as any },
+      include: { tasks: { orderBy: { orderHint: 'asc' } } },
+    });
+    return updated;
   }
 }

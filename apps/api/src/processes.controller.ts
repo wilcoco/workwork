@@ -53,6 +53,89 @@ export class ProcessesController {
     }));
   }
 
+  private getCtxValue(ctx: any, path: string): any {
+    const parts = String(path).split('.').map((s) => s.trim()).filter(Boolean);
+    let cur: any = ctx;
+    for (const p of parts) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  }
+
+  private evalCondition(cond: string, ctx: any): boolean {
+    if (!cond || typeof cond !== 'string') return false;
+    const orClauses = cond.split('||');
+    for (const orc of orClauses) {
+      const andClauses = orc.split('&&');
+      let okAnd = true;
+      for (let raw of andClauses) {
+        const c = raw.trim();
+        if (!c) continue;
+        const m = c.match(/^([a-zA-Z_][\w\.]*?)\s*(==|!=)\s*(.+)$/);
+        if (!m) { okAnd = false; break; }
+        const [, left, op, rightRaw] = m;
+        let rhs: any = rightRaw.trim();
+        if ((rhs.startsWith("'") && rhs.endsWith("'")) || (rhs.startsWith('"') && rhs.endsWith('"'))) rhs = rhs.slice(1, -1);
+        else if (/^\d+(?:\.\d+)?$/.test(rhs)) rhs = parseFloat(rhs);
+        else if (/^(true|false)$/i.test(rhs)) rhs = /^true$/i.test(rhs);
+        else if (/^null$/i.test(rhs)) rhs = null;
+        else rhs = String(rhs);
+        const lhs = this.getCtxValue(ctx, left);
+        const eq = lhs === rhs;
+        const res = op === '==' ? eq : !eq;
+        if (!res) { okAnd = false; break; }
+      }
+      if (okAnd) return true;
+    }
+    return false;
+  }
+
+  @Post(':id/tasks/:taskId/force-complete')
+  async forceComplete(@Param('id') id: string, @Param('taskId') taskId: string, @Body() body: any) {
+    const { actorId, reason } = body || {};
+    if (!actorId) throw new BadRequestException('actorId required');
+    const isExec = await this.isExecOrCeo(actorId);
+    if (!isExec) throw new ForbiddenException('not allowed');
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.processTaskInstance.findUnique({ where: { id: taskId } });
+      if (!task || task.instanceId !== id) throw new BadRequestException('task not found');
+      const updated = await tx.processTaskInstance.update({
+        where: { id: taskId },
+        data: { status: 'COMPLETED', actualEndAt: new Date(), decidedById: actorId, decisionReason: reason || 'force-complete' },
+      });
+      await this.unlockReadyDownstreams(tx, id, task.taskTemplateId);
+      return updated;
+    });
+  }
+
+  @Post(':id/tasks/:taskId/rollback')
+  async rollback(@Param('id') id: string, @Param('taskId') taskId: string, @Body() body: any) {
+    const { actorId, reason } = body || {};
+    if (!actorId) throw new BadRequestException('actorId required');
+    const isExec = await this.isExecOrCeo(actorId);
+    if (!isExec) throw new ForbiddenException('not allowed');
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.processTaskInstance.findUnique({ where: { id: taskId } });
+      if (!task || task.instanceId !== id) throw new BadRequestException('task not found');
+      // Rolling back only affects this task; downstream READY tasks will remain until business decides otherwise
+      const updated = await tx.processTaskInstance.update({
+        where: { id: taskId },
+        data: {
+          status: 'NOT_STARTED',
+          actualStartAt: null,
+          actualEndAt: null,
+          worklogId: null,
+          cooperationId: null,
+          approvalRequestId: null,
+          decidedById: actorId,
+          decisionReason: reason || 'rollback',
+        },
+      });
+      return updated;
+    });
+  }
+
   @Get('inbox')
   async inbox(@Query('assigneeId') assigneeId?: string, @Query('status') status?: string) {
     if (!assigneeId) return [];
@@ -209,6 +292,9 @@ export class ProcessesController {
         await tx.processTaskInstance.createMany({ data: finalCreates });
       }
 
+      // Auto-select XOR branch if initial READY tasks are XOR siblings
+      await this.autoSelectXorAtInit(tx, inst.id);
+
       const full = await tx.processInstance.findUnique({
         where: { id: inst.id },
         include: {
@@ -287,6 +373,120 @@ export class ProcessesController {
     });
   }
 
+  @Post(':id/modify')
+  async modify(@Param('id') id: string, @Body() body: any) {
+    const { actorId, reason, reassign, skipTaskIds, update } = body || {};
+    if (!actorId || !reason) throw new BadRequestException('actorId and reason required');
+    const isExec = await this.isExecOrCeo(actorId);
+    if (!isExec) throw new ForbiddenException('not allowed');
+    return this.prisma.$transaction(async (tx) => {
+      const inst = await tx.processInstance.findUnique({ where: { id } });
+      if (!inst) throw new BadRequestException('instance not found');
+
+      const now = new Date();
+      const skippedTemplateIds: string[] = [];
+      const changes: any[] = [];
+
+      if (Array.isArray(skipTaskIds) && skipTaskIds.length) {
+        const tasks = await tx.processTaskInstance.findMany({ where: { id: { in: skipTaskIds }, instanceId: id } });
+        const targetIds = tasks.filter((t: any) => String(t.status).toUpperCase() === 'NOT_STARTED').map((t: any) => t.id);
+        if (targetIds.length) {
+          await tx.processTaskInstance.updateMany({
+            where: { id: { in: targetIds } },
+            data: { status: 'SKIPPED', actualEndAt: now, decidedById: actorId, decisionReason: reason },
+          });
+          for (const t of tasks) {
+            if (targetIds.includes(t.id)) skippedTemplateIds.push(t.taskTemplateId);
+            if (targetIds.includes(t.id)) {
+              changes.push({ type: 'skip', taskId: t.id, name: t.name, before: { status: 'NOT_STARTED' }, after: { status: 'SKIPPED' } });
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(reassign) && reassign.length) {
+        for (const r of reassign) {
+          const task = await tx.processTaskInstance.findFirst({ where: { id: String(r.taskId), instanceId: id } });
+          if (!task) continue;
+          if (String(task.status).toUpperCase() !== 'NOT_STARTED') continue;
+          await tx.processTaskInstance.update({ where: { id: task.id }, data: { assigneeId: String(r.assigneeId) } });
+          changes.push({ type: 'reassign', taskId: task.id, name: task.name, before: { assigneeId: task.assigneeId || null }, after: { assigneeId: String(r.assigneeId) } });
+        }
+      }
+
+      if (Array.isArray(update) && update.length) {
+        for (const u of update) {
+          const task = await tx.processTaskInstance.findFirst({ where: { id: String(u.taskId), instanceId: id } });
+          if (!task) continue;
+          if (String(task.status).toUpperCase() !== 'NOT_STARTED') continue;
+          const data: any = {};
+          if (u.stageLabel !== undefined) data.stageLabel = u.stageLabel || null;
+          if (u.deadlineAt !== undefined) data.deadlineAt = u.deadlineAt ? new Date(u.deadlineAt) : null;
+          if (u.plannedStartAt !== undefined) data.plannedStartAt = u.plannedStartAt ? new Date(u.plannedStartAt) : null;
+          if (u.plannedEndAt !== undefined) data.plannedEndAt = u.plannedEndAt ? new Date(u.plannedEndAt) : null;
+          if (Object.keys(data).length) {
+            await tx.processTaskInstance.update({ where: { id: task.id }, data });
+            const before: any = {
+              stageLabel: task.stageLabel || null,
+              deadlineAt: task.deadlineAt ? task.deadlineAt.toISOString() : null,
+              plannedStartAt: task.plannedStartAt ? task.plannedStartAt.toISOString() : null,
+              plannedEndAt: task.plannedEndAt ? task.plannedEndAt.toISOString() : null,
+            };
+            const after: any = {
+              stageLabel: data.stageLabel ?? before.stageLabel,
+              deadlineAt: data.deadlineAt ? (data.deadlineAt as Date).toISOString() : (data.deadlineAt === null ? null : before.deadlineAt),
+              plannedStartAt: data.plannedStartAt ? (data.plannedStartAt as Date).toISOString() : (data.plannedStartAt === null ? null : before.plannedStartAt),
+              plannedEndAt: data.plannedEndAt ? (data.plannedEndAt as Date).toISOString() : (data.plannedEndAt === null ? null : before.plannedEndAt),
+            };
+            changes.push({ type: 'update', taskId: task.id, name: task.name, before, after });
+          }
+        }
+      }
+
+      if (skippedTemplateIds.length) {
+        const uniq = Array.from(new Set(skippedTemplateIds));
+        for (const tid of uniq) {
+          await this.unlockReadyDownstreams(tx, id, tid);
+        }
+      }
+
+      await tx.processInstance.update({
+        where: { id },
+        data: { version: { increment: 1 }, modifiedById: actorId, modifiedAt: now, modificationReason: String(reason) },
+      });
+
+      // audit event
+      await tx.event.create({
+        data: {
+          subjectType: 'ProcessInstance',
+          subjectId: id,
+          activity: 'PROCESS_MODIFY',
+          userId: actorId,
+          attrs: { reason: String(reason), changes },
+        },
+      });
+
+      return tx.processInstance.findUnique({
+        where: { id },
+        include: {
+          template: true,
+          startedBy: true,
+          initiative: true,
+          tasks: { orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }] },
+        },
+      });
+    });
+  }
+
+  @Get(':id/modifications')
+  async listModifications(@Param('id') id: string) {
+    const rows = await this.prisma.event.findMany({
+      where: { subjectType: 'ProcessInstance', subjectId: id, activity: 'PROCESS_MODIFY' },
+      orderBy: { ts: 'desc' },
+    });
+    return rows.map((e: any) => ({ ts: e.ts, userId: e.userId, reason: (e.attrs as any)?.reason, changes: (e.attrs as any)?.changes || [] }));
+  }
+
   private async allPredecessorsCompleted(tx: any, instanceId: string, taskTemplateId: string): Promise<boolean> {
     const tmpl = await tx.processTaskTemplate.findUnique({ where: { id: taskTemplateId } });
     if (!tmpl) return true;
@@ -299,22 +499,120 @@ export class ProcessesController {
     if (String(tmpl.predecessorMode || '').toUpperCase() === 'ANY') {
       return predInstances.some((pi: any) => String(pi.status).toUpperCase() === 'COMPLETED');
     }
-    if (predInstances.length < preds.length) return false; // some predecessor instances may not exist (data issue)
-    return predInstances.every((pi: any) => String(pi.status).toUpperCase() === 'COMPLETED');
+    if (predInstances.length < preds.length) return false;
+    return predInstances.every((pi: any) => {
+      const s = String(pi.status).toUpperCase();
+      return s === 'COMPLETED' || s === 'SKIPPED';
+    });
   }
 
   private async unlockReadyDownstreams(tx: any, instanceId: string, justCompletedTemplateId: string): Promise<void> {
     // find downstream templates whose predecessorIds include justCompletedTemplateId
     const allTemplates = await tx.processTaskTemplate.findMany({ where: { processTemplate: { instances: { some: { id: instanceId } } } } });
-    const downstreams = allTemplates.filter((t: any) => parsePreds(t.predecessorIds).includes(justCompletedTemplateId));
-    if (!downstreams.length) return;
-    for (const dt of downstreams) {
+    const candidates = allTemplates.filter((t: any) => parsePreds(t.predecessorIds).includes(justCompletedTemplateId));
+    if (!candidates.length) return;
+
+    const okTemplates: any[] = [];
+    for (const dt of candidates) {
       const ok = await this.allPredecessorsCompleted(tx, instanceId, dt.id);
-      if (!ok) continue;
-      await tx.processTaskInstance.updateMany({
-        where: { instanceId, taskTemplateId: dt.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
-        data: { status: 'READY' },
-      });
+      if (ok) okTemplates.push(dt);
+    }
+    if (!okTemplates.length) return;
+
+    // partition by xor group
+    const byGroup = new Map<string, any[]>();
+    const noGroup: any[] = [];
+    for (const dt of okTemplates) {
+      const g = String(dt.xorGroupKey || '');
+      if (!g) noGroup.push(dt);
+      else {
+        if (!byGroup.has(g)) byGroup.set(g, []);
+        byGroup.get(g)!.push(dt);
+      }
+    }
+
+    // non-XOR tasks: mark READY
+    for (const dt of noGroup) {
+      await tx.processTaskInstance.updateMany({ where: { instanceId, taskTemplateId: dt.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } }, data: { status: 'READY' } });
+    }
+
+    // XOR groups: evaluate conditions
+    if (byGroup.size) {
+      const inst = await tx.processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true } });
+      const ctx = {
+        itemCode: inst?.itemCode || null,
+        moldCode: inst?.moldCode || null,
+        carModelCode: inst?.carModelCode || null,
+        initiativeId: inst?.initiativeId || null,
+        startedBy: { id: inst?.startedById || '', role: inst?.startedBy?.role || '' },
+      };
+      for (const [g, list] of byGroup.entries()) {
+        let selected: any | null = null;
+        for (const t of list) {
+          const cond = String(t.xorCondition || '').trim();
+          if (cond && this.evalCondition(cond, ctx)) { selected = t; break; }
+        }
+        if (selected) {
+          // mark selected READY; skip siblings
+          await tx.processTaskInstance.updateMany({
+            where: { instanceId, taskTemplateId: selected.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
+            data: { status: 'READY' },
+          });
+          const siblingIds = list.map((x: any) => x.id).filter((id: string) => id !== selected.id);
+          if (siblingIds.length) {
+            await tx.processTaskInstance.updateMany({
+              where: { instanceId, taskTemplateId: { in: siblingIds }, status: { in: ['NOT_STARTED', 'READY'] } },
+              data: { status: 'SKIPPED', actualEndAt: new Date() },
+            });
+          }
+        } else {
+          // no condition matched: make all group tasks READY (user will choose), if not already skipped
+          await tx.processTaskInstance.updateMany({
+            where: { instanceId, taskTemplateId: { in: list.map((x: any) => x.id) }, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
+            data: { status: 'READY' },
+          });
+        }
+      }
+    }
+  }
+
+  private async autoSelectXorAtInit(tx: any, instanceId: string): Promise<void> {
+    const inst = await tx.processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true, template: true } });
+    if (!inst) return;
+    const templates = await tx.processTaskTemplate.findMany({ where: { processTemplateId: inst.templateId, xorGroupKey: { not: null } } });
+    if (!templates.length) return;
+    const ctx = {
+      itemCode: inst.itemCode || null,
+      moldCode: inst.moldCode || null,
+      carModelCode: inst.carModelCode || null,
+      initiativeId: inst.initiativeId || null,
+      startedBy: { id: inst.startedById || '', role: inst.startedBy?.role || '' },
+    };
+    // group by xorGroupKey
+    const groups = new Map<string, any[]>();
+    for (const t of templates) {
+      const g = String(t.xorGroupKey || '');
+      if (!g) continue;
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g)!.push(t);
+    }
+    for (const [g, list] of groups.entries()) {
+      // only auto-select when all tasks in the group are READY (i.e., initial fan-out)
+      const instTasks = await tx.processTaskInstance.findMany({ where: { instanceId, taskTemplateId: { in: list.map((x: any) => x.id) } } });
+      if (!instTasks.length) continue;
+      if (!instTasks.every((it: any) => it.status === 'READY')) continue;
+      let selected: any | null = null;
+      for (const t of list) {
+        const cond = String(t.xorCondition || '').trim();
+        if (cond && this.evalCondition(cond, ctx)) { selected = t; break; }
+      }
+      if (selected) {
+        await tx.processTaskInstance.updateMany({ where: { instanceId, taskTemplateId: selected.id, status: 'READY' }, data: { status: 'READY' } });
+        const siblingIds = list.map((x: any) => x.id).filter((id: string) => id !== selected.id);
+        if (siblingIds.length) {
+          await tx.processTaskInstance.updateMany({ where: { instanceId, taskTemplateId: { in: siblingIds }, status: { in: ['NOT_STARTED', 'READY'] } }, data: { status: 'SKIPPED', actualEndAt: new Date() } });
+        }
+      }
     }
   }
 

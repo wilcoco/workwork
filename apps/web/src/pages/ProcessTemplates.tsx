@@ -52,6 +52,7 @@ export function ProcessTemplates() {
   const [carModelsMaster, setCarModelsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [bpmnJsonText, setBpmnJsonText] = useState('');
   const [bpmnMode, setBpmnMode] = useState<'graph' | 'form'>('graph');
+  const [promoteVis, setPromoteVis] = useState<'PUBLIC' | 'ORG_UNIT'>('PUBLIC');
 
   useEffect(() => {
     loadList();
@@ -91,6 +92,24 @@ export function ProcessTemplates() {
     setSelectedId(null);
     setEditing(t);
     setBpmnJsonText('');
+  }
+
+  async function promote() {
+    if (!editing?.id) return;
+    if (!userId) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+    try {
+      await apiJson(`/api/process-templates/${encodeURIComponent(editing.id)}/promote`, {
+        method: 'POST',
+        body: JSON.stringify({ actorId: userId, visibility: promoteVis }),
+      });
+      await loadList();
+      alert('승격되었습니다.');
+    } catch (e: any) {
+      alert('승격에 실패했습니다. 권한이 없을 수 있습니다.');
+    }
   }
 
   function editTemplate(t: ProcessTemplateDto) {
@@ -215,6 +234,13 @@ export function ProcessTemplates() {
             <h2>업무 프로세스 정의</h2>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button className="btn" onClick={() => editing?.id && nav(`/process/start?templateId=${encodeURIComponent(editing.id)}`)} disabled={!editing?.id}>이 템플릿으로 시작</button>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <select value={promoteVis} onChange={(e) => setPromoteVis(e.target.value as any)}>
+                  <option value="PUBLIC">승격: 전체 공개</option>
+                  <option value="ORG_UNIT">승격: 팀 공개</option>
+                </select>
+                <button className="btn btn-warning" onClick={promote} disabled={!editing?.id}>승격</button>
+              </div>
             </div>
             <div>
               <label>업무프로세스 제목</label>
