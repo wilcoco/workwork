@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { BpmnEditor } from '../components/BpmnEditor';
+import { BpmnFormEditor } from '../components/BpmnFormEditor';
 
 interface ProcessTaskTemplateDto {
   id?: string;
@@ -49,6 +51,7 @@ export function ProcessTemplates() {
   const [moldsMaster, setMoldsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [carModelsMaster, setCarModelsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [bpmnJsonText, setBpmnJsonText] = useState('');
+  const [bpmnMode, setBpmnMode] = useState<'graph' | 'form'>('graph');
 
   useEffect(() => {
     loadList();
@@ -319,12 +322,23 @@ export function ProcessTemplates() {
             )}
             <div>
               <label>BPMN JSON (선택)</label>
-              <textarea
-                value={bpmnJsonText}
-                onChange={(e) => setBpmnJsonText(e.target.value)}
-                rows={8}
-                placeholder='{ "nodes": [], "edges": [] }'
-              />
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className={`btn ${bpmnMode === 'graph' ? 'btn-primary' : ''}`} onClick={() => setBpmnMode('graph')}>그래프 편집</button>
+                  <button type="button" className={`btn ${bpmnMode === 'form' ? 'btn-primary' : ''}`} onClick={() => setBpmnMode('form')}>순차 폼 편집</button>
+                </div>
+                {bpmnMode === 'graph' ? (
+                  <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
+                ) : (
+                  <BpmnFormEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
+                )}
+                <textarea
+                  value={bpmnJsonText}
+                  onChange={(e) => setBpmnJsonText(e.target.value)}
+                  rows={10}
+                  placeholder='{ "nodes": [], "edges": [] }'
+                />
+              </div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>입력 시 저장할 때 아래 과제 목록은 BPMN 기준으로 재생성됩니다.</div>
             </div>
             <div>

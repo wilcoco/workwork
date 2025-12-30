@@ -7,7 +7,8 @@ export function WorklogNew() {
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const processInstanceId = params?.get('processInstanceId') || '';
   const taskInstanceId = params?.get('taskInstanceId') || '';
-  const [initiativeId, setInitiativeId] = useState('');
+  const paramInitiativeId = params?.get('initiativeId') || '';
+  const [initiativeId, setInitiativeId] = useState(paramInitiativeId);
   const [createdById, setCreatedById] = useState('');
   const [progressPct, setProgressPct] = useState<number>(0);
   const [timeSpentMinutes, setTimeSpentMinutes] = useState<number>(0);
@@ -213,7 +214,8 @@ export function WorklogNew() {
 
       <label>
         Initiative ID
-        <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} required />
+        <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} required disabled={!!paramInitiativeId} />
+        {!!paramInitiativeId && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스에서 전달된 과제로 고정되었습니다.</div>}
       </label>
       <label>
         작성자 User ID

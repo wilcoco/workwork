@@ -571,6 +571,8 @@ model ProcessTaskTemplate {
   orderHint              Int               @default(0)
   stageLabel             String?
   predecessorIds         String?           // comma-separated template IDs
+  predecessorMode        String?           // 'ALL'(default) or 'ANY' (for XOR joins)
+  xorGroupKey            String?
   assigneeType           AssigneeType?
   assigneeUserId         String?
   assigneeOrgUnitId      String?

@@ -211,6 +211,9 @@ export class ProcessesController {
       where: { instanceId, taskTemplateId: { in: preds } },
       select: { id: true, status: true },
     });
+    if (String(tmpl.predecessorMode || '').toUpperCase() === 'ANY') {
+      return predInstances.some((pi: any) => String(pi.status).toUpperCase() === 'COMPLETED');
+    }
     if (predInstances.length < preds.length) return false; // some predecessor instances may not exist (data issue)
     return predInstances.every((pi: any) => String(pi.status).toUpperCase() === 'COMPLETED');
   }
@@ -243,6 +246,28 @@ export class ProcessesController {
         where: { id: taskId },
         data: { status: 'IN_PROGRESS', actualStartAt: new Date() },
       });
+      // XOR runtime selection: if this task belongs to an XOR group, skip sibling branch tasks
+      const tmpl = await tx.processTaskTemplate.findUnique({ where: { id: task.taskTemplateId } });
+      const groupKey = tmpl?.xorGroupKey || null;
+      if (groupKey) {
+        const groupTemplates = await tx.processTaskTemplate.findMany({
+          where: { processTemplate: { instances: { some: { id } } }, xorGroupKey: groupKey },
+          select: { id: true },
+        });
+        const groupTemplateIds = groupTemplates.map((g: any) => g.id).filter((tid: string) => tid !== task.taskTemplateId);
+        if (groupTemplateIds.length) {
+          const others = await tx.processTaskInstance.findMany({
+            where: { instanceId: id, taskTemplateId: { in: groupTemplateIds }, status: { in: ['NOT_STARTED', 'READY'] } },
+            select: { id: true },
+          });
+          if (others.length) {
+            await tx.processTaskInstance.updateMany({
+              where: { id: { in: others.map((o: any) => o.id) } },
+              data: { status: 'SKIPPED', actualEndAt: new Date() },
+            });
+          }
+        }
+      }
       return updated;
     });
   }
@@ -263,8 +288,8 @@ export class ProcessesController {
         data: { status: 'COMPLETED', actualEndAt: new Date(), ...linkData },
       });
       await this.unlockReadyDownstreams(tx, id, task.taskTemplateId);
-      // Optionally, set instance completed if all tasks completed
-      const remain = await tx.processTaskInstance.count({ where: { instanceId: id, status: { not: 'COMPLETED' } } });
+      // Optionally, set instance completed if all tasks are done or skipped
+      const remain = await tx.processTaskInstance.count({ where: { instanceId: id, status: { notIn: ['COMPLETED', 'SKIPPED'] } } });
       if (remain === 0) {
         await tx.processInstance.update({ where: { id }, data: { status: 'COMPLETED', endAt: new Date() } });
       }

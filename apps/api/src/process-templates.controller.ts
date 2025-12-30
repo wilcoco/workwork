@@ -41,6 +41,14 @@ export class ProcessTemplatesController {
     const taskNodes = bpmn.nodes.filter((n: any) => isTask(n));
     return taskNodes.map((n: any, idx: number) => {
       const preds = Array.from(collectUpstreamTasks(String(n.id)));
+      const immPreds: string[] = incoming.get(String(n.id)) || [];
+      let xorKey: string | undefined = undefined;
+      const anyXor = immPreds.some((pid) => {
+        const pn = nodes[pid];
+        const hit = pn && String(pn.type).toLowerCase() === 'gateway_xor';
+        if (hit && !xorKey) xorKey = String(pn.id);
+        return hit;
+      });
       return {
         name: n.name,
         description: n.description,
@@ -49,6 +57,8 @@ export class ProcessTemplatesController {
         taskType: n.taskType || 'TASK',
         orderHint: n.orderHint ?? idx,
         predecessorIds: preds.length ? preds.join(',') : undefined,
+        predecessorMode: anyXor ? 'ANY' : undefined,
+        xorGroupKey: xorKey,
         expectedOutput: n.expectedOutput,
         worklogTemplateHint: n.worklogTemplateHint,
         linkToKpiType: n.linkToKpiType,
