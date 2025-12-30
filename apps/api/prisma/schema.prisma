@@ -602,6 +602,7 @@ model ProcessInstance {
   startedById     String
   startedBy       User             @relation("ProcessInstanceStartedBy", fields: [startedById], references: [id])
   status          String           @default("ACTIVE")
+  version         Int              @default(1)
   startAt         DateTime         @default(now())
   endAt           DateTime?
   expectedEndAt   DateTime?
@@ -610,6 +611,10 @@ model ProcessInstance {
   carModelCode    String?          // 차종 코드
   initiativeId    String?
   initiative      Initiative?      @relation(fields: [initiativeId], references: [id])
+  modifiedById    String?
+  modifiedBy      User?            @relation(fields: [modifiedById], references: [id])
+  modifiedAt      DateTime?
+  modificationReason String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   tasks           ProcessTaskInstance[]
@@ -640,6 +645,22 @@ model ProcessTaskInstance {
   initiative        Initiative?        @relation(fields: [initiativeId], references: [id])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+}
+
+enum StopType {
+  SUSPENDED
+  ABORTED
+}
+
+model ProcessStopEvent {
+  id               String         @id @default(cuid())
+  processInstanceId String
+  processInstance  ProcessInstance @relation(fields: [processInstanceId], references: [id])
+  stoppedById      String
+  stoppedBy        User           @relation(fields: [stoppedById], references: [id])
+  stopType         StopType
+  reason           String
+  stoppedAt        DateTime       @default(now())
 }
 
 model Holiday {

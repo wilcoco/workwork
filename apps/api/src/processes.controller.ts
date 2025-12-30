@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
 function parsePreds(s?: string | null): string[] {
@@ -24,17 +24,33 @@ export class ProcessesController {
     const where: any = {};
     if (templateId) where.templateId = templateId;
     if (status) where.status = status;
-    return this.prisma.processInstance.findMany({
+    const rows = await this.prisma.processInstance.findMany({
       where,
       orderBy: { startAt: 'desc' },
       include: {
         template: { select: { id: true, title: true } },
+        startedBy: { select: { id: true, name: true, role: true } },
+        initiative: { select: { id: true, title: true } },
         tasks: {
           orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
           select: { id: true, stageLabel: true, taskType: true, status: true },
         },
       },
     });
+    const now = new Date();
+    return rows.map((r: any) => ({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      startAt: r.startAt,
+      expectedEndAt: r.expectedEndAt,
+      endAt: r.endAt,
+      template: r.template,
+      startedBy: r.startedBy,
+      initiative: r.initiative,
+      delayed: r.status === 'ACTIVE' && r.expectedEndAt && new Date(r.expectedEndAt).getTime() < now.getTime(),
+      tasks: r.tasks,
+    }));
   }
 
   @Get('inbox')
@@ -64,6 +80,8 @@ export class ProcessesController {
       where: { id },
       include: {
         template: true,
+        startedBy: true,
+        initiative: true,
         tasks: { orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }] },
       },
     });
@@ -195,10 +213,77 @@ export class ProcessesController {
         where: { id: inst.id },
         include: {
           template: true,
+          startedBy: true,
+          initiative: true,
           tasks: { orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }] },
         },
       });
       return full;
+    });
+  }
+
+  private async isExecOrCeo(userId: string): Promise<boolean> {
+    const u = await this.prisma.user.findUnique({ where: { id: userId } });
+    const role = String(u?.role || '').toUpperCase();
+    return role === 'CEO' || role === 'EXEC';
+  }
+
+  private async isApproverForInstance(tx: any, instanceId: string, userId: string): Promise<boolean> {
+    // Check approval tasks assigned directly
+    const tasks = await tx.processTaskInstance.findMany({
+      where: { instanceId, taskType: 'APPROVAL' },
+      select: { assigneeId: true, approvalRequestId: true },
+    });
+    if (tasks.some((t: any) => t.assigneeId && t.assigneeId === userId)) return true;
+    const reqIds = tasks.map((t: any) => t.approvalRequestId).filter(Boolean) as string[];
+    if (reqIds.length) {
+      const reqs = await tx.approvalRequest.findMany({ where: { id: { in: reqIds } }, select: { approverId: true } });
+      if (reqs.some((r: any) => r.approverId === userId)) return true;
+    }
+    return false;
+  }
+
+  @Post(':id/stop')
+  async stop(@Param('id') id: string, @Body() body: any) {
+    const { actorId, stopType, reason } = body || {};
+    if (!actorId || !stopType || !reason) throw new BadRequestException('actorId, stopType, reason required');
+    return this.prisma.$transaction(async (tx) => {
+      const inst = await tx.processInstance.findUnique({ where: { id } });
+      if (!inst) throw new BadRequestException('instance not found');
+      const isExec = await this.isExecOrCeo(actorId);
+      const isStarter = inst.startedById === actorId;
+      const approver = await this.isApproverForInstance(tx, id, actorId);
+      if (!isExec && !isStarter && !approver) throw new ForbiddenException('not allowed to stop');
+      const type = String(stopType).toUpperCase();
+      if (type !== 'SUSPENDED' && type !== 'ABORTED') throw new BadRequestException('invalid stopType');
+      await tx.processStopEvent.create({
+        data: {
+          processInstanceId: id,
+          stoppedById: actorId,
+          stopType: type,
+          reason: String(reason),
+        },
+      });
+      const data: any = { status: type, updatedAt: new Date() };
+      if (type === 'ABORTED') data.endAt = new Date();
+      return tx.processInstance.update({ where: { id }, data });
+    });
+  }
+
+  @Post(':id/resume')
+  async resume(@Param('id') id: string, @Body() body: any) {
+    const { actorId, reason } = body || {};
+    if (!actorId) throw new BadRequestException('actorId required');
+    return this.prisma.$transaction(async (tx) => {
+      const inst = await tx.processInstance.findUnique({ where: { id } });
+      if (!inst) throw new BadRequestException('instance not found');
+      if (String(inst.status).toUpperCase() !== 'SUSPENDED') throw new BadRequestException('not suspended');
+      const isExec = await this.isExecOrCeo(actorId);
+      const isStarter = inst.startedById === actorId;
+      const approver = await this.isApproverForInstance(tx, id, actorId);
+      if (!isExec && !isStarter && !approver) throw new ForbiddenException('not allowed to resume');
+      // optional: event log via generic Event
+      return tx.processInstance.update({ where: { id }, data: { status: 'ACTIVE', updatedAt: new Date() } });
     });
   }
 

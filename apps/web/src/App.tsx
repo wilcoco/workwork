@@ -43,6 +43,7 @@ import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { ProcessStart } from './pages/ProcessStart';
 import { ProcessTemplates } from './pages/ProcessTemplates';
+import { ProcessDashboard } from './pages/ProcessDashboard';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -139,6 +140,7 @@ export function App() {
           <Route path="/attendance/report" element={<AttendanceReport />} />
           <Route path="/process/instances" element={<ProcessInstances />} />
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
+          <Route path="/process/dashboard" element={<ProcessDashboard />} />
           <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
           <Route path="/process/templates" element={<ProcessTemplates />} />
@@ -264,6 +266,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           <Link to="/process/start">새 프로세스 시작</Link>
           <Link to="/process/inbox">내 할 일</Link>
           <Link to="/process/instances">진행 중 프로세스</Link>
+          <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
         </NavDropdown>
         <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
@@ -446,6 +449,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
         { to: '/process/start', label: '새 프로세스 시작' },
         { to: '/process/inbox', label: '내 할 일' },
         { to: '/process/instances', label: '진행 중 프로세스' },
+        { to: '/process/dashboard', label: '프로세스 대시보드' },
         { to: '/process/templates', label: '프로세스 템플릿' },
       ];
     }
