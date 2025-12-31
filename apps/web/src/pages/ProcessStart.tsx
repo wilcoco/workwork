@@ -49,6 +49,26 @@ export function ProcessStart() {
   const [moldManual, setMoldManual] = useState(false);
   const [carModelManual, setCarModelManual] = useState(false);
 
+  // Fallback preview from BPMN if compiled tasks are not present
+  const taskPreview: Array<any> = useMemo(() => {
+    if (selected?.tasks && selected.tasks.length) return selected.tasks.map((t: any) => ({ ...t, __source: 'compiled' }));
+    const nodes = (selectedFull as any)?.bpmnJson?.nodes;
+    if (Array.isArray(nodes)) {
+      return nodes
+        .filter((n: any) => String(n?.type || '') === 'task')
+        .map((n: any) => ({
+          id: String(n.id),
+          name: n.name || '',
+          taskType: n.taskType || 'TASK',
+          stageLabel: n.stageLabel || '',
+          description: n.description || '',
+          assigneeHint: n.assigneeHint || '',
+          __source: 'bpmn',
+        }));
+    }
+    return [];
+  }, [selected, selectedFull]);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -259,9 +279,14 @@ export function ProcessStart() {
                 </label>
               </div>
               <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                <div style={{ fontWeight: 600, marginBottom: 6 }}>과제 미리보기</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>과제 미리보기</div>
+                  {taskPreview.length > 0 && taskPreview[0]?.__source === 'bpmn' && (
+                    <div style={{ fontSize: 12, color: '#9ca3af' }}>템플릿을 저장하면 담당자/일정 입력이 활성화됩니다.</div>
+                  )}
+                </div>
                 <div style={{ display: 'grid', gap: 6 }}>
-                  {(selected.tasks || []).map((t, idx) => (
+                  {taskPreview.map((t: any, idx: number) => (
                     <div key={t.id || idx} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 8 }}>
                       <div style={{ fontWeight: 600 }}>{t.name}{t.stageLabel ? ` · ${t.stageLabel}` : ''}</div>
                       <div style={{ fontSize: 12, color: '#6b7280' }}>{t.taskType}</div>
@@ -273,6 +298,7 @@ export function ProcessStart() {
                         <select
                           value={(t.id && assignees[String(t.id)]) || ''}
                           onChange={(e) => t.id && setAssignees((prev) => ({ ...prev, [String(t.id)]: e.target.value }))}
+                          disabled={t.__source === 'bpmn'}
                         >
                           <option value="">선택 안 함</option>
                           {users.map((u) => (
@@ -286,6 +312,7 @@ export function ProcessStart() {
                           <input type="datetime-local"
                             value={(t.id && plans[String(t.id)]?.plannedStartAt) || ''}
                             onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], plannedStartAt: e.target.value } }))}
+                            disabled={t.__source === 'bpmn'}
                           />
                         </label>
                         <label>
@@ -293,6 +320,7 @@ export function ProcessStart() {
                           <input type="datetime-local"
                             value={(t.id && plans[String(t.id)]?.plannedEndAt) || ''}
                             onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], plannedEndAt: e.target.value } }))}
+                            disabled={t.__source === 'bpmn'}
                           />
                         </label>
                         <label>
@@ -300,12 +328,13 @@ export function ProcessStart() {
                           <input type="datetime-local"
                             value={(t.id && plans[String(t.id)]?.deadlineAt) || ''}
                             onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], deadlineAt: e.target.value } }))}
+                            disabled={t.__source === 'bpmn'}
                           />
                         </label>
                       </div>
                     </div>
                   ))}
-                  {!selected.tasks?.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>과제가 없습니다.</div>}
+                  {!taskPreview.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>과제가 없습니다.</div>}
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
