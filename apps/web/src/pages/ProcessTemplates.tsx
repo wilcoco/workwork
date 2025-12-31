@@ -148,7 +148,15 @@ export function ProcessTemplates() {
       })),
     });
     try {
-      setBpmnJsonText(t && (t as any).bpmnJson ? JSON.stringify((t as any).bpmnJson, null, 2) : '');
+      const raw: any = (t as any).bpmnJson;
+      if (!raw) {
+        setBpmnJsonText('');
+      } else if (typeof raw === 'string') {
+        // 이미 문자열(JSON 텍스트)로 저장된 경우 그대로 사용
+        setBpmnJsonText(raw);
+      } else {
+        setBpmnJsonText(JSON.stringify(raw, null, 2));
+      }
     } catch {
       setBpmnJsonText('');
     }
