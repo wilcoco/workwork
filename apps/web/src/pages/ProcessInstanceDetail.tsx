@@ -39,6 +39,7 @@ export function ProcessInstanceDetail() {
   const nav = useNavigate();
   const [inst, setInst] = useState<ProcInst | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [me, setMe] = useState<UserMe | null>(null);
   const [showModify, setShowModify] = useState(false);
@@ -56,18 +57,22 @@ export function ProcessInstanceDetail() {
   const [modHistory, setModHistory] = useState<ModEntry[]>([]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || id === 'undefined' || id === 'null') { setInst(null); setError('잘못된 프로세스 ID 입니다.'); return; }
     (async () => {
       setLoading(true);
       try {
         const data = await apiJson<ProcInst>(`/api/processes/${encodeURIComponent(id)}`);
         setInst(data || null);
+        setError('');
         if (userId) {
           try {
             const mine = await apiJson<UserMe>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
             setMe(mine);
           } catch {}
         }
+      } catch (e: any) {
+        setError(e?.message || '프로세스 정보를 불러오지 못했습니다.');
+        setInst(null);
       } finally {
         setLoading(false);
       }
@@ -87,12 +92,19 @@ export function ProcessInstanceDetail() {
   }, [inst]);
 
   if (loading && !inst) return <div>불러오는 중...</div>;
+  if (error) return <div style={{ color: '#dc2626' }}>{error}</div>;
   if (!inst) return <div>존재하지 않는 프로세스입니다.</div>;
 
   async function reload() {
     if (!id) return;
-    const data = await apiJson<ProcInst>(`/api/processes/${encodeURIComponent(id)}`);
-    setInst(data || null);
+    try {
+      const data = await apiJson<ProcInst>(`/api/processes/${encodeURIComponent(id)}`);
+      setInst(data || null);
+      setError('');
+    } catch (e: any) {
+      setError(e?.message || '프로세스 정보를 불러오지 못했습니다.');
+      setInst(null);
+    }
     try { const hist = await apiJson<ModEntry[]>(`/api/processes/${encodeURIComponent(id)}/modifications`); setModHistory(hist || []); } catch {}
   }
 

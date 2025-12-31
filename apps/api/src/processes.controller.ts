@@ -172,168 +172,180 @@ export class ProcessesController {
 
   @Post()
   async start(@Body() body: any) {
-    const {
-      templateId,
-      title,
-      startedById,
-      itemCode,
-      moldCode,
-      carModelCode,
-      taskAssignees,
-      taskPlans,
-      initiativeId,
-    } = body || {};
+    try {
+      const {
+        templateId,
+        title,
+        startedById,
+        itemCode,
+        moldCode,
+        carModelCode,
+        taskAssignees,
+        taskPlans,
+        initiativeId,
+      } = body || {};
 
-    if (!templateId) throw new Error('templateId is required');
-    if (!title) throw new Error('title is required');
-    if (!startedById) throw new Error('startedById is required');
+      if (!templateId) throw new BadRequestException('templateId is required');
+      if (!title) throw new BadRequestException('title is required');
+      if (!startedById) throw new BadRequestException('startedById is required');
 
-    const tmpl = await this.prisma.processTemplate.findUnique({
-      where: { id: templateId },
-      include: { tasks: { orderBy: { orderHint: 'asc' } } },
-    });
-    if (!tmpl) throw new Error('template not found');
-    const starter = await this.prisma.user.findUnique({ where: { id: startedById } });
-
-    const now = new Date();
-    const assignMap = new Map<string, string>();
-    if (Array.isArray(taskAssignees)) {
-      for (const a of taskAssignees) {
-        if (a && a.taskTemplateId && a.assigneeId) assignMap.set(String(a.taskTemplateId), String(a.assigneeId));
-      }
-    } else if (taskAssignees && typeof taskAssignees === 'object') {
-      for (const k of Object.keys(taskAssignees)) {
-        const v = (taskAssignees as any)[k];
-        if (v) assignMap.set(String(k), String(v));
-      }
-    }
-    const expectedEndAt = tmpl.expectedDurationDays ? addDays(now, Number(tmpl.expectedDurationDays)) : null;
-
-    return this.prisma.$transaction(async (tx) => {
-      const inst = await tx.processInstance.create({
-        data: {
-          templateId,
-          title,
-          startedById,
-          status: 'ACTIVE',
-          startAt: now,
-          expectedEndAt: expectedEndAt ?? undefined,
-          itemCode: itemCode || undefined,
-          moldCode: moldCode || undefined,
-          carModelCode: carModelCode || undefined,
-          initiativeId: initiativeId || undefined,
-        },
+      const tmpl = await this.prisma.processTemplate.findUnique({
+        where: { id: templateId },
+        include: { tasks: { orderBy: { orderHint: 'asc' } } },
       });
-
-      // build plan map
-      const planMap = new Map<string, { plannedStartAt?: Date; plannedEndAt?: Date; deadlineAt?: Date }>();
-      if (Array.isArray(taskPlans)) {
-        for (const p of taskPlans) {
-          if (!p || !p.taskTemplateId) continue;
-          const rec: any = {};
-          if (p.plannedStartAt) rec.plannedStartAt = new Date(p.plannedStartAt);
-          if (p.plannedEndAt) rec.plannedEndAt = new Date(p.plannedEndAt);
-          if (p.deadlineAt) rec.deadlineAt = new Date(p.deadlineAt);
-          planMap.set(String(p.taskTemplateId), rec);
-        }
-      } else if (taskPlans && typeof taskPlans === 'object') {
-        for (const k of Object.keys(taskPlans)) {
-          const v = (taskPlans as any)[k];
-          if (!v) continue;
-          const rec: any = {};
-          if (v.plannedStartAt) rec.plannedStartAt = new Date(v.plannedStartAt);
-          if (v.plannedEndAt) rec.plannedEndAt = new Date(v.plannedEndAt);
-          if (v.deadlineAt) rec.deadlineAt = new Date(v.deadlineAt);
-          planMap.set(String(k), rec);
-        }
+      if (!tmpl) throw new BadRequestException('template not found');
+      const starter = await this.prisma.user.findUnique({ where: { id: startedById } });
+      if (!starter) throw new BadRequestException('startedBy user not found');
+      if (initiativeId) {
+        const exists = await this.prisma.initiative.findUnique({ where: { id: initiativeId } });
+        if (!exists) throw new BadRequestException('initiative not found');
       }
 
-      const taskCreates = (tmpl.tasks || []).map((t: any) => {
-        const preds = parsePreds(t.predecessorIds);
-        const initialStatus = preds.length === 0 ? 'READY' : 'NOT_STARTED';
-        let assigneeId: string | undefined = undefined;
-        if (t.assigneeType === 'USER' && t.assigneeUserId) {
-          assigneeId = String(t.assigneeUserId);
-        } else if (t.assigneeType === 'ORG_UNIT' && t.assigneeOrgUnitId) {
-          // assign to org unit manager
-          assigneeId = undefined;
-        } else if (t.assigneeType === 'ROLE' && t.assigneeRoleCode) {
-          // basic ROLE mapping: TEAM_LEAD or MANAGER -> starter's org manager
-          const code = String(t.assigneeRoleCode).toUpperCase();
-          if ((code.includes('TEAM') && code.includes('LEAD')) || code === 'MANAGER' || code === 'TEAM_LEAD') {
-            // resolve later if we have starter org
+      const now = new Date();
+      const assignMap = new Map<string, string>();
+      if (Array.isArray(taskAssignees)) {
+        for (const a of taskAssignees) {
+          if (a && a.taskTemplateId && a.assigneeId) assignMap.set(String(a.taskTemplateId), String(a.assigneeId));
+        }
+      } else if (taskAssignees && typeof taskAssignees === 'object') {
+        for (const k of Object.keys(taskAssignees)) {
+          const v = (taskAssignees as any)[k];
+          if (v) assignMap.set(String(k), String(v));
+        }
+      }
+      const expectedEndAt = tmpl.expectedDurationDays ? addDays(now, Number(tmpl.expectedDurationDays)) : null;
+
+      return await this.prisma.$transaction(async (tx) => {
+        const inst = await tx.processInstance.create({
+          data: {
+            templateId,
+            title,
+            startedById,
+            status: 'ACTIVE',
+            startAt: now,
+            expectedEndAt: expectedEndAt ?? undefined,
+            itemCode: itemCode || undefined,
+            moldCode: moldCode || undefined,
+            carModelCode: carModelCode || undefined,
+            initiativeId: initiativeId || undefined,
+          },
+        });
+
+        // build plan map
+        const planMap = new Map<string, { plannedStartAt?: Date; plannedEndAt?: Date; deadlineAt?: Date }>();
+        if (Array.isArray(taskPlans)) {
+          for (const p of taskPlans) {
+            if (!p || !p.taskTemplateId) continue;
+            const rec: any = {};
+            if (p.plannedStartAt) rec.plannedStartAt = new Date(p.plannedStartAt);
+            if (p.plannedEndAt) rec.plannedEndAt = new Date(p.plannedEndAt);
+            if (p.deadlineAt) rec.deadlineAt = new Date(p.deadlineAt);
+            planMap.set(String(p.taskTemplateId), rec);
+          }
+        } else if (taskPlans && typeof taskPlans === 'object') {
+          for (const k of Object.keys(taskPlans)) {
+            const v = (taskPlans as any)[k];
+            if (!v) continue;
+            const rec: any = {};
+            if (v.plannedStartAt) rec.plannedStartAt = new Date(v.plannedStartAt);
+            if (v.plannedEndAt) rec.plannedEndAt = new Date(v.plannedEndAt);
+            if (v.deadlineAt) rec.deadlineAt = new Date(v.deadlineAt);
+            planMap.set(String(k), rec);
+          }
+        }
+
+        const taskCreates = (tmpl.tasks || []).map((t: any) => {
+          const preds = parsePreds(t.predecessorIds);
+          const initialStatus = preds.length === 0 ? 'READY' : 'NOT_STARTED';
+          let assigneeId: string | undefined = undefined;
+          if (t.assigneeType === 'USER' && t.assigneeUserId) {
+            assigneeId = String(t.assigneeUserId);
+          } else if (t.assigneeType === 'ORG_UNIT' && t.assigneeOrgUnitId) {
+            // assign to org unit manager
             assigneeId = undefined;
-          }
-        }
-        // override by provided mapping
-        assigneeId = assignMap.get(String(t.id)) || assigneeId;
-        const plan = planMap.get(String(t.id)) || {};
-        return {
-          instanceId: inst.id,
-          taskTemplateId: t.id,
-          name: t.name,
-          stageLabel: t.stageLabel || null,
-          taskType: t.taskType,
-          status: initialStatus,
-          assigneeId,
-          initiativeId: initiativeId || undefined,
-          plannedStartAt: plan.plannedStartAt,
-          plannedEndAt: plan.plannedEndAt,
-          deadlineAt: plan.deadlineAt,
-        } as any;
-      });
-
-      if (taskCreates.length) {
-        // fill ORG_UNIT manager and ROLE=TEAM_LEAD/MANAGER with starter's org manager
-        let starterManagerId: string | undefined = undefined;
-        if (starter?.orgUnitId) {
-          const unit = await tx.orgUnit.findUnique({ where: { id: starter.orgUnitId } });
-          starterManagerId = unit?.managerId || undefined;
-        }
-        // prefetch org managers referenced by tasks
-        const orgUnitIds: string[] = Array.from(
-          new Set(
-            (tmpl.tasks || [])
-              .map((t: any) => (t.assigneeType === 'ORG_UNIT' ? String(t.assigneeOrgUnitId || '') : ''))
-              .filter((s: string) => !!s)
-          )
-        ) as string[];
-        const orgUnits = orgUnitIds.length ? await tx.orgUnit.findMany({ where: { id: { in: orgUnitIds } } }) : [];
-        const orgMgrMap = new Map<string, string | undefined>();
-        for (const ou of orgUnits) orgMgrMap.set(ou.id, ou.managerId || undefined);
-        // prepare final records
-        const finalCreates = (tmpl.tasks || []).map((t: any, idx: number) => {
-          const base = taskCreates[idx];
-          let assigneeId = base.assigneeId as string | undefined;
-          if (!assigneeId && t.assigneeType === 'ORG_UNIT' && t.assigneeOrgUnitId) {
-            // lookup manager of specified org unit
-            assigneeId = orgMgrMap.get(String(t.assigneeOrgUnitId)) || undefined;
-          }
-          if (!assigneeId && t.assigneeType === 'ROLE' && t.assigneeRoleCode) {
+          } else if (t.assigneeType === 'ROLE' && t.assigneeRoleCode) {
+            // basic ROLE mapping: TEAM_LEAD or MANAGER -> starter's org manager
             const code = String(t.assigneeRoleCode).toUpperCase();
             if ((code.includes('TEAM') && code.includes('LEAD')) || code === 'MANAGER' || code === 'TEAM_LEAD') {
-              assigneeId = starterManagerId;
+              // resolve later if we have starter org
+              assigneeId = undefined;
             }
           }
-          return { ...base, assigneeId };
+          // override by provided mapping
+          assigneeId = assignMap.get(String(t.id)) || assigneeId;
+          const plan = planMap.get(String(t.id)) || {};
+          return {
+            instanceId: inst.id,
+            taskTemplateId: t.id,
+            name: t.name,
+            stageLabel: t.stageLabel || null,
+            taskType: t.taskType,
+            status: initialStatus,
+            assigneeId,
+            initiativeId: initiativeId || undefined,
+            plannedStartAt: plan.plannedStartAt,
+            plannedEndAt: plan.plannedEndAt,
+            deadlineAt: plan.deadlineAt,
+          } as any;
         });
-        await tx.processTaskInstance.createMany({ data: finalCreates });
-      }
 
-      // Auto-select XOR branch if initial READY tasks are XOR siblings
-      await this.autoSelectXorAtInit(tx, inst.id);
+        if (taskCreates.length) {
+          // fill ORG_UNIT manager and ROLE=TEAM_LEAD/MANAGER with starter's org manager
+          let starterManagerId: string | undefined = undefined;
+          if (starter?.orgUnitId) {
+            const unit = await tx.orgUnit.findUnique({ where: { id: starter.orgUnitId } });
+            starterManagerId = unit?.managerId || undefined;
+          }
+          // prefetch org managers referenced by tasks
+          const orgUnitIds: string[] = Array.from(
+            new Set(
+              (tmpl.tasks || [])
+                .map((t: any) => (t.assigneeType === 'ORG_UNIT' ? String(t.assigneeOrgUnitId || '') : ''))
+                .filter((s: string) => !!s)
+            )
+          ) as string[];
+          const orgUnits = orgUnitIds.length ? await tx.orgUnit.findMany({ where: { id: { in: orgUnitIds } } }) : [];
+          const orgMgrMap = new Map<string, string | undefined>();
+          for (const ou of orgUnits) orgMgrMap.set(ou.id, ou.managerId || undefined);
+          // prepare final records
+          const finalCreates = (tmpl.tasks || []).map((t: any, idx: number) => {
+            const base = taskCreates[idx];
+            let assigneeId = base.assigneeId as string | undefined;
+            if (!assigneeId && t.assigneeType === 'ORG_UNIT' && t.assigneeOrgUnitId) {
+              // lookup manager of specified org unit
+              assigneeId = orgMgrMap.get(String(t.assigneeOrgUnitId)) || undefined;
+            }
+            if (!assigneeId && t.assigneeType === 'ROLE' && t.assigneeRoleCode) {
+              const code = String(t.assigneeRoleCode).toUpperCase();
+              if ((code.includes('TEAM') && code.includes('LEAD')) || code === 'MANAGER' || code === 'TEAM_LEAD') {
+                assigneeId = starterManagerId;
+              }
+            }
+            return { ...base, assigneeId };
+          });
+          await tx.processTaskInstance.createMany({ data: finalCreates });
+        }
 
-      const full = await tx.processInstance.findUnique({
-        where: { id: inst.id },
-        include: {
-          template: true,
-          startedBy: true,
-          initiative: true,
-          tasks: { orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }] },
-        },
+        // Auto-select XOR branch if initial READY tasks are XOR siblings
+        await this.autoSelectXorAtInit(tx, inst.id);
+
+        const full = await tx.processInstance.findUnique({
+          where: { id: inst.id },
+          include: {
+            template: true,
+            startedBy: true,
+            initiative: true,
+            tasks: { orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }] },
+          },
+        });
+        return full;
       });
-      return full;
-    });
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('POST /processes start error', e);
+      if (e instanceof BadRequestException) throw e;
+      throw new BadRequestException(e?.message || 'failed to start process');
+    }
   }
 
   private async isExecOrCeo(userId: string): Promise<boolean> {
@@ -648,11 +660,11 @@ export class ProcessesController {
   async startTask(@Param('id') id: string, @Param('taskId') taskId: string) {
     return this.prisma.$transaction(async (tx) => {
       const inst = await tx.processInstance.findUnique({ where: { id } });
-      if (!inst) throw new Error('instance not found');
+      if (!inst) throw new BadRequestException('instance not found');
       const task = await tx.processTaskInstance.findUnique({ where: { id: taskId } });
-      if (!task || task.instanceId !== id) throw new Error('task not found');
+      if (!task || task.instanceId !== id) throw new BadRequestException('task not found');
       const ok = await this.allPredecessorsCompleted(tx, id, task.taskTemplateId);
-      if (!ok) throw new Error('predecessors not completed');
+      if (!ok) throw new BadRequestException('predecessors not completed');
       const updated = await tx.processTaskInstance.update({
         where: { id: taskId },
         data: { status: 'IN_PROGRESS', actualStartAt: new Date() },
@@ -687,7 +699,7 @@ export class ProcessesController {
   async completeTask(@Param('id') id: string, @Param('taskId') taskId: string, @Body() body: any) {
     return this.prisma.$transaction(async (tx) => {
       const task = await tx.processTaskInstance.findUnique({ where: { id: taskId } });
-      if (!task || task.instanceId !== id) throw new Error('task not found');
+      if (!task || task.instanceId !== id) throw new BadRequestException('task not found');
       const linkData: any = {};
       if (body && typeof body === 'object') {
         if (body.worklogId) linkData.worklogId = String(body.worklogId);
