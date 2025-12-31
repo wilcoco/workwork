@@ -35,7 +35,7 @@ export function ProcessInbox() {
     const q = `?processInstanceId=${encodeURIComponent(id)}&taskInstanceId=${encodeURIComponent(t.id)}`;
     if (t.taskType === 'WORKLOG') {
       try { await apiJson(`/api/processes/${encodeURIComponent(id)}/tasks/${encodeURIComponent(t.id)}/start`, { method: 'POST' }); } catch {}
-      nav(`/worklogs/new${q}`);
+      nav(`/quick${q}`);
       return;
     }
     if (t.taskType === 'COOPERATION') {
