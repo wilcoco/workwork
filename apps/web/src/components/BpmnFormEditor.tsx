@@ -206,18 +206,13 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
                   ))}
                 </select>
               </label>
-              <label>
-                조건(선택, XOR 분기에 사용)
-                <input value={e.condition || ''} onChange={(ev) => updateEdge(e.id, { condition: ev.target.value })} />
-              </label>
+              {/* 조건 입력은 기본 UI에서 숨김 처리 */}
             </div>
           </div>
         ))}
       </div>
 
-      <div style={{ fontSize: 12, color: '#6b7280' }}>
-        • XOR 분기 조건은 현재 JSON에 저장만 합니다. 런타임 조건평가/자동 분기 처리는 다음 단계에서 확장 예정입니다.
-      </div>
+      {/* 안내 문구도 기본 UI에서 숨김 처리 */}
     </div>
   );
 }

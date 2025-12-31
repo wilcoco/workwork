@@ -53,6 +53,32 @@ export function ProcessTemplates() {
   const [bpmnJsonText, setBpmnJsonText] = useState('');
   const [bpmnMode, setBpmnMode] = useState<'graph' | 'form'>('graph');
   const [promoteVis, setPromoteVis] = useState<'PUBLIC' | 'ORG_UNIT'>('PUBLIC');
+  const taskPreview = (() => {
+    try {
+      if (bpmnJsonText.trim()) {
+        const j = JSON.parse(bpmnJsonText);
+        const nodes = Array.isArray(j?.nodes) ? j.nodes : [];
+        return nodes
+          .filter((n: any) => n?.type === 'task')
+          .map((n: any, idx: number) => ({
+            id: String(n.id ?? idx),
+            name: n.name || '',
+            taskType: (n.taskType || 'TASK') as ProcessTaskTemplateDto['taskType'],
+            description: n.description || '',
+            stageLabel: n.stageLabel || '',
+            deadlineOffsetDays: typeof n.deadlineOffsetDays === 'number' ? n.deadlineOffsetDays : undefined,
+          }));
+      }
+    } catch {}
+    return (editing?.tasks || []).map((t, idx) => ({
+      id: String(t.id ?? idx),
+      name: t.name,
+      taskType: t.taskType,
+      description: t.description || '',
+      stageLabel: t.stageLabel || '',
+      deadlineOffsetDays: t.deadlineOffsetDays,
+    }));
+  })();
 
   useEffect(() => {
     loadList();
@@ -347,7 +373,7 @@ export function ProcessTemplates() {
               </div>
             )}
             <div>
-              <label>BPMN JSON (선택)</label>
+              <label>업무 흐름 정의</label>
               <div style={{ display: 'grid', gap: 8 }}>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button type="button" className={`btn ${bpmnMode === 'graph' ? 'btn-primary' : ''}`} onClick={() => setBpmnMode('graph')}>그래프 편집</button>
@@ -358,104 +384,40 @@ export function ProcessTemplates() {
                 ) : (
                   <BpmnFormEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
                 )}
-                <textarea
-                  value={bpmnJsonText}
-                  onChange={(e) => setBpmnJsonText(e.target.value)}
-                  rows={10}
-                  placeholder='{ "nodes": [], "edges": [] }'
-                />
               </div>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>입력 시 저장할 때 아래 과제 목록은 BPMN 기준으로 재생성됩니다.</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>저장 시 아래 과제 목록은 편집된 흐름 기준으로 재생성됩니다.</div>
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                <h3>세부 과제(단계) 정의</h3>
-                <button className="btn" onClick={addTask}>과제 추가</button>
-              </div>
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
-                단계(스테이지)와 선행 과제를 활용해 흐름을 정의합니다. 예: 1단계 안에 1-1, 1-2, 결재 과제를 모두 두고, 2단계 과제의 선행 과제로 1-1/1-2/결재를 모두 지정하면 이들이 전부 완료된 뒤에만 2단계가 시작됩니다.
+                <h3>과제 미리보기 (읽기 전용)</h3>
               </div>
               <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
-                {editing.tasks.map((t, idx) => (
-                  <div key={idx} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {taskPreview.map((t: any, idx: number) => (
+                  <div key={t.id || idx} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <b>#{idx + 1}{t.stageLabel ? ` · ${t.stageLabel}` : ''}</b>
-                      <button className="btn btn-ghost" onClick={() => removeTask(idx)}>삭제</button>
+                      <span style={{ color: '#6b7280' }}>{t.taskType}</span>
                     </div>
                     <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
                       <div>
                         <label>과제 이름</label>
-                        <input
-                          value={t.name}
-                          onChange={(e) => updateTask(idx, { name: e.target.value })}
-                        />
+                        <div>{t.name || '-'}</div>
                       </div>
-                      <div>
-                        <label>과제 타입</label>
-                        <select
-                          value={t.taskType}
-                          onChange={(e) => updateTask(idx, { taskType: e.target.value as any })}
-                        >
-                          <option value="TASK">내부 태스크</option>
-                          <option value="COOPERATION">협조</option>
-                          <option value="WORKLOG">업무일지</option>
-                          <option value="APPROVAL">결재</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label>설명</label>
-                      <textarea
-                        value={t.description || ''}
-                        onChange={(e) => updateTask(idx, { description: e.target.value })}
-                        rows={2}
-                      />
-                    </div>
-                    <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-                      <div>
-                        <label>단계(스테이지)</label>
-                        <input
-                          placeholder="예: 1단계, 2단계, 마무리단계"
-                          value={t.stageLabel || ''}
-                          onChange={(e) => updateTask(idx, { stageLabel: e.target.value })}
-                        />
-                      </div>
-                      
-                      <div>
-                        <label>선행 과제 IDs</label>
-                        <input
-                          placeholder="이 과제 전에 반드시 끝나야 하는 과제 id들 (콤마로 구분)"
-                          value={t.predecessorIds || ''}
-                          onChange={(e) => updateTask(idx, { predecessorIds: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
                       <div>
                         <label>마감 기한 오프셋(D+)</label>
-                        <input
-                          type="number"
-                          value={t.deadlineOffsetDays ?? ''}
-                          onChange={(e) =>
-                            updateTask(idx, {
-                              deadlineOffsetDays: e.target.value ? Number(e.target.value) : undefined,
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label>정렬 순서</label>
-                        <input
-                          type="number"
-                          value={t.orderHint ?? idx}
-                          onChange={(e) => updateTask(idx, { orderHint: Number(e.target.value) })}
-                        />
+                        <div>{typeof t.deadlineOffsetDays === 'number' ? t.deadlineOffsetDays : '-'}</div>
                       </div>
                     </div>
+                    {t.description ? (
+                      <div>
+                        <label>설명</label>
+                        <div>{t.description}</div>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
-                {!editing.tasks.length && (
-                  <div style={{ fontSize: 12, color: '#9ca3af' }}>아직 정의된 과제가 없습니다. "과제 추가" 버튼으로 첫 단계를 만드세요.</div>
+                {!taskPreview.length && (
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>BPMN에서 Task 노드를 추가하면 미리보기가 나타납니다.</div>
                 )}
               </div>
             </div>

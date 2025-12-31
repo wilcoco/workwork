@@ -40,6 +40,7 @@ export function ProcessStart() {
   const selected = useMemo(() => templates.find(t => t.id === tplId) || null, [templates, tplId]);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [assignees, setAssignees] = useState<Record<string, string>>({});
+  const [plans, setPlans] = useState<Record<string, { plannedStartAt?: string; plannedEndAt?: string; deadlineAt?: string }>>({});
   const [initiativeId, setInitiativeId] = useState('');
   const [myInits, setMyInits] = useState<Array<{ id: string; title: string }>>([]);
 
@@ -100,6 +101,14 @@ export function ProcessStart() {
     const taskAssignees = Object.entries(assignees)
       .filter(([_, v]) => !!v)
       .map(([k, v]) => ({ taskTemplateId: k, assigneeId: v }));
+    const taskPlans = Object.entries(plans)
+      .map(([k, v]) => ({
+        taskTemplateId: k,
+        plannedStartAt: v.plannedStartAt || undefined,
+        plannedEndAt: v.plannedEndAt || undefined,
+        deadlineAt: v.deadlineAt || undefined,
+      }))
+      .filter((x) => x.plannedStartAt || x.plannedEndAt || x.deadlineAt);
     const body = {
       templateId: tplId,
       title: finalTitle,
@@ -108,6 +117,7 @@ export function ProcessStart() {
       moldCode: moldCode || undefined,
       carModelCode: carModelCode || undefined,
       taskAssignees,
+      taskPlans,
       initiativeId: initiativeId || undefined,
     };
     const inst = await apiJson<any>(`/api/processes`, { method: 'POST', body: JSON.stringify(body) });
@@ -215,6 +225,29 @@ export function ProcessStart() {
                             <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
                           ))}
                         </select>
+                      </div>
+                      <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
+                        <label>
+                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>예정 시작</span>
+                          <input type="datetime-local"
+                            value={(t.id && plans[String(t.id)]?.plannedStartAt) || ''}
+                            onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], plannedStartAt: e.target.value } }))}
+                          />
+                        </label>
+                        <label>
+                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>예정 종료</span>
+                          <input type="datetime-local"
+                            value={(t.id && plans[String(t.id)]?.plannedEndAt) || ''}
+                            onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], plannedEndAt: e.target.value } }))}
+                          />
+                        </label>
+                        <label>
+                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>마감일</span>
+                          <input type="datetime-local"
+                            value={(t.id && plans[String(t.id)]?.deadlineAt) || ''}
+                            onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], deadlineAt: e.target.value } }))}
+                          />
+                        </label>
                       </div>
                     </div>
                   ))}

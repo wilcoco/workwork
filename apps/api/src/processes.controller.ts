@@ -180,6 +180,7 @@ export class ProcessesController {
       moldCode,
       carModelCode,
       taskAssignees,
+      taskPlans,
       initiativeId,
     } = body || {};
 
@@ -224,6 +225,29 @@ export class ProcessesController {
         },
       });
 
+      // build plan map
+      const planMap = new Map<string, { plannedStartAt?: Date; plannedEndAt?: Date; deadlineAt?: Date }>();
+      if (Array.isArray(taskPlans)) {
+        for (const p of taskPlans) {
+          if (!p || !p.taskTemplateId) continue;
+          const rec: any = {};
+          if (p.plannedStartAt) rec.plannedStartAt = new Date(p.plannedStartAt);
+          if (p.plannedEndAt) rec.plannedEndAt = new Date(p.plannedEndAt);
+          if (p.deadlineAt) rec.deadlineAt = new Date(p.deadlineAt);
+          planMap.set(String(p.taskTemplateId), rec);
+        }
+      } else if (taskPlans && typeof taskPlans === 'object') {
+        for (const k of Object.keys(taskPlans)) {
+          const v = (taskPlans as any)[k];
+          if (!v) continue;
+          const rec: any = {};
+          if (v.plannedStartAt) rec.plannedStartAt = new Date(v.plannedStartAt);
+          if (v.plannedEndAt) rec.plannedEndAt = new Date(v.plannedEndAt);
+          if (v.deadlineAt) rec.deadlineAt = new Date(v.deadlineAt);
+          planMap.set(String(k), rec);
+        }
+      }
+
       const taskCreates = (tmpl.tasks || []).map((t: any) => {
         const preds = parsePreds(t.predecessorIds);
         const initialStatus = preds.length === 0 ? 'READY' : 'NOT_STARTED';
@@ -243,6 +267,7 @@ export class ProcessesController {
         }
         // override by provided mapping
         assigneeId = assignMap.get(String(t.id)) || assigneeId;
+        const plan = planMap.get(String(t.id)) || {};
         return {
           instanceId: inst.id,
           taskTemplateId: t.id,
@@ -252,6 +277,9 @@ export class ProcessesController {
           status: initialStatus,
           assigneeId,
           initiativeId: initiativeId || undefined,
+          plannedStartAt: plan.plannedStartAt,
+          plannedEndAt: plan.plannedEndAt,
+          deadlineAt: plan.deadlineAt,
         } as any;
       });
 
