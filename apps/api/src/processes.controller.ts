@@ -196,9 +196,11 @@ export class ProcessesController {
       if (!tmpl) throw new BadRequestException('template not found');
       const starter = await this.prisma.user.findUnique({ where: { id: startedById } });
       if (!starter) throw new BadRequestException('startedBy user not found');
+      // initiative is optional; if provided but not found, ignore silently
+      let linkedInitiativeId: string | undefined = undefined;
       if (initiativeId) {
         const exists = await this.prisma.initiative.findUnique({ where: { id: initiativeId } });
-        if (!exists) throw new BadRequestException('initiative not found');
+        if (exists) linkedInitiativeId = initiativeId;
       }
 
       const now = new Date();
@@ -227,7 +229,7 @@ export class ProcessesController {
             itemCode: itemCode || undefined,
             moldCode: moldCode || undefined,
             carModelCode: carModelCode || undefined,
-            initiativeId: initiativeId || undefined,
+            initiativeId: linkedInitiativeId,
           },
         });
 
@@ -282,7 +284,7 @@ export class ProcessesController {
             taskType: t.taskType,
             status: initialStatus,
             assigneeId,
-            initiativeId: initiativeId || undefined,
+            initiativeId: linkedInitiativeId,
             plannedStartAt: plan.plannedStartAt,
             plannedEndAt: plan.plannedEndAt,
             deadlineAt: plan.deadlineAt,

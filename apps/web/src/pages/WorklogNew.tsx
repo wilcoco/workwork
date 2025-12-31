@@ -9,6 +9,7 @@ export function WorklogNew() {
   const taskInstanceId = params?.get('taskInstanceId') || '';
   const paramInitiativeId = params?.get('initiativeId') || '';
   const [initiativeId, setInitiativeId] = useState(paramInitiativeId);
+  const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [createdById, setCreatedById] = useState('');
   const [progressPct, setProgressPct] = useState<number>(0);
   const [timeSpentMinutes, setTimeSpentMinutes] = useState<number>(0);
@@ -42,8 +43,12 @@ export function WorklogNew() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName: string }>>([]);
+  const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; instance: { id: string; title: string } }>>([]);
+  const [selectedProcTaskId, setSelectedProcTaskId] = useState<string>(taskInstanceId || '');
+  const [selectedProcInstId, setSelectedProcInstId] = useState<string>(processInstanceId || '');
 
   useEffect(() => {
+    if (myUserId && !createdById) setCreatedById(myUserId);
     (async () => {
       try {
         const r = await apiFetch('/api/users');
@@ -53,13 +58,28 @@ export function WorklogNew() {
         }
       } catch {}
     })();
-  }, []);
+  }, [myUserId]);
+
+  useEffect(() => {
+    (async () => {
+      if (!myUserId) return;
+      try {
+        const r = await apiFetch(`/api/processes/inbox?assigneeId=${encodeURIComponent(myUserId)}`);
+        if (r.ok) {
+          const items = await r.json();
+          setMyProcTasks(items || []);
+        }
+      } catch {}
+    })();
+  }, [myUserId]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
+      const pid = (selectedProcInstId || processInstanceId);
+      const tid = (selectedProcTaskId || taskInstanceId);
       const payload: any = {
         initiativeId,
         createdById,
@@ -69,6 +89,10 @@ export function WorklogNew() {
         note: note || undefined,
         urgent: urgent || undefined,
       };
+      if (pid && tid) {
+        payload.processInstanceId = pid;
+        payload.taskInstanceId = tid;
+      }
       if (approverId) {
         const dueAtIso = dueAt ? (/^\d{4}-\d{2}-\d{2}$/.test(dueAt) ? `${dueAt}T00:00:00+09:00` : dueAt) : undefined;
         payload.report = { approverId, dueAt: dueAtIso };
@@ -112,10 +136,12 @@ export function WorklogNew() {
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const data = await res.json();
       const worklogId = data?.worklog?.id || data?.id;
-      // If invoked from a process task, mark task as completed with linkage
-      if (processInstanceId && taskInstanceId && worklogId) {
+      // If invoked from a process task or selected from dropdown, mark task as completed with linkage
+      const pid = (selectedProcInstId || processInstanceId);
+      const tid = (selectedProcTaskId || taskInstanceId);
+      if (pid && tid && worklogId) {
         try {
-          await apiFetch(`/api/processes/${encodeURIComponent(processInstanceId)}/tasks/${encodeURIComponent(taskInstanceId)}/complete`, {
+          await apiFetch(`/api/processes/${encodeURIComponent(pid)}/tasks/${encodeURIComponent(tid)}/complete`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ worklogId }),
@@ -213,8 +239,28 @@ export function WorklogNew() {
       </div>
 
       <label>
+        프로세스 과제(선택)
+        <select
+          value={selectedProcTaskId}
+          onChange={(e) => {
+            const tid = e.target.value;
+            setSelectedProcTaskId(tid);
+            const found = myProcTasks.find((t) => t.id === tid);
+            setSelectedProcInstId(found?.instance?.id || '');
+          }}
+          disabled={!!taskInstanceId}
+        >
+          <option value="">선택 안 함</option>
+          {myProcTasks.map((t) => (
+            <option key={t.id} value={t.id}>{t.name} · {t.instance?.title || ''}</option>
+          ))}
+        </select>
+        {!!taskInstanceId && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스에서 전달된 과제로 고정되었습니다.</div>}
+      </label>
+
+      <label>
         Initiative ID
-        <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} required disabled={!!paramInitiativeId} />
+        <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} required={!(selectedProcInstId && selectedProcTaskId)} disabled={!!paramInitiativeId} />
         {!!paramInitiativeId && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스에서 전달된 과제로 고정되었습니다.</div>}
       </label>
       <label>

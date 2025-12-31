@@ -67,9 +67,9 @@ class DelegateItemDto {
 }
 
 class CreateWorklogDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  initiativeId!: string;
+  initiativeId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -120,6 +120,14 @@ class CreateWorklogDto {
   @IsOptional()
   @IsEnum({ ALL: 'ALL', MANAGER_PLUS: 'MANAGER_PLUS', EXEC_PLUS: 'EXEC_PLUS', CEO_ONLY: 'CEO_ONLY' } as any)
   visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY';
+
+  @IsOptional()
+  @IsString()
+  processInstanceId?: string;
+
+  @IsOptional()
+  @IsString()
+  taskInstanceId?: string;
 }
 
 class CreateSimpleWorklogDto {
@@ -145,6 +153,56 @@ export class WorklogsController {
 
   @Post()
   async create(@Body() dto: CreateWorklogDto) {
+    // Determine initiative: use provided, or (if process context provided) auto-create under user's OKR scaffold
+    let initiativeIdFinal = dto.initiativeId;
+    if (!initiativeIdFinal && dto.processInstanceId && dto.taskInstanceId) {
+      const user = await this.prisma.user.findUnique({ where: { id: dto.createdById } });
+      if (!user) throw new BadRequestException('createdBy user not found');
+      const inst = await this.prisma.processInstance.findUnique({ where: { id: dto.processInstanceId } });
+      if (!inst) throw new BadRequestException('invalid processInstanceId');
+      const task = await this.prisma.processTaskInstance.findUnique({ where: { id: dto.taskInstanceId } });
+      if (!task || task.instanceId !== inst.id) throw new BadRequestException('invalid taskInstanceId');
+
+      // Try reuse initiative already on the task
+      if (task.initiativeId) {
+        initiativeIdFinal = task.initiativeId;
+      } else {
+        // Ensure user has a team/org unit
+        let orgUnitId = user.orgUnitId;
+        if (!orgUnitId) {
+          const team = await this.prisma.orgUnit.create({ data: { name: `Auto Team - ${user.name}`, type: 'TEAM' } });
+          await this.prisma.user.update({ where: { id: user.id }, data: { orgUnitId: team.id } });
+          orgUnitId = team.id;
+        }
+        // Ensure default objective and KR for process worklogs
+        let objective = await this.prisma.objective.findFirst({ where: { title: 'Process Auto Objective', orgUnitId } });
+        if (!objective) {
+          const now = new Date();
+          const end = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+          objective = await this.prisma.objective.create({
+            data: { title: 'Process Auto Objective', orgUnitId, ownerId: user.id, periodStart: now, periodEnd: end, status: 'ACTIVE' as any },
+          });
+        }
+        let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Process Auto KR', objectiveId: objective.id } });
+        if (!kr) {
+          kr = await this.prisma.keyResult.create({
+            data: { title: 'Process Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
+          });
+        }
+        const title = `${inst.title} · ${task.name}`;
+        let initiative = await this.prisma.initiative.findFirst({ where: { title, keyResultId: kr.id, ownerId: user.id } });
+        if (!initiative) {
+          initiative = await this.prisma.initiative.create({ data: { title, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+        }
+        initiativeIdFinal = initiative.id;
+        await this.prisma.processTaskInstance.update({ where: { id: task.id }, data: { initiativeId: initiative.id } });
+      }
+    }
+
+    if (!initiativeIdFinal) {
+      throw new BadRequestException('initiativeId or processInstanceId/taskInstanceId required');
+    }
+
     // Resolve KST date (YYYY-MM-DD -> KST midnight; default: today @ KST midnight)
     let dateVal: Date;
     if (dto.date) {
@@ -165,7 +223,7 @@ export class WorklogsController {
     // 1) Create worklog
     const wl = await this.prisma.worklog.create({
       data: {
-        initiativeId: dto.initiativeId,
+        initiativeId: initiativeIdFinal,
         createdById: dto.createdById,
         progressPct: dto.progressPct ?? 0,
         timeSpentMinutes: dto.timeSpentMinutes ?? 0,
@@ -185,7 +243,7 @@ export class WorklogsController {
         subjectId: wl.id,
         activity: 'WorklogCreated',
         userId: dto.createdById,
-        attrs: { initiativeId: dto.initiativeId },
+        attrs: { initiativeId: initiativeIdFinal },
       },
     });
     if ((dto.progressPct ?? 0) > 0 || (dto.timeSpentMinutes ?? 0) > 0) {
