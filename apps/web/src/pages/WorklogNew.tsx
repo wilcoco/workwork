@@ -78,8 +78,8 @@ export function WorklogNew() {
     setSubmitting(true);
     setError(null);
     try {
-      const pid = (selectedProcInstId || processInstanceId);
-      const tid = (selectedProcTaskId || taskInstanceId);
+      const pidForPayload = (selectedProcInstId || processInstanceId);
+      const tidForPayload = (selectedProcTaskId || taskInstanceId);
       const payload: any = {
         initiativeId,
         createdById,
@@ -89,9 +89,9 @@ export function WorklogNew() {
         note: note || undefined,
         urgent: urgent || undefined,
       };
-      if (pid && tid) {
-        payload.processInstanceId = pid;
-        payload.taskInstanceId = tid;
+      if (pidForPayload && tidForPayload) {
+        payload.processInstanceId = pidForPayload;
+        payload.taskInstanceId = tidForPayload;
       }
       if (approverId) {
         const dueAtIso = dueAt ? (/^\d{4}-\d{2}-\d{2}$/.test(dueAt) ? `${dueAt}T00:00:00+09:00` : dueAt) : undefined;
@@ -137,11 +137,11 @@ export function WorklogNew() {
       const data = await res.json();
       const worklogId = data?.worklog?.id || data?.id;
       // If invoked from a process task or selected from dropdown, mark task as completed with linkage
-      const pid = (selectedProcInstId || processInstanceId);
-      const tid = (selectedProcTaskId || taskInstanceId);
-      if (pid && tid && worklogId) {
+      const pidAfter = (selectedProcInstId || processInstanceId);
+      const tidAfter = (selectedProcTaskId || taskInstanceId);
+      if (pidAfter && tidAfter && worklogId) {
         try {
-          await apiFetch(`/api/processes/${encodeURIComponent(pid)}/tasks/${encodeURIComponent(tid)}/complete`, {
+          await apiFetch(`/api/processes/${encodeURIComponent(pidAfter)}/tasks/${encodeURIComponent(tidAfter)}/complete`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ worklogId }),
