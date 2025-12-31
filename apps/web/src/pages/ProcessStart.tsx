@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { BpmnMiniView } from '../components/BpmnMiniView';
 
 interface ProcessTaskTemplateDto {
   id?: string;
@@ -52,7 +53,11 @@ export function ProcessStart() {
   // Fallback preview from BPMN if compiled tasks are not present
   const taskPreview: Array<any> = useMemo(() => {
     if (selected?.tasks && selected.tasks.length) return selected.tasks.map((t: any) => ({ ...t, __source: 'compiled' }));
-    const nodes = (selectedFull as any)?.bpmnJson?.nodes;
+    let bpmn: any = (selectedFull as any)?.bpmnJson;
+    try {
+      if (typeof bpmn === 'string' && bpmn.trim().startsWith('{')) bpmn = JSON.parse(bpmn);
+    } catch {}
+    const nodes = bpmn?.nodes;
     if (Array.isArray(nodes)) {
       return nodes
         .filter((n: any) => String(n?.type || '') === 'task')
@@ -209,19 +214,10 @@ export function ProcessStart() {
                   )}
                 </label>
               </div>
-              {selectedFull?.bpmnJson && Array.isArray((selectedFull as any).bpmnJson?.nodes) && Array.isArray((selectedFull as any).bpmnJson?.edges) && (
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>흐름 미리보기</div>
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ fontSize: 12, color: '#6b7280' }}>
-                      노드 {((selectedFull as any).bpmnJson.nodes || []).length} · 엣지 {((selectedFull as any).bpmnJson.edges || []).length}
-                    </div>
-                    <div>
-                      {((selectedFull as any).bpmnJson.edges || []).map((e: any, i: number) => (
-                        <div key={e.id || i} style={{ fontSize: 12 }}>{String(e.source)} → {String(e.target)}</div>
-                      ))}
-                    </div>
-                  </div>
+              {(() => { let j: any = (selectedFull as any)?.bpmnJson; try { if (typeof j === 'string') j = JSON.parse(j); } catch {} return j && Array.isArray(j.nodes) && Array.isArray(j.edges) ? j : null; })() && (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
+                  <div style={{ fontWeight: 600 }}>흐름 미리보기</div>
+                  <BpmnMiniView bpmn={(() => { let j: any = (selectedFull as any)?.bpmnJson; try { if (typeof j === 'string') j = JSON.parse(j); } catch {} return j; })()} height={260} />
                 </div>
               )}
               <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>

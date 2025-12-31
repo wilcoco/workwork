@@ -62,6 +62,12 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
     if (jsonText) fromJson(jsonText);
   }, []); // init only
 
+  // Auto-sync: whenever graph changes, reflect to parent JSON
+  useEffect(() => {
+    toJson();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges]);
+
   const onConnect = useCallback((params: Connection) => setEdges((eds: Edge<any>[]) => addEdge({ ...params, id: `${params.source}-${params.target}-${Date.now()}` }, eds)), [setEdges]);
 
   const addNode = (type: string) => {

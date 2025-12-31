@@ -56,6 +56,12 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
     if (jsonText) parseJson(jsonText);
   }, []);
 
+  // Auto-sync: whenever nodes/edges change, emit JSON to parent so Save uses latest BPMN
+  useEffect(() => {
+    emitJson();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges]);
+
   const emitJson = useCallback(() => {
     const j = {
       nodes: nodes,

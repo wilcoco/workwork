@@ -183,13 +183,18 @@ export function ProcessTemplates() {
       return;
     }
     let bpmnObj: any = undefined;
-    if (bpmnJsonText.trim()) {
+    const raw = (bpmnJsonText || '').trim();
+    if (raw) {
       try {
-        bpmnObj = JSON.parse(bpmnJsonText);
+        bpmnObj = JSON.parse(raw);
       } catch {
+        // 혹시 문자열 형태로 저장되어 있을 수도 있으므로, 파싱 실패 시 그대로 전달하지 않고 취소
         alert('BPMN JSON이 유효하지 않습니다.');
         return;
       }
+    } else if ((editing as any).bpmnJson) {
+      // 편집기 자동 동기화 이전에 열려 있던 경우 대비: 기존 저장된 bpmnJson을 유지 저장
+      bpmnObj = (editing as any).bpmnJson;
     }
     const body = {
       ...editing,
