@@ -67,11 +67,13 @@ export function WorklogNew() {
         const r = await apiFetch(`/api/processes/inbox?assigneeId=${encodeURIComponent(myUserId)}`);
         if (r.ok) {
           const items = await r.json();
-          setMyProcTasks(items || []);
+          const onlyWorklog = (items || []).filter((t: any) => String(t.taskType).toUpperCase() === 'WORKLOG');
+          const filtered = processInstanceId ? onlyWorklog.filter((t: any) => t.instance?.id === processInstanceId) : onlyWorklog;
+          setMyProcTasks(filtered);
         }
       } catch {}
     })();
-  }, [myUserId]);
+  }, [myUserId, processInstanceId]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -238,25 +240,27 @@ export function WorklogNew() {
         </label>
       </div>
 
-      <label>
-        프로세스 과제(선택)
-        <select
-          value={selectedProcTaskId}
-          onChange={(e) => {
-            const tid = e.target.value;
-            setSelectedProcTaskId(tid);
-            const found = myProcTasks.find((t) => t.id === tid);
-            setSelectedProcInstId(found?.instance?.id || '');
-          }}
-          disabled={!!taskInstanceId}
-        >
-          <option value="">선택 안 함</option>
-          {myProcTasks.map((t) => (
-            <option key={t.id} value={t.id}>{t.name} · {t.instance?.title || ''}</option>
-          ))}
-        </select>
-        {!!taskInstanceId && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스에서 전달된 과제로 고정되었습니다.</div>}
-      </label>
+      {(processInstanceId || myProcTasks.length > 0) && (
+        <label>
+          프로세스 과제(선택)
+          <select
+            value={selectedProcTaskId}
+            onChange={(e) => {
+              const tid = e.target.value;
+              setSelectedProcTaskId(tid);
+              const found = myProcTasks.find((t) => t.id === tid);
+              setSelectedProcInstId(found?.instance?.id || '');
+            }}
+            disabled={!!taskInstanceId}
+          >
+            <option value="">선택 안 함</option>
+            {myProcTasks.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} · {t.instance?.title || ''}</option>
+            ))}
+          </select>
+          {!!taskInstanceId && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스에서 전달된 과제로 고정되었습니다.</div>}
+        </label>
+      )}
 
       <label>
         Initiative ID
