@@ -15,6 +15,7 @@ interface ProcessTemplateDto {
   title: string;
   description?: string;
   type: 'RECURRING' | 'PROJECT';
+  bpmnJson?: any;
   tasks: ProcessTaskTemplateDto[];
 }
 
@@ -37,12 +38,16 @@ export function ProcessStart() {
   const [moldsMaster, setMoldsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [carModelsMaster, setCarModelsMaster] = useState<Array<{ code: string; name: string }>>([]);
 
-  const selected = useMemo(() => templates.find(t => t.id === tplId) || null, [templates, tplId]);
+  const [selectedFull, setSelectedFull] = useState<ProcessTemplateDto | null>(null);
+  const selected = useMemo(() => selectedFull || templates.find(t => t.id === tplId) || null, [templates, tplId, selectedFull]);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [assignees, setAssignees] = useState<Record<string, string>>({});
   const [plans, setPlans] = useState<Record<string, { plannedStartAt?: string; plannedEndAt?: string; deadlineAt?: string }>>({});
   const [initiativeId, setInitiativeId] = useState('');
   const [myInits, setMyInits] = useState<Array<{ id: string; title: string }>>([]);
+  const [itemManual, setItemManual] = useState(false);
+  const [moldManual, setMoldManual] = useState(false);
+  const [carModelManual, setCarModelManual] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -56,6 +61,19 @@ export function ProcessStart() {
       }
     })();
   }, []);
+
+  // Load full template detail when a template is selected to ensure tasks (with IDs) are present
+  useEffect(() => {
+    (async () => {
+      if (!tplId) { setSelectedFull(null); return; }
+      try {
+        const one = await apiJson<ProcessTemplateDto>(`/api/process-templates/${encodeURIComponent(tplId)}`);
+        setSelectedFull(one || null);
+      } catch {
+        setSelectedFull(null);
+      }
+    })();
+  }, [tplId]);
 
   useEffect(() => {
     (async () => {
@@ -153,40 +171,76 @@ export function ProcessStart() {
                 </label>
                 <label>
                   품번(Item Code)
-                  <select value={itemCode} onChange={(e) => setItemCode(e.target.value)}>
-                    <option value="">직접 입력</option>
-                    {itemsMaster.map(it => (
-                      <option key={it.code} value={it.code}>{it.code} · {it.name}</option>
-                    ))}
-                  </select>
-                  {!itemCode && (
-                    <input value={itemCode} onChange={(e) => setItemCode(e.target.value)} placeholder="예: ITEM-001" />
+                  {!itemManual ? (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <select value={itemCode} onChange={(e) => setItemCode(e.target.value)}>
+                        <option value="">선택</option>
+                        {itemsMaster.map(it => (
+                          <option key={it.code} value={it.code}>{it.code} · {it.name}</option>
+                        ))}
+                      </select>
+                      <button type="button" className="btn" onClick={() => setItemManual(true)}>직접 입력</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <input value={itemCode} onChange={(e) => setItemCode(e.target.value)} placeholder="예: ITEM-001" />
+                      <button type="button" className="btn" onClick={() => setItemManual(false)}>목록에서 선택</button>
+                    </div>
                   )}
                 </label>
               </div>
+              {selectedFull?.bpmnJson && Array.isArray((selectedFull as any).bpmnJson?.nodes) && Array.isArray((selectedFull as any).bpmnJson?.edges) && (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>흐름 미리보기</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ fontSize: 12, color: '#6b7280' }}>
+                      노드 {((selectedFull as any).bpmnJson.nodes || []).length} · 엣지 {((selectedFull as any).bpmnJson.edges || []).length}
+                    </div>
+                    <div>
+                      {((selectedFull as any).bpmnJson.edges || []).map((e: any, i: number) => (
+                        <div key={e.id || i} style={{ fontSize: 12 }}>{String(e.source)} → {String(e.target)}</div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
                 <label>
                   금형 번호(Mold)
-                  <select value={moldCode} onChange={(e) => setMoldCode(e.target.value)}>
-                    <option value="">직접 입력</option>
-                    {moldsMaster.map(m => (
-                      <option key={m.code} value={m.code}>{m.code} · {m.name}</option>
-                    ))}
-                  </select>
-                  {!moldCode && (
-                    <input value={moldCode} onChange={(e) => setMoldCode(e.target.value)} placeholder="예: M123" />
+                  {!moldManual ? (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <select value={moldCode} onChange={(e) => setMoldCode(e.target.value)}>
+                        <option value="">선택</option>
+                        {moldsMaster.map(m => (
+                          <option key={m.code} value={m.code}>{m.code} · {m.name}</option>
+                        ))}
+                      </select>
+                      <button type="button" className="btn" onClick={() => setMoldManual(true)}>직접 입력</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <input value={moldCode} onChange={(e) => setMoldCode(e.target.value)} placeholder="예: M123" />
+                      <button type="button" className="btn" onClick={() => setMoldManual(false)}>목록에서 선택</button>
+                    </div>
                   )}
                 </label>
                 <label>
                   차종(Car Model)
-                  <select value={carModelCode} onChange={(e) => setCarModelCode(e.target.value)}>
-                    <option value="">직접 입력</option>
-                    {carModelsMaster.map(c => (
-                      <option key={c.code} value={c.code}>{c.code} · {c.name}</option>
-                    ))}
-                  </select>
-                  {!carModelCode && (
-                    <input value={carModelCode} onChange={(e) => setCarModelCode(e.target.value)} placeholder="예: SONATA" />
+                  {!carModelManual ? (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <select value={carModelCode} onChange={(e) => setCarModelCode(e.target.value)}>
+                        <option value="">선택</option>
+                        {carModelsMaster.map(c => (
+                          <option key={c.code} value={c.code}>{c.code} · {c.name}</option>
+                        ))}
+                      </select>
+                      <button type="button" className="btn" onClick={() => setCarModelManual(true)}>직접 입력</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <input value={carModelCode} onChange={(e) => setCarModelCode(e.target.value)} placeholder="예: SONATA" />
+                      <button type="button" className="btn" onClick={() => setCarModelManual(false)}>목록에서 선택</button>
+                    </div>
                   )}
                 </label>
               </div>
