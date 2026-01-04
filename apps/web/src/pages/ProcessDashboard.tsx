@@ -10,6 +10,12 @@ interface ProcTaskLite {
   status: string;
 }
 
+interface AssigneeAgg {
+  id: string;
+  name: string;
+  counts: { total: number; completed: number; inProgress: number; ready: number; notStarted: number; skipped: number; overdue: number };
+}
+
 interface ProcInstLite {
   id: string;
   title: string;
@@ -22,6 +28,7 @@ interface ProcInstLite {
   initiative?: { id: string; title: string };
   delayed?: boolean;
   tasks: ProcTaskLite[];
+  assignees?: AssigneeAgg[];
 }
 
 export function ProcessDashboard() {
@@ -116,17 +123,18 @@ export function ProcessDashboard() {
       </div>
 
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1fr', gap: 0, fontWeight: 700, background: '#f8fafc', padding: '8px 10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 2fr 1fr', gap: 0, fontWeight: 700, background: '#f8fafc', padding: '8px 10px' }}>
           <div>프로세스</div>
           <div>템플릿</div>
           <div>시작자</div>
           <div>시작</div>
           <div>예상완료</div>
           <div>지연</div>
+          <div>담당자 진행</div>
           <div>액션</div>
         </div>
         {filtered.map((it) => (
-          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1fr', gap: 0, padding: '8px 10px', borderTop: '1px solid #eef2f7', alignItems: 'center' }}>
+          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 2fr 1fr', gap: 0, padding: '8px 10px', borderTop: '1px solid #eef2f7', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 600 }}>{it.title}</div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>{it.status}</div>
@@ -137,6 +145,17 @@ export function ProcessDashboard() {
             <div>{fmt(it.startAt)}</div>
             <div>{fmt(it.expectedEndAt)}</div>
             <div>{it.delayed ? '🔴' : ''}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {(it.assignees || []).map((a) => (
+                <div key={a.id} style={{ fontSize: 12, color: '#334155' }}>
+                  <b>{a.name}</b> · 완료 {a.counts.completed}/{a.counts.total}
+                  {a.counts.inProgress ? ` · 진행 ${a.counts.inProgress}` : ''}
+                  {a.counts.ready ? ` · 대기 ${a.counts.ready}` : ''}
+                  {a.counts.overdue ? ` · 지연 ${a.counts.overdue}` : ''}
+                </div>
+              ))}
+              {!(it.assignees || []).length && <div style={{ fontSize: 12, color: '#94a3b8' }}>담당자 없음</div>}
+            </div>
             <div style={{ display: 'flex', gap: 6 }}>
               {it.status === 'ACTIVE' && canExec(it) && (
                 <button className="btn btn-warning" onClick={() => stop(it)}>중단</button>

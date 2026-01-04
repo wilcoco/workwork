@@ -33,24 +33,61 @@ export class ProcessesController {
         initiative: { select: { id: true, title: true } },
         tasks: {
           orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
-          select: { id: true, stageLabel: true, taskType: true, status: true },
+          select: { id: true, stageLabel: true, taskType: true, status: true, assigneeId: true, deadlineAt: true },
         },
       },
     });
     const now = new Date();
-    return rows.map((r: any) => ({
-      id: r.id,
-      title: r.title,
-      status: r.status,
-      startAt: r.startAt,
-      expectedEndAt: r.expectedEndAt,
-      endAt: r.endAt,
-      template: r.template,
-      startedBy: r.startedBy,
-      initiative: r.initiative,
-      delayed: r.status === 'ACTIVE' && r.expectedEndAt && new Date(r.expectedEndAt).getTime() < now.getTime(),
-      tasks: r.tasks,
-    }));
+    const result = await Promise.all(
+      rows.map(async (r: any) => {
+        const delayed = r.status === 'ACTIVE' && r.expectedEndAt && new Date(r.expectedEndAt).getTime() < now.getTime();
+        const ids = Array.from(
+          new Set(
+            (r.tasks || [])
+              .map((t: any) => t.assigneeId as string | undefined)
+              .filter((x: string | undefined): x is string => !!x)
+          )
+        );
+        const users = ids.length
+          ? await this.prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+          : [];
+        const aggMap = new Map<string, { total: number; completed: number; inProgress: number; ready: number; notStarted: number; skipped: number; overdue: number }>();
+        for (const id of ids) aggMap.set(id, { total: 0, completed: 0, inProgress: 0, ready: 0, notStarted: 0, skipped: 0, overdue: 0 });
+        for (const t of r.tasks || []) {
+          const uid = t.assigneeId as string | undefined;
+          if (!uid) continue;
+          const m = aggMap.get(uid)!;
+          m.total += 1;
+          const s = String(t.status).toUpperCase();
+          if (s === 'COMPLETED') m.completed += 1;
+          else if (s === 'IN_PROGRESS') m.inProgress += 1;
+          else if (s === 'READY') m.ready += 1;
+          else if (s === 'NOT_STARTED') m.notStarted += 1;
+          else if (s === 'SKIPPED') m.skipped += 1;
+          if (t.deadlineAt && s !== 'COMPLETED' && s !== 'SKIPPED') {
+            if (new Date(t.deadlineAt).getTime() < now.getTime()) m.overdue += 1;
+          }
+        }
+        const assignees = users
+          .filter((u: any) => u.id !== (r.startedBy?.id || ''))
+          .map((u: any) => ({ id: u.id, name: u.name, counts: aggMap.get(u.id)! }));
+        return {
+          id: r.id,
+          title: r.title,
+          status: r.status,
+          startAt: r.startAt,
+          expectedEndAt: r.expectedEndAt,
+          endAt: r.endAt,
+          template: r.template,
+          startedBy: r.startedBy,
+          initiative: r.initiative,
+          delayed,
+          tasks: r.tasks,
+          assignees,
+        };
+      })
+    );
+    return result;
   }
 
   private getCtxValue(ctx: any, path: string): any {

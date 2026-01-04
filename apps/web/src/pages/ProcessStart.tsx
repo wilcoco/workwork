@@ -167,7 +167,10 @@ export function ProcessStart() {
     try {
       setStarting(true);
       const inst = await apiJson<any>(`/api/processes`, { method: 'POST', body: JSON.stringify(body) });
-      if (inst?.id) nav(`/process/instances/${inst.id}`);
+      if (inst?.id) {
+        alert('프로세스가 시작되었습니다. 상세 화면으로 이동합니다.');
+        nav(`/process/instances/${inst.id}`);
+      }
     } catch (e: any) {
       alert(e?.message || '프로세스 시작 중 오류가 발생했습니다.');
     } finally {
