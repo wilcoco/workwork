@@ -345,6 +345,13 @@ export function WorklogQuickNew() {
               // Keep current date as-is (default is today in KST)
             }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="" disabled>대상을 선택하세요</option>
+              {myProcTasks.length > 0 && (
+                <optgroup label="프로세스 과제">
+                  {myProcTasks.map((t) => (
+                    <option key={`proc-${t.id}`} value={`proc:${t.id}`}>프로세스: {t.instance?.title || ''} / {t.name}</option>
+                  ))}
+                </optgroup>
+              )}
               <optgroup label="OKR 과제">
                 {(() => {
                   // OKR 과제에는 순수 OKR만 노출하고, KPI에 속한 과제와 결재/협조(Auto Objective) 과제는 모두 제외한다.
