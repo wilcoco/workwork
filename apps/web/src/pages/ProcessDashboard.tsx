@@ -115,6 +115,7 @@ export function ProcessDashboard() {
 
   const fmt = (s?: string) => (s ? new Date(s).toLocaleString() : '');
   const fmtDate = (s?: string) => (s ? new Date(s).toLocaleDateString() : '');
+  const nextTasks = (it: ProcInstLite) => (it.tasks || []).filter((t) => String(t.status).toUpperCase() === 'READY');
 
   async function stop(inst: ProcInstLite) {
     if (!me) return;
@@ -179,18 +180,19 @@ export function ProcessDashboard() {
       </div>
 
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 2fr 1fr', gap: 0, fontWeight: 700, background: '#f8fafc', padding: '8px 10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1.6fr 2fr 1fr', gap: 0, fontWeight: 700, background: '#f8fafc', padding: '8px 10px' }}>
           <div>프로세스</div>
           <div>템플릿</div>
           <div>시작자</div>
           <div>시작</div>
           <div>예상완료</div>
           <div>지연</div>
+          <div>다음 할 일</div>
           <div>담당자 진행</div>
           <div>액션</div>
         </div>
         {filtered.map((it) => (
-          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 2fr 1fr', gap: 0, padding: '8px 10px', borderTop: '1px solid #eef2f7', alignItems: 'center' }}>
+          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1.6fr 2fr 1fr', gap: 0, padding: '8px 10px', borderTop: '1px solid #eef2f7', alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 600 }}>{it.title}</div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>{it.status}</div>
@@ -201,6 +203,19 @@ export function ProcessDashboard() {
             <div>{fmt(it.startAt)}</div>
             <div>{fmt(it.expectedEndAt)}</div>
             <div>{it.delayed ? '🔴' : ''}</div>
+            <div style={{ display: 'grid', gap: 4 }}>
+              {(() => {
+                const next = nextTasks(it);
+                if (!next.length) return <div style={{ fontSize: 12, color: '#94a3b8' }}>표시할 작업 없음</div>;
+                return next.map((t) => (
+                  <div key={t.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
+                    <span style={{ fontWeight: 600 }}>{t.name || t.stageLabel || '-'}</span>
+                    <span style={{ color: '#6b7280' }}>·</span>
+                    <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '0 6px' }}>{t.assignee?.name || '담당 미지정'}</span>
+                  </div>
+                ));
+              })()}
+            </div>
             <div style={{ display: 'grid', gap: 6 }}>
               {(() => {
                 const list = (it.assignees || []);
