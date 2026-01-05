@@ -69,7 +69,6 @@ export class ProcessesController {
           }
         }
         const assignees = (users as any[])
-          .filter((u) => u.id !== (r.startedBy?.id || ''))
           .map((u) => ({ id: u.id, name: u.name, orgUnitId: u.orgUnitId || u.orgUnit?.id || '', orgName: u.orgUnit?.name || '', counts: aggMap.get(u.id)! }));
         return {
           id: r.id,

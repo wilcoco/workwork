@@ -272,7 +272,15 @@ export function ProcessTemplates() {
           <div style={{ display: 'grid', gap: 12 }}>
             <h2>업무 프로세스 정의</h2>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button className="btn" onClick={() => editing?.id && nav(`/process/start?templateId=${encodeURIComponent(editing.id)}`)} disabled={!editing?.id}>이 템플릿으로 시작</button>
+              <button
+                className="btn"
+                onClick={() => {
+                  if (!editing?.id) return;
+                  const ret = encodeURIComponent(window.location.pathname + window.location.search);
+                  nav(`/process/start?templateId=${encodeURIComponent(editing.id)}&return=${ret}`);
+                }}
+                disabled={!editing?.id}
+              >이 템플릿으로 시작</button>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <select value={promoteVis} onChange={(e) => setPromoteVis(e.target.value as any)}>
                   <option value="PUBLIC">승격: 전체 공개</option>

@@ -263,7 +263,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           <Link to="/attendance/report">근태 리포트</Link>
         </NavDropdown>
         <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
-          <Link to="/process/start">새 프로세스 시작</Link>
+          <Link to={`/process/start?return=${encodeURIComponent(location.pathname + location.search)}`}>새 프로세스 시작</Link>
           <Link to="/process/inbox">내 할 일</Link>
           <Link to="/process/instances">진행 중 프로세스</Link>
           <Link to="/process/dashboard">프로세스 대시보드</Link>

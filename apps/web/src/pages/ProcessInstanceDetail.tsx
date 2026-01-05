@@ -79,6 +79,14 @@ export function ProcessInstanceDetail() {
     })();
   }, [id]);
 
+  // Defensive: if detail fails to load, guide user back to list
+  useEffect(() => {
+    if (error) {
+      try { alert(error); } catch {}
+      nav('/process/instances');
+    }
+  }, [error]);
+
   const fmt = (s?: string) => (s ? new Date(s).toLocaleString() : '');
 
   const grouped = useMemo(() => {
