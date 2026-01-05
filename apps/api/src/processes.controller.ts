@@ -230,7 +230,7 @@ export class ProcessesController {
     return this.prisma.processInstance.findUnique({
       where: { id },
       include: {
-        template: true,
+        template: { include: { tasks: { orderBy: { orderHint: 'asc' } } } },
         startedBy: true,
         initiative: true,
         tasks: { orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }] },

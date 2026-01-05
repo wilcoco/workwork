@@ -51,6 +51,8 @@ export function ProcessDashboard() {
   const [orgFilter, setOrgFilter] = useState<string>('');
   const [assigneeSort, setAssigneeSort] = useState<'OVERDUE_DESC' | 'RATE_ASC' | 'NAME_ASC'>('OVERDUE_DESC');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [detailMap, setDetailMap] = useState<Record<string, any>>({});
+  const [detailLoading, setDetailLoading] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     (async () => {
@@ -116,6 +118,33 @@ export function ProcessDashboard() {
   const fmt = (s?: string) => (s ? new Date(s).toLocaleString() : '');
   const fmtDate = (s?: string) => (s ? new Date(s).toLocaleDateString() : '');
   const nextTasks = (it: ProcInstLite) => (it.tasks || []).filter((t) => String(t.status).toUpperCase() === 'READY');
+
+  async function ensureDetail(id: string) {
+    if (detailMap[id] || detailLoading[id]) return;
+    setDetailLoading((prev) => ({ ...prev, [id]: true }));
+    try {
+      const d = await apiJson<any>(`/api/processes/${encodeURIComponent(id)}`);
+      setDetailMap((prev) => ({ ...prev, [id]: d }));
+    } catch {}
+    finally {
+      setDetailLoading((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
+  const parsePreds = (s?: string | null): string[] => {
+    if (!s) return [];
+    return String(s).split(',').map(x => x.trim()).filter(Boolean);
+  };
+
+  const statusBadge = (s: string) => {
+    const u = String(s).toUpperCase();
+    if (u === 'COMPLETED') return { bg: '#DCFCE7', fg: '#166534' };
+    if (u === 'IN_PROGRESS') return { bg: '#DBEAFE', fg: '#1E3A8A' };
+    if (u === 'READY') return { bg: '#E0F2FE', fg: '#075985' };
+    if (u === 'CHAIN_WAIT' || u === 'NOT_STARTED') return { bg: '#F1F5F9', fg: '#334155' };
+    if (u === 'SKIPPED') return { bg: '#F8FAFC', fg: '#64748b', border: '#E5E7EB' } as any;
+    return { bg: '#F1F5F9', fg: '#334155' };
+  };
 
   async function stop(inst: ProcInstLite) {
     if (!me) return;
@@ -266,7 +295,7 @@ export function ProcessDashboard() {
               {it.status === 'SUSPENDED' && canExec(it) && (
                 <button className="btn btn-primary" onClick={() => resume(it)}>재개</button>
               )}
-              <button className="btn" onClick={() => setExpanded((prev) => ({ ...prev, [it.id]: !prev[it.id] }))}>
+              <button className="btn" onClick={() => { const willOpen = !expanded[it.id]; setExpanded((prev) => ({ ...prev, [it.id]: willOpen })); if (willOpen) ensureDetail(it.id); }}>
                 {expanded[it.id] ? '세부 접기' : '세부 보기'}
               </button>
             </div>
@@ -296,6 +325,70 @@ export function ProcessDashboard() {
                       <div>{t.status}</div>
                     </div>
                   ))}
+                </div>
+                <div style={{ marginTop: 10, border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ padding: '6px 8px', background: '#f9fafb', fontWeight: 700, fontSize: 12 }}>업무 순서도</div>
+                  {detailLoading[it.id] && <div style={{ padding: 10, fontSize: 12, color: '#64748b' }}>불러오는 중…</div>}
+                  {!detailLoading[it.id] && (() => {
+                    const d = detailMap[it.id];
+                    if (!d) return <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>상세 정보가 없습니다.</div>;
+                    const tmplTasks = ((d.template?.tasks || []) as any[]).slice().sort((a, b) => (Number(a.orderHint || 0) - Number(b.orderHint || 0)));
+                    if (!tmplTasks.length) return <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>템플릿 태스크가 없습니다.</div>;
+                    const seqMap = new Map<string, number>();
+                    tmplTasks.forEach((t: any, idx: number) => seqMap.set(String(t.id), idx + 1));
+                    const group = new Map<string, any[]>();
+                    for (const t of (d.tasks || [])) {
+                      const arr = group.get(t.taskTemplateId) || [];
+                      arr.push(t);
+                      group.set(t.taskTemplateId, arr);
+                    }
+                    return (
+                      <div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '0.5fr 1.6fr 1fr 1.2fr 3fr', padding: '6px 8px', fontWeight: 600, fontSize: 12, borderBottom: '1px solid #eef2f7' }}>
+                          <div>#</div>
+                          <div>단계/태스크</div>
+                          <div>유형</div>
+                          <div>선행</div>
+                          <div>담당 체인</div>
+                        </div>
+                        {tmplTasks.map((tt: any) => {
+                          const idx = seqMap.get(String(tt.id)) || 0;
+                          const preds = parsePreds(tt.predecessorIds);
+                          const predNums = preds.map((pid: string) => seqMap.get(String(pid)) || 0).filter(Boolean).sort((a, b) => a - b);
+                          const mode = String(tt.predecessorMode || 'ALL').toUpperCase();
+                          const line = (group.get(tt.id) || []).slice().sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+                          return (
+                            <div key={tt.id} style={{ display: 'grid', gridTemplateColumns: '0.5fr 1.6fr 1fr 1.2fr 3fr', padding: '6px 8px', borderTop: '1px solid #eef2f7', fontSize: 12, alignItems: 'center' }}>
+                              <div>{idx}</div>
+                              <div style={{ display: 'grid', gap: 2 }}>
+                                <div style={{ fontWeight: 600 }}>{tt.name || '-'}</div>
+                                {tt.stageLabel ? <div style={{ color: '#6b7280' }}>{tt.stageLabel}</div> : null}
+                              </div>
+                              <div>
+                                <span style={{ background: tt.taskType === 'WORKLOG' ? '#FEF9C3' : '#F1F5F9', color: '#334155', borderRadius: 999, padding: '0 6px' }}>{tt.taskType}</span>
+                              </div>
+                              <div style={{ color: '#475569' }}>{predNums.length ? `${predNums.join(', ')} (${mode})` : '-'}</div>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {line.length ? line.map((ins: any) => {
+                                  const st = statusBadge(ins.status);
+                                  const a = (it.assignees || []).find(x => x.id === ins.assigneeId);
+                                  const isMe = me && a?.id === me.id;
+                                  return (
+                                    <span key={ins.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: st.bg, color: st.fg, borderRadius: 999, padding: '0 8px', border: (st as any).border ? `1px solid ${(st as any).border}` : '1px solid transparent' }}>
+                                      <span style={{ width: 6, height: 6, borderRadius: 999, background: st.fg, display: 'inline-block' }} />
+                                      <span>{a?.name || '담당 미지정'}</span>
+                                      <span style={{ opacity: 0.7 }}>{String(ins.status)}</span>
+                                      {isMe ? <span style={{ background: '#0EA5E9', color: 'white', borderRadius: 6, padding: '0 4px' }}>ME</span> : null}
+                                    </span>
+                                  );
+                                }) : <span style={{ fontSize: 12, color: '#94a3b8' }}>체인 없음</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
