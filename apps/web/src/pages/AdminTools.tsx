@@ -6,6 +6,14 @@ export function AdminTools() {
   const [role, setRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [confirmText, setConfirmText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmYesProc, setConfirmYesProc] = useState('');
+  const [confirmYesWl, setConfirmYesWl] = useState('');
+  const [confirmYesKpi, setConfirmYesKpi] = useState('');
+  const [confirmYesOkr, setConfirmYesOkr] = useState('');
+  const [loadingProc, setLoadingProc] = useState(false);
+  const [loadingWl, setLoadingWl] = useState(false);
+  const [loadingKpi, setLoadingKpi] = useState(false);
+  const [loadingOkr, setLoadingOkr] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<any | null>(null);
 
@@ -22,6 +30,10 @@ export function AdminTools() {
   }, []);
 
   const canWipe = role === 'CEO' && confirmText === 'ERASE ALL' && !loading;
+  const canWipeProc = role === 'CEO' && confirmYesProc === 'YES' && !loadingProc;
+  const canWipeWl = role === 'CEO' && confirmYesWl === 'YES' && !loadingWl;
+  const canWipeKpi = role === 'CEO' && confirmYesKpi === 'YES' && !loadingKpi;
+  const canWipeOkr = role === 'CEO' && confirmYesOkr === 'YES' && !loadingOkr;
 
   async function onWipe() {
     if (!canWipe) return;
@@ -39,6 +51,82 @@ export function AdminTools() {
       setError(e?.message || '삭제 실패');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onWipeProcesses() {
+    if (!canWipeProc) return;
+    if (!confirm('프로세스 관련 데이터(템플릿/인스턴스/태스크)를 모두 삭제하시겠습니까?')) return;
+    setError(null);
+    setSummary(null);
+    setLoadingProc(true);
+    try {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/processes`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setSummary(res.summary || {});
+    } catch (e: any) {
+      setError(e?.message || '삭제 실패');
+    } finally {
+      setLoadingProc(false);
+    }
+  }
+
+  async function onWipeWorklogs() {
+    if (!canWipeWl) return;
+    if (!confirm('업무일지 및 관련 진행 기록을 모두 삭제하시겠습니까?')) return;
+    setError(null);
+    setSummary(null);
+    setLoadingWl(true);
+    try {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/worklogs`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setSummary(res.summary || {});
+    } catch (e: any) {
+      setError(e?.message || '삭제 실패');
+    } finally {
+      setLoadingWl(false);
+    }
+  }
+
+  async function onWipeKpis() {
+    if (!canWipeKpi) return;
+    if (!confirm('KPI(Key Result: 운영형)와 연결된 하위 데이터(과제/체크리스트/업무일지/배정/진행기록)를 모두 삭제하시겠습니까?')) return;
+    setError(null);
+    setSummary(null);
+    setLoadingKpi(true);
+    try {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/kpis`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setSummary(res.summary || {});
+    } catch (e: any) {
+      setError(e?.message || '삭제 실패');
+    } finally {
+      setLoadingKpi(false);
+    }
+  }
+
+  async function onWipeOkrs() {
+    if (!canWipeOkr) return;
+    if (!confirm('OKR(목표/핵심결과/과제) 전체를 삭제하시겠습니까?')) return;
+    setError(null);
+    setSummary(null);
+    setLoadingOkr(true);
+    try {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/okrs`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setSummary(res.summary || {});
+    } catch (e: any) {
+      setError(e?.message || '삭제 실패');
+    } finally {
+      setLoadingOkr(false);
     }
   }
 
@@ -78,6 +166,55 @@ export function AdminTools() {
                 {JSON.stringify(summary, null, 2)}
               </pre>
             )}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ fontWeight: 700 }}>부분 삭제</div>
+        {role !== 'CEO' ? (
+          <div style={{ marginTop: 10, color: '#64748b' }}>권한이 없습니다. 대표이사(CEO)만 실행할 수 있습니다.</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 16, marginTop: 12 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div>프로세스 데이터 삭제</div>
+              <input placeholder="YES" value={confirmYesProc} onChange={(e) => setConfirmYesProc(e.target.value)} style={input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn" disabled={!canWipeProc} onClick={onWipeProcesses}>
+                  {loadingProc ? '삭제중…' : '프로세스 지우기'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div>업무일지 삭제</div>
+              <input placeholder="YES" value={confirmYesWl} onChange={(e) => setConfirmYesWl(e.target.value)} style={input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn" disabled={!canWipeWl} onClick={onWipeWorklogs}>
+                  {loadingWl ? '삭제중…' : '업무일지 지우기'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div>KPI 삭제</div>
+              <input placeholder="YES" value={confirmYesKpi} onChange={(e) => setConfirmYesKpi(e.target.value)} style={input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn" disabled={!canWipeKpi} onClick={onWipeKpis}>
+                  {loadingKpi ? '삭제중…' : 'KPI 지우기'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div>OKR 삭제</div>
+              <input placeholder="YES" value={confirmYesOkr} onChange={(e) => setConfirmYesOkr(e.target.value)} style={input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn" disabled={!canWipeOkr} onClick={onWipeOkrs}>
+                  {loadingOkr ? '삭제중…' : 'OKR 지우기'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

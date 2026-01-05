@@ -12,7 +12,7 @@ export class AdminController {
     }
     const summary: Record<string, number> = {};
     try {
-      await this.prisma.$transaction(async (tx) => {
+      await (this.prisma as any).$transaction(async (tx: any) => {
       // 1) Non-OKR, ancillary tables (child-first where applicable)
       summary.progressEntries = (await (tx as any).progressEntry.deleteMany({})).count;
       summary.processStopEvents = (await (tx as any).processStopEvent.deleteMany({})).count;
@@ -91,10 +91,140 @@ export class AdminController {
         summary.orgUnits = (summary.orgUnits || 0) + res.count;
       }
       await (this.prisma as any).orgUnit.updateMany({ data: { managerId: null } });
-    });
+    }, { timeout: 120000 });
     } catch (e: any) {
       // Provide a readable error instead of generic 500
       throw new BadRequestException(`wipe failed: ${e?.message || e}`);
+    }
+    return { ok: true, summary };
+  }
+
+  @Post('wipe/processes')
+  async wipeProcesses(@Body() body: { confirm?: string }) {
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const summary: Record<string, number> = {};
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        summary.processStopEvents = (await (tx as any).processStopEvent.deleteMany({})).count;
+        summary.processTaskInstances = (await (tx as any).processTaskInstance.deleteMany({})).count;
+        summary.processInstances = (await (tx as any).processInstance.deleteMany({})).count;
+        summary.processTaskTemplates = (await (tx as any).processTaskTemplate.deleteMany({})).count;
+        summary.processTemplates = (await (tx as any).processTemplate.deleteMany({})).count;
+      }, { timeout: 120000 });
+    } catch (e: any) {
+      throw new BadRequestException(`wipe processes failed: ${e?.message || e}`);
+    }
+    return { ok: true, summary };
+  }
+
+  @Post('wipe/worklogs')
+  async wipeWorklogs(@Body() body: { confirm?: string }) {
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const summary: Record<string, number> = {};
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        const wlIds = (await (tx as any).worklog.findMany({ select: { id: true } })).map((w: any) => w.id);
+        if (wlIds.length > 0) {
+          summary.progressEntries = (await (tx as any).progressEntry.deleteMany({ where: { worklogId: { in: wlIds } } })).count;
+        }
+        summary.worklogs = (await (tx as any).worklog.deleteMany({})).count;
+      }, { timeout: 120000 });
+    } catch (e: any) {
+      throw new BadRequestException(`wipe worklogs failed: ${e?.message || e}`);
+    }
+    return { ok: true, summary };
+  }
+
+  @Post('wipe/kpis')
+  async wipeKpis(@Body() body: { confirm?: string }) {
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const summary: Record<string, number> = {};
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        const krs = await (tx as any).keyResult.findMany({ where: ({ type: 'OPERATIONAL' } as any), select: { id: true } });
+        const krIds = krs.map((k: any) => k.id);
+        if (krIds.length === 0) return;
+
+        await (tx as any).objective.updateMany({ where: ({ alignsToKrId: { in: krIds } } as any), data: { alignsToKrId: null } });
+
+        const deleteInitiativeCascade = async (id: string) => {
+          const children = await (tx as any).initiative.findMany({ where: { parentId: id }, select: { id: true } });
+          for (const ch of children) await deleteInitiativeCascade(ch.id);
+          const items = await (tx as any).checklistItem.findMany({ where: { initiativeId: id }, select: { id: true } });
+          if (items.length > 0) {
+            await (tx as any).checklistTick.deleteMany({ where: { checklistItemId: { in: items.map((i: any) => i.id) } } });
+          }
+          await (tx as any).checklistItem.deleteMany({ where: { initiativeId: id } });
+          await (tx as any).worklog.deleteMany({ where: { initiativeId: id } });
+          await (tx as any).delegation.deleteMany({ where: { childInitiativeId: id } });
+          await (tx as any).initiative.delete({ where: { id } });
+        };
+
+        const inits = await (tx as any).initiative.findMany({ where: { keyResultId: { in: krIds } }, select: { id: true } });
+        for (const ii of inits) await deleteInitiativeCascade(ii.id);
+
+        summary.keyResultAssignments = (await (tx as any).keyResultAssignment.deleteMany({ where: { keyResultId: { in: krIds } } })).count;
+        summary.progressEntries = (await (tx as any).progressEntry.deleteMany({ where: { keyResultId: { in: krIds } } })).count;
+        summary.keyResults = (await (tx as any).keyResult.deleteMany({ where: { id: { in: krIds } } })).count;
+      }, { timeout: 120000 });
+    } catch (e: any) {
+      throw new BadRequestException(`wipe kpis failed: ${e?.message || e}`);
+    }
+    return { ok: true, summary };
+  }
+
+  @Post('wipe/okrs')
+  async wipeOkrs(@Body() body: { confirm?: string }) {
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const summary: Record<string, number> = {};
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        const deleteInitiativeCascade = async (id: string) => {
+          const children = await (tx as any).initiative.findMany({ where: { parentId: id }, select: { id: true } });
+          for (const ch of children) await deleteInitiativeCascade(ch.id);
+          const items = await (tx as any).checklistItem.findMany({ where: { initiativeId: id }, select: { id: true } });
+          if (items.length > 0) {
+            await (tx as any).checklistTick.deleteMany({ where: { checklistItemId: { in: items.map((i: any) => i.id) } } });
+          }
+          await (tx as any).checklistItem.deleteMany({ where: { initiativeId: id } });
+          await (tx as any).worklog.deleteMany({ where: { initiativeId: id } });
+          await (tx as any).delegation.deleteMany({ where: { childInitiativeId: id } });
+          await (tx as any).initiative.delete({ where: { id } });
+        };
+
+        const deleteObjectiveCascade = async (id: string) => {
+          const krs = await (tx as any).keyResult.findMany({ where: { objectiveId: id }, select: { id: true } });
+          for (const kr of krs) {
+            const alignedObjs = await (tx as any).objective.findMany({ where: ({ alignsToKrId: kr.id } as any), select: { id: true } });
+            for (const o of alignedObjs) await deleteObjectiveCascade(o.id);
+            const inits = await (tx as any).initiative.findMany({ where: { keyResultId: kr.id }, select: { id: true } });
+            for (const ii of inits) await deleteInitiativeCascade(ii.id);
+            await (tx as any).keyResultAssignment.deleteMany({ where: { keyResultId: kr.id } });
+            await (tx as any).progressEntry.deleteMany({ where: { keyResultId: kr.id } });
+            await (tx as any).keyResult.delete({ where: { id: kr.id } });
+          }
+          const children = await (tx as any).objective.findMany({ where: ({ parentId: id } as any), select: { id: true } });
+          for (const ch of children) await deleteObjectiveCascade(ch.id);
+          await (tx as any).objective.delete({ where: { id } });
+        };
+
+        const roots = await (tx as any).objective.findMany({ where: ({ alignsToKrId: null } as any), select: { id: true } });
+        for (const r of roots) await deleteObjectiveCascade(r.id);
+
+        summary.initiatives = (await (tx as any).initiative.deleteMany({})).count;
+        summary.keyResults = (await (tx as any).keyResult.deleteMany({})).count;
+        summary.objectives = (await (tx as any).objective.deleteMany({})).count;
+      }, { timeout: 120000 });
+    } catch (e: any) {
+      throw new BadRequestException(`wipe okrs failed: ${e?.message || e}`);
     }
     return { ok: true, summary };
   }
