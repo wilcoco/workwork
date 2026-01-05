@@ -28,6 +28,7 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
         assigneeHint: (n.data && (n.data as any).assigneeHint) || undefined,
         stageLabel: (n.data && (n.data as any).stageLabel) || undefined,
         deadlineOffsetDays: (n.data && (n.data as any).deadlineOffsetDays) ?? undefined,
+        approvalUserIds: (n.data && (n.data as any).approvalUserIds) || undefined,
       })),
       edges: edges.map((e: Edge<any>) => ({ id: String(e.id), source: String(e.source), target: String(e.target) })),
     };
@@ -48,6 +49,7 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
           assigneeHint: n.assigneeHint || undefined,
           stageLabel: n.stageLabel || undefined,
           deadlineOffsetDays: n.deadlineOffsetDays ?? undefined,
+          approvalUserIds: n.approvalUserIds || undefined,
         },
       }));
       const ee: Edge<any>[] = (j.edges || []).map((e: any) => ({ id: String(e.id || `${e.source}-${e.target}`), source: String(e.source), target: String(e.target) }));
@@ -118,6 +120,13 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
               <label>담당자 힌트<input value={(n.data as any)?.assigneeHint || ''} onChange={(e) => onNodeLabelChange(n.id, 'assigneeHint', e.target.value)} /></label>
               <label>스테이지<input value={(n.data as any)?.stageLabel || ''} onChange={(e) => onNodeLabelChange(n.id, 'stageLabel', e.target.value)} /></label>
               <label>마감 오프셋(D+)<input type="number" value={(n.data as any)?.deadlineOffsetDays ?? ''} onChange={(e) => onNodeLabelChange(n.id, 'deadlineOffsetDays', e.target.value ? Number(e.target.value) : undefined)} /></label>
+              <label>담당자 순번(쉼표로 ID 나열)
+                <input
+                  placeholder="userA,userB,userC"
+                  value={(n.data as any)?.approvalUserIds || ''}
+                  onChange={(e) => onNodeLabelChange(n.id, 'approvalUserIds', e.target.value)}
+                />
+              </label>
             </div>
           ) : (
             <div key={n.id} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8 }}>

@@ -43,7 +43,7 @@ export function ProcessStart() {
   const [selectedFull, setSelectedFull] = useState<ProcessTemplateDto | null>(null);
   const selected = useMemo(() => selectedFull || templates.find(t => t.id === tplId) || null, [templates, tplId, selectedFull]);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
-  const [assignees, setAssignees] = useState<Record<string, string>>({});
+  const [assignees, setAssignees] = useState<Record<string, string[]>>({});
   const [plans, setPlans] = useState<Record<string, { plannedStartAt?: string; plannedEndAt?: string; deadlineAt?: string }>>({});
   const [initiativeId, setInitiativeId] = useState('');
   const [myInits, setMyInits] = useState<Array<{ id: string; title: string }>>([]);
@@ -143,8 +143,7 @@ export function ProcessStart() {
     if (!startTitle.trim()) { alert('세부 제목을 입력하세요.'); return; }
     const finalTitle = selected ? `${selected.title} - ${startTitle}` : startTitle;
     const taskAssignees = Object.entries(assignees)
-      .filter(([_, v]) => !!v)
-      .map(([k, v]) => ({ taskTemplateId: k, assigneeId: v }));
+      .flatMap(([k, arr]) => (arr || []).filter(Boolean).map((v) => ({ taskTemplateId: k, assigneeId: v })));
     const taskPlans = Object.entries(plans)
       .map(([k, v]) => ({
         taskTemplateId: k,
@@ -301,13 +300,18 @@ export function ProcessStart() {
                         <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>담당자 힌트: {t.assigneeHint || t.description}</div>
                       )}
                       <div style={{ marginTop: 6 }}>
-                        <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>담당자</label>
+                        <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>담당자(복수 선택 가능)</label>
                         <select
-                          value={(t.id && assignees[String(t.id)]) || ''}
-                          onChange={(e) => t.id && setAssignees((prev) => ({ ...prev, [String(t.id)]: e.target.value }))}
+                          multiple
+                          value={(t.id && assignees[String(t.id)]) || []}
+                          onChange={(e) => {
+                            if (!t.id) return;
+                            const opts = Array.from((e.target as HTMLSelectElement).selectedOptions).map(o => o.value);
+                            setAssignees((prev) => ({ ...prev, [String(t.id)]: opts }));
+                          }}
                           disabled={t.__source === 'bpmn'}
+                          style={{ minHeight: 64 }}
                         >
-                          <option value="">선택 안 함</option>
                           {users.map((u) => (
                             <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
                           ))}

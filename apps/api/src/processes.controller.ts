@@ -62,7 +62,7 @@ export class ProcessesController {
           if (s === 'COMPLETED') m.completed += 1;
           else if (s === 'IN_PROGRESS') m.inProgress += 1;
           else if (s === 'READY') m.ready += 1;
-          else if (s === 'NOT_STARTED') m.notStarted += 1;
+          else if (s === 'NOT_STARTED' || s === 'CHAIN_WAIT') m.notStarted += 1;
           else if (s === 'SKIPPED') m.skipped += 1;
           if (t.plannedEndAt && s !== 'COMPLETED' && s !== 'SKIPPED') {
             if (new Date(t.plannedEndAt).getTime() < now.getTime()) m.overdue += 1;
@@ -241,15 +241,28 @@ export class ProcessesController {
       }
 
       const now = new Date();
-      const assignMap = new Map<string, string>();
+      const assignMap = new Map<string, string>(); // legacy single-assignee override
+      const assignListMap = new Map<string, string[]>(); // multi-assignee chain override
       if (Array.isArray(taskAssignees)) {
         for (const a of taskAssignees) {
-          if (a && a.taskTemplateId && a.assigneeId) assignMap.set(String(a.taskTemplateId), String(a.assigneeId));
+          if (a && a.taskTemplateId && a.assigneeId) {
+            const key = String(a.taskTemplateId);
+            const arr = assignListMap.get(key) || [];
+            arr.push(String(a.assigneeId));
+            assignListMap.set(key, arr);
+            assignMap.set(key, String(a.assigneeId));
+          }
         }
       } else if (taskAssignees && typeof taskAssignees === 'object') {
         for (const k of Object.keys(taskAssignees)) {
           const v = (taskAssignees as any)[k];
-          if (v) assignMap.set(String(k), String(v));
+          if (Array.isArray(v)) {
+            const arr = (v as any[]).map((x) => String(x)).filter(Boolean);
+            if (arr.length) assignListMap.set(String(k), arr);
+            if (arr.length) assignMap.set(String(k), arr[arr.length - 1]);
+          } else if (v) {
+            assignMap.set(String(k), String(v));
+          }
         }
       }
       const expectedEndAt = tmpl.expectedDurationDays ? addDays(now, Number(tmpl.expectedDurationDays)) : null;
@@ -293,40 +306,62 @@ export class ProcessesController {
           }
         }
 
-        const taskCreates = (tmpl.tasks || []).map((t: any) => {
+        const taskCreates: any[] = [];
+        for (const t of (tmpl.tasks || [])) {
           const preds = parsePreds(t.predecessorIds);
           const initialStatus = preds.length === 0 ? 'READY' : 'NOT_STARTED';
-          let assigneeId: string | undefined = undefined;
+          let baseAssigneeId: string | undefined = undefined;
           if (t.assigneeType === 'USER' && t.assigneeUserId) {
-            assigneeId = String(t.assigneeUserId);
+            baseAssigneeId = String(t.assigneeUserId);
           } else if (t.assigneeType === 'ORG_UNIT' && t.assigneeOrgUnitId) {
-            // assign to org unit manager
-            assigneeId = undefined;
+            baseAssigneeId = undefined;
           } else if (t.assigneeType === 'ROLE' && t.assigneeRoleCode) {
-            // basic ROLE mapping: TEAM_LEAD or MANAGER -> starter's org manager
             const code = String(t.assigneeRoleCode).toUpperCase();
             if ((code.includes('TEAM') && code.includes('LEAD')) || code === 'MANAGER' || code === 'TEAM_LEAD') {
-              // resolve later if we have starter org
-              assigneeId = undefined;
+              baseAssigneeId = undefined;
             }
           }
-          // override by provided mapping
-          assigneeId = assignMap.get(String(t.id)) || assigneeId;
+          const overrideList = assignListMap.get(String(t.id));
+          const defaultChain: string[] = String(t.approvalUserIds || '')
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean);
+          const chain = (overrideList && overrideList.length ? overrideList : defaultChain).filter(Boolean);
           const plan = planMap.get(String(t.id)) || {};
-          return {
-            instanceId: inst.id,
-            taskTemplateId: t.id,
-            name: t.name,
-            stageLabel: t.stageLabel || null,
-            taskType: t.taskType,
-            status: initialStatus,
-            assigneeId,
-            initiativeId: linkedInitiativeId,
-            plannedStartAt: plan.plannedStartAt,
-            plannedEndAt: plan.plannedEndAt,
-            deadlineAt: plan.deadlineAt,
-          } as any;
-        });
+          if (chain.length > 0) {
+            chain.forEach((aid, idx) => {
+              taskCreates.push({
+                instanceId: inst.id,
+                taskTemplateId: t.id,
+                name: t.name,
+                stageLabel: t.stageLabel || null,
+                taskType: t.taskType,
+                status: idx === 0 ? initialStatus : 'CHAIN_WAIT',
+                assigneeId: String(aid),
+                initiativeId: linkedInitiativeId,
+                plannedStartAt: plan.plannedStartAt,
+                plannedEndAt: plan.plannedEndAt,
+                deadlineAt: plan.deadlineAt,
+              } as any);
+            });
+          } else {
+            // single assignee fallback
+            const assigneeId = assignMap.get(String(t.id)) || baseAssigneeId;
+            taskCreates.push({
+              instanceId: inst.id,
+              taskTemplateId: t.id,
+              name: t.name,
+              stageLabel: t.stageLabel || null,
+              taskType: t.taskType,
+              status: initialStatus,
+              assigneeId,
+              initiativeId: linkedInitiativeId,
+              plannedStartAt: plan.plannedStartAt,
+              plannedEndAt: plan.plannedEndAt,
+              deadlineAt: plan.deadlineAt,
+            } as any);
+          }
+        }
 
         if (taskCreates.length) {
           // fill ORG_UNIT manager and ROLE=TEAM_LEAD/MANAGER with starter's org manager
@@ -347,21 +382,24 @@ export class ProcessesController {
           const orgMgrMap = new Map<string, string | undefined>();
           for (const ou of orgUnits) orgMgrMap.set(ou.id, ou.managerId || undefined);
           // prepare final records
-          const finalCreates = (tmpl.tasks || []).map((t: any, idx: number) => {
-            const base = taskCreates[idx];
-            let assigneeId = base.assigneeId as string | undefined;
-            if (!assigneeId && t.assigneeType === 'ORG_UNIT' && t.assigneeOrgUnitId) {
-              // lookup manager of specified org unit
-              assigneeId = orgMgrMap.get(String(t.assigneeOrgUnitId)) || undefined;
-            }
-            if (!assigneeId && t.assigneeType === 'ROLE' && t.assigneeRoleCode) {
-              const code = String(t.assigneeRoleCode).toUpperCase();
-              if ((code.includes('TEAM') && code.includes('LEAD')) || code === 'MANAGER' || code === 'TEAM_LEAD') {
-                assigneeId = starterManagerId;
+          const finalCreates: any[] = [];
+          // remap through actual template list to resolve ROLE/ORG manager for entries missing assignee
+          for (const rec of taskCreates) {
+            let assigneeId = rec.assigneeId as string | undefined;
+            const t = (tmpl.tasks || []).find((tt: any) => tt.id === rec.taskTemplateId);
+            if (t) {
+              if (!assigneeId && t.assigneeType === 'ORG_UNIT' && t.assigneeOrgUnitId) {
+                assigneeId = orgMgrMap.get(String(t.assigneeOrgUnitId)) || undefined;
+              }
+              if (!assigneeId && t.assigneeType === 'ROLE' && t.assigneeRoleCode) {
+                const code = String(t.assigneeRoleCode).toUpperCase();
+                if ((code.includes('TEAM') && code.includes('LEAD')) || code === 'MANAGER' || code === 'TEAM_LEAD') {
+                  assigneeId = starterManagerId;
+                }
               }
             }
-            return { ...base, assigneeId };
-          });
+            finalCreates.push({ ...rec, assigneeId });
+          }
           await tx.processTaskInstance.createMany({ data: finalCreates });
         }
 
@@ -676,10 +714,18 @@ export class ProcessesController {
       groups.get(g)!.push(t);
     }
     for (const [g, list] of groups.entries()) {
-      // only auto-select when all tasks in the group are READY (i.e., initial fan-out)
-      const instTasks = await tx.processTaskInstance.findMany({ where: { instanceId, taskTemplateId: { in: list.map((x: any) => x.id) } } });
+      // only auto-select when each template in the group has at least one READY instance (ignore CHAIN_WAIT)
+      const templateIds = list.map((x: any) => x.id);
+      const instTasks = await tx.processTaskInstance.findMany({ where: { instanceId, taskTemplateId: { in: templateIds } } });
       if (!instTasks.length) continue;
-      if (!instTasks.every((it: any) => it.status === 'READY')) continue;
+      const byTpl = new Map<string, any[]>();
+      for (const it of instTasks) {
+        const arr = byTpl.get(it.taskTemplateId) || [];
+        arr.push(it);
+        byTpl.set(it.taskTemplateId, arr);
+      }
+      const allHaveReady = templateIds.every((tid: string) => (byTpl.get(tid) || []).some((it: any) => String(it.status).toUpperCase() === 'READY'));
+      if (!allHaveReady) continue;
       let selected: any | null = null;
       for (const t of list) {
         const cond = String(t.xorCondition || '').trim();
@@ -702,6 +748,8 @@ export class ProcessesController {
       if (!inst) throw new BadRequestException('instance not found');
       const task = await tx.processTaskInstance.findUnique({ where: { id: taskId } });
       if (!task || task.instanceId !== id) throw new BadRequestException('task not found');
+      const st = String(task.status).toUpperCase();
+      if (st !== 'READY') throw new BadRequestException('task is not READY');
       const ok = await this.allPredecessorsCompleted(tx, id, task.taskTemplateId);
       if (!ok) throw new BadRequestException('predecessors not completed');
       const updated = await tx.processTaskInstance.update({
@@ -749,7 +797,16 @@ export class ProcessesController {
         where: { id: taskId },
         data: { status: 'COMPLETED', actualEndAt: new Date(), ...linkData },
       });
-      await this.unlockReadyDownstreams(tx, id, task.taskTemplateId);
+      // Promote next chain assignee for the same template if any
+      const nextChain = await tx.processTaskInstance.findFirst({
+        where: { instanceId: id, taskTemplateId: task.taskTemplateId, status: 'CHAIN_WAIT' },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (nextChain) {
+        await tx.processTaskInstance.update({ where: { id: nextChain.id }, data: { status: 'READY' } });
+      } else {
+        await this.unlockReadyDownstreams(tx, id, task.taskTemplateId);
+      }
       // Optionally, set instance completed if all tasks are done or skipped
       const remain = await tx.processTaskInstance.count({ where: { instanceId: id, status: { notIn: ['COMPLETED', 'SKIPPED'] } } });
       if (remain === 0) {
