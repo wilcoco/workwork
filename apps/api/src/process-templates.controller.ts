@@ -60,6 +60,7 @@ export class ProcessTemplatesController {
         return hit;
       });
       return {
+        id: String(n.id),
         name: n.name,
         description: n.description,
         assigneeHint: n.assigneeHint,

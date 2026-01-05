@@ -94,15 +94,15 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
     return (
       <div style={{ minWidth: 260, borderLeft: '1px solid #e5e7eb', padding: 8, display: 'grid', gap: 8 }}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn" onClick={() => addNode('start')}>Start</button>
-          <button className="btn" onClick={() => addNode('task')}>Task</button>
-          <button className="btn" onClick={() => addNode('gateway_parallel')}>AND</button>
-          <button className="btn" onClick={() => addNode('gateway_xor')}>XOR</button>
-          <button className="btn" onClick={() => addNode('end')}>End</button>
+          <button type="button" className="btn" onClick={() => addNode('start')}>Start</button>
+          <button type="button" className="btn" onClick={() => addNode('task')}>Task</button>
+          <button type="button" className="btn" onClick={() => addNode('gateway_parallel')}>AND</button>
+          <button type="button" className="btn" onClick={() => addNode('gateway_xor')}>XOR</button>
+          <button type="button" className="btn" onClick={() => addNode('end')}>End</button>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn" onClick={toJson}>그래프→JSON 반영</button>
-          <button className="btn" onClick={() => fromJson(jsonText)}>JSON→그래프 불러오기</button>
+          <button type="button" className="btn" onClick={toJson}>그래프→JSON 반영</button>
+          <button type="button" className="btn" onClick={() => fromJson(jsonText)}>JSON→그래프 불러오기</button>
         </div>
         <div style={{ fontSize: 12, color: '#6b7280' }}>노드를 선택해 속성을 수정하세요.</div>
         {nodes.map((n: Node<any>) => (
