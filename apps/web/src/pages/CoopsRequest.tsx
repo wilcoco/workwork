@@ -9,6 +9,8 @@ export function CoopsRequest() {
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const processInstanceId = params?.get('processInstanceId') || '';
   const taskInstanceId = params?.get('taskInstanceId') || '';
+  const [procTasks, setProcTasks] = useState<any[]>([]);
+  const [selectedTask, setSelectedTask] = useState<{ instanceId: string; taskId: string } | null>(null);
   const [category, setCategory] = useState('General');
   const [queue, setQueue] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
@@ -64,6 +66,18 @@ export function CoopsRequest() {
       } catch {}
     })();
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!requesterId) return;
+        const items = await apiJson<any[]>(`/api/processes/inbox?assigneeId=${encodeURIComponent(requesterId)}&status=READY`);
+        const list = (items || []).filter((t: any) => String(t.taskType).toUpperCase() === 'COOPERATION');
+        setProcTasks(list);
+        if (processInstanceId && taskInstanceId) setSelectedTask({ instanceId: processInstanceId, taskId: taskInstanceId });
+      } catch {}
+    })();
+  }, [requesterId]);
 
   useEffect(() => {
     (async () => {
@@ -157,9 +171,10 @@ export function CoopsRequest() {
       const res = await apiJson<any>('/api/help-tickets', { method: 'POST', body: JSON.stringify(body) });
       setOkMsg(`요청 생성: ${res?.id || ''}`);
       // If invoked from a process task, complete it with cooperationId
-      if (processInstanceId && taskInstanceId && res?.id) {
+      const linkage = selectedTask || (processInstanceId && taskInstanceId ? { instanceId: processInstanceId, taskId: taskInstanceId } : null);
+      if (linkage && res?.id) {
         try {
-          await apiJson(`/api/processes/${encodeURIComponent(processInstanceId)}/tasks/${encodeURIComponent(taskInstanceId)}/complete`, {
+          await apiJson(`/api/processes/${encodeURIComponent(linkage.instanceId)}/tasks/${encodeURIComponent(linkage.taskId)}/complete`, {
             method: 'POST',
             body: JSON.stringify({ cooperationId: res.id }),
           });
@@ -172,6 +187,7 @@ export function CoopsRequest() {
       setDueDate('');
       setContentHtml('');
       setAttachments([]);
+      setSelectedTask(null);
     } catch (e: any) {
       setError(e?.message || '요청 실패');
     } finally {
@@ -184,6 +200,24 @@ export function CoopsRequest() {
       {requesterId ? null : <div style={{ color: '#DC2626' }}>로그인이 필요합니다.</div>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {okMsg && <div style={{ color: '#0F3D73' }}>{okMsg}</div>}
+      <div style={{ display: 'grid', gap: 8 }}>
+        <h3>프로세스 협조 대상 (선택)</h3>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
+          {(procTasks || []).map((t: any) => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <b>{t.instance?.title || '-'}</b>
+                <span style={{ marginLeft: 8, color: '#64748b' }}>{t.stageLabel ? `· ${t.stageLabel}` : ''}</span>
+                <div style={{ fontSize: 12, color: '#334155' }}>{t.name}</div>
+              </div>
+              <button type="button" className="btn btn-outline" onClick={() => setSelectedTask({ instanceId: t.instance?.id, taskId: t.id })}>
+                {selectedTask?.taskId === t.id ? '선택됨' : '선택'}
+              </button>
+            </div>
+          ))}
+          {!procTasks.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>현재 협조 대상 프로세스 과제가 없습니다.</div>}
+        </div>
+      </div>
       <div style={{ display: 'grid', gap: 8 }}>
         <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
           <label>팀</label>

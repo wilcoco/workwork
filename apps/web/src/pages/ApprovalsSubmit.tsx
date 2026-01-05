@@ -11,6 +11,8 @@ export function ApprovalsSubmit() {
   const processInstanceId = params?.get('processInstanceId') || '';
   const taskInstanceId = params?.get('taskInstanceId') || '';
   const [steps, setSteps] = useState<Array<{ id: string; name: string }>>([]);
+  const [procTasks, setProcTasks] = useState<any[]>([]);
+  const [selectedTask, setSelectedTask] = useState<{ instanceId: string; taskId: string } | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [dueAt, setDueAt] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,6 +53,19 @@ export function ApprovalsSubmit() {
     q.on('text-change', () => setContentHtml(q.root.innerHTML));
     quillRef.current = q;
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!requestedById) return;
+        const items = await apiJson<any[]>(`/api/processes/inbox?assigneeId=${encodeURIComponent(requestedById)}&status=READY`);
+        const list = (items || []).filter((t: any) => String(t.taskType).toUpperCase() === 'APPROVAL');
+        setProcTasks(list);
+        // If params were provided via URL, prefer that as selected
+        if (processInstanceId && taskInstanceId) setSelectedTask({ instanceId: processInstanceId, taskId: taskInstanceId });
+      } catch {}
+    })();
+  }, [requestedById]);
 
   useEffect(() => {
     (async () => {
@@ -162,9 +177,10 @@ export function ApprovalsSubmit() {
       if (dueAt) body.dueAt = new Date(dueAt).toISOString();
       const res2 = await apiJson<any>('/api/approvals', { method: 'POST', body: JSON.stringify(body) });
       // If invoked from a process task, complete it with approvalRequestId
-      if (processInstanceId && taskInstanceId && res2?.id) {
+      const linkage = selectedTask || (processInstanceId && taskInstanceId ? { instanceId: processInstanceId, taskId: taskInstanceId } : null);
+      if (linkage && res2?.id) {
         try {
-          await apiJson(`/api/processes/${encodeURIComponent(processInstanceId)}/tasks/${encodeURIComponent(taskInstanceId)}/complete`, {
+          await apiJson(`/api/processes/${encodeURIComponent(linkage.instanceId)}/tasks/${encodeURIComponent(linkage.taskId)}/complete`, {
             method: 'POST',
             body: JSON.stringify({ approvalRequestId: res2.id }),
           });
@@ -176,6 +192,7 @@ export function ApprovalsSubmit() {
       setTitle('');
       setContentHtml('');
       setAttachments([]);
+      setSelectedTask(null);
     } catch (e: any) {
       setError(e?.message || '요청 실패');
     } finally {
@@ -188,6 +205,24 @@ export function ApprovalsSubmit() {
       {requestedById ? null : <div style={{ color: '#DC2626' }}>로그인이 필요합니다.</div>}
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {okMsg && <div style={{ color: '#0F3D73' }}>{okMsg}</div>}
+      <div style={{ display: 'grid', gap: 8 }}>
+        <h3>프로세스 결재 대상 (선택)</h3>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
+          {(procTasks || []).map((t: any) => (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <b>{t.instance?.title || '-'}</b>
+                <span style={{ marginLeft: 8, color: '#64748b' }}>{t.stageLabel ? `· ${t.stageLabel}` : ''}</span>
+                <div style={{ fontSize: 12, color: '#334155' }}>{t.name}</div>
+              </div>
+              <button type="button" style={ghostBtn} onClick={() => setSelectedTask({ instanceId: t.instance?.id, taskId: t.id })}>
+                {selectedTask?.taskId === t.id ? '선택됨' : '선택'}
+              </button>
+            </div>
+          ))}
+          {!procTasks.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>현재 결재 대상 프로세스 과제가 없습니다.</div>}
+        </div>
+      </div>
       <div style={{ display: 'grid', gap: 8 }}>
         <label>팀</label>
         <select value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input}>
