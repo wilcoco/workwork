@@ -445,9 +445,9 @@ export function ProcessTemplates() {
                   <button type="button" className="btn btn-outline" onClick={autoLinearizeEdges}>선형 연결 자동생성</button>
                 </div>
                 {bpmnMode === 'graph' ? (
-                  <BpmnEditor key={`graph-${bpmnJsonText.length}`} jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
+                  <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
                 ) : (
-                  <BpmnFormEditor key={`form-${bpmnJsonText.length}`} jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
+                  <BpmnFormEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
                 )}
               </div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>저장 시 아래 과제 목록은 편집된 흐름 기준으로 재생성됩니다.</div>

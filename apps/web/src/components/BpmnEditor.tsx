@@ -16,6 +16,7 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<any>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<any>>([]);
   const idCounter = useRef(1);
+  const importingRef = useRef(false);
 
   const toJson = useCallback(() => {
     const j = {
@@ -66,9 +67,17 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
 
   // Auto-sync: whenever graph changes, reflect to parent JSON
   useEffect(() => {
+    if (importingRef.current) { importingRef.current = false; return; }
     toJson();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges]);
+
+  // When parent JSON changes (e.g., auto-linearize), import into editor without causing emit loop
+  useEffect(() => {
+    if (!jsonText) return;
+    importingRef.current = true;
+    fromJson(jsonText);
+  }, [jsonText, fromJson]);
 
   const onConnect = useCallback((params: Connection) => setEdges((eds: Edge<any>[]) => addEdge({ ...params, id: `${params.source}-${params.target}-${Date.now()}` }, eds)), [setEdges]);
 

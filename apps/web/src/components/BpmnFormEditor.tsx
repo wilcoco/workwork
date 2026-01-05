@@ -24,6 +24,7 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
   const [newNodeType, setNewNodeType] = useState<BpmnNode['type']>('task');
   const [error, setError] = useState<string>('');
   const idSeq = useRef<number>(1);
+  const importingRef = useRef<boolean>(false);
 
   const parseJson = useCallback((txt: string) => {
     try {
@@ -58,9 +59,17 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
 
   // Auto-sync: whenever nodes/edges change, emit JSON to parent so Save uses latest BPMN
   useEffect(() => {
+    if (importingRef.current) { importingRef.current = false; return; }
     emitJson();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges]);
+
+  // When parent JSON changes (e.g., auto-linearize), import into editor
+  useEffect(() => {
+    if (!jsonText) return;
+    importingRef.current = true;
+    parseJson(jsonText);
+  }, [jsonText, parseJson]);
 
   const emitJson = useCallback(() => {
     const j = {
