@@ -13,6 +13,8 @@ interface ProcTaskLite {
 interface AssigneeAgg {
   id: string;
   name: string;
+  orgUnitId?: string;
+  orgName?: string;
   counts: { total: number; completed: number; inProgress: number; ready: number; notStarted: number; skipped: number; overdue: number };
 }
 
@@ -38,6 +40,8 @@ export function ProcessDashboard() {
   const [delayedOnly, setDelayedOnly] = useState(false);
   const [items, setItems] = useState<ProcInstLite[]>([]);
   const [loading, setLoading] = useState(false);
+  const [orgFilter, setOrgFilter] = useState<string>('');
+  const [assigneeSort, setAssigneeSort] = useState<'OVERDUE_DESC' | 'RATE_ASC' | 'NAME_ASC'>('OVERDUE_DESC');
 
   useEffect(() => {
     (async () => {
@@ -68,6 +72,30 @@ export function ProcessDashboard() {
   const filtered = useMemo(() => {
     return items.filter((it) => (delayedOnly ? !!it.delayed : true));
   }, [items, delayedOnly]);
+
+  const orgOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      for (const a of (it.assignees || [])) {
+        const name = a.orgName || '';
+        if (name) set.add(name);
+      }
+    }
+    return Array.from(set).sort();
+  }, [items]);
+
+  const sortAssignees = (arr: AssigneeAgg[]) => {
+    const copy = [...arr];
+    if (assigneeSort === 'OVERDUE_DESC') {
+      copy.sort((a, b) => (b.counts.overdue - a.counts.overdue) || (b.counts.inProgress - a.counts.inProgress));
+    } else if (assigneeSort === 'RATE_ASC') {
+      const rate = (x: AssigneeAgg) => (x.counts.total ? x.counts.completed / x.counts.total : 1);
+      copy.sort((a, b) => rate(a) - rate(b));
+    } else if (assigneeSort === 'NAME_ASC') {
+      copy.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return copy;
+  };
 
   const canExec = (inst: ProcInstLite) => {
     const role = String(me?.role || '').toUpperCase();
@@ -122,6 +150,24 @@ export function ProcessDashboard() {
         <button className="btn" onClick={load} disabled={loading}>새로고침</button>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label>
+          담당자 조직 필터
+          <select value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
+            <option value="">전체</option>
+            {orgOptions.map((o) => (<option key={o} value={o}>{o}</option>))}
+          </select>
+        </label>
+        <label>
+          담당자 정렬
+          <select value={assigneeSort} onChange={(e) => setAssigneeSort(e.target.value as any)}>
+            <option value="OVERDUE_DESC">지연 많은 순</option>
+            <option value="RATE_ASC">완료율 낮은 순</option>
+            <option value="NAME_ASC">이름순</option>
+          </select>
+        </label>
+      </div>
+
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 2fr 1fr', gap: 0, fontWeight: 700, background: '#f8fafc', padding: '8px 10px' }}>
           <div>프로세스</div>
@@ -145,16 +191,48 @@ export function ProcessDashboard() {
             <div>{fmt(it.startAt)}</div>
             <div>{fmt(it.expectedEndAt)}</div>
             <div>{it.delayed ? '🔴' : ''}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {(it.assignees || []).map((a) => (
-                <div key={a.id} style={{ fontSize: 12, color: '#334155' }}>
-                  <b>{a.name}</b> · 완료 {a.counts.completed}/{a.counts.total}
-                  {a.counts.inProgress ? ` · 진행 ${a.counts.inProgress}` : ''}
-                  {a.counts.ready ? ` · 대기 ${a.counts.ready}` : ''}
-                  {a.counts.overdue ? ` · 지연 ${a.counts.overdue}` : ''}
-                </div>
-              ))}
-              {!(it.assignees || []).length && <div style={{ fontSize: 12, color: '#94a3b8' }}>담당자 없음</div>}
+            <div style={{ display: 'grid', gap: 6 }}>
+              {(() => {
+                const list = (it.assignees || []);
+                const filteredAssignees = list.filter(a => !orgFilter || a.orgName === orgFilter);
+                if (!filteredAssignees.length) return <div style={{ fontSize: 12, color: '#94a3b8' }}>담당자 없음</div>;
+                // 그룹핑 by org
+                const byOrg = new Map<string, AssigneeAgg[]>();
+                for (const a of filteredAssignees) {
+                  const k = a.orgName || '미지정팀';
+                  if (!byOrg.has(k)) byOrg.set(k, []);
+                  byOrg.get(k)!.push(a);
+                }
+                return Array.from(byOrg.entries()).map(([org, arr]) => {
+                  const sorted = sortAssignees(arr);
+                  return (
+                    <div key={org} style={{ display: 'grid', gap: 4 }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>{org}</div>
+                      {sorted.map((a) => {
+                        const total = a.counts.total || 0;
+                        const done = a.counts.completed || 0;
+                        const prog = a.counts.inProgress || 0;
+                        const ready = a.counts.ready || 0;
+                        const pct = total ? Math.round((done / total) * 100) : 100;
+                        return (
+                          <div key={a.id} style={{ display: 'grid', gap: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#334155' }}>
+                              <b>{a.name}</b>
+                              <span style={{ background: '#DCFCE7', color: '#166534', borderRadius: 999, padding: '0 6px' }}>완료 {done}/{total}</span>
+                              {prog ? <span style={{ background: '#DBEAFE', color: '#1E3A8A', borderRadius: 999, padding: '0 6px' }}>진행 {prog}</span> : null}
+                              {ready ? <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '0 6px' }}>대기 {ready}</span> : null}
+                              {a.counts.overdue ? <span style={{ background: '#FEE2E2', color: '#991B1B', borderRadius: 999, padding: '0 6px' }}>지연 {a.counts.overdue}</span> : null}
+                            </div>
+                            <div style={{ width: '100%', height: 8, background: '#EEF2F7', borderRadius: 999, overflow: 'hidden' }}>
+                              <div style={{ width: `${pct}%`, height: '100%', background: '#22C55E' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                });
+              })()}
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               {it.status === 'ACTIVE' && canExec(it) && (

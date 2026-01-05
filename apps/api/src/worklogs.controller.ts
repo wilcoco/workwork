@@ -614,8 +614,22 @@ export class WorklogsController {
 
   @Get(':id')
   async get(@Param('id') id: string) {
-    const wl = await this.prisma.worklog.findUnique({ where: { id } });
-    return wl;
+    const wl = await (this.prisma as any).worklog.findUnique({
+      where: { id },
+      include: {
+        initiative: { include: { keyResult: { include: { objective: true } } } },
+        createdBy: { include: { orgUnit: true } },
+      },
+    });
+    if (!wl) return null;
+    const task = await (this.prisma as any).processTaskInstance.findFirst({ where: { worklogId: id }, include: { instance: true } });
+    const process = task
+      ? {
+          instance: { id: task.instanceId, title: (task as any).instance?.title || '' },
+          task: { id: task.id, name: task.name },
+        }
+      : null;
+    return { ...wl, process } as any;
   }
 
   @Get('stats/weekly')

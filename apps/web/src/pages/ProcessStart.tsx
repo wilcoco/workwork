@@ -313,9 +313,9 @@ export function ProcessStart() {
                           ))}
                         </select>
                       </div>
-                      <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
+                      <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
                         <label>
-                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>예정 시작</span>
+                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>시작</span>
                           <input type="datetime-local"
                             value={(t.id && plans[String(t.id)]?.plannedStartAt) || ''}
                             onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], plannedStartAt: e.target.value } }))}
@@ -323,18 +323,10 @@ export function ProcessStart() {
                           />
                         </label>
                         <label>
-                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>예정 종료</span>
+                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>종료</span>
                           <input type="datetime-local"
                             value={(t.id && plans[String(t.id)]?.plannedEndAt) || ''}
                             onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], plannedEndAt: e.target.value } }))}
-                            disabled={t.__source === 'bpmn'}
-                          />
-                        </label>
-                        <label>
-                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>마감일</span>
-                          <input type="datetime-local"
-                            value={(t.id && plans[String(t.id)]?.deadlineAt) || ''}
-                            onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], deadlineAt: e.target.value } }))}
                             disabled={t.__source === 'bpmn'}
                           />
                         </label>

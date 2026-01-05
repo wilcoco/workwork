@@ -91,6 +91,20 @@ export function ProcessInstanceDetail() {
     return Array.from(map.entries());
   }, [inst]);
 
+  const summary = useMemo(() => {
+    const tasks = inst?.tasks || [];
+    const total = tasks.length;
+    const completed = tasks.filter((t) => t.status === 'COMPLETED').length;
+    const inProgress = tasks.filter((t) => t.status === 'IN_PROGRESS').length;
+    const ready = tasks.filter((t) => t.status === 'READY').length;
+    const notStarted = tasks.filter((t) => t.status === 'NOT_STARTED').length;
+    const skipped = tasks.filter((t) => t.status === 'SKIPPED').length;
+    const now = Date.now();
+    const overdue = tasks.filter((t: any) => t.plannedEndAt && t.status !== 'COMPLETED' && t.status !== 'SKIPPED' && new Date(t.plannedEndAt).getTime() < now).length;
+    const pct = total ? Math.round((completed / total) * 100) : 100;
+    return { total, completed, inProgress, ready, notStarted, skipped, overdue, pct };
+  }, [inst]);
+
   if (loading && !inst) return <div>불러오는 중...</div>;
   if (error) return <div style={{ color: '#dc2626' }}>{error}</div>;
   if (!inst) return <div>존재하지 않는 프로세스입니다.</div>;
@@ -259,6 +273,17 @@ export function ProcessInstanceDetail() {
         </div>
         <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
           시작: {fmt(inst.startAt)}{inst.expectedEndAt ? ` · 예상완료: ${fmt(inst.expectedEndAt)}` : ''}{inst.endAt ? ` · 완료: ${fmt(inst.endAt)}` : ''}
+        </div>
+        <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ background: '#DCFCE7', color: '#166534', borderRadius: 999, padding: '2px 8px', fontSize: 12 }}>완료 {summary.completed}/{summary.total}</span>
+            {summary.inProgress ? <span style={{ background: '#DBEAFE', color: '#1E3A8A', borderRadius: 999, padding: '2px 8px', fontSize: 12 }}>진행 {summary.inProgress}</span> : null}
+            {summary.ready ? <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '2px 8px', fontSize: 12 }}>대기 {summary.ready}</span> : null}
+            {summary.overdue ? <span style={{ background: '#FEE2E2', color: '#991B1B', borderRadius: 999, padding: '2px 8px', fontSize: 12 }}>지연 {summary.overdue}</span> : null}
+          </div>
+          <div style={{ width: '100%', height: 10, background: '#EEF2F7', borderRadius: 999, overflow: 'hidden' }}>
+            <div style={{ width: `${summary.pct}%`, height: '100%', background: '#22C55E' }} />
+          </div>
         </div>
         {(inst.itemCode || inst.moldCode || inst.carModelCode) && (
           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>

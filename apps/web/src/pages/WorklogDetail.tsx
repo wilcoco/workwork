@@ -59,8 +59,14 @@ export function WorklogDetail() {
     <div style={{ display: 'grid', gap: 8 }}>
       <h2>업무일지 상세</h2>
       <div><b>ID:</b> {data.id}</div>
-      <div><b>Initiative:</b> {data.initiativeId}</div>
-      <div><b>작성자:</b> {data.createdById}</div>
+      <div style={{ display: 'grid', gap: 4 }}>
+        <div><b>상위 과제(OKR):</b> {data?.initiative?.keyResult?.objective?.title ? `${data.initiative.keyResult.objective.title} / KR: ${data.initiative.keyResult.title}` : '-'}</div>
+        <div><b>과제(initiative):</b> {data?.initiative?.title || data.initiativeId || '-'}</div>
+        {data?.process && (
+          <div><b>프로세스:</b> {data.process.instance?.title || ''} / {data.process.task?.name || ''}</div>
+        )}
+      </div>
+      <div><b>작성자:</b> {data?.createdBy?.name || data.createdById}</div>
       <div><b>진척%:</b> {data.progressPct}</div>
       <div><b>소요시간(분):</b> {data.timeSpentMinutes}</div>
       <div><b>차단코드:</b> {data.blockerCode || '-'}</div>
