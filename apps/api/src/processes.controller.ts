@@ -53,13 +53,13 @@ export class ProcessesController {
     const result = await Promise.all(
       rows.map(async (r: any) => {
         const delayed = r.status === 'ACTIVE' && r.expectedEndAt && new Date(r.expectedEndAt).getTime() < now.getTime();
-        const ids = Array.from(
+        const ids: string[] = Array.from(
           new Set(
             (r.tasks || [])
               .map((t: any) => t.assigneeId as string | undefined)
               .filter((x: string | undefined): x is string => !!x)
           )
-        );
+        ) as string[];
         const users: any[] = ids.length
           ? await (this.prisma as any).user.findMany({ where: { id: { in: ids as any } }, include: { orgUnit: true } })
           : [];
