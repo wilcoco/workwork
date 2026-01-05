@@ -227,7 +227,7 @@ export class ProcessesController {
 
   @Get(':id')
   async getOne(@Param('id') id: string) {
-    return this.prisma.processInstance.findUnique({
+    return (this.prisma as any).processInstance.findUnique({
       where: { id },
       include: {
         template: { include: { tasks: { orderBy: { orderHint: 'asc' } } } },

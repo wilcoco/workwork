@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { BpmnMiniView } from '../components/BpmnMiniView';
 
 interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'; }
 
@@ -301,6 +302,18 @@ export function ProcessDashboard() {
             </div>
             {expanded[it.id] && (
               <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
+                <div style={{ marginBottom: 10, border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ padding: '6px 8px', background: '#f9fafb', fontWeight: 700, fontSize: 12 }}>흐름 미리보기</div>
+                  {detailLoading[it.id] ? (
+                    <div style={{ padding: 10, fontSize: 12, color: '#64748b' }}>불러오는 중…</div>
+                  ) : (
+                    (() => {
+                      const d = detailMap[it.id];
+                      if (!d?.template?.bpmnJson) return <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>BPMN 정보가 없습니다.</div>;
+                      return <div style={{ padding: 8 }}><BpmnMiniView bpmn={d.template.bpmnJson} height={260} /></div>;
+                    })()
+                  )}
+                </div>
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1fr 1fr 1fr 1fr 0.9fr', background: '#f9fafb', padding: '6px 8px', fontWeight: 600, fontSize: 12 }}>
                     <div>단계/과제</div>
@@ -357,6 +370,26 @@ export function ProcessDashboard() {
                           const predNums = preds.map((pid: string) => seqMap.get(String(pid)) || 0).filter(Boolean).sort((a, b) => a - b);
                           const mode = String(tt.predecessorMode || 'ALL').toUpperCase();
                           const line = (group.get(tt.id) || []).slice().sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+                          // compute predecessor satisfaction based on instance tasks (same as backend semantics)
+                          const predBlocks: number[] = [];
+                          if (preds.length) {
+                            if (mode === 'ANY') {
+                              // at least one predecessor template has a COMPLETED instance
+                              const anyOk = preds.some((pid: string) => (group.get(pid) || []).some((ins: any) => ['COMPLETED'].includes(String(ins.status).toUpperCase())));
+                              if (!anyOk) {
+                                // all are blocking → show all pred numbers
+                                predBlocks.push(...predNums);
+                              }
+                            } else {
+                              // ALL: every instance of each predecessor template must be COMPLETED or SKIPPED
+                              for (const pid of preds) {
+                                const arr = (group.get(pid) || []) as any[];
+                                if (!arr.length) { predBlocks.push(seqMap.get(String(pid)) || 0); continue; }
+                                const allDone = arr.every((ins: any) => ['COMPLETED','SKIPPED'].includes(String(ins.status).toUpperCase()));
+                                if (!allDone) predBlocks.push(seqMap.get(String(pid)) || 0);
+                              }
+                            }
+                          }
                           return (
                             <div key={tt.id} style={{ display: 'grid', gridTemplateColumns: '0.5fr 1.6fr 1fr 1.2fr 3fr', padding: '6px 8px', borderTop: '1px solid #eef2f7', fontSize: 12, alignItems: 'center' }}>
                               <div>{idx}</div>
@@ -367,7 +400,12 @@ export function ProcessDashboard() {
                               <div>
                                 <span style={{ background: tt.taskType === 'WORKLOG' ? '#FEF9C3' : '#F1F5F9', color: '#334155', borderRadius: 999, padding: '0 6px' }}>{tt.taskType}</span>
                               </div>
-                              <div style={{ color: '#475569' }}>{predNums.length ? `${predNums.join(', ')} (${mode})` : '-'}</div>
+                              <div style={{ color: '#475569', display: 'grid', gap: 2 }}>
+                                {predNums.length ? `${predNums.join(', ')} (${mode})` : '-'}
+                                {predBlocks.length ? (
+                                  <div style={{ fontSize: 11, color: '#b91c1c' }}>미완료 선행: {predBlocks.sort((a,b)=>a-b).join(', ')}</div>
+                                ) : null}
+                              </div>
                               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                 {line.length ? line.map((ins: any) => {
                                   const st = statusBadge(ins.status);

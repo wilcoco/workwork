@@ -225,6 +225,42 @@ export function ProcessTemplates() {
     alert('업무 프로세스 템플릿이 저장되었습니다.');
   }
 
+  function autoLinearizeEdges() {
+    try {
+      const raw = (bpmnJsonText || '').trim();
+      if (!raw) {
+        alert('BPMN JSON이 없습니다. 먼저 그래프/폼 편집기로 노드를 추가하세요.');
+        return;
+      }
+      const j: any = JSON.parse(raw || '{}');
+      const nodes: any[] = Array.isArray(j?.nodes) ? j.nodes : [];
+      if (!nodes.length) {
+        alert('노드가 없습니다. 먼저 노드를 추가하세요.');
+        return;
+      }
+      const normType = (t: any) => String(t || 'task').toLowerCase();
+      const tasks = nodes.filter((n: any) => normType(n.type) === 'task');
+      const start = nodes.find((n: any) => normType(n.type) === 'start');
+      const end = nodes.find((n: any) => normType(n.type) === 'end');
+      const eidBase = Date.now();
+      const edges: any[] = [];
+      if (start && tasks[0]) edges.push({ id: `e${eidBase}_s`, source: String(start.id), target: String(tasks[0].id) });
+      for (let i = 0; i < tasks.length - 1; i++) {
+        edges.push({ id: `e${eidBase}_${i}`, source: String(tasks[i].id), target: String(tasks[i + 1].id) });
+      }
+      if (end && tasks.length) edges.push({ id: `e${eidBase}_e`, source: String(tasks[tasks.length - 1].id), target: String(end.id) });
+      if (Array.isArray(j.edges) && j.edges.length > 0) {
+        const ok = confirm(`기존 엣지 ${j.edges.length}개를 모두 삭제하고 순차 연결로 대체할까요?`);
+        if (!ok) return;
+      }
+      j.edges = edges;
+      setBpmnJsonText(JSON.stringify(j, null, 2));
+      alert('선형 연결이 생성되었습니다. 저장하면 선행 관계가 반영됩니다.');
+    } catch (e) {
+      alert('BPMN JSON이 유효하지 않습니다.');
+    }
+  }
+
   
 
   async function removeTemplate(id?: string) {
@@ -405,10 +441,13 @@ export function ProcessTemplates() {
                   <button type="button" className={`btn ${bpmnMode === 'graph' ? 'btn-primary' : ''}`} onClick={() => setBpmnMode('graph')}>그래프 편집</button>
                   <button type="button" className={`btn ${bpmnMode === 'form' ? 'btn-primary' : ''}`} onClick={() => setBpmnMode('form')}>순차 폼 편집</button>
                 </div>
+                <div>
+                  <button type="button" className="btn btn-outline" onClick={autoLinearizeEdges}>선형 연결 자동생성</button>
+                </div>
                 {bpmnMode === 'graph' ? (
-                  <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
+                  <BpmnEditor key={`graph-${bpmnJsonText.length}`} jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
                 ) : (
-                  <BpmnFormEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
+                  <BpmnFormEditor key={`form-${bpmnJsonText.length}`} jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
                 )}
               </div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>저장 시 아래 과제 목록은 편집된 흐름 기준으로 재생성됩니다.</div>
