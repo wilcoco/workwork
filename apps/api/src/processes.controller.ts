@@ -33,7 +33,19 @@ export class ProcessesController {
         initiative: { select: { id: true, title: true } },
         tasks: {
           orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
-          select: { id: true, stageLabel: true, taskType: true, status: true, assigneeId: true, plannedEndAt: true },
+          select: {
+            id: true,
+            name: true,
+            stageLabel: true,
+            taskType: true,
+            status: true,
+            assigneeId: true,
+            plannedStartAt: true,
+            plannedEndAt: true,
+            actualStartAt: true,
+            actualEndAt: true,
+            deadlineAt: true,
+          },
         },
       },
     });
@@ -70,6 +82,26 @@ export class ProcessesController {
         }
         const assignees = (users as any[])
           .map((u) => ({ id: u.id, name: u.name, orgUnitId: u.orgUnitId || u.orgUnit?.id || '', orgName: u.orgUnit?.name || '', counts: aggMap.get(u.id)! }));
+        const userMap = new Map<string, any>();
+        for (const u of users as any[]) userMap.set(u.id, u);
+        const tasks = (r.tasks || []).map((t: any) => {
+          const u = t.assigneeId ? userMap.get(t.assigneeId) : null;
+          const assignee = u ? { id: u.id, name: u.name, orgName: u.orgUnit?.name || '' } : null;
+          return {
+            id: t.id,
+            name: t.name,
+            stageLabel: t.stageLabel,
+            taskType: t.taskType,
+            status: t.status,
+            assigneeId: t.assigneeId,
+            plannedStartAt: t.plannedStartAt,
+            plannedEndAt: t.plannedEndAt,
+            actualStartAt: t.actualStartAt,
+            actualEndAt: t.actualEndAt,
+            deadlineAt: t.deadlineAt,
+            assignee,
+          };
+        });
         return {
           id: r.id,
           title: r.title,
@@ -81,7 +113,7 @@ export class ProcessesController {
           startedBy: r.startedBy,
           initiative: r.initiative,
           delayed,
-          tasks: r.tasks,
+          tasks,
           assignees,
         };
       })

@@ -11,20 +11,31 @@ export class AdminController {
       throw new BadRequestException("confirm must be 'ERASE ALL'");
     }
     const summary: Record<string, number> = {};
-    await this.prisma.$transaction(async (tx) => {
+    try {
+      await this.prisma.$transaction(async (tx) => {
       // 1) Non-OKR, ancillary tables (child-first where applicable)
-      summary.checklistTicks = (await tx.checklistTick.deleteMany({})).count;
-      summary.checklistItems = (await tx.checklistItem.deleteMany({})).count;
-      summary.worklogs = (await tx.worklog.deleteMany({})).count;
-      summary.delegations = (await tx.delegation.deleteMany({})).count;
-      summary.approvalSteps = (await tx.approvalStep.deleteMany({})).count;
-      summary.approvalRequests = (await tx.approvalRequest.deleteMany({})).count;
-      summary.shares = (await tx.share.deleteMany({})).count;
-      summary.feedbacks = (await tx.feedback.deleteMany({})).count;
-      summary.notifications = (await tx.notification.deleteMany({})).count;
-      summary.events = (await tx.event.deleteMany({})).count;
-      summary.uploads = (await tx.upload.deleteMany({})).count;
-      summary.assets = (await tx.asset.deleteMany({})).count;
+      summary.progressEntries = (await (tx as any).progressEntry.deleteMany({})).count;
+      summary.processStopEvents = (await (tx as any).processStopEvent.deleteMany({})).count;
+      summary.processTaskInstances = (await (tx as any).processTaskInstance.deleteMany({})).count;
+      summary.processInstances = (await (tx as any).processInstance.deleteMany({})).count;
+      summary.processTaskTemplates = (await (tx as any).processTaskTemplate.deleteMany({})).count;
+      summary.processTemplates = (await (tx as any).processTemplate.deleteMany({})).count;
+      summary.helpTickets = (await (tx as any).helpTicket.deleteMany({})).count;
+      summary.carDispatchRequests = (await (tx as any).carDispatchRequest.deleteMany({})).count;
+      summary.attendanceRequests = (await (tx as any).attendanceRequest.deleteMany({})).count;
+      summary.keyResultAssignments = (await (tx as any).keyResultAssignment.deleteMany({})).count;
+      summary.checklistTicks = (await (tx as any).checklistTick.deleteMany({})).count;
+      summary.checklistItems = (await (tx as any).checklistItem.deleteMany({})).count;
+      summary.worklogs = (await (tx as any).worklog.deleteMany({})).count;
+      summary.delegations = (await (tx as any).delegation.deleteMany({})).count;
+      summary.approvalSteps = (await (tx as any).approvalStep.deleteMany({})).count;
+      summary.approvalRequests = (await (tx as any).approvalRequest.deleteMany({})).count;
+      summary.shares = (await (tx as any).share.deleteMany({})).count;
+      summary.feedbacks = (await (tx as any).feedback.deleteMany({})).count;
+      summary.notifications = (await (tx as any).notification.deleteMany({})).count;
+      summary.events = (await (tx as any).event.deleteMany({})).count;
+      summary.uploads = (await (tx as any).upload.deleteMany({})).count;
+      summary.assets = (await (tx as any).asset.deleteMany({})).count;
 
       // 2) OKR trees: delete via cascade routines (roots first)
       const deleteInitiativeCascade = async (id: string) => {
@@ -66,6 +77,7 @@ export class AdminController {
       summary.userGoals = (await (tx as any).userGoal.deleteMany({})).count;
 
       // 4) Users (unlink then delete)
+      await tx.orgUnit.updateMany({ data: { managerId: null } });
       await tx.user.updateMany({ data: { orgUnitId: null } });
       summary.users = (await tx.user.deleteMany({})).count;
 
@@ -78,7 +90,12 @@ export class AdminController {
         const res = await tx.orgUnit.deleteMany({ where: { id: { in: ids } } });
         summary.orgUnits = (summary.orgUnits || 0) + res.count;
       }
+      await (this.prisma as any).orgUnit.updateMany({ data: { managerId: null } });
     });
+    } catch (e: any) {
+      // Provide a readable error instead of generic 500
+      throw new BadRequestException(`wipe failed: ${e?.message || e}`);
+    }
     return { ok: true, summary };
   }
 }

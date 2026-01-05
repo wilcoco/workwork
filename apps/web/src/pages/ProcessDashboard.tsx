@@ -5,9 +5,17 @@ interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 
 
 interface ProcTaskLite {
   id: string;
+  name?: string;
   stageLabel?: string | null;
   taskType: 'COOPERATION' | 'WORKLOG' | 'APPROVAL' | 'TASK';
   status: string;
+  assigneeId?: string;
+  assignee?: { id: string; name: string; orgName?: string } | null;
+  plannedStartAt?: string;
+  plannedEndAt?: string;
+  actualStartAt?: string;
+  actualEndAt?: string;
+  deadlineAt?: string;
 }
 
 interface AssigneeAgg {
@@ -42,6 +50,7 @@ export function ProcessDashboard() {
   const [loading, setLoading] = useState(false);
   const [orgFilter, setOrgFilter] = useState<string>('');
   const [assigneeSort, setAssigneeSort] = useState<'OVERDUE_DESC' | 'RATE_ASC' | 'NAME_ASC'>('OVERDUE_DESC');
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     (async () => {
@@ -105,6 +114,7 @@ export function ProcessDashboard() {
   };
 
   const fmt = (s?: string) => (s ? new Date(s).toLocaleString() : '');
+  const fmtDate = (s?: string) => (s ? new Date(s).toLocaleDateString() : '');
 
   async function stop(inst: ProcInstLite) {
     if (!me) return;
@@ -241,7 +251,39 @@ export function ProcessDashboard() {
               {it.status === 'SUSPENDED' && canExec(it) && (
                 <button className="btn btn-primary" onClick={() => resume(it)}>재개</button>
               )}
+              <button className="btn" onClick={() => setExpanded((prev) => ({ ...prev, [it.id]: !prev[it.id] }))}>
+                {expanded[it.id] ? '세부 접기' : '세부 보기'}
+              </button>
             </div>
+            {expanded[it.id] && (
+              <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1fr 1fr 1fr 1fr 0.9fr', background: '#f9fafb', padding: '6px 8px', fontWeight: 600, fontSize: 12 }}>
+                    <div>단계/과제</div>
+                    <div>담당자</div>
+                    <div>계획시작</div>
+                    <div>계획완료</div>
+                    <div>실착수</div>
+                    <div>실완료</div>
+                    <div>상태</div>
+                  </div>
+                  {(it.tasks || []).map((t) => (
+                    <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1fr 1fr 1fr 1fr 0.9fr', padding: '6px 8px', borderTop: '1px solid #eef2f7', fontSize: 12, alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{t.name || '-'}</div>
+                        {t.stageLabel ? <div style={{ color: '#6b7280' }}>{t.stageLabel}</div> : null}
+                      </div>
+                      <div>{t.assignee?.name || '-'}</div>
+                      <div>{fmtDate(t.plannedStartAt)}</div>
+                      <div>{fmtDate(t.plannedEndAt)}</div>
+                      <div>{fmtDate(t.actualStartAt)}</div>
+                      <div>{fmtDate(t.actualEndAt)}</div>
+                      <div>{t.status}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
         {!filtered.length && (

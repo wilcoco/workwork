@@ -71,7 +71,7 @@ export function ProcessInbox() {
                 {t.status === 'READY' && (
                   <button className="btn btn-primary" onClick={() => onExecute(t)}>실행</button>
                 )}
-                <Link to={`/process/instances/${t.instance.id}`} className="btn btn-ghost">열기</Link>
+                <Link to={`/process/instances/${encodeURIComponent(t.instance.id)}?return=${encodeURIComponent('/process/inbox')}`} className="btn btn-ghost">열기</Link>
               </div>
             </div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>

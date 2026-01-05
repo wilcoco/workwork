@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { UserPicker, type PickedUser } from '../components/UserPicker';
 
@@ -37,6 +37,7 @@ type ModEntry = { ts: string; userId: string; reason: string; changes: ModChange
 export function ProcessInstanceDetail() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
+  const loc = useLocation();
   const [inst, setInst] = useState<ProcInst | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
@@ -83,7 +84,10 @@ export function ProcessInstanceDetail() {
   useEffect(() => {
     if (error) {
       try { alert(error); } catch {}
-      nav('/process/instances');
+      const params = new URLSearchParams(loc.search || '');
+      const ret = (params.get('return') || '').trim();
+      if (ret && ret.startsWith('/')) nav(ret);
+      else nav('/process/instances');
     }
   }, [error]);
 
