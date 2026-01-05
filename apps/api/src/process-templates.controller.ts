@@ -268,9 +268,15 @@ export class ProcessTemplatesController {
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
-    await this.prisma.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
-    await this.prisma.processTemplate.delete({ where: { id } });
-    return { ok: true };
+    return this.prisma.$transaction(async (tx) => {
+      const inUse = await tx.processInstance.count({ where: { templateId: id } });
+      if (inUse > 0) {
+        throw new BadRequestException('이미 이 템플릿으로 생성된 프로세스가 있어 삭제할 수 없습니다.');
+      }
+      await tx.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
+      await tx.processTemplate.delete({ where: { id } });
+      return { ok: true };
+    });
   }
 
   private async isExecOrCeo(userId: string): Promise<boolean> {

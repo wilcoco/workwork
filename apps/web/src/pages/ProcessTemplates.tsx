@@ -230,10 +230,15 @@ export function ProcessTemplates() {
   async function removeTemplate(id?: string) {
     if (!id) return;
     if (!confirm('정말 삭제하시겠습니까? 이 프로세스의 단계 정의도 함께 삭제됩니다.')) return;
-    await apiJson(`/api/process-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    setEditing(null);
-    setSelectedId(null);
-    await loadList();
+    try {
+      await apiJson(`/api/process-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setEditing(null);
+      setSelectedId(null);
+      await loadList();
+    } catch (e: any) {
+      const msg = e?.message || '삭제 중 오류가 발생했습니다.';
+      alert(msg);
+    }
   }
 
   return (
