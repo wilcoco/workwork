@@ -28,7 +28,7 @@ export function ApprovalsMine() {
     try {
       const list = await apiJson<{ items: any[] }>(`/api/approvals?requestedById=${encodeURIComponent(uid)}&limit=50`);
       const baseItems = (list.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      // enrich worklog subjects with title/date
+      // enrich subjects
       const enriched = await Promise.all(baseItems.map(async (a: any) => {
         let docTitle: string | undefined;
         let docDate: string | undefined;
@@ -41,6 +41,14 @@ export function ApprovalsMine() {
             const first = (note || '').split(/\n+/)[0] || '';
             docTitle = first || '(제목 없음)';
             if (wl?.date) docDate = wl.date;
+          } catch {}
+        } else if (a.subjectType === 'PROCESS' && a.subjectId) {
+          try {
+            const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(a.subjectId)}`);
+            const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(a.subjectId)}/approval-summary`);
+            doc = { process: inst, summaryHtml: sum?.html || '' };
+            docTitle = `프로세스 결재 - ${(inst?.title || '').trim()}`;
+            docDate = inst?.createdAt || a.createdAt;
           } catch {}
         }
         return { ...a, docTitle, docDate, _doc: doc };
@@ -83,13 +91,16 @@ export function ApprovalsMine() {
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
               {stepSummary && <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{stepSummary}</div>}
-              {it._doc && (
+              {it.subjectType === 'Worklog' && it._doc && (
                 it._doc.attachments?.contentHtml ? (
                   <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(it._doc.attachments.contentHtml) }} />
                 ) : (
                   <div style={{ color: '#334155', marginTop: 6 }}>{String(it._doc?.note || '').split('\n').slice(1).join('\n')}</div>
                 )
               )}
+              {it.subjectType === 'PROCESS' && it._doc?.summaryHtml ? (
+                <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: it._doc.summaryHtml }} />
+              ) : null}
               {it._doc?.attachments?.files?.length ? (
                 <div className="attachments" style={{ marginTop: 8 }}>
                   {it._doc.attachments.files.map((f: any, i: number) => {
@@ -130,13 +141,16 @@ export function ApprovalsMine() {
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
                   </div>
                   <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
-                  {wl && (
+                  {it.subjectType === 'Worklog' && wl && (
                     wl.attachments?.contentHtml ? (
                       <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
                     ) : (
                       <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(wl?.note || '').split('\n').slice(1).join('\n')}</div>
                     )
                   )}
+                  {it.subjectType === 'PROCESS' && it._doc?.summaryHtml ? (
+                    <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: it._doc.summaryHtml }} />
+                  ) : null}
                   {wl?.attachments?.files?.length ? (
                     <div className="attachments" style={{ marginTop: 8 }}>
                       {wl.attachments.files.map((f: any, i: number) => {

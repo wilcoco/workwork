@@ -194,12 +194,9 @@ export class ProcessesController {
     const approverId = t.assigneeId || undefined;
     const requesterId = inst.startedById;
     if (!approverId || !requesterId) return null;
-    const html = await this.buildApprovalHtml(tx, instanceId);
-    const initiativeId = await this.ensureInitiativeForUserProcess(tx, requesterId, inst, t.name);
-    const wl = await tx.worklog.create({ data: { initiativeId, createdById: requesterId, note: `${inst.title} · ${t.name}`, attachments: { contentHtml: html }, date: new Date(), urgent: false, visibility: 'ALL' as any } });
-    const req = await tx.approvalRequest.create({ data: { subjectType: 'Worklog', subjectId: wl.id, approverId, requestedById: requesterId } });
-    await tx.notification.create({ data: { userId: approverId, type: 'ApprovalRequested', subjectType: 'Worklog', subjectId: wl.id, payload: { requestId: req.id } } });
-    await tx.processTaskInstance.update({ where: { id: t.id }, data: { status: 'IN_PROGRESS', actualStartAt: new Date(), approvalRequestId: req.id, worklogId: wl.id } });
+    const req = await tx.approvalRequest.create({ data: { subjectType: 'PROCESS', subjectId: instanceId, approverId, requestedById: requesterId } });
+    await tx.notification.create({ data: { userId: approverId, type: 'ApprovalRequested', subjectType: 'PROCESS', subjectId: instanceId, payload: { requestId: req.id } } });
+    await tx.processTaskInstance.update({ where: { id: t.id }, data: { status: 'IN_PROGRESS', actualStartAt: new Date(), approvalRequestId: req.id } });
     return req.id as string;
   }
 
@@ -224,6 +221,12 @@ export class ProcessesController {
     const table = `<table style=\"border-collapse:collapse;width:100%;margin-top:8px;\">${head(['#','단계/과제','유형','완료시각','관련 업무일지 요약'])}${rows.join('')}</table>`;
     const meta = `<div style=\"margin:6px 0;color:#64748b;font-size:12px;\">시작: ${inst?.startAt ? new Date(inst.startAt).toLocaleString() : ''} · 시작자: ${safe(inst?.startedBy?.name)}</div>`;
     return `${header}${meta}${table}`;
+  }
+
+  @Get(':id/approval-summary')
+  async approvalSummary(@Param('id') id: string) {
+    const html = await this.buildApprovalHtml(this.prisma as any, id);
+    return { html } as any;
   }
 
   private async ensureInitiativeForUserProcess(tx: any, userId: string, inst: any, taskName: string): Promise<string> {

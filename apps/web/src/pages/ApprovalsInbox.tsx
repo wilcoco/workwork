@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch, apiJson, apiUrl } from '../lib/api';
+import { apiJson, apiUrl } from '../lib/api';
 
 export function ApprovalsInbox() {
   const [userId, setUserId] = useState<string>('');
@@ -8,6 +8,7 @@ export function ApprovalsInbox() {
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<any | null>(null);
   const [comment, setComment] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -16,40 +17,36 @@ export function ApprovalsInbox() {
 
   useEffect(() => {
     if (userId) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, statusFilter]);
 
   async function load() {
     if (!userId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/inbox?userId=${encodeURIComponent(userId)}&onlyUnread=false`);
-      if (!res.ok) throw new Error(`Failed: ${res.status}`);
-      const json = await res.json();
-      const base = (json?.items || [])
-        // Only show pending approval requests: type=ApprovalRequested and not yet read
-        .filter((n: any) => n.type === 'ApprovalRequested' && !n.readAt)
-        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      // Enrich with underlying document when available
-      const enriched = await Promise.all(base.map(async (n: any) => {
+      const params = new URLSearchParams();
+      params.set('approverId', userId);
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      const res = await apiJson<{ items: any[] }>(`/api/approvals?${params.toString()}`);
+      const base = (res.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const enriched = await Promise.all(base.map(async (a: any) => {
         let doc: any = null;
-        const st = n.subjectType || n.payload?.subjectType;
-        const sid = n.subjectId || n.payload?.subjectId;
+        const st = a.subjectType;
+        const sid = a.subjectId;
         if (st === 'Worklog' && sid) {
-          try {
-            doc = await apiJson<any>(`/api/worklogs/${encodeURIComponent(sid)}`);
-          } catch {}
+          try { doc = await apiJson<any>(`/api/worklogs/${encodeURIComponent(sid)}`); } catch {}
         } else if (st === 'CAR_DISPATCH' && sid) {
-          try {
-            doc = await apiJson<any>(`/api/car-dispatch/${encodeURIComponent(sid)}`);
-          } catch {}
+          try { doc = await apiJson<any>(`/api/car-dispatch/${encodeURIComponent(sid)}`); } catch {}
         } else if (st === 'ATTENDANCE' && sid) {
+          try { doc = await apiJson<any>(`/api/attendance/${encodeURIComponent(sid)}`); } catch {}
+        } else if (st === 'PROCESS' && sid) {
           try {
-            doc = await apiJson<any>(`/api/attendance/${encodeURIComponent(sid)}`);
+            const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}`);
+            const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}/approval-summary`);
+            doc = { process: inst, summaryHtml: sum?.html || '' };
           } catch {}
         }
-        return { ...n, _doc: doc };
+        return { ...a, _doc: doc };
       }));
       setItems(enriched);
     } catch (e: any) {
@@ -59,32 +56,36 @@ export function ApprovalsInbox() {
     }
   }
 
-  async function markRead(id: string) {
-    await apiFetch(`/api/notifications/${id}/read`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actorId: userId }) });
+  async function approve(requestId: string, cmt?: string) {
+    await apiJson(`/api/approvals/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: cmt || undefined }) });
     await load();
   }
 
-  async function approve(requestId: string, notificationId: string, cmt?: string) {
-    await apiJson(`/api/approvals/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: cmt || undefined }) });
-    await markRead(notificationId);
-  }
-
-  async function reject(requestId: string, notificationId: string, cmt?: string) {
+  async function reject(requestId: string, cmt?: string) {
     const bodyComment = typeof cmt === 'string' ? cmt : (window.prompt('반려 사유를 입력하세요') || '');
     await apiJson(`/api/approvals/${requestId}/reject`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: bodyComment }) });
-    await markRead(notificationId);
+    await load();
   }
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {error && <div style={{ color: 'red' }}>{error}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label style={{ fontSize: 12, color: '#475569' }}>상태</label>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} style={input}>
+          <option value="PENDING">미승인</option>
+          <option value="APPROVED">승인</option>
+          <option value="REJECTED">반려</option>
+          <option value="ALL">전체</option>
+        </select>
+      </div>
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.map((n) => {
-          const doc = (n as any)._doc as any | null;
-          const st = n.subjectType || n.payload?.subjectType;
+        {items.map((a) => {
+          const doc = (a as any)._doc as any | null;
+          const st = a.subjectType;
           let title = '문서 정보 없음';
           let meta = '';
-          let when = n.createdAt as string | undefined;
+          let when = a.createdAt as string | undefined;
 
           if (st === 'CAR_DISPATCH' && doc) {
             title = `배차 신청 - ${doc.carName || ''}`.trim();
@@ -127,9 +128,19 @@ export function ApprovalsInbox() {
             title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
             meta = `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}`;
             when = wl?.date || wl?.createdAt || when;
+          } else if (st === 'PROCESS' && doc) {
+            const inst = doc.process;
+            title = `프로세스 결재 - ${(inst?.title || '').trim()}`;
+            const parts = [
+              inst?.startedBy?.name ? `시작자: ${inst.startedBy.name}` : '',
+              inst?.startAt ? `시작: ${new Date(inst.startAt).toLocaleString()}` : '',
+              inst?.status ? `상태: ${inst.status}` : '',
+            ].filter(Boolean);
+            meta = parts.join(' · ');
+            when = inst?.createdAt || when;
           }
           return (
-            <div key={n.id} style={card} onClick={() => setActive(n)}>
+            <div key={a.id} style={card} onClick={() => setActive(a)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b>{title}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
@@ -142,6 +153,9 @@ export function ApprovalsInbox() {
                   <div style={{ color: '#334155', marginTop: 6 }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
                 )
               )}
+              {st === 'PROCESS' && doc?.summaryHtml ? (
+                <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: doc.summaryHtml }} />
+              ) : null}
               {st === 'Worklog' && doc?.attachments?.files?.length ? (
                 <div className="attachments" style={{ marginTop: 8 }}>
                   {doc.attachments.files.map((f: any, i: number) => {
@@ -161,14 +175,13 @@ export function ApprovalsInbox() {
                 </div>
               ) : null}
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button onClick={(e) => { e.stopPropagation(); approve(n.payload?.requestId, n.id); }} style={primaryBtn}>승인</button>
-                <button onClick={(e) => { e.stopPropagation(); reject(n.payload?.requestId, n.id); }} style={ghostBtn}>반려</button>
-                <button onClick={(e) => { e.stopPropagation(); markRead(n.id); }} style={ghostBtn}>읽음</button>
+                <button onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={primaryBtn}>승인</button>
+                <button onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={ghostBtn}>반려</button>
               </div>
             </div>
           );
         })}
-        {!items.length && <div>대기 중인 결재 없음</div>}
+        {!items.length && <div>해당 상태의 결재 없음</div>}
       </div>
       {active && (
         <div style={modalOverlay} onClick={() => setActive(null)}>
@@ -176,7 +189,7 @@ export function ApprovalsInbox() {
             {(() => {
               const n = active;
               const doc = (n as any)._doc as any | null;
-              const st = n.subjectType || n.payload?.subjectType;
+              const st = n.subjectType;
               let title = '문서 정보 없음';
               let meta = '';
               let when = n.createdAt as string | undefined;
@@ -222,6 +235,16 @@ export function ApprovalsInbox() {
                 title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
                 meta = `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}`;
                 when = wl?.date || wl?.createdAt || when;
+              } else if (st === 'PROCESS' && doc) {
+                const inst = doc.process;
+                title = `프로세스 결재 - ${(inst?.title || '').trim()}`;
+                const parts = [
+                  inst?.startedBy?.name ? `시작자: ${inst.startedBy.name}` : '',
+                  inst?.startAt ? `시작: ${new Date(inst.startAt).toLocaleString()}` : '',
+                  inst?.status ? `상태: ${inst.status}` : '',
+                ].filter(Boolean);
+                meta = parts.join(' · ');
+                when = inst?.createdAt || when;
               }
               return (
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -237,6 +260,9 @@ export function ApprovalsInbox() {
                       <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
                     )
                   )}
+                  {st === 'PROCESS' && doc?.summaryHtml ? (
+                    <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: doc.summaryHtml }} />
+                  ) : null}
                   {st === 'Worklog' && doc?.attachments?.files?.length ? (
                     <div className="attachments" style={{ marginTop: 8 }}>
                       {doc.attachments.files.map((f: any, i: number) => {
@@ -268,7 +294,7 @@ export function ApprovalsInbox() {
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                       <button
                         onClick={async () => {
-                          await approve(active.payload?.requestId, active.id, comment);
+                          await approve(active.id, comment);
                           setComment('');
                           setActive(null);
                         }}
@@ -278,7 +304,7 @@ export function ApprovalsInbox() {
                       </button>
                       <button
                         onClick={async () => {
-                          await reject(active.payload?.requestId, active.id, comment || undefined);
+                          await reject(active.id, comment || undefined);
                           setComment('');
                           setActive(null);
                         }}
