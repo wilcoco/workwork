@@ -67,6 +67,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         stageLabel: (n.data && (n.data as any).stageLabel) || undefined,
         deadlineOffsetDays: (n.data && (n.data as any).deadlineOffsetDays) ?? undefined,
         approvalUserIds: (n.data && (n.data as any).approvalUserIds) || undefined,
+        position: { x: n.position?.x ?? 0, y: n.position?.y ?? 0 },
       })),
       edges: edges.map((e: Edge<any>) => ({ id: String(e.id), source: String(e.source), target: String(e.target), condition: (e as any).data?.condition })),
     };
@@ -83,10 +84,13 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
           : type === 'end'
           ? 'End'
           : (n.name || (type === 'gateway_parallel' ? 'AND' : type === 'gateway_xor' ? 'XOR' : ''));
+        const hasPos = n && n.position && typeof n.position.x === 'number' && typeof n.position.y === 'number';
+        const px = hasPos ? n.position.x : 180;
+        const py = hasPos ? n.position.y : 60 + idx * 120;
         return {
           id: String(n.id),
           type,
-          position: { x: 180, y: 60 + idx * 120 },
+          position: { x: px, y: py },
           sourcePosition: Position.Bottom,
           targetPosition: Position.Top,
           style: { width: 180 },

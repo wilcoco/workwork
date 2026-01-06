@@ -9,6 +9,7 @@ type BpmnNode = {
   assigneeHint?: string;
   stageLabel?: string;
   deadlineOffsetDays?: number;
+  position?: { x: number; y: number };
 };
 
 type BpmnEdge = {
@@ -38,6 +39,7 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         assigneeHint: n.assigneeHint || undefined,
         stageLabel: n.stageLabel || undefined,
         deadlineOffsetDays: typeof n.deadlineOffsetDays === 'number' ? n.deadlineOffsetDays : undefined,
+        position: (n && n.position && typeof n.position.x === 'number' && typeof n.position.y === 'number') ? { x: n.position.x, y: n.position.y } : undefined,
       })) : [];
       const ee: BpmnEdge[] = Array.isArray(j?.edges) ? j.edges.map((e: any, idx: number) => ({
         id: String(e.id || `e${idx}`),

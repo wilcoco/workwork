@@ -322,16 +322,17 @@ export function ProcessTemplates() {
         </div>
       </div>
       )}
-      {/* Toggle column */}
-      <div style={{ height: '100%', display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}>
+      {/* Toggle column (sticky near viewport center) */}
+      <div style={{ alignSelf: 'start', position: 'sticky', top: '50vh', transform: 'translateY(-50%)', display: 'flex', justifyContent: 'center' }}>
         <button
           type="button"
           className="btn btn-ghost"
-          style={{ width: '100%', height: '100%', padding: 0, fontSize: 11, writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+          style={{ width: '100%', height: 80, padding: 0, fontSize: 18, lineHeight: 1 }}
           onClick={() => setListCollapsed((v) => !v)}
-          title={listCollapsed ? '목록 펴기' : '목록 접기'}
+          title={listCollapsed ? '목록 펼치기' : '목록 접기'}
+          aria-label={listCollapsed ? '목록 펼치기' : '목록 접기'}
         >
-          {listCollapsed ? '목록 펴기' : '목록 접기'}
+          {listCollapsed ? '◀' : '▶'}
         </button>
       </div>
 
