@@ -87,29 +87,6 @@ export function ProcessStart() {
           __source: 'bpmn',
         }));
     }
-
-  async function cloneTemplateForStart() {
-    try {
-      if (!userId) { alert('로그인이 필요합니다.'); return; }
-      if (!selectedFull) return;
-      const body: any = {
-        title: (cloneTitle || `${selectedFull.title} (사본)`).trim(),
-        description: selectedFull.description || '',
-        type: selectedFull.type || 'PROJECT',
-        ownerId: userId,
-        visibility: 'PUBLIC',
-        bpmnJson: (selectedFull as any).bpmnJson,
-      };
-      const created = await apiJson<any>(`/api/process-templates`, { method: 'POST', body: JSON.stringify(body) });
-      if (created?.id) {
-        setTplId(created.id);
-        setSelectedFull(created);
-        alert('사본 템플릿이 생성되었습니다. 이제 담당자/일정을 입력하고 시작할 수 있습니다.');
-      }
-    } catch (e: any) {
-      alert(e?.message || '사본 템플릿 생성 실패');
-    }
-  }
     return [];
   }, [selected, selectedFull]);
 
