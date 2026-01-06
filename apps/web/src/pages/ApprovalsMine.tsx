@@ -86,7 +86,7 @@ export function ApprovalsMine() {
             <div key={it.id} style={card} onClick={() => setActive(it)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b>{it.docTitle || '문서 정보 없음'}</b>
-                <span style={chip}>{it.status}</span>
+                <span style={chip}>{statusLabel(it.status)}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
@@ -137,7 +137,7 @@ export function ApprovalsMine() {
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <b>{title}</b>
-                    <span style={chip}>{it.status}</span>
+                    <span style={chip}>{statusLabel(it.status)}</span>
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
                   </div>
                   <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
@@ -253,4 +253,11 @@ function absLink(url: string): string {
   if (!url) return url;
   if (/^https?:\/\//i.test(url)) return url;
   return apiUrl(url);
+}
+
+function statusLabel(s?: string): string {
+  if (s === 'APPROVED') return '승인';
+  if (s === 'REJECTED') return '반려';
+  if (s === 'EXPIRED') return '만료';
+  return '미승인';
 }
