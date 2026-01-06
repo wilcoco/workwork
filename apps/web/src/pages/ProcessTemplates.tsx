@@ -281,12 +281,14 @@ export function ProcessTemplates() {
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <button className="btn btn-outline" onClick={() => setListCollapsed((v) => !v)}>
-          {listCollapsed ? '목록 펴기' : '목록 접기'}
-        </button>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: listCollapsed ? 'minmax(0, 1fr)' : 'minmax(0, 320px) minmax(0, 1fr)', gap: 16, alignItems: 'flex-start' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: listCollapsed ? '20px minmax(0, 1fr)' : 'minmax(0, 320px) 20px minmax(0, 1fr)',
+          gap: 16,
+          alignItems: 'stretch',
+        }}
+      >
       {!listCollapsed && (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -320,6 +322,19 @@ export function ProcessTemplates() {
         </div>
       </div>
       )}
+      {/* Toggle column */}
+      <div style={{ height: '100%', display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ width: '100%', height: '100%', padding: 0, fontSize: 11, writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+          onClick={() => setListCollapsed((v) => !v)}
+          title={listCollapsed ? '목록 펴기' : '목록 접기'}
+        >
+          {listCollapsed ? '목록 펴기' : '목록 접기'}
+        </button>
+      </div>
+
       <div>
         {editing ? (
           <div style={{ display: 'grid', gap: 12 }}>
