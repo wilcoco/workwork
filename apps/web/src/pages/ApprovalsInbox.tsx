@@ -143,6 +143,7 @@ export function ApprovalsInbox() {
             <div key={a.id} style={card} onClick={() => setActive(a)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b>{title}</b>
+                <span style={chip}>{statusLabel(a.status)}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
@@ -174,10 +175,12 @@ export function ApprovalsInbox() {
                   })}
                 </div>
               ) : null}
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={primaryBtn}>승인</button>
-                <button onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={ghostBtn}>반려</button>
-              </div>
+              {a.status === 'PENDING' && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={primaryBtn}>승인</button>
+                  <button onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={ghostBtn}>반려</button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -250,6 +253,7 @@ export function ApprovalsInbox() {
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <b>{title}</b>
+                    <span style={chip}>{statusLabel(n.status)}</span>
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
                   </div>
                   {meta && <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>}
@@ -292,26 +296,30 @@ export function ApprovalsInbox() {
                       />
                     </div>
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <button
-                        onClick={async () => {
-                          await approve(active.id, comment);
-                          setComment('');
-                          setActive(null);
-                        }}
-                        style={primaryBtn}
-                      >
-                        승인
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await reject(active.id, comment || undefined);
-                          setComment('');
-                          setActive(null);
-                        }}
-                        style={ghostBtn}
-                      >
-                        반려
-                      </button>
+                      {n.status === 'PENDING' && (
+                        <>
+                          <button
+                            onClick={async () => {
+                              await approve(active.id, comment);
+                              setComment('');
+                              setActive(null);
+                            }}
+                            style={primaryBtn}
+                          >
+                            승인
+                          </button>
+                          <button
+                            onClick={async () => {
+                              await reject(active.id, comment || undefined);
+                              setComment('');
+                              setActive(null);
+                            }}
+                            style={ghostBtn}
+                          >
+                            반려
+                          </button>
+                        </>
+                      )}
                       <button onClick={() => { setComment(''); setActive(null); }} style={ghostBtn}>닫기</button>
                     </div>
                   </div>
@@ -396,3 +404,20 @@ function absLink(url: string): string {
   if (/^https?:\/\//i.test(url)) return url;
   return apiUrl(url);
 }
+
+function statusLabel(s?: string): string {
+  if (s === 'APPROVED') return '승인';
+  if (s === 'REJECTED') return '반려';
+  if (s === 'EXPIRED') return '만료';
+  return '미승인';
+}
+
+const chip: React.CSSProperties = {
+  background: '#E6EEF7',
+  color: '#0F3D73',
+  border: '1px solid #0F3D73',
+  borderRadius: 999,
+  padding: '1px 8px',
+  fontSize: 12,
+  fontWeight: 700,
+};
