@@ -159,8 +159,6 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         </label>
         <button type="button" className="btn" onClick={addNode}>노드 추가</button>
         <button type="button" className="btn" onClick={addEdge}>엣지 추가</button>
-        <button type="button" className="btn" onClick={emitJson}>폼 → JSON 반영</button>
-        <button type="button" className="btn" onClick={() => parseJson(jsonText)}>JSON → 폼 불러오기</button>
         <button type="button" className="btn btn-outline" onClick={autoLinearize}>선형 연결 자동생성</button>
       </div>
       {error ? <div style={{ color: '#b91c1c' }}>{error}</div> : null}

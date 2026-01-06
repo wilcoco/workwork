@@ -317,8 +317,6 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             <button type="button" className="btn" onClick={() => addNode('end')}>End</button>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" className="btn" onClick={toJson}>그래프→JSON 반영</button>
-            <button type="button" className="btn" onClick={() => fromJson(jsonText)}>JSON→그래프 불러오기</button>
             <button type="button" className="btn" onClick={() => setNodes((nds: Node<any>[]) => nds.map((n: Node<any>, idx: number) => ({ ...n, position: { x: 180, y: 60 + idx * 120 } })))}>세로 정렬</button>
             <button type="button" className="btn btn-outline" onClick={autoLinearize}>선형 연결 자동생성</button>
           </div>

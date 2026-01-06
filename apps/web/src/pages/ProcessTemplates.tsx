@@ -85,10 +85,6 @@ export function ProcessTemplates() {
     loadList();
   }, []);
 
-  // 편집 모드로 들어가면 목록 영역을 자동으로 접습니다.
-  useEffect(() => {
-    if (editing) setListCollapsed(true);
-  }, [editing]);
 
   async function loadList() {
     setLoading(true);
@@ -284,13 +280,18 @@ export function ProcessTemplates() {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: listCollapsed ? 'minmax(0, 1fr)' : 'minmax(0, 320px) minmax(0, 1fr)', gap: 16, alignItems: 'flex-start' }}>
+    <div style={{ display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <button className="btn btn-outline" onClick={() => setListCollapsed((v) => !v)}>
+          {listCollapsed ? '목록 펴기' : '목록 접기'}
+        </button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: listCollapsed ? 'minmax(0, 1fr)' : 'minmax(0, 320px) minmax(0, 1fr)', gap: 16, alignItems: 'flex-start' }}>
       {!listCollapsed && (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h2>프로세스 템플릿 목록</h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="btn btn-outline" onClick={() => setListCollapsed(true)}>목록 접기</button>
             <button className="btn btn-primary" onClick={newTemplate}>새 템플릿</button>
           </div>
         </div>
@@ -324,9 +325,6 @@ export function ProcessTemplates() {
           <div style={{ display: 'grid', gap: 12 }}>
             <h2>업무 프로세스 정의</h2>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button className="btn btn-outline" onClick={() => setListCollapsed((v) => !v)}>
-                {listCollapsed ? '목록 보이기' : '목록 접기'}
-              </button>
               <button
                 className="btn"
                 onClick={() => {
@@ -535,6 +533,7 @@ export function ProcessTemplates() {
         ) : (
           <div style={{ color: '#9ca3af', fontSize: 13 }}>왼쪽에서 템플릿을 선택하거나 "새 템플릿"을 눌러 업무 프로세스를 정의하세요.</div>
         )}
+      </div>
       </div>
     </div>
   );
