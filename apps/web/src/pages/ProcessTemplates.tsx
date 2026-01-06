@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { BpmnEditor } from '../components/BpmnEditor';
 import { BpmnFormEditor } from '../components/BpmnFormEditor';
+import Quill from 'quill';
+import 'quill/dist/quill.snow.css';
+import { uploadFiles } from '../lib/upload';
+import '../styles/editor.css';
 
 interface ProcessTaskTemplateDto {
   id?: string;
@@ -54,6 +58,14 @@ export function ProcessTemplates() {
   const [bpmnJsonText, setBpmnJsonText] = useState('');
   const [bpmnMode, setBpmnMode] = useState<'graph' | 'form'>('graph');
   const [promoteVis, setPromoteVis] = useState<'PUBLIC' | 'ORG_UNIT'>('PUBLIC');
+  const [inUseCount, setInUseCount] = useState<number>(0);
+  const [showCloneModal, setShowCloneModal] = useState(false);
+  const [cloneTitle, setCloneTitle] = useState('');
+
+  // Rich editor for process template description
+  const descEditorEl = useRef<HTMLDivElement | null>(null);
+  const descQuillRef = useRef<Quill | null>(null);
+  const [descHtml, setDescHtml] = useState('');
   const taskPreview = (() => {
     try {
       if (bpmnJsonText.trim()) {
@@ -84,6 +96,57 @@ export function ProcessTemplates() {
   useEffect(() => {
     loadList();
   }, []);
+
+  useEffect(() => {
+    if (!descEditorEl.current) return;
+    if (!descQuillRef.current) {
+      const toolbar = [
+        [{ header: [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['link', 'image'],
+        [{ color: [] }, { background: [] }],
+        [{ align: [] }],
+        ['clean'],
+      ];
+      const q = new Quill(descEditorEl.current, {
+        theme: 'snow',
+        modules: { toolbar },
+        placeholder: '업무 프로세스 정의를 입력하세요. 파일 링크나 이미지를 삽입할 수 있습니다.',
+      } as any);
+      q.on('text-change', () => setDescHtml(q.root.innerHTML));
+      descQuillRef.current = q;
+    }
+    // sync from current editing.description
+    const html = (editing?.description || '').toString();
+    setDescHtml(html);
+    try {
+      descQuillRef.current?.setContents([] as any);
+      descQuillRef.current?.clipboard.dangerouslyPasteHTML(html || '');
+    } catch {}
+  }, [editing?.id]);
+
+  async function insertFilesToDesc(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const ups = await uploadFiles(files);
+    const q = descQuillRef.current as any;
+    const range = q?.getSelection?.(true);
+    ups.forEach((f) => {
+      const linkHtml = `<a href="${f.url}" target="_blank" rel="noreferrer">${f.name}</a>`;
+      if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
+      else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
+    });
+  }
+
+  async function checkInUse(tmplId?: string | null) {
+    if (!tmplId) { setInUseCount(0); return; }
+    try {
+      const rows = await apiJson<any[]>(`/api/processes?templateId=${encodeURIComponent(tmplId)}&status=ACTIVE`);
+      setInUseCount((rows || []).length);
+    } catch {
+      setInUseCount(0);
+    }
+  }
 
 
   async function loadList() {
@@ -120,6 +183,8 @@ export function ProcessTemplates() {
     setSelectedId(null);
     setEditing(t);
     setBpmnJsonText('');
+    setInUseCount(0);
+    setCloneTitle('');
   }
 
   async function promote() {
@@ -149,6 +214,8 @@ export function ProcessTemplates() {
         orderHint: x.orderHint ?? idx,
       })),
     });
+    checkInUse(t.id || null);
+    setCloneTitle(((t.title || '') + ' (사본)').trim());
     try {
       const raw: any = (t as any).bpmnJson;
       if (!raw) {
@@ -192,6 +259,9 @@ export function ProcessTemplates() {
       alert('업무프로세스 제목을 입력하세요.');
       return;
     }
+    // Apply rich text description content
+    const desc = descHtml || '';
+    const editingWithDesc = { ...editing, description: desc } as ProcessTemplateDto;
     let bpmnObj: any = undefined;
     const raw = (bpmnJsonText || '').trim();
     if (raw) {
@@ -207,11 +277,16 @@ export function ProcessTemplates() {
       bpmnObj = (editing as any).bpmnJson;
     }
     const body = {
-      ...editing,
+      ...editingWithDesc,
       bpmnJson: bpmnObj,
       tasks: editing.tasks,
     };
     if (editing.id) {
+      // If template is in use, enforce clone-as-new with new title
+      if (inUseCount > 0) {
+        setShowCloneModal(true);
+        return;
+      }
       await apiJson(`/api/process-templates/${encodeURIComponent(editing.id)}`, {
         method: 'PUT',
         body: JSON.stringify(body),
@@ -341,15 +416,6 @@ export function ProcessTemplates() {
           <div style={{ display: 'grid', gap: 12 }}>
             <h2>업무 프로세스 정의</h2>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <button
-                className="btn"
-                onClick={() => {
-                  if (!editing?.id) return;
-                  const ret = encodeURIComponent(window.location.pathname + window.location.search);
-                  nav(`/process/start?templateId=${encodeURIComponent(editing.id)}&return=${ret}`);
-                }}
-                disabled={!editing?.id}
-              >이 템플릿으로 시작</button>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <select value={promoteVis} onChange={(e) => setPromoteVis(e.target.value as any)}>
                   <option value="PUBLIC">승격: 전체 공개</option>
@@ -357,6 +423,11 @@ export function ProcessTemplates() {
                 </select>
                 <button className="btn btn-warning" onClick={promote} disabled={!editing?.id}>승격</button>
               </div>
+              {editing?.id ? (
+                <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>
+                  실행 중 인스턴스: {inUseCount}건 {inUseCount > 0 ? '· 구조 변경 시 복제로 저장됩니다' : ''}
+                </span>
+              ) : null}
             </div>
             <div>
               <label>업무프로세스 제목</label>
@@ -366,12 +437,14 @@ export function ProcessTemplates() {
               />
             </div>
             <div>
-              <label>업무프로세스 정의</label>
-              <textarea
-                value={editing.description || ''}
-                onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                rows={3}
-              />
+              <label>업무 프로세스 정의</label>
+              <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden' }}>
+                <div ref={(r) => (descEditorEl.current = r)} style={{ minHeight: 180, width: '100%' }} />
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <label>첨부 파일</label>
+                <input type="file" multiple onChange={async (e) => { await insertFilesToDesc(e.target.files); e.target.value = '' as any; }} />
+              </div>
             </div>
             <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
               <div>
@@ -501,6 +574,43 @@ export function ProcessTemplates() {
               </div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>저장 시 아래 과제 목록은 편집된 흐름 기준으로 재생성됩니다.</div>
             </div>
+            {(() => {
+              // Node rich-text editors (optional)
+              let nodes: any[] = [];
+              try {
+                const j = JSON.parse(bpmnJsonText || '{}');
+                nodes = Array.isArray(j?.nodes) ? j.nodes.filter((n: any) => String(n?.type || '').toLowerCase() === 'task') : [];
+              } catch {}
+              return (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <h3>노드 설명(리치 텍스트)</h3>
+                  </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {nodes.map((n: any) => (
+                      <NodeRichEditor
+                        key={String(n.id)}
+                        nodeId={String(n.id)}
+                        title={n.name || String(n.id)}
+                        initialHtml={String((n.descriptionHtml || n.description || ''))}
+                        onApply={async (html) => {
+                          try {
+                            const j = JSON.parse(bpmnJsonText || '{}');
+                            const list = Array.isArray(j?.nodes) ? j.nodes : [];
+                            const idx = list.findIndex((x: any) => String(x.id) === String(n.id));
+                            if (idx >= 0) {
+                              list[idx] = { ...list[idx], descriptionHtml: html };
+                              setBpmnJsonText(JSON.stringify({ ...j, nodes: list }, null, 2));
+                            }
+                          } catch {}
+                        }}
+                      />
+                    ))}
+                    {!nodes.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>Task 노드가 없거나 그래프가 비어 있습니다.</div>}
+                  </div>
+                </div>
+              );
+            })()}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <h3>과제 미리보기 (읽기 전용)</h3>
@@ -550,6 +660,95 @@ export function ProcessTemplates() {
           <div style={{ color: '#9ca3af', fontSize: 13 }}>왼쪽에서 템플릿을 선택하거나 "새 템플릿"을 눌러 업무 프로세스를 정의하세요.</div>
         )}
       </div>
+      </div>
+      {showCloneModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: 16, width: 420, display: 'grid', gap: 12 }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>실행 중인 프로세스가 있어 복제로 저장해야 합니다</div>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
+              이 템플릿은 실행 중 인스턴스가 있어 구조 변경이 불가합니다. 제목을 변경하여 새 템플릿으로 저장하세요.
+            </div>
+            <div>
+              <label>새 템플릿 제목</label>
+              <input value={cloneTitle} onChange={(e) => setCloneTitle(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'end', gap: 8 }}>
+              <button className="btn" onClick={() => setShowCloneModal(false)}>취소</button>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  if (!editing) return;
+                  if (!cloneTitle.trim()) { alert('제목을 입력하세요.'); return; }
+                  let bpmnObj: any = undefined;
+                  try { bpmnObj = bpmnJsonText?.trim() ? JSON.parse(bpmnJsonText) : undefined; } catch {}
+                  const body = { ...editing, id: undefined, title: cloneTitle.trim(), description: descHtml || editing.description || '', bpmnJson: bpmnObj } as any;
+                  const created = await apiJson<ProcessTemplateDto>(`/api/process-templates`, { method: 'POST', body: JSON.stringify(body) });
+                  setShowCloneModal(false);
+                  await loadList();
+                  setSelectedId(created.id || null);
+                  setEditing(created);
+                  alert('새 템플릿으로 저장되었습니다.');
+                }}
+              >새 템플릿으로 저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NodeRichEditor(props: { nodeId: string; title: string; initialHtml: string; onApply: (html: string) => void }) {
+  const { nodeId, title, initialHtml, onApply } = props;
+  const el = useRef<HTMLDivElement | null>(null);
+  const qref = useRef<Quill | null>(null);
+  const [html, setHtml] = useState<string>(initialHtml || '');
+  useEffect(() => {
+    if (!el.current || qref.current) return;
+    const toolbar = [
+      [{ header: [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['link', 'image'],
+      [{ color: [] }, { background: [] }],
+      [{ align: [] }],
+      ['clean'],
+    ];
+    const q = new Quill(el.current, { theme: 'snow', modules: { toolbar }, placeholder: '노드 설명을 입력하세요.' } as any);
+    q.on('text-change', () => setHtml(q.root.innerHTML));
+    q.clipboard.dangerouslyPasteHTML(initialHtml || '');
+    qref.current = q;
+  }, [initialHtml]);
+  async function onAttachFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    try {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      const ups = await uploadFiles(files);
+      const q = qref.current as any;
+      const range = q?.getSelection?.(true);
+      ups.forEach((f) => {
+        const linkHtml = `<a href="${f.url}" target="_blank" rel="noreferrer">${f.name}</a>`;
+        if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
+        else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
+      });
+      e.target.value = '' as any;
+    } catch {}
+  }
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <b>{title}</b>
+        <span style={{ color: '#9ca3af', fontSize: 12 }}>#{nodeId}</span>
+      </div>
+      <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden', marginTop: 6 }}>
+        <div ref={(r) => (el.current = r)} style={{ minHeight: 140, width: '100%' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+        <div>
+          <label>첨부 파일</label>
+          <input type="file" multiple onChange={onAttachFiles} />
+        </div>
+        <button className="btn btn-primary" onClick={() => onApply(html)}>적용</button>
       </div>
     </div>
   );
