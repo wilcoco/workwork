@@ -43,6 +43,20 @@ export function ProcessStart() {
 
   const [selectedFull, setSelectedFull] = useState<ProcessTemplateDto | null>(null);
   const selected = useMemo(() => selectedFull || templates.find(t => t.id === tplId) || null, [templates, tplId, selectedFull]);
+  // derive BPMN task count for mismatch hint
+  const bpmnTaskCount = useMemo(() => {
+    try {
+      let j: any = (selectedFull as any)?.bpmnJson;
+      if (typeof j === 'string') j = JSON.parse(j);
+      const nodes = Array.isArray(j?.nodes) ? j.nodes : [];
+      return nodes.filter((n: any) => String(n?.type || '').toLowerCase() === 'task').length;
+    } catch { return 0; }
+  }, [selectedFull]);
+  const mismatch = !!(selectedFull && bpmnTaskCount > (selectedFull.tasks?.length || 0));
+  const [cloneTitle, setCloneTitle] = useState('');
+  useEffect(() => {
+    if (selectedFull?.title) setCloneTitle(`${selectedFull.title} (사본)`);
+  }, [selectedFull?.id]);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [assignees, setAssignees] = useState<Record<string, string[]>>({});
   const [plans, setPlans] = useState<Record<string, { plannedStartAt?: string; plannedEndAt?: string; deadlineAt?: string }>>({});
@@ -73,6 +87,29 @@ export function ProcessStart() {
           __source: 'bpmn',
         }));
     }
+
+  async function cloneTemplateForStart() {
+    try {
+      if (!userId) { alert('로그인이 필요합니다.'); return; }
+      if (!selectedFull) return;
+      const body: any = {
+        title: (cloneTitle || `${selectedFull.title} (사본)`).trim(),
+        description: selectedFull.description || '',
+        type: selectedFull.type || 'PROJECT',
+        ownerId: userId,
+        visibility: 'PUBLIC',
+        bpmnJson: (selectedFull as any).bpmnJson,
+      };
+      const created = await apiJson<any>(`/api/process-templates`, { method: 'POST', body: JSON.stringify(body) });
+      if (created?.id) {
+        setTplId(created.id);
+        setSelectedFull(created);
+        alert('사본 템플릿이 생성되었습니다. 이제 담당자/일정을 입력하고 시작할 수 있습니다.');
+      }
+    } catch (e: any) {
+      alert(e?.message || '사본 템플릿 생성 실패');
+    }
+  }
     return [];
   }, [selected, selectedFull]);
 
@@ -293,7 +330,26 @@ export function ProcessStart() {
                   {taskPreview.length > 0 && taskPreview[0]?.__source === 'bpmn' && (
                     <div style={{ fontSize: 12, color: '#9ca3af' }}>템플릿을 저장하면 담당자/일정 입력이 활성화됩니다.</div>
                   )}
+                  {selectedFull && selectedFull.tasks && bpmnTaskCount > (selectedFull.tasks?.length || 0) && (
+                    <div style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fbbf24', padding: '2px 6px', borderRadius: 6 }}>
+                      템플릿 과제(DB) 수({selectedFull.tasks.length})가 BPMN Task 수({bpmnTaskCount})보다 적습니다. 구조 변경은 복제된 새 템플릿으로 시작해야 반영됩니다.
+                    </div>
+                  )}
                 </div>
+                {mismatch && (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, marginBottom: 8, display: 'grid', gap: 6 }}>
+                    <div style={{ fontSize: 13, color: '#334155' }}>복제 후 시작</div>
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <label>
+                        새 템플릿 제목
+                        <input value={cloneTitle} onChange={(e) => setCloneTitle(e.target.value)} placeholder={`${selectedFull?.title || ''} (사본)`} />
+                      </label>
+                      <div>
+                        <button type="button" className="btn" onClick={cloneTemplateForStart}>사본 템플릿 생성</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div style={{ display: 'grid', gap: 6 }}>
                   {taskPreview.map((t: any, idx: number) => (
                     <div key={t.id || idx} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 8 }}>

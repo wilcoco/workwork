@@ -141,7 +141,8 @@ export function ProcessTemplates() {
   async function checkInUse(tmplId?: string | null) {
     if (!tmplId) { setInUseCount(0); return; }
     try {
-      const rows = await apiJson<any[]>(`/api/processes?templateId=${encodeURIComponent(tmplId)}&status=ACTIVE`);
+      // Consider any instance (all statuses), to match backend FK constraint behavior
+      const rows = await apiJson<any[]>(`/api/processes?templateId=${encodeURIComponent(tmplId)}`);
       setInUseCount((rows || []).length);
     } catch {
       setInUseCount(0);
@@ -425,7 +426,7 @@ export function ProcessTemplates() {
               </div>
               {editing?.id ? (
                 <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>
-                  실행 중 인스턴스: {inUseCount}건 {inUseCount > 0 ? '· 구조 변경 시 복제로 저장됩니다' : ''}
+                  기존 인스턴스: {inUseCount}건 {inUseCount > 0 ? '· 구조 변경은 복제로 저장됩니다' : ''}
                 </span>
               ) : null}
             </div>
