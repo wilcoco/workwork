@@ -126,11 +126,27 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
     setEdges((prev) => prev.filter((e) => e.id !== id));
   };
 
+  const autoLinearize = () => {
+    const now = Date.now();
+    const start = nodes.find((n) => n.type === 'start');
+    const end = nodes.find((n) => n.type === 'end');
+    const tasks = nodes.filter((n) => n.type === 'task');
+    if (edges.length && !confirm(`기존 엣지 ${edges.length}개를 모두 삭제하고 순차 연결로 대체할까요?`)) return;
+    const next: BpmnEdge[] = [];
+    if (start && tasks[0]) next.push({ id: `e${now}_s`, source: start.id, target: tasks[0].id });
+    for (let i = 0; i < tasks.length - 1; i++) {
+      next.push({ id: `e${now}_${i}`, source: tasks[i].id, target: tasks[i + 1].id });
+    }
+    if (end && tasks.length) next.push({ id: `e${now}_e`, source: tasks[tasks.length - 1].id, target: end.id });
+    if (!tasks.length && start && end) next.push({ id: `e${now}_se`, source: start.id, target: end.id });
+    setEdges(next);
+  };
+
   const nodeOptions = useMemo(() => nodes.map((n) => ({ value: n.id, label: `${n.id}${n.name ? ` · ${n.name}` : ''}` })), [nodes]);
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <label>
           노드 유형
           <select value={newNodeType} onChange={(e) => setNewNodeType(e.target.value as any)}>
@@ -145,6 +161,7 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         <button type="button" className="btn" onClick={addEdge}>엣지 추가</button>
         <button type="button" className="btn" onClick={emitJson}>폼 → JSON 반영</button>
         <button type="button" className="btn" onClick={() => parseJson(jsonText)}>JSON → 폼 불러오기</button>
+        <button type="button" className="btn btn-outline" onClick={autoLinearize}>선형 연결 자동생성</button>
       </div>
       {error ? <div style={{ color: '#b91c1c' }}>{error}</div> : null}
 

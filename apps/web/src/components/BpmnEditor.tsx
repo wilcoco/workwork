@@ -36,7 +36,7 @@ function LabeledNode({ data }: { data: any }) {
   );
 }
 
-export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onChangeJson: (t: string) => void }) {
+export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: string; onChangeJson: (t: string) => void; height?: number | string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<any>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<any>>([]);
   const idCounter = useRef(1);
@@ -171,6 +171,27 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
     if (selectedEdgeId === id) setSelectedEdgeId(null);
   }
 
+  function autoLinearize() {
+    setEdges((prev) => {
+      const now = Date.now();
+      const start = nodes.find((n) => n.type === 'start');
+      const end = nodes.find((n) => n.type === 'end');
+      const tasks = nodes
+        .filter((n) => n.type === 'task')
+        .slice()
+        .sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0));
+      if (prev.length && !confirm(`기존 엣지 ${prev.length}개를 모두 삭제하고 순차 연결로 대체할까요?`)) return prev;
+      const next: Edge<any>[] = [];
+      if (start && tasks[0]) next.push({ id: `e${now}_s`, source: String(start.id), target: String(tasks[0].id) });
+      for (let i = 0; i < tasks.length - 1; i++) {
+        next.push({ id: `e${now}_${i}`, source: String(tasks[i].id), target: String(tasks[i + 1].id) });
+      }
+      if (end && tasks.length) next.push({ id: `e${now}_e`, source: String(tasks[tasks.length - 1].id), target: String(end.id) });
+      if (!tasks.length && start && end) next.push({ id: `e${now}_se`, source: String(start.id), target: String(end.id) });
+      return next;
+    });
+  }
+
   const addNode = (type: string) => {
     const id = `n${Date.now()}_${idCounter.current++}`;
     const label = type === 'start' ? 'Start' : type === 'end' ? 'End' : type.startsWith('gateway') ? (type === 'gateway_parallel' ? 'AND' : 'XOR') : '새 과제';
@@ -201,19 +222,7 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
 
   const sidePanel = useMemo(() => {
     return (
-      <div ref={(r) => (panelRef.current = r)} style={{ minWidth: 260, borderLeft: '1px solid #e5e7eb', padding: 8, display: 'grid', gap: 8, maxHeight: 480, overflow: 'auto' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button type="button" className="btn" onClick={() => addNode('start')}>Start</button>
-          <button type="button" className="btn" onClick={() => addNode('task')}>Task</button>
-          <button type="button" className="btn" onClick={() => addNode('gateway_parallel')}>AND</button>
-          <button type="button" className="btn" onClick={() => addNode('gateway_xor')}>XOR</button>
-          <button type="button" className="btn" onClick={() => addNode('end')}>End</button>
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button type="button" className="btn" onClick={toJson}>그래프→JSON 반영</button>
-          <button type="button" className="btn" onClick={() => fromJson(jsonText)}>JSON→그래프 불러오기</button>
-          <button type="button" className="btn" onClick={() => setNodes((nds: Node<any>[]) => nds.map((n: Node<any>, idx: number) => ({ ...n, position: { x: 180, y: 60 + idx * 120 } })))}>세로 정렬</button>
-        </div>
+      <div ref={(r) => (panelRef.current = r)} style={{ minWidth: 260, borderLeft: '1px solid #e5e7eb', padding: 8, display: 'grid', gap: 8, maxHeight: height ?? 480, overflow: 'auto' }}>
         <div style={{ fontSize: 12, color: '#6b7280' }}>그래프에서 노드/엣지를 선택하면 여기 상세가 하이라이트되며 스크롤됩니다.</div>
 
         <h4>노드</h4>
@@ -297,25 +306,43 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
   }, [nodes, toJson, fromJson, jsonText, edges, selectedNodeId, selectedEdgeId]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: 8, border: '1px solid #e5e7eb', borderRadius: 8 }}>
-      <div style={{ height: 480 }}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          defaultEdgeOptions={defaultEdgeOptions}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onSelectionChange={onSelectionChange as any}
-          onNodeClick={(_, n) => { setSelectedNodeId(String(n.id)); setSelectedEdgeId(null); }}
-          onEdgeClick={(_, e) => { setSelectedEdgeId(String(e.id)); setSelectedNodeId(null); }}
-          fitView
-        >
-          <Background />
-          <MiniMap />
-          <Controls />
-        </ReactFlow>
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: 8, border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480 }}>
+      <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%' }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" className="btn" onClick={() => addNode('start')}>Start</button>
+            <button type="button" className="btn" onClick={() => addNode('task')}>Task</button>
+            <button type="button" className="btn" onClick={() => addNode('gateway_parallel')}>AND</button>
+            <button type="button" className="btn" onClick={() => addNode('gateway_xor')}>XOR</button>
+            <button type="button" className="btn" onClick={() => addNode('end')}>End</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" className="btn" onClick={toJson}>그래프→JSON 반영</button>
+            <button type="button" className="btn" onClick={() => fromJson(jsonText)}>JSON→그래프 불러오기</button>
+            <button type="button" className="btn" onClick={() => setNodes((nds: Node<any>[]) => nds.map((n: Node<any>, idx: number) => ({ ...n, position: { x: 180, y: 60 + idx * 120 } })))}>세로 정렬</button>
+            <button type="button" className="btn btn-outline" onClick={autoLinearize}>선형 연결 자동생성</button>
+          </div>
+        </div>
+        <div style={{ height: '100%' }}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            defaultEdgeOptions={defaultEdgeOptions}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onSelectionChange={onSelectionChange as any}
+            onNodeClick={(_, n) => { setSelectedNodeId(String(n.id)); setSelectedEdgeId(null); }}
+            onEdgeClick={(_, e) => { setSelectedEdgeId(String(e.id)); setSelectedNodeId(null); }}
+            fitView
+            style={{ width: '100%', height: '100%' }}
+          >
+            <Background />
+            <MiniMap />
+            <Controls />
+          </ReactFlow>
+        </div>
       </div>
       {sidePanel}
     </div>

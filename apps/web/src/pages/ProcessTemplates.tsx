@@ -44,6 +44,7 @@ export function ProcessTemplates() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProcessTemplateDto | null>(null);
   const [loading, setLoading] = useState(false);
+  const [listCollapsed, setListCollapsed] = useState(false);
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string }>>([]);
@@ -83,6 +84,11 @@ export function ProcessTemplates() {
   useEffect(() => {
     loadList();
   }, []);
+
+  // 편집 모드로 들어가면 목록 영역을 자동으로 접습니다.
+  useEffect(() => {
+    if (editing) setListCollapsed(true);
+  }, [editing]);
 
   async function loadList() {
     setLoading(true);
@@ -278,11 +284,15 @@ export function ProcessTemplates() {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) minmax(0, 1fr)', gap: 16, alignItems: 'flex-start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: listCollapsed ? 'minmax(0, 1fr)' : 'minmax(0, 320px) minmax(0, 1fr)', gap: 16, alignItems: 'flex-start' }}>
+      {!listCollapsed && (
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h2>프로세스 템플릿 목록</h2>
-          <button className="btn btn-primary" onClick={newTemplate}>새 템플릿</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn btn-outline" onClick={() => setListCollapsed(true)}>목록 접기</button>
+            <button className="btn btn-primary" onClick={newTemplate}>새 템플릿</button>
+          </div>
         </div>
         {loading && <div>불러오는 중...</div>}
         <div style={{ display: 'grid', gap: 8 }}>
@@ -308,11 +318,15 @@ export function ProcessTemplates() {
           {!items.length && !loading && <div style={{ fontSize: 12, color: '#9ca3af' }}>아직 정의된 프로세스 템플릿이 없습니다.</div>}
         </div>
       </div>
+      )}
       <div>
         {editing ? (
           <div style={{ display: 'grid', gap: 12 }}>
             <h2>업무 프로세스 정의</h2>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button className="btn btn-outline" onClick={() => setListCollapsed((v) => !v)}>
+                {listCollapsed ? '목록 보이기' : '목록 접기'}
+              </button>
               <button
                 className="btn"
                 onClick={() => {
@@ -437,15 +451,36 @@ export function ProcessTemplates() {
             <div>
               <label>업무 흐름 정의</label>
               <div style={{ display: 'grid', gap: 8 }}>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button type="button" className={`btn ${bpmnMode === 'graph' ? 'btn-primary' : ''}`} onClick={() => setBpmnMode('graph')}>그래프 편집</button>
-                  <button type="button" className={`btn ${bpmnMode === 'form' ? 'btn-primary' : ''}`} onClick={() => setBpmnMode('form')}>순차 폼 편집</button>
-                </div>
-                <div>
-                  <button type="button" className="btn btn-outline" onClick={autoLinearizeEdges}>선형 연결 자동생성</button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', borderBottom: '1px solid #e5e7eb' }}>
+                  <button
+                    type="button"
+                    onClick={() => setBpmnMode('graph')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      borderBottom: bpmnMode === 'graph' ? '2px solid #0F3D73' : '2px solid transparent',
+                      fontWeight: bpmnMode === 'graph' ? 700 : 500,
+                      color: bpmnMode === 'graph' ? '#0F3D73' : '#374151',
+                    }}
+                  >그래프 편집</button>
+                  <button
+                    type="button"
+                    onClick={() => setBpmnMode('form')}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      borderBottom: bpmnMode === 'form' ? '2px solid #0F3D73' : '2px solid transparent',
+                      fontWeight: bpmnMode === 'form' ? 700 : 500,
+                      color: bpmnMode === 'form' ? '#0F3D73' : '#374151',
+                    }}
+                  >순차 폼 편집</button>
                 </div>
                 {bpmnMode === 'graph' ? (
-                  <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
+                  <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} height={'80vh'} />
                 ) : (
                   <BpmnFormEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
                 )}
