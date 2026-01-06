@@ -94,6 +94,25 @@ export class ProcessTemplatesController {
       };
     });
   }
+  
+  private remapTaskIdsForDb(compiled: any[], prefix: string) {
+    const map: Record<string, string> = {};
+    for (const t of compiled) {
+      const orig = String(t.id);
+      map[orig] = `${prefix}__${orig}`;
+    }
+    return compiled.map((t: any) => {
+      const orig = String(t.id);
+      const newId = map[orig];
+      const remapList = (csv?: string) =>
+        csv ? csv.split(',').map((s) => s.trim()).filter(Boolean).map((x) => map[x] || `${prefix}__${x}`).join(',') : undefined;
+      return {
+        ...t,
+        id: newId,
+        predecessorIds: remapList(t.predecessorIds),
+      };
+    });
+  }
 
   @Get()
   async list(@Query('ownerId') ownerId?: string) {
@@ -136,43 +155,47 @@ export class ProcessTemplatesController {
       tasks,
     } = body;
 
+    if (!ownerId) {
+      throw new BadRequestException('ownerId required');
+    }
+    const owner = await this.prisma.user.findUnique({ where: { id: ownerId } });
+    if (!owner) {
+      throw new BadRequestException('invalid ownerId');
+    }
+
     const compiled = this.compileBpmn(bpmnJson);
-    return this.prisma.processTemplate.create({
-      data: {
-        title,
-        description,
-        type,
-        ownerId,
-        visibility,
-        orgUnitId,
-        recurrenceType,
-        recurrenceDetail,
-        bpmnJson,
-        resultInputRequired,
-        expectedDurationDays,
-        expectedCompletionCriteria,
-        allowExtendDeadline,
-        status,
-        tasks: (compiled && compiled.length)
-          ? { create: compiled }
-          : tasks && Array.isArray(tasks)
-          ? {
-              create: tasks.map((t: any, idx: number) => ({
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const tmpl = await tx.processTemplate.create({
+          data: {
+            title,
+            description,
+            type,
+            ownerId,
+            visibility,
+            orgUnitId,
+            recurrenceType,
+            recurrenceDetail,
+            bpmnJson,
+            resultInputRequired,
+            expectedDurationDays,
+            expectedCompletionCriteria,
+            allowExtendDeadline,
+            status,
+          },
+        });
+        const createdMap = new Map<string, string>();
+        if (compiled && compiled.length) {
+          for (const [idx, t] of compiled.entries()) {
+            const created = await tx.processTaskTemplate.create({
+              data: {
+                processTemplateId: tmpl.id,
                 name: t.name,
                 description: t.description,
                 assigneeHint: t.assigneeHint,
                 stageLabel: t.stageLabel,
                 taskType: t.taskType,
-                orderHint: t.orderHint ?? idx,
-                predecessorIds: t.predecessorIds,
-                assigneeType: t.assigneeType,
-                assigneeUserId: t.assigneeUserId,
-                assigneeOrgUnitId: t.assigneeOrgUnitId,
-                assigneeRoleCode: t.assigneeRoleCode,
-                cooperationTargetType: t.cooperationTargetType,
-                cooperationTargetUserId: t.cooperationTargetUserId,
-                cooperationTargetOrgUnitId: t.cooperationTargetOrgUnitId,
-                cooperationTargetRoleCode: t.cooperationTargetRoleCode,
+                orderHint: typeof t.orderHint === 'number' ? t.orderHint : idx,
                 expectedOutput: t.expectedOutput,
                 worklogTemplateHint: t.worklogTemplateHint,
                 linkToKpiType: t.linkToKpiType,
@@ -183,62 +206,29 @@ export class ProcessTemplatesController {
                 deadlineOffsetDays: t.deadlineOffsetDays,
                 slaHours: t.slaHours,
                 allowDelayReasonRequired: t.allowDelayReasonRequired,
-              })),
-            }
-          : undefined,
-      },
-      include: { tasks: true },
-    });
-  }
-
-  @Put(':id')
-  async update(@Param('id') id: string, @Body() body: any) {
-    const {
-      title,
-      description,
-      type,
-      ownerId,
-      visibility,
-      orgUnitId,
-      recurrenceType,
-      recurrenceDetail,
-      resultInputRequired,
-      expectedDurationDays,
-      expectedCompletionCriteria,
-      allowExtendDeadline,
-      status,
-      bpmnJson,
-      tasks,
-    } = body;
-
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.processTemplate.update({
-        where: { id },
-        data: {
-          title,
-          description,
-          type,
-          ownerId,
-          visibility,
-          orgUnitId,
-          recurrenceType,
-          recurrenceDetail,
-          bpmnJson,
-          resultInputRequired,
-          expectedDurationDays,
-          expectedCompletionCriteria,
-          allowExtendDeadline,
-          status,
-        },
-      });
-
-      const compiled = this.compileBpmn(bpmnJson);
-      if ((compiled && compiled.length) || Array.isArray(tasks)) {
-        await tx.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
-        const dataToCreate = (compiled && compiled.length)
-          ? compiled.map((t: any) => ({ processTemplateId: id, ...t }))
-          : (tasks as any[]).map((t: any, idx: number) => ({
-              processTemplateId: id,
+                xorGroupKey: t.xorGroupKey,
+                xorCondition: t.xorCondition,
+              },
+            });
+            createdMap.set(String(t.id), created.id);
+          }
+          for (const t of compiled) {
+            const newId = createdMap.get(String(t.id))!;
+            const preds = (String(t.predecessorIds || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean) as string[])
+              .map((pid) => createdMap.get(pid))
+              .filter(Boolean) as string[];
+            await tx.processTaskTemplate.update({
+              where: { id: newId },
+              data: { predecessorIds: preds.length ? preds.join(',') : undefined, predecessorMode: t.predecessorMode },
+            });
+          }
+        } else if (tasks && Array.isArray(tasks)) {
+          await tx.processTaskTemplate.createMany({
+            data: tasks.map((t: any, idx: number) => ({
+              processTemplateId: tmpl.id,
               name: t.name,
               description: t.description,
               assigneeHint: t.assigneeHint,
@@ -264,7 +254,138 @@ export class ProcessTemplatesController {
               deadlineOffsetDays: t.deadlineOffsetDays,
               slaHours: t.slaHours,
               allowDelayReasonRequired: t.allowDelayReasonRequired,
-            }));
+            })),
+          });
+        }
+        return tx.processTemplate.findUnique({
+          where: { id: tmpl.id },
+          include: { tasks: { orderBy: { orderHint: 'asc' } } },
+        });
+      });
+    } catch (e: any) {
+      throw new BadRequestException(`failed to create process template: ${e?.message || e}`);
+    }
+  }
+
+  @Put(':id')
+  async update(@Param('id') id: string, @Body() body: any) {
+    const {
+      title,
+      description,
+      type,
+      ownerId,
+      visibility,
+      orgUnitId,
+      recurrenceType,
+      recurrenceDetail,
+      resultInputRequired,
+      expectedDurationDays,
+      expectedCompletionCriteria,
+      allowExtendDeadline,
+      status,
+      bpmnJson,
+      tasks,
+    } = body;
+
+    if (ownerId) {
+      const owner = await this.prisma.user.findUnique({ where: { id: ownerId } });
+      if (!owner) throw new BadRequestException('invalid ownerId');
+    }
+
+    try {
+    return await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.processTemplate.update({
+        where: { id },
+        data: {
+          title,
+          description,
+          type,
+          ownerId,
+          visibility,
+          orgUnitId,
+          recurrenceType,
+          recurrenceDetail,
+          bpmnJson,
+          resultInputRequired,
+          expectedDurationDays,
+          expectedCompletionCriteria,
+          allowExtendDeadline,
+          status,
+        },
+      });
+
+      const compiled = this.compileBpmn(bpmnJson);
+      await tx.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
+      if (compiled && compiled.length) {
+        const createdMap = new Map<string, string>();
+        for (const [idx, t] of compiled.entries()) {
+          const created = await tx.processTaskTemplate.create({
+            data: {
+              processTemplateId: id,
+              name: t.name,
+              description: t.description,
+              assigneeHint: t.assigneeHint,
+              stageLabel: t.stageLabel,
+              taskType: t.taskType,
+              orderHint: typeof t.orderHint === 'number' ? t.orderHint : idx,
+              expectedOutput: t.expectedOutput,
+              worklogTemplateHint: t.worklogTemplateHint,
+              linkToKpiType: t.linkToKpiType,
+              approvalRouteType: t.approvalRouteType,
+              approvalRoleCodes: t.approvalRoleCodes,
+              approvalUserIds: t.approvalUserIds,
+              isFinalApproval: t.isFinalApproval,
+              deadlineOffsetDays: t.deadlineOffsetDays,
+              slaHours: t.slaHours,
+              allowDelayReasonRequired: t.allowDelayReasonRequired,
+              xorGroupKey: t.xorGroupKey,
+              xorCondition: t.xorCondition,
+            },
+          });
+          createdMap.set(String(t.id), created.id);
+        }
+        for (const t of compiled) {
+          const newId = createdMap.get(String(t.id))!;
+          const preds = (String(t.predecessorIds || '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean) as string[])
+            .map((pid) => createdMap.get(pid))
+            .filter(Boolean) as string[];
+          await tx.processTaskTemplate.update({
+            where: { id: newId },
+            data: { predecessorIds: preds.length ? preds.join(',') : undefined, predecessorMode: t.predecessorMode },
+          });
+        }
+      } else if (Array.isArray(tasks)) {
+        const dataToCreate = (tasks as any[]).map((t: any, idx: number) => ({
+          processTemplateId: id,
+          name: t.name,
+          description: t.description,
+          assigneeHint: t.assigneeHint,
+          stageLabel: t.stageLabel,
+          taskType: t.taskType,
+          orderHint: t.orderHint ?? idx,
+          predecessorIds: t.predecessorIds,
+          assigneeType: t.assigneeType,
+          assigneeUserId: t.assigneeUserId,
+          assigneeOrgUnitId: t.assigneeOrgUnitId,
+          assigneeRoleCode: t.assigneeRoleCode,
+          cooperationTargetType: t.cooperationTargetType,
+          cooperationTargetUserId: t.cooperationTargetUserId,
+          cooperationTargetOrgUnitId: t.cooperationTargetOrgUnitId,
+          cooperationTargetRoleCode: t.cooperationTargetRoleCode,
+          expectedOutput: t.expectedOutput,
+          worklogTemplateHint: t.worklogTemplateHint,
+          linkToKpiType: t.linkToKpiType,
+          approvalRouteType: t.approvalRouteType,
+          approvalRoleCodes: t.approvalRoleCodes,
+          approvalUserIds: t.approvalUserIds,
+          isFinalApproval: t.isFinalApproval,
+          deadlineOffsetDays: t.deadlineOffsetDays,
+          slaHours: t.slaHours,
+          allowDelayReasonRequired: t.allowDelayReasonRequired,
+        }));
         if (dataToCreate.length) {
           await tx.processTaskTemplate.createMany({ data: dataToCreate });
         }
@@ -275,6 +396,9 @@ export class ProcessTemplatesController {
         include: { tasks: { orderBy: { orderHint: 'asc' } } },
       });
     });
+    } catch (e: any) {
+      throw new BadRequestException(`failed to update process template: ${e?.message || e}`);
+    }
   }
 
   @Delete(':id')
