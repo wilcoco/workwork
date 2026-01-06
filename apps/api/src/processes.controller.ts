@@ -177,6 +177,83 @@ export class ProcessesController {
     });
   }
 
+  private async autoCreateApprovalIfNeeded(tx: any, instanceId: string, tmpl: any): Promise<void> {
+    if (String(tmpl?.taskType || '').toUpperCase() !== 'APPROVAL') return;
+    const ready = await tx.processTaskInstance.findMany({ where: { instanceId, taskTemplateId: tmpl.id, status: 'READY' } });
+    for (const t of ready) {
+      await this.autoCreateApprovalForTaskInstance(tx, instanceId, t.id);
+    }
+  }
+
+  private async autoCreateApprovalForTaskInstance(tx: any, instanceId: string, taskInstanceId: string): Promise<string | null> {
+    const t = await tx.processTaskInstance.findUnique({ where: { id: taskInstanceId } });
+    if (!t || t.instanceId !== instanceId) return null;
+    if (t.approvalRequestId) return t.approvalRequestId; // already linked
+    const inst = await tx.processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true } });
+    if (!inst) return null;
+    const approverId = t.assigneeId || undefined;
+    const requesterId = inst.startedById;
+    if (!approverId || !requesterId) return null;
+    const html = await this.buildApprovalHtml(tx, instanceId);
+    const initiativeId = await this.ensureInitiativeForUserProcess(tx, requesterId, inst, t.name);
+    const wl = await tx.worklog.create({ data: { initiativeId, createdById: requesterId, note: `${inst.title} · ${t.name}`, attachments: { contentHtml: html }, date: new Date(), urgent: false, visibility: 'ALL' as any } });
+    const req = await tx.approvalRequest.create({ data: { subjectType: 'Worklog', subjectId: wl.id, approverId, requestedById: requesterId } });
+    await tx.notification.create({ data: { userId: approverId, type: 'ApprovalRequested', subjectType: 'Worklog', subjectId: wl.id, payload: { requestId: req.id } } });
+    await tx.processTaskInstance.update({ where: { id: t.id }, data: { status: 'IN_PROGRESS', actualStartAt: new Date(), approvalRequestId: req.id, worklogId: wl.id } });
+    return req.id as string;
+  }
+
+  private async buildApprovalHtml(tx: any, instanceId: string): Promise<string> {
+    const inst = await (tx as any).processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true, template: true } });
+    const tasks = await (tx as any).processTaskInstance.findMany({ where: { instanceId }, orderBy: [{ stageLabel: 'asc' as any }, { createdAt: 'asc' as any }] });
+    const completed = tasks.filter((x: any) => String(x.status).toUpperCase() === 'COMPLETED');
+    const wlIds = completed.map((x: any) => x.worklogId).filter(Boolean) as string[];
+    const wls = wlIds.length ? await (tx as any).worklog.findMany({ where: { id: { in: wlIds } } }) : [];
+    const wlMap = new Map<string, any>();
+    for (const w of wls) wlMap.set(w.id, w);
+    const safe = (s: any) => (s == null ? '' : String(s));
+    const row = (cols: string[]) => `<tr>${cols.map((c) => `<td style="padding:4px 6px;border:1px solid #e5e7eb;vertical-align:top;">${c}</td>`).join('')}</tr>`;
+    const head = (cols: string[]) => `<tr>${cols.map((c) => `<th style=\"padding:6px;border:1px solid #e5e7eb;background:#f9fafb;text-align:left;\">${c}</th>`).join('')}</tr>`;
+    const rows = completed.map((t: any, idx: number) => {
+      const wl = t.worklogId ? wlMap.get(t.worklogId) : null;
+      const when = t.actualEndAt ? new Date(t.actualEndAt).toLocaleString() : '';
+      const html = (wl?.attachments as any)?.contentHtml || '';
+      return row([String(idx + 1), `${safe(t.name)}${t.stageLabel ? ` · ${safe(t.stageLabel)}` : ''}`, safe(t.taskType), when, html ? `<div style=\"font-size:12px;color:#334155;\">${html}</div>` : '-']);
+    });
+    const header = `<div style=\"font-weight:700;font-size:16px;margin:6px 0;\">${safe(inst?.title)}</div>`;
+    const table = `<table style=\"border-collapse:collapse;width:100%;margin-top:8px;\">${head(['#','단계/과제','유형','완료시각','관련 업무일지 요약'])}${rows.join('')}</table>`;
+    const meta = `<div style=\"margin:6px 0;color:#64748b;font-size:12px;\">시작: ${inst?.startAt ? new Date(inst.startAt).toLocaleString() : ''} · 시작자: ${safe(inst?.startedBy?.name)}</div>`;
+    return `${header}${meta}${table}`;
+  }
+
+  private async ensureInitiativeForUserProcess(tx: any, userId: string, inst: any, taskName: string): Promise<string> {
+    if (inst?.initiativeId) return inst.initiativeId as string;
+    const user = await (tx as any).user.findUnique({ where: { id: userId } });
+    if (!user) throw new BadRequestException('user not found');
+    let orgUnitId = user.orgUnitId as string | undefined;
+    if (!orgUnitId) {
+      const team = await (tx as any).orgUnit.create({ data: { name: `Auto Team - ${user.name}`, type: 'TEAM' } });
+      await (tx as any).user.update({ where: { id: user.id }, data: { orgUnitId: team.id } });
+      orgUnitId = team.id;
+    }
+    let objective = await (tx as any).objective.findFirst({ where: { title: 'Process Auto Objective', orgUnitId } });
+    if (!objective) {
+      const now = new Date();
+      const end = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+      objective = await (tx as any).objective.create({ data: { title: 'Process Auto Objective', orgUnitId, ownerId: user.id, periodStart: now, periodEnd: end, status: 'ACTIVE' as any } });
+    }
+    let kr = await (tx as any).keyResult.findFirst({ where: { title: 'Process Auto KR', objectiveId: objective.id } });
+    if (!kr) {
+      kr = await (tx as any).keyResult.create({ data: { title: 'Process Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id } });
+    }
+    const title = `${inst.title} · ${taskName}`;
+    let initiative = await (tx as any).initiative.findFirst({ where: { title, keyResultId: kr.id, ownerId: user.id } });
+    if (!initiative) {
+      initiative = await (tx as any).initiative.create({ data: { title, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+    }
+    return initiative.id as string;
+  }
+
   @Post(':id/tasks/:taskId/rollback')
   async rollback(@Param('id') id: string, @Param('taskId') taskId: string, @Body() body: any) {
     const { actorId, reason } = body || {};
@@ -682,6 +759,7 @@ export class ProcessesController {
     // non-XOR tasks: mark READY
     for (const dt of noGroup) {
       await tx.processTaskInstance.updateMany({ where: { instanceId, taskTemplateId: dt.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } }, data: { status: 'READY' } });
+      await this.autoCreateApprovalIfNeeded(tx, instanceId, dt);
     }
 
     // XOR groups: evaluate conditions
@@ -706,6 +784,7 @@ export class ProcessesController {
             where: { instanceId, taskTemplateId: selected.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
             data: { status: 'READY' },
           });
+          await this.autoCreateApprovalIfNeeded(tx, instanceId, selected);
           const siblingIds = list.map((x: any) => x.id).filter((id: string) => id !== selected.id);
           if (siblingIds.length) {
             await tx.processTaskInstance.updateMany({
@@ -719,6 +798,10 @@ export class ProcessesController {
             where: { instanceId, taskTemplateId: { in: list.map((x: any) => x.id) }, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
             data: { status: 'READY' },
           });
+          // attempt auto-create for any APPROVAL-type in this group as well
+          for (const dt of list) {
+            await this.autoCreateApprovalIfNeeded(tx, instanceId, dt);
+          }
         }
       }
     }
@@ -823,6 +906,14 @@ export class ProcessesController {
         if (body.worklogId) linkData.worklogId = String(body.worklogId);
         if (body.cooperationId) linkData.cooperationId = String(body.cooperationId);
         if (body.approvalRequestId) linkData.approvalRequestId = String(body.approvalRequestId);
+      }
+      // If approvalRequestId not provided for an APPROVAL task, auto-create it now
+      if (!linkData.approvalRequestId) {
+        const tmpl = await tx.processTaskTemplate.findUnique({ where: { id: task.taskTemplateId } });
+        if (String(tmpl?.taskType || '').toUpperCase() === 'APPROVAL') {
+          const reqId = await this.autoCreateApprovalForTaskInstance(tx, id, task.id);
+          if (reqId) linkData.approvalRequestId = reqId;
+        }
       }
       const updated = await tx.processTaskInstance.update({
         where: { id: taskId },
