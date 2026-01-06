@@ -196,17 +196,81 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     const id = `n${Date.now()}_${idCounter.current++}`;
     const label = type === 'start' ? 'Start' : type === 'end' ? 'End' : type.startsWith('gateway') ? (type === 'gateway_parallel' ? 'AND' : 'XOR') : '새 과제';
     const isTask = type === 'task';
-    const nextY = (nodes.length ? Math.max(...nodes.map((n) => n.position.y || 0)) + 120 : 60);
-    const n: Node<any> = {
-      id,
-      type,
-      position: { x: 180, y: nextY },
-      sourcePosition: Position.Bottom,
-      targetPosition: Position.Top,
-      style: { width: 180 },
-      data: isTask ? { name: '새 과제', taskType: 'TASK', label, kind: type } : { name: label, label, kind: type },
-    };
-    setNodes((nds: Node<any>[]) => nds.concat(n));
+    const selNodeId = selectedNodeId;
+    const selEdgeId = selectedEdgeId;
+
+    // 1) If an edge is selected, insert node into that edge (split it)
+    if (selEdgeId) {
+      const edge = edges.find((e) => String(e.id) === String(selEdgeId));
+      if (edge) {
+        const src = nodes.find((n) => String(n.id) === String(edge.source));
+        const tgt = nodes.find((n) => String(n.id) === String(edge.target));
+        const y = src && tgt ? Math.round(((src.position?.y || 60) + (tgt.position?.y || 180)) / 2) : (src ? (src.position?.y || 60) + 60 : (tgt ? (tgt.position?.y || 60) - 60 : 60));
+        const newNode: Node<any> = {
+          id,
+          type,
+          position: { x: 180, y },
+          sourcePosition: Position.Bottom,
+          targetPosition: Position.Top,
+          style: { width: 180 },
+          data: isTask ? { name: '새 과제', taskType: 'TASK', label, kind: type } : { name: label, label, kind: type },
+        };
+        setNodes((prev: Node<any>[]) => {
+          const found = prev.findIndex((n) => (n.position?.y || 0) > y);
+          if (found !== -1) {
+            const before = prev.slice(0, found);
+            const after = prev.slice(found);
+            return [...before, newNode, ...after];
+          }
+          return [...prev, newNode];
+        });
+        setEdges((prev: Edge<any>[]) => {
+          const others = prev.filter((e) => String(e.id) !== String(selEdgeId));
+          const cond = (edge as any).data?.condition;
+          const e1: Edge<any> = { id: `e${Date.now()}_a`, source: String(edge.source), target: String(id) } as any;
+          const e2: Edge<any> = { id: `e${Date.now()}_b`, source: String(id), target: String(edge.target), data: cond ? { condition: cond } : undefined, label: cond ? String(cond) : undefined } as any;
+          return [...others, e1, e2];
+        });
+        setSelectedNodeId(id);
+        setSelectedEdgeId(null);
+        return;
+      }
+    }
+
+    // 2) Otherwise, insert above the selected node (or append at bottom)
+    setNodes((prev: Node<any>[]) => {
+      const idx = selNodeId ? prev.findIndex((n) => String(n.id) === String(selNodeId)) : -1;
+      const insertY = idx >= 0 ? (prev[idx].position?.y || 60) : (prev.length ? Math.max(...prev.map((n) => n.position.y || 0)) + 120 : 60);
+      const newNode: Node<any> = {
+        id,
+        type,
+        position: { x: 180, y: insertY },
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+        style: { width: 180 },
+        data: isTask ? { name: '새 과제', taskType: 'TASK', label, kind: type } : { name: label, label, kind: type },
+      };
+      if (idx >= 0) {
+        const before = prev.slice(0, idx);
+        const after = prev.slice(idx).map((n) => ({
+          ...n,
+          position: { x: (n.position?.x ?? 180), y: (n.position?.y || 0) + 120 },
+        }));
+        return [...before, newNode, ...after];
+      }
+      return [...prev, newNode];
+    });
+    if (selNodeId && type !== 'start' && type !== 'end') {
+      setEdges((prev: Edge<any>[]) => {
+        const incoming = prev.filter((e) => String(e.target) === String(selNodeId));
+        const others = prev.filter((e) => String(e.target) !== String(selNodeId));
+        const rewired = incoming.map((e) => ({ ...e, target: id }));
+        const newEdge: Edge<any> = { id: `e${Date.now()}_ins`, source: String(id), target: String(selNodeId) } as any;
+        return [...others, ...rewired, newEdge];
+      });
+    }
+    setSelectedNodeId(id);
+    setSelectedEdgeId(null);
   };
 
   const onNodeLabelChange = (id: string, key: string, value: any) => {
