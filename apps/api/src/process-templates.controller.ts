@@ -41,6 +41,16 @@ export class ProcessTemplatesController {
       }
       return res;
     };
+    const toCsv = (v: any): string | undefined => {
+      if (v == null) return undefined;
+      if (Array.isArray(v)) return v.filter((x) => x != null && String(x).trim().length > 0).map((x) => String(x).trim()).join(',');
+      const s = String(v).trim();
+      return s.length ? s : undefined;
+    };
+    const normTaskType = (t: any) => {
+      const s = String(t || 'TASK').toUpperCase();
+      return ['TASK', 'WORKLOG', 'COOPERATION', 'APPROVAL'].includes(s) ? s : 'TASK';
+    };
     const taskNodes = bpmn.nodes.filter((n: any) => isTask(n));
     return taskNodes.map((n: any, idx: number) => {
       const preds = Array.from(collectUpstreamTasks(String(n.id)));
@@ -61,26 +71,26 @@ export class ProcessTemplatesController {
       });
       return {
         id: String(n.id),
-        name: n.name,
-        description: n.description,
-        assigneeHint: n.assigneeHint,
-        stageLabel: n.stageLabel,
-        taskType: n.taskType || 'TASK',
-        orderHint: n.orderHint ?? idx,
+        name: String(n.name || ''),
+        description: n.description != null ? String(n.description) : undefined,
+        assigneeHint: n.assigneeHint != null ? String(n.assigneeHint) : undefined,
+        stageLabel: n.stageLabel != null ? String(n.stageLabel) : undefined,
+        taskType: normTaskType(n.taskType),
+        orderHint: typeof n.orderHint === 'number' ? n.orderHint : idx,
         predecessorIds: preds.length ? preds.join(',') : undefined,
         predecessorMode: anyXor ? 'ANY' : undefined,
         xorGroupKey: xorKey,
         xorCondition: xorCond,
-        expectedOutput: n.expectedOutput,
-        worklogTemplateHint: n.worklogTemplateHint,
-        linkToKpiType: n.linkToKpiType,
-        approvalRouteType: n.approvalRouteType,
-        approvalRoleCodes: n.approvalRoleCodes,
-        approvalUserIds: n.approvalUserIds,
-        isFinalApproval: n.isFinalApproval,
-        deadlineOffsetDays: n.deadlineOffsetDays,
-        slaHours: n.slaHours,
-        allowDelayReasonRequired: n.allowDelayReasonRequired,
+        expectedOutput: n.expectedOutput != null ? String(n.expectedOutput) : undefined,
+        worklogTemplateHint: n.worklogTemplateHint != null ? String(n.worklogTemplateHint) : undefined,
+        linkToKpiType: n.linkToKpiType != null ? String(n.linkToKpiType) : undefined,
+        approvalRouteType: n.approvalRouteType != null ? String(n.approvalRouteType) : undefined,
+        approvalRoleCodes: toCsv(n.approvalRoleCodes),
+        approvalUserIds: toCsv(n.approvalUserIds),
+        isFinalApproval: n.isFinalApproval ? Boolean(n.isFinalApproval) : false,
+        deadlineOffsetDays: typeof n.deadlineOffsetDays === 'number' ? n.deadlineOffsetDays : undefined,
+        slaHours: typeof n.slaHours === 'number' ? n.slaHours : undefined,
+        allowDelayReasonRequired: n.allowDelayReasonRequired ? Boolean(n.allowDelayReasonRequired) : false,
       };
     });
   }
