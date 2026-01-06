@@ -315,79 +315,94 @@ export class ProcessTemplatesController {
       });
 
       const compiled = this.compileBpmn(bpmnJson);
-      await tx.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
+      const existing = await tx.processTaskTemplate.findMany({ where: { processTemplateId: id }, select: { id: true } });
+      const existingIds = existing.map((x: any) => x.id) as string[];
+      const usedCount = existingIds.length
+        ? await tx.processTaskInstance.count({ where: { taskTemplateId: { in: existingIds } } })
+        : 0;
+
       if (compiled && compiled.length) {
-        const createdMap = new Map<string, string>();
-        for (const [idx, t] of compiled.entries()) {
-          const created = await tx.processTaskTemplate.create({
-            data: {
-              processTemplateId: id,
-              name: t.name,
-              description: t.description,
-              assigneeHint: t.assigneeHint,
-              stageLabel: t.stageLabel,
-              taskType: t.taskType,
-              orderHint: typeof t.orderHint === 'number' ? t.orderHint : idx,
-              expectedOutput: t.expectedOutput,
-              worklogTemplateHint: t.worklogTemplateHint,
-              linkToKpiType: t.linkToKpiType,
-              approvalRouteType: t.approvalRouteType,
-              approvalRoleCodes: t.approvalRoleCodes,
-              approvalUserIds: t.approvalUserIds,
-              isFinalApproval: t.isFinalApproval,
-              deadlineOffsetDays: t.deadlineOffsetDays,
-              slaHours: t.slaHours,
-              allowDelayReasonRequired: t.allowDelayReasonRequired,
-              xorGroupKey: t.xorGroupKey,
-              xorCondition: t.xorCondition,
-            },
-          });
-          createdMap.set(String(t.id), created.id);
-        }
-        for (const t of compiled) {
-          const newId = createdMap.get(String(t.id))!;
-          const preds = (String(t.predecessorIds || '')
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean) as string[])
-            .map((pid) => createdMap.get(pid))
-            .filter(Boolean) as string[];
-          await tx.processTaskTemplate.update({
-            where: { id: newId },
-            data: { predecessorIds: preds.length ? preds.join(',') : undefined, predecessorMode: t.predecessorMode },
-          });
+        if (usedCount > 0) {
+          // In-use: keep existing tasks unchanged to avoid FK violation. Only template metadata and bpmnJson updated above.
+        } else {
+          await tx.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
+          const createdMap = new Map<string, string>();
+          for (const [idx, t] of compiled.entries()) {
+            const created = await tx.processTaskTemplate.create({
+              data: {
+                processTemplateId: id,
+                name: t.name,
+                description: t.description,
+                assigneeHint: t.assigneeHint,
+                stageLabel: t.stageLabel,
+                taskType: t.taskType,
+                orderHint: typeof t.orderHint === 'number' ? t.orderHint : idx,
+                expectedOutput: t.expectedOutput,
+                worklogTemplateHint: t.worklogTemplateHint,
+                linkToKpiType: t.linkToKpiType,
+                approvalRouteType: t.approvalRouteType,
+                approvalRoleCodes: t.approvalRoleCodes,
+                approvalUserIds: t.approvalUserIds,
+                isFinalApproval: t.isFinalApproval,
+                deadlineOffsetDays: t.deadlineOffsetDays,
+                slaHours: t.slaHours,
+                allowDelayReasonRequired: t.allowDelayReasonRequired,
+                xorGroupKey: t.xorGroupKey,
+                xorCondition: t.xorCondition,
+              },
+            });
+            createdMap.set(String(t.id), created.id);
+          }
+          for (const t of compiled) {
+            const newId = createdMap.get(String(t.id))!;
+            const preds = (String(t.predecessorIds || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean) as string[])
+              .map((pid) => createdMap.get(pid))
+              .filter(Boolean) as string[];
+            await tx.processTaskTemplate.update({
+              where: { id: newId },
+              data: { predecessorIds: preds.length ? preds.join(',') : undefined, predecessorMode: t.predecessorMode },
+            });
+          }
         }
       } else if (Array.isArray(tasks)) {
-        const dataToCreate = (tasks as any[]).map((t: any, idx: number) => ({
-          processTemplateId: id,
-          name: t.name,
-          description: t.description,
-          assigneeHint: t.assigneeHint,
-          stageLabel: t.stageLabel,
-          taskType: t.taskType,
-          orderHint: t.orderHint ?? idx,
-          predecessorIds: t.predecessorIds,
-          assigneeType: t.assigneeType,
-          assigneeUserId: t.assigneeUserId,
-          assigneeOrgUnitId: t.assigneeOrgUnitId,
-          assigneeRoleCode: t.assigneeRoleCode,
-          cooperationTargetType: t.cooperationTargetType,
-          cooperationTargetUserId: t.cooperationTargetUserId,
-          cooperationTargetOrgUnitId: t.cooperationTargetOrgUnitId,
-          cooperationTargetRoleCode: t.cooperationTargetRoleCode,
-          expectedOutput: t.expectedOutput,
-          worklogTemplateHint: t.worklogTemplateHint,
-          linkToKpiType: t.linkToKpiType,
-          approvalRouteType: t.approvalRouteType,
-          approvalRoleCodes: t.approvalRoleCodes,
-          approvalUserIds: t.approvalUserIds,
-          isFinalApproval: t.isFinalApproval,
-          deadlineOffsetDays: t.deadlineOffsetDays,
-          slaHours: t.slaHours,
-          allowDelayReasonRequired: t.allowDelayReasonRequired,
-        }));
-        if (dataToCreate.length) {
-          await tx.processTaskTemplate.createMany({ data: dataToCreate });
+        if (usedCount > 0) {
+          // In-use: keep existing tasks unchanged.
+        } else {
+          await tx.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
+          const dataToCreate = (tasks as any[]).map((t: any, idx: number) => ({
+            processTemplateId: id,
+            name: t.name,
+            description: t.description,
+            assigneeHint: t.assigneeHint,
+            stageLabel: t.stageLabel,
+            taskType: t.taskType,
+            orderHint: t.orderHint ?? idx,
+            predecessorIds: t.predecessorIds,
+            assigneeType: t.assigneeType,
+            assigneeUserId: t.assigneeUserId,
+            assigneeOrgUnitId: t.assigneeOrgUnitId,
+            assigneeRoleCode: t.assigneeRoleCode,
+            cooperationTargetType: t.cooperationTargetType,
+            cooperationTargetUserId: t.cooperationTargetUserId,
+            cooperationTargetOrgUnitId: t.cooperationTargetOrgUnitId,
+            cooperationTargetRoleCode: t.cooperationTargetRoleCode,
+            expectedOutput: t.expectedOutput,
+            worklogTemplateHint: t.worklogTemplateHint,
+            linkToKpiType: t.linkToKpiType,
+            approvalRouteType: t.approvalRouteType,
+            approvalRoleCodes: t.approvalRoleCodes,
+            approvalUserIds: t.approvalUserIds,
+            isFinalApproval: t.isFinalApproval,
+            deadlineOffsetDays: t.deadlineOffsetDays,
+            slaHours: t.slaHours,
+            allowDelayReasonRequired: t.allowDelayReasonRequired,
+          }));
+          if (dataToCreate.length) {
+            await tx.processTaskTemplate.createMany({ data: dataToCreate });
+          }
         }
       }
 
