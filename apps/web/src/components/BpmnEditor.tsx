@@ -7,10 +7,34 @@ import ReactFlow, {
   Connection,
   Edge,
   Node,
+  Position,
+  Handle,
   useEdgesState,
   useNodesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+
+function LabeledNode({ data }: { data: any }) {
+  const kind = data?.kind as string | undefined;
+  const bg = kind === 'start' ? '#ecfdf5' : kind === 'end' ? '#fee2e2' : '#ffffff';
+  const bd = kind === 'start' ? '#16a34a' : kind === 'end' ? '#dc2626' : '#cbd5e1';
+  return (
+    <div style={{
+      padding: 8,
+      border: `1px solid ${bd}`,
+      borderRadius: 6,
+      background: bg,
+      minWidth: 160,
+      textAlign: 'center',
+      fontSize: 12,
+      fontWeight: 600,
+    }}>
+      <Handle type="target" position={Position.Top} />
+      <div>{data?.label || data?.name || ''}</div>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
 
 export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onChangeJson: (t: string) => void }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<any>>([]);
@@ -22,6 +46,14 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
   const panelRef = useRef<HTMLDivElement | null>(null);
   const nodeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const edgeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const nodeTypes = useMemo(() => ({
+    start: LabeledNode,
+    end: LabeledNode,
+    task: LabeledNode,
+    gateway_parallel: LabeledNode,
+    gateway_xor: LabeledNode,
+  }), []);
+  const defaultEdgeOptions = useMemo(() => ({ type: 'smoothstep' as const }), []);
 
   const toJson = useCallback(() => {
     const j = {
@@ -44,20 +76,33 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
   const fromJson = useCallback((txt: string) => {
     try {
       const j = JSON.parse(txt || '{}');
-      const nn: Node<any>[] = (j.nodes || []).map((n: any, idx: number) => ({
-        id: String(n.id),
-        type: String(n.type || 'task'),
-        position: { x: 80 + (idx % 6) * 160, y: 80 + Math.floor(idx / 6) * 140 },
-        data: {
-          name: n.name || '',
-          taskType: n.taskType || undefined,
-          description: n.description || undefined,
-          assigneeHint: n.assigneeHint || undefined,
-          stageLabel: n.stageLabel || undefined,
-          deadlineOffsetDays: n.deadlineOffsetDays ?? undefined,
-          approvalUserIds: n.approvalUserIds || undefined,
-        },
-      }));
+      const nn: Node<any>[] = (j.nodes || []).map((n: any, idx: number) => {
+        const type = String(n.type || 'task');
+        const label = type === 'start'
+          ? 'Start'
+          : type === 'end'
+          ? 'End'
+          : (n.name || (type === 'gateway_parallel' ? 'AND' : type === 'gateway_xor' ? 'XOR' : ''));
+        return {
+          id: String(n.id),
+          type,
+          position: { x: 180, y: 60 + idx * 120 },
+          sourcePosition: Position.Bottom,
+          targetPosition: Position.Top,
+          style: { width: 180 },
+          data: {
+            name: n.name || '',
+            taskType: n.taskType || undefined,
+            description: n.description || undefined,
+            assigneeHint: n.assigneeHint || undefined,
+            stageLabel: n.stageLabel || undefined,
+            deadlineOffsetDays: n.deadlineOffsetDays ?? undefined,
+            approvalUserIds: n.approvalUserIds || undefined,
+            label,
+            kind: type,
+          },
+        } as Node<any>;
+      });
       const ee: Edge<any>[] = (j.edges || []).map((e: any) => ({ id: String(e.id || `${e.source}-${e.target}`), source: String(e.source), target: String(e.target), data: e.condition ? { condition: String(e.condition) } : undefined, label: e.condition ? String(e.condition) : undefined }));
       setNodes(nn);
       setEdges(ee);
@@ -128,19 +173,30 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
 
   const addNode = (type: string) => {
     const id = `n${Date.now()}_${idCounter.current++}`;
-    const label = type === 'start' ? 'Start' : type === 'end' ? 'End' : type.startsWith('gateway') ? (type === 'gateway_parallel' ? 'AND' : 'XOR') : 'Task';
-    const data: any = type === 'task' ? { name: '새 과제', taskType: 'TASK' } : { name: label };
+    const label = type === 'start' ? 'Start' : type === 'end' ? 'End' : type.startsWith('gateway') ? (type === 'gateway_parallel' ? 'AND' : 'XOR') : '새 과제';
+    const isTask = type === 'task';
+    const nextY = (nodes.length ? Math.max(...nodes.map((n) => n.position.y || 0)) + 120 : 60);
     const n: Node<any> = {
       id,
       type,
-      position: { x: 80 + Math.random() * 480, y: 80 + Math.random() * 320 },
-      data,
+      position: { x: 180, y: nextY },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      style: { width: 180 },
+      data: isTask ? { name: '새 과제', taskType: 'TASK', label, kind: type } : { name: label, label, kind: type },
     };
     setNodes((nds: Node<any>[]) => nds.concat(n));
   };
 
   const onNodeLabelChange = (id: string, key: string, value: any) => {
-    setNodes((nds: Node<any>[]) => nds.map((n: Node<any>) => (n.id === id ? { ...n, data: { ...(n.data || {}), [key]: value } } : n)));
+    setNodes((nds: Node<any>[]) => nds.map((n: Node<any>) => {
+      if (n.id !== id) return n;
+      const newData: any = { ...(n.data || {}), [key]: value };
+      if (key === 'name') {
+        newData.label = value;
+      }
+      return { ...n, data: newData };
+    }));
   };
 
   const sidePanel = useMemo(() => {
@@ -156,6 +212,7 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
         <div style={{ display: 'flex', gap: 6 }}>
           <button type="button" className="btn" onClick={toJson}>그래프→JSON 반영</button>
           <button type="button" className="btn" onClick={() => fromJson(jsonText)}>JSON→그래프 불러오기</button>
+          <button type="button" className="btn" onClick={() => setNodes((nds: Node<any>[]) => nds.map((n: Node<any>, idx: number) => ({ ...n, position: { x: 180, y: 60 + idx * 120 } })))}>세로 정렬</button>
         </div>
         <div style={{ fontSize: 12, color: '#6b7280' }}>그래프에서 노드/엣지를 선택하면 여기 상세가 하이라이트되며 스크롤됩니다.</div>
 
@@ -191,6 +248,11 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
                     onChange={(e) => onNodeLabelChange(n.id, 'approvalUserIds', e.target.value)}
                   />
                 </label>
+              </>
+            )}
+            {(n.type === 'gateway_parallel' || n.type === 'gateway_xor') && (
+              <>
+                <label>제목<input value={(n.data as any)?.name || ''} onChange={(e) => onNodeLabelChange(n.id, 'name', e.target.value)} /></label>
               </>
             )}
           </div>
@@ -240,6 +302,8 @@ export function BpmnEditor({ jsonText, onChangeJson }: { jsonText: string; onCha
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          nodeTypes={nodeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
