@@ -556,6 +556,7 @@ model ProcessTemplate {
   expectedCompletionCriteria String?
   allowExtendDeadline        Boolean            @default(true)
   status                     String             @default("ACTIVE")
+  official                   Boolean            @default(false)
   createdAt                  DateTime           @default(now())
   updatedAt                  DateTime           @updatedAt
   tasks                      ProcessTaskTemplate[]

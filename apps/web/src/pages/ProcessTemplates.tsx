@@ -39,6 +39,7 @@ interface ProcessTemplateDto {
   expectedCompletionCriteria?: string;
   allowExtendDeadline?: boolean;
   status?: string;
+  official?: boolean;
   tasks: ProcessTaskTemplateDto[];
 }
 
@@ -57,7 +58,7 @@ export function ProcessTemplates() {
   const [carModelsMaster, setCarModelsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [bpmnJsonText, setBpmnJsonText] = useState('');
   const [bpmnMode, setBpmnMode] = useState<'graph' | 'form'>('graph');
-  const [promoteVis, setPromoteVis] = useState<'PUBLIC' | 'ORG_UNIT'>('PUBLIC');
+  
   const [inUseCount, setInUseCount] = useState<number>(0);
   const [showCloneModal, setShowCloneModal] = useState(false);
   const [cloneTitle, setCloneTitle] = useState('');
@@ -196,12 +197,12 @@ export function ProcessTemplates() {
     try {
       await apiJson(`/api/process-templates/${encodeURIComponent(editing.id)}/promote`, {
         method: 'POST',
-        body: JSON.stringify({ actorId: userId, visibility: promoteVis }),
+        body: JSON.stringify({ actorId: userId }),
       });
       await loadList();
-      alert('승격되었습니다.');
+      alert('공식 템플릿으로 지정되었습니다.');
     } catch (e: any) {
-      alert('승격에 실패했습니다. 권한이 없을 수 있습니다.');
+      alert('공식 지정에 실패했습니다. 권한이 없을 수 있습니다.');
     }
   }
 
@@ -386,7 +387,12 @@ export function ProcessTemplates() {
                 background: editing?.id === it.id ? '#eff6ff' : '#ffffff',
               }}
             >
-              <div style={{ fontWeight: 600 }}>{it.title}</div>
+              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>{it.title}</span>
+                {it.official ? (
+                  <span style={{ fontSize: 11, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '0px 6px', borderRadius: 6 }}>공식</span>
+                ) : null}
+              </div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>{it.description}</div>
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
                 유형: {it.type === 'RECURRING' ? '반복' : '프로젝트'} · 공개: {it.visibility}
@@ -417,11 +423,11 @@ export function ProcessTemplates() {
             <h2>업무 프로세스 정의</h2>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <select value={promoteVis} onChange={(e) => setPromoteVis(e.target.value as any)}>
-                  <option value="PUBLIC">승격: 전체 공개</option>
-                  <option value="ORG_UNIT">승격: 팀 공개</option>
-                </select>
-                <button className="btn btn-warning" onClick={promote} disabled={!editing?.id}>승격</button>
+                {editing?.official ? (
+                  <span style={{ fontSize: 12, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '2px 6px', borderRadius: 6 }}>★ 공식 템플릿</span>
+                ) : (
+                  <button className="btn btn-warning" onClick={promote} disabled={!editing?.id}>공식 지정</button>
+                )}
               </div>
               {editing?.id ? (
                 <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>

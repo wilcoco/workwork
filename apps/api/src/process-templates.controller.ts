@@ -437,15 +437,13 @@ export class ProcessTemplatesController {
 
   @Post(':id/promote')
   async promote(@Param('id') id: string, @Body() body: any) {
-    const { actorId, visibility } = body || {};
+    const { actorId } = body || {};
     if (!actorId) throw new BadRequestException('actorId required');
     const ok = await this.isExecOrCeo(actorId);
     if (!ok) throw new ForbiddenException('not allowed');
-    const vis = String(visibility || 'PUBLIC').toUpperCase();
-    if (!['PUBLIC', 'ORG_UNIT'].includes(vis)) throw new BadRequestException('invalid visibility');
     const updated = await this.prisma.processTemplate.update({
       where: { id },
-      data: { status: 'ACTIVE', visibility: vis as any },
+      data: ({ official: true } as any),
       include: { tasks: { orderBy: { orderHint: 'asc' } } },
     });
     return updated;
