@@ -1,4 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Quill from 'quill';
+import 'quill/dist/quill.snow.css';
+import { uploadFiles } from '../lib/upload';
 
 type BpmnNode = {
   id: string;
@@ -190,10 +193,14 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
                     <option value="APPROVAL">APPROVAL</option>
                   </select>
                 </label>
-                <label>
-                  설명
-                  <textarea rows={2} value={n.description || ''} onChange={(e) => updateNode(n.id, { description: e.target.value })} />
-                </label>
+                <div>
+                  <label>설명</label>
+                  <NodeDescEditor
+                    nodeId={n.id}
+                    initialHtml={n.description || ''}
+                    onChangeHtml={(html) => updateNode(n.id, { description: html })}
+                  />
+                </div>
                 <label>
                   담당자 힌트
                   <input value={n.assigneeHint || ''} onChange={(e) => updateNode(n.id, { assigneeHint: e.target.value })} />
@@ -245,6 +252,77 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
       </div>
 
       {/* 안내 문구도 기본 UI에서 숨김 처리 */}
+    </div>
+  );
+}
+
+function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHtml: (html: string) => void }) {
+  const { nodeId, initialHtml, onChangeHtml } = props;
+  const elRef = useRef<HTMLDivElement | null>(null);
+  const qref = useRef<Quill | null>(null);
+  const [html, setHtml] = useState<string>(initialHtml || '');
+
+  useEffect(() => {
+    if (!elRef.current || qref.current) return;
+    const toolbar = [
+      [{ header: [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['link', 'image'],
+      [{ color: [] }, { background: [] }],
+      [{ align: [] }],
+      ['clean'],
+    ];
+    const q = new Quill(elRef.current, { theme: 'snow', modules: { toolbar }, placeholder: '노드 설명을 입력하세요.' } as any);
+    q.on('text-change', () => {
+      const next = q.root.innerHTML;
+      setHtml(next);
+    });
+    try {
+      q.clipboard.dangerouslyPasteHTML(initialHtml || '');
+    } catch {}
+    qref.current = q;
+  }, [initialHtml]);
+
+  useEffect(() => {
+    onChangeHtml(html);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html]);
+
+  useEffect(() => {
+    if (!qref.current) return;
+    try {
+      qref.current.clipboard.dangerouslyPasteHTML(initialHtml || '');
+      setHtml(initialHtml || '');
+    } catch {}
+  }, [initialHtml]);
+
+  async function onAttachFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    try {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      const ups = await uploadFiles(files);
+      const q = qref.current as any;
+      const range = q?.getSelection?.(true);
+      ups.forEach((f: any) => {
+        const linkHtml = `<a href="${f.url}" target="_blank" rel="noreferrer">${f.name}</a>`;
+        if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
+        else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
+      });
+      e.target.value = '' as any;
+    } catch {}
+  }
+
+  return (
+    <div>
+      <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden' }}>
+        <div ref={(r) => (elRef.current = r)} style={{ minHeight: 140, width: '100%' }} />
+      </div>
+      <div style={{ marginTop: 6 }}>
+        <label>첨부 파일</label>
+        <input type="file" multiple onChange={onAttachFiles} />
+        <span style={{ marginLeft: 8, color: '#9ca3af', fontSize: 12 }}>#{nodeId}</span>
+      </div>
     </div>
   );
 }

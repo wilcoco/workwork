@@ -117,14 +117,13 @@ export function ProcessTemplates() {
       q.on('text-change', () => setDescHtml(q.root.innerHTML));
       descQuillRef.current = q;
     }
-    // sync from current editing.description
     const html = (editing?.description || '').toString();
     setDescHtml(html);
     try {
       descQuillRef.current?.setContents([] as any);
       descQuillRef.current?.clipboard.dangerouslyPasteHTML(html || '');
     } catch {}
-  }, [editing?.id]);
+  }, [editing]);
 
   async function insertFilesToDesc(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -575,43 +574,7 @@ export function ProcessTemplates() {
               </div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>저장 시 아래 과제 목록은 편집된 흐름 기준으로 재생성됩니다.</div>
             </div>
-            {(() => {
-              // Node rich-text editors (optional)
-              let nodes: any[] = [];
-              try {
-                const j = JSON.parse(bpmnJsonText || '{}');
-                nodes = Array.isArray(j?.nodes) ? j.nodes.filter((n: any) => String(n?.type || '').toLowerCase() === 'task') : [];
-              } catch {}
-              return (
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <h3>노드 설명(리치 텍스트)</h3>
-                  </div>
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {nodes.map((n: any) => (
-                      <NodeRichEditor
-                        key={String(n.id)}
-                        nodeId={String(n.id)}
-                        title={n.name || String(n.id)}
-                        initialHtml={String((n.descriptionHtml || n.description || ''))}
-                        onApply={async (html) => {
-                          try {
-                            const j = JSON.parse(bpmnJsonText || '{}');
-                            const list = Array.isArray(j?.nodes) ? j.nodes : [];
-                            const idx = list.findIndex((x: any) => String(x.id) === String(n.id));
-                            if (idx >= 0) {
-                              list[idx] = { ...list[idx], descriptionHtml: html };
-                              setBpmnJsonText(JSON.stringify({ ...j, nodes: list }, null, 2));
-                            }
-                          } catch {}
-                        }}
-                      />
-                    ))}
-                    {!nodes.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>Task 노드가 없거나 그래프가 비어 있습니다.</div>}
-                  </div>
-                </div>
-              );
-            })()}
+            {/* 노드 설명은 BpmnFormEditor 내에서 각 노드의 '설명' 필드를 리치 에디터로 직접 입력합니다. */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <h3>과제 미리보기 (읽기 전용)</h3>
@@ -695,62 +658,6 @@ export function ProcessTemplates() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function NodeRichEditor(props: { nodeId: string; title: string; initialHtml: string; onApply: (html: string) => void }) {
-  const { nodeId, title, initialHtml, onApply } = props;
-  const el = useRef<HTMLDivElement | null>(null);
-  const qref = useRef<Quill | null>(null);
-  const [html, setHtml] = useState<string>(initialHtml || '');
-  useEffect(() => {
-    if (!el.current || qref.current) return;
-    const toolbar = [
-      [{ header: [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ list: 'ordered' }, { list: 'bullet' }],
-      ['link', 'image'],
-      [{ color: [] }, { background: [] }],
-      [{ align: [] }],
-      ['clean'],
-    ];
-    const q = new Quill(el.current, { theme: 'snow', modules: { toolbar }, placeholder: '노드 설명을 입력하세요.' } as any);
-    q.on('text-change', () => setHtml(q.root.innerHTML));
-    q.clipboard.dangerouslyPasteHTML(initialHtml || '');
-    qref.current = q;
-  }, [initialHtml]);
-  async function onAttachFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    try {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-      const ups = await uploadFiles(files);
-      const q = qref.current as any;
-      const range = q?.getSelection?.(true);
-      ups.forEach((f) => {
-        const linkHtml = `<a href="${f.url}" target="_blank" rel="noreferrer">${f.name}</a>`;
-        if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
-        else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
-      });
-      e.target.value = '' as any;
-    } catch {}
-  }
-  return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <b>{title}</b>
-        <span style={{ color: '#9ca3af', fontSize: 12 }}>#{nodeId}</span>
-      </div>
-      <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden', marginTop: 6 }}>
-        <div ref={(r) => (el.current = r)} style={{ minHeight: 140, width: '100%' }} />
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-        <div>
-          <label>첨부 파일</label>
-          <input type="file" multiple onChange={onAttachFiles} />
-        </div>
-        <button className="btn btn-primary" onClick={() => onApply(html)}>적용</button>
-      </div>
     </div>
   );
 }
