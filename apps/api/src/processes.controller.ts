@@ -318,6 +318,130 @@ export class ProcessesController {
     });
   }
 
+  @Get(':id/timeline')
+  async timeline(@Param('id') id: string) {
+    const tasks = await (this.prisma as any).processTaskInstance.findMany({
+      where: { instanceId: id },
+      orderBy: [{ stageLabel: 'asc' as any }, { createdAt: 'asc' as any }],
+      select: {
+        id: true,
+        name: true,
+        stageLabel: true,
+        taskType: true,
+        status: true,
+        actualStartAt: true,
+        actualEndAt: true,
+        worklogId: true,
+        cooperationId: true,
+        approvalRequestId: true,
+        assigneeId: true,
+      },
+    });
+    const worklogIds = Array.from(new Set(tasks.map((t: any) => t.worklogId).filter(Boolean)));
+    const coopIds = Array.from(new Set(tasks.map((t: any) => t.cooperationId).filter(Boolean)));
+    const apprIds = Array.from(new Set(tasks.map((t: any) => t.approvalRequestId).filter(Boolean)));
+
+    const worklogs = worklogIds.length
+      ? await (this.prisma as any).worklog.findMany({
+          where: { id: { in: worklogIds } },
+          include: { createdBy: { select: { id: true, name: true } } },
+        })
+      : [];
+    const wlMap = new Map<string, any>();
+    for (const w of worklogs) wlMap.set(w.id, w);
+
+    const coops = coopIds.length
+      ? await (this.prisma as any).helpTicket.findMany({
+          where: { id: { in: coopIds } },
+          include: { assignee: { select: { id: true, name: true } } },
+        })
+      : [];
+    const coopMap = new Map<string, any>();
+    for (const c of coops) coopMap.set(c.id, c);
+
+    // For cooperation, also pull linked worklogs if present
+    const coopWlIds = Array.from(
+      new Set(coops.map((c: any) => c.worklogId).filter(Boolean))
+    );
+    const coopWorklogs = coopWlIds.length
+      ? await (this.prisma as any).worklog.findMany({ where: { id: { in: coopWlIds } }, include: { createdBy: { select: { id: true, name: true } } } })
+      : [];
+    const coopWlMap = new Map<string, any>();
+    for (const w of coopWorklogs) coopWlMap.set(w.id, w);
+
+    const approvals = apprIds.length
+      ? await (this.prisma as any).approvalRequest.findMany({
+          where: { id: { in: apprIds } },
+          include: {
+            steps: { orderBy: { stepNo: 'asc' } },
+            requestedBy: { select: { id: true, name: true } },
+          },
+        })
+      : [];
+    const apprMap = new Map<string, any>();
+    for (const a of approvals) apprMap.set(a.id, a);
+
+    const result = tasks.map((t: any) => {
+      const wl = t.worklogId ? wlMap.get(t.worklogId) : null;
+      const coop = t.cooperationId ? coopMap.get(t.cooperationId) : null;
+      const coopWl = coop?.worklogId ? coopWlMap.get(coop.worklogId) : null;
+      const appr = t.approvalRequestId ? apprMap.get(t.approvalRequestId) : null;
+      return {
+        id: t.id,
+        name: t.name,
+        stageLabel: t.stageLabel,
+        taskType: t.taskType,
+        status: t.status,
+        actualStartAt: t.actualStartAt,
+        actualEndAt: t.actualEndAt,
+        worklog: wl
+          ? {
+              id: wl.id,
+              title: wl.title || wl.note || '',
+              createdAt: wl.createdAt,
+              createdBy: wl.createdBy ? { id: wl.createdBy.id, name: wl.createdBy.name } : null,
+              contentHtml: (wl.attachments as any)?.contentHtml || wl.contentHtml || null,
+            }
+          : null,
+        cooperation: coop
+          ? {
+              id: coop.id,
+              category: coop.category,
+              status: coop.status,
+              assignee: coop.assignee ? { id: coop.assignee.id, name: coop.assignee.name } : null,
+              dueAt: coop.dueAt,
+              worklog: coopWl
+                ? {
+                    id: coopWl.id,
+                    title: coopWl.title || coopWl.note || '',
+                    createdAt: coopWl.createdAt,
+                    createdBy: coopWl.createdBy ? { id: coopWl.createdBy.id, name: coopWl.createdBy.name } : null,
+                    contentHtml: (coopWl.attachments as any)?.contentHtml || coopWl.contentHtml || null,
+                  }
+                : null,
+            }
+          : null,
+        approval: appr
+          ? {
+              id: appr.id,
+              status: appr.status,
+              requestedBy: appr.requestedBy ? { id: appr.requestedBy.id, name: appr.requestedBy.name } : null,
+              dueAt: appr.dueAt,
+              steps: (appr.steps || []).map((s: any) => ({
+                stepNo: s.stepNo,
+                approverId: s.approverId,
+                status: s.status,
+                actedAt: s.actedAt,
+                comment: s.comment || null,
+              })),
+            }
+          : null,
+      };
+    });
+
+    return { tasks: result } as any;
+  }
+
   @Post()
   async start(@Body() body: any) {
     try {

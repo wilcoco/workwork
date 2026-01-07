@@ -46,6 +46,7 @@ export function WorklogNew() {
   const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; instance: { id: string; title: string } }>>([]);
   const [selectedProcTaskId, setSelectedProcTaskId] = useState<string>(taskInstanceId || '');
   const [selectedProcInstId, setSelectedProcInstId] = useState<string>(processInstanceId || '');
+  const [showProcPopup, setShowProcPopup] = useState(false);
 
   useEffect(() => {
     if (myUserId && !createdById) setCreatedById(myUserId);
@@ -259,6 +260,11 @@ export function WorklogNew() {
             ))}
           </select>
           {!!taskInstanceId && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스에서 전달된 과제로 고정되었습니다.</div>}
+          {!!(selectedProcInstId || processInstanceId) && (
+            <div style={{ marginTop: 6 }}>
+              <button type="button" className="btn btn-outline" onClick={() => setShowProcPopup(true)}>진행 프로세스 보기</button>
+            </div>
+          )}
         </label>
       )}
 
@@ -345,6 +351,22 @@ export function WorklogNew() {
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <button disabled={submitting} type="submit">{submitting ? '저장 중...' : '업무일지 저장'}</button>
+
+      {showProcPopup && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: 0, width: 'min(1080px, 96vw)', height: 'min(85vh, 900px)', display: 'grid', gridTemplateRows: '44px 1fr' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }}>
+              <div style={{ fontWeight: 700 }}>프로세스 진행 대시보드</div>
+              <button type="button" className="btn" style={{ marginLeft: 'auto' }} onClick={() => setShowProcPopup(false)}>닫기</button>
+            </div>
+            <iframe
+              title="process-detail"
+              src={`/process/instances/${encodeURIComponent(selectedProcInstId || processInstanceId)}`}
+              style={{ width: '100%', height: '100%', border: 'none' }}
+            />
+          </div>
+        </div>
+      )}
     </form>
   );
 }

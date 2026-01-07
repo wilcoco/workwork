@@ -33,6 +33,31 @@ interface ProcInst {
 interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' };
 type ModChange = { type: 'skip' | 'reassign' | 'update'; taskId: string; name: string; before?: any; after?: any };
 type ModEntry = { ts: string; userId: string; reason: string; changes: ModChange[] };
+type TimelineItem = {
+  id: string;
+  name: string;
+  stageLabel?: string | null;
+  taskType: 'COOPERATION' | 'WORKLOG' | 'APPROVAL' | 'TASK';
+  status: string;
+  actualStartAt?: string;
+  actualEndAt?: string;
+  worklog?: { id: string; title: string; createdAt?: string; createdBy?: { id: string; name: string } | null; contentHtml?: string | null } | null;
+  cooperation?: {
+    id: string;
+    category?: string;
+    status?: string;
+    assignee?: { id: string; name: string } | null;
+    dueAt?: string;
+    worklog?: { id: string; title: string; createdAt?: string; createdBy?: { id: string; name: string } | null; contentHtml?: string | null } | null;
+  } | null;
+  approval?: {
+    id: string;
+    status?: string;
+    requestedBy?: { id: string; name: string } | null;
+    dueAt?: string;
+    steps?: Array<{ stepNo: number; approverId: string; status: string; actedAt?: string; comment?: string | null }>;
+  } | null;
+};
 
 export function ProcessInstanceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -56,6 +81,7 @@ export function ProcessInstanceDetail() {
     plannedEndAt?: string;
   }>>({});
   const [modHistory, setModHistory] = useState<ModEntry[]>([]);
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
   useEffect(() => {
     if (!id || id === 'undefined' || id === 'null') { setInst(null); setError('잘못된 프로세스 ID 입니다.'); return; }
@@ -65,6 +91,7 @@ export function ProcessInstanceDetail() {
         const data = await apiJson<ProcInst>(`/api/processes/${encodeURIComponent(id)}`);
         setInst(data || null);
         setError('');
+        try { const tl = await apiJson<{ tasks: TimelineItem[] }>(`/api/processes/${encodeURIComponent(id)}/timeline`); setTimeline(tl?.tasks || []); } catch {}
         if (userId) {
           try {
             const mine = await apiJson<UserMe>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
@@ -132,6 +159,7 @@ export function ProcessInstanceDetail() {
       setInst(null);
     }
     try { const hist = await apiJson<ModEntry[]>(`/api/processes/${encodeURIComponent(id)}/modifications`); setModHistory(hist || []); } catch {}
+    try { const tl = await apiJson<{ tasks: TimelineItem[] }>(`/api/processes/${encodeURIComponent(id)}/timeline`); setTimeline(tl?.tasks || []); } catch {}
   }
 
   const onExecute = async (t: ProcTask) => {
@@ -468,6 +496,56 @@ export function ProcessInstanceDetail() {
           </div>
         </div>
       )}
+
+      {/* timeline (세부 내용) */}
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ fontWeight: 800 }}>세부 내용</div>
+          <button className="btn" style={{ marginLeft: 'auto' }} onClick={reload}>새로고침</button>
+        </div>
+        <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+          {timeline.map((it) => (
+            <div key={it.id} style={{ border: '1px solid #EEF2F7', borderRadius: 8, padding: 8, display: 'grid', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontWeight: 700 }}>{it.name}{it.stageLabel ? ` · ${it.stageLabel}` : ''}</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>{it.taskType} · {it.status}</div>
+              </div>
+              {it.worklog && (
+                <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>업무일지: {it.worklog.title}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{it.worklog.createdAt ? new Date(it.worklog.createdAt).toLocaleString() : ''}{it.worklog.createdBy ? ` · ${it.worklog.createdBy.name}` : ''}</div>
+                  {it.worklog.contentHtml ? (
+                    <div style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: it.worklog.contentHtml }} />
+                  ) : null}
+                </div>
+              )}
+              {it.cooperation && (
+                <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>협조: {it.cooperation.category || '-'}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{it.cooperation.status || ''}{it.cooperation.assignee ? ` · 담당: ${it.cooperation.assignee.name}` : ''}{it.cooperation.dueAt ? ` · 기한: ${new Date(it.cooperation.dueAt).toLocaleString()}` : ''}</div>
+                  {it.cooperation.worklog?.contentHtml ? (
+                    <div style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: it.cooperation.worklog.contentHtml }} />
+                  ) : null}
+                </div>
+              )}
+              {it.approval && (
+                <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>결재: {it.approval.status || '-'}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>{it.approval.requestedBy ? `요청자: ${it.approval.requestedBy.name}` : ''}{it.approval.dueAt ? ` · 기한: ${new Date(it.approval.dueAt).toLocaleString()}` : ''}</div>
+                  {(it.approval.steps || []).length ? (
+                    <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
+                      {(it.approval.steps || []).map((s, idx) => (
+                        <div key={idx} style={{ fontSize: 12, color: '#334155' }}>#{s.stepNo} {s.approverId} · {s.status}{s.actedAt ? ` · ${new Date(s.actedAt).toLocaleString()}` : ''}{s.comment ? ` · ${s.comment}` : ''}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ))}
+          {!timeline.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>진행된 세부 내역이 없습니다.</div>}
+        </div>
+      </div>
     </div>
   );
 }
