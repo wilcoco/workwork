@@ -16,26 +16,21 @@ function isProcessableImage(file: File) {
   const t = file.type.toLowerCase();
   if (!t.startsWith('image/')) return false;
   // Skip animated/complex formats we shouldn't rasterize
-  if (t === 'image/gif' || t === 'image/svg+xml') return false;
+  if (t === 'image/gif' || t === 'image/svg+xml' || t === 'image/heic' || t === 'image/heif') return false;
   return true;
 }
 
 async function loadImageElement(file: File): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(file);
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve();
-      img.onerror = (e) => reject(e);
-      img.src = url;
-    });
-  } finally {
-    // We will create a new object URL again for drawing
-  }
-  const img = new Image();
-  img.src = url;
-  await new Promise((r) => (img.onload = r as any));
-  return img;
+  return await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = (e) => {
+      try { URL.revokeObjectURL(url); } catch {}
+      reject(e);
+    };
+    img.src = url;
+  });
 }
 
 function drawToCanvas(img: HTMLImageElement, maxDim: number): HTMLCanvasElement {
@@ -116,6 +111,9 @@ async function compressImageToLimits(file: File): Promise<File> {
   const outFile = new File([blob], newName, { type: outType, lastModified: Date.now() });
   // Revoke object URL
   URL.revokeObjectURL(img.src);
+  // Enforce dimension cap: if original exceeded, always return resized result
+  if (!withinDim) return outFile;
+  // Else prefer smaller or if original exceeds size cap
   return outFile.size < file.size || file.size > MAX_IMAGE_BYTES ? outFile : file;
 }
 

@@ -138,7 +138,9 @@ export function ProcessTemplates() {
           if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
           else (q as any).insertEmbed(0, 'image', up.url, 'user');
         }
-      } catch {}
+      } catch {
+        alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+      }
     };
     const onDrop = async (e: DragEvent) => {
       try {
@@ -154,10 +156,17 @@ export function ProcessTemplates() {
           if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
           else (q as any).insertEmbed(0, 'image', up.url, 'user');
         }
-      } catch {}
+      } catch {
+        alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+      }
     };
-    descEditorEl.current?.addEventListener('paste', onPaste);
-    descEditorEl.current?.addEventListener('drop', onDrop);
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    (q.root as HTMLElement)?.addEventListener('paste', onPaste as any);
+    (q.root as HTMLElement)?.addEventListener('drop', onDrop as any);
+    (q.root as HTMLElement)?.addEventListener('dragover', onDragOver as any);
   };
   const taskPreview = (() => {
     try {

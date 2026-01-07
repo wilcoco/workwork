@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
-import { uploadFiles } from '../lib/upload';
+import { uploadFiles, uploadFile } from '../lib/upload';
 import ReactFlow, {
   Background,
   Controls,
@@ -14,6 +14,8 @@ import ReactFlow, {
   Handle,
   useEdgesState,
   useNodesState,
+  ReactFlowProvider,
+  useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -58,8 +60,9 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     gateway_xor: LabeledNode,
   }), []);
   const defaultEdgeOptions = useMemo(() => ({ type: 'smoothstep' as const }), []);
-  const [panelWidth, setPanelWidth] = useState<number>(320);
-  const dragging = useRef<{ active: boolean; startX: number; startWidth: number }>({ active: false, startX: 0, startWidth: 320 });
+  const [graphWidth, setGraphWidth] = useState<number>(520);
+  const dragging = useRef<{ active: boolean }>({ active: false });
+  const lastPaneClick = useRef<{ x: number; y: number } | null>(null);
 
   const toJson = useCallback(() => {
     const j = {
@@ -161,8 +164,11 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     function onMove(e: MouseEvent) {
       if (!dragging.current.active || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const rightWidth = Math.max(260, Math.min(rect.width - 240, rect.right - e.clientX));
-      setPanelWidth(rightWidth);
+      const minGraph = 260;
+      const minPanel = 300;
+      const offsetX = e.clientX - rect.left; // graph area width
+      const next = Math.max(minGraph, Math.min(offsetX, rect.width - minPanel));
+      setGraphWidth(next);
       e.preventDefault();
     }
     function onUp() {
@@ -179,6 +185,21 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
       window.removeEventListener('mouseup', onUp);
     };
   }, [dragging.current.active]);
+
+  // Clamp widths on container resize so the detail panel is never clipped
+  useEffect(() => {
+    const el = containerRef.current as HTMLElement | null;
+    if (!el || !(window as any).ResizeObserver) return;
+    const ro = new (window as any).ResizeObserver((entries: any[]) => {
+      const cr = entries[0]?.contentRect;
+      if (!cr) return;
+      const minGraph = 260;
+      const minPanel = 300;
+      setGraphWidth((prev) => Math.max(minGraph, Math.min(prev, cr.width - minPanel)));
+    });
+    ro.observe(el);
+    return () => { try { ro.disconnect(); } catch {} };
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -270,20 +291,29 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
       }
     }
 
-    // 2) Otherwise, insert above the selected node (or append at bottom)
+    // 2) Otherwise, insert at last pane click position if available; else fallback to previous logic
     setNodes((prev: Node<any>[]) => {
       const idx = selNodeId ? prev.findIndex((n) => String(n.id) === String(selNodeId)) : -1;
-      const insertY = idx >= 0 ? (prev[idx].position?.y || 60) : (prev.length ? Math.max(...prev.map((n) => n.position.y || 0)) + 120 : 60);
+      let insertX = 180;
+      let insertY = 60;
+      if (lastPaneClick.current) {
+        insertX = Math.round(lastPaneClick.current.x);
+        insertY = Math.round(lastPaneClick.current.y);
+      } else if (idx >= 0) {
+        insertY = (prev[idx].position?.y || 60);
+      } else if (prev.length) {
+        insertY = Math.max(...prev.map((n) => n.position.y || 0)) + 120;
+      }
       const newNode: Node<any> = {
         id,
         type,
-        position: { x: 180, y: insertY },
+        position: { x: insertX, y: insertY },
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
         style: { width: 180 },
         data: isTask ? { name: '새 과제', taskType: 'TASK', label, kind: type } : { name: label, label, kind: type },
       };
-      if (idx >= 0) {
+      if (idx >= 0 && !lastPaneClick.current) {
         const before = prev.slice(0, idx);
         const after = prev.slice(idx).map((n) => ({
           ...n,
@@ -319,7 +349,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
 
   const sidePanel = useMemo(() => {
     return (
-      <div ref={(r) => (panelRef.current = r)} style={{ minWidth: 260, borderLeft: '1px solid #e5e7eb', padding: 8, display: 'grid', gap: 8, maxHeight: height ?? 480, overflow: 'auto' }}>
+      <div ref={(r) => (panelRef.current = r)} style={{ minWidth: 300, borderLeft: '1px solid #e5e7eb', padding: 8, display: 'grid', gap: 8, maxHeight: height ?? 480, overflow: 'auto' }}>
         <div style={{ fontSize: 12, color: '#6b7280' }}>그래프에서 노드/엣지를 선택하면 여기 상세가 하이라이트되며 스크롤됩니다.</div>
 
         <h4>노드</h4>
@@ -409,8 +439,27 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     );
   }, [nodes, toJson, fromJson, jsonText, edges, selectedNodeId, selectedEdgeId]);
 
+  function InnerFlow(props: any) {
+    const { onPaneCoord, children, ...rest } = props;
+    const rf = useReactFlow();
+    return (
+      <ReactFlow
+        {...rest}
+        onPaneClick={(e: any) => {
+          const conv = (rf as any).screenToFlowPosition || (rf as any).project;
+          if (conv) {
+            const p = conv({ x: e.clientX, y: e.clientY });
+            onPaneCoord?.(p);
+          }
+        }}
+      >
+        {children}
+      </ReactFlow>
+    );
+  }
+
   return (
-    <div ref={containerRef} style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) 6px ${panelWidth}px`, gap: 8, border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480 }}>
+    <div ref={containerRef} style={{ display: 'grid', gridTemplateColumns: `${graphWidth}px 6px minmax(320px, 1fr)`, gap: 8, border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480, overflow: 'hidden' }}>
       <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%', minWidth: 0 }}>
         <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -426,31 +475,32 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
           </div>
         </div>
         <div style={{ height: '100%', minWidth: 0 }}>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            defaultEdgeOptions={defaultEdgeOptions}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onSelectionChange={onSelectionChange as any}
-            onNodeClick={(_, n) => { setSelectedNodeId(String(n.id)); setSelectedEdgeId(null); }}
-            onEdgeClick={(_, e) => { setSelectedEdgeId(String(e.id)); setSelectedNodeId(null); }}
-            fitView
-            style={{ width: '100%', height: '100%' }}
-          >
-            <Background />
-            <MiniMap />
-            <Controls />
-          </ReactFlow>
+          <ReactFlowProvider>
+            <InnerFlow
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              defaultEdgeOptions={defaultEdgeOptions}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onSelectionChange={onSelectionChange as any}
+              onNodeClick={(_: any, n: any) => { setSelectedNodeId(String(n.id)); setSelectedEdgeId(null); }}
+              onEdgeClick={(_: any, e: any) => { setSelectedEdgeId(String(e.id)); setSelectedNodeId(null); }}
+              fitView
+              style={{ width: '100%', height: '100%' }}
+              onPaneCoord={(p: { x: number; y: number }) => { lastPaneClick.current = p; }}
+            >
+              <Background />
+              <MiniMap />
+              <Controls />
+            </InnerFlow>
+          </ReactFlowProvider>
         </div>
       </div>
       <div
-        onMouseDown={(e) => {
+        onMouseDown={() => {
           dragging.current.active = true;
-          dragging.current.startX = e.clientX;
-          dragging.current.startWidth = panelWidth;
         }}
         style={{ cursor: 'col-resize', width: 6, background: 'transparent' }}
       />
@@ -481,13 +531,85 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
       [{ align: [] }],
       ['clean'],
     ];
-    const q = new Quill(elRef.current, { theme: 'snow', modules: { toolbar }, placeholder: '노드 설명을 입력하세요.' } as any);
+    const q = new Quill(elRef.current, {
+      theme: 'snow',
+      modules: {
+        toolbar: {
+          container: toolbar,
+          handlers: {
+            image: async function () {
+              try {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = async () => {
+                  try {
+                    const file = input.files?.[0];
+                    if (!file) return;
+                    const up = await uploadFile(file);
+                    const range = (q as any).getSelection?.(true);
+                    if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+                    else (q as any).insertEmbed(0, 'image', up.url, 'user');
+                  } catch {
+                    alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+                  }
+                };
+                input.click();
+              } catch {}
+            },
+          },
+        },
+      },
+      placeholder: '노드 설명을 입력하세요.',
+    } as any);
     q.on('text-change', () => {
       if (applyingRef.current) return;
       const next = q.root.innerHTML;
       lastHtmlRef.current = next;
       setHtml(next);
     });
+    // paste & drop image handling
+    const onPaste = async (e: ClipboardEvent) => {
+      try {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        const imgs = Array.from(items).filter((i) => i.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        for (const it of imgs) {
+          const file = it.getAsFile();
+          if (!file) continue;
+          const up = await uploadFile(file);
+          const range = (q as any).getSelection?.(true);
+          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        }
+      } catch {}
+    };
+    const onDrop = async (e: DragEvent) => {
+      try {
+        const files = e.dataTransfer?.files;
+        if (!files || !files.length) return;
+        const imgs = Array.from(files).filter((f) => f.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        for (const f of imgs) {
+          const up = await uploadFile(f);
+          const range = (q as any).getSelection?.(true);
+          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        }
+      } catch {}
+    };
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    (q.root as HTMLElement)?.addEventListener('paste', onPaste as any);
+    (q.root as HTMLElement)?.addEventListener('drop', onDrop as any);
+    (q.root as HTMLElement)?.addEventListener('dragover', onDragOver as any);
     try {
       applyingRef.current = true;
       q.setContents(q.clipboard.convert(initialHtml || ''));

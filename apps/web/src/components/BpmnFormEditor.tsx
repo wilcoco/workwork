@@ -288,12 +288,16 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
                 input.type = 'file';
                 input.accept = 'image/*';
                 input.onchange = async () => {
-                  const file = input.files?.[0];
-                  if (!file) return;
-                  const up = await uploadFile(file);
-                  const range = (q as any).getSelection?.(true);
-                  if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-                  else (q as any).insertEmbed(0, 'image', up.url, 'user');
+                  try {
+                    const file = input.files?.[0];
+                    if (!file) return;
+                    const up = await uploadFile(file);
+                    const range = (q as any).getSelection?.(true);
+                    if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+                    else (q as any).insertEmbed(0, 'image', up.url, 'user');
+                  } catch {
+                    alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+                  }
                 };
                 input.click();
               } catch {}
@@ -310,13 +314,14 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
       setHtml(next);
     });
     // paste & drop image handling
-    const onPaste = async (e: any) => {
+    const onPaste = async (e: ClipboardEvent) => {
       try {
         const items = e.clipboardData?.items as DataTransferItemList | undefined;
         if (!items) return;
         const imgs = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
         if (!imgs.length) return;
         e.preventDefault();
+        e.stopPropagation();
         for (const it of imgs) {
           const f = it.getAsFile();
           if (!f) continue;
@@ -325,25 +330,35 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
           if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
           else (q as any).insertEmbed(0, 'image', up.url, 'user');
         }
-      } catch {}
+      } catch {
+        alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+      }
     };
-    const onDrop = async (e: any) => {
+    const onDrop = async (e: DragEvent) => {
       try {
         const files = e.dataTransfer?.files as FileList | undefined;
         if (!files || !files.length) return;
         const imgs = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
         if (!imgs.length) return;
         e.preventDefault();
+        e.stopPropagation();
         for (const f of imgs) {
           const up = await uploadFile(f);
           const range = (q as any).getSelection?.(true);
           if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
           else (q as any).insertEmbed(0, 'image', up.url, 'user');
         }
-      } catch {}
+      } catch {
+        alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+      }
     };
-    elRef.current?.addEventListener('paste', onPaste);
-    elRef.current?.addEventListener('drop', onDrop);
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    (q.root as HTMLElement)?.addEventListener('paste', onPaste as any);
+    (q.root as HTMLElement)?.addEventListener('drop', onDrop as any);
+    (q.root as HTMLElement)?.addEventListener('dragover', onDragOver as any);
     try {
       applyingRef.current = true;
       q.setContents(q.clipboard.convert(initialHtml || ''));

@@ -51,6 +51,49 @@ export function ApprovalsSubmit() {
       placeholder: '결재 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요.',
     } as any);
     q.on('text-change', () => setContentHtml(q.root.innerHTML));
+    // robust paste/drop handlers to avoid navigation and large base64 embeds
+    const onPaste = async (e: ClipboardEvent) => {
+      try {
+        const items = e.clipboardData?.items as DataTransferItemList | undefined;
+        if (!items) return;
+        const imgs = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        for (const it of imgs) {
+          const f = it.getAsFile();
+          if (!f) continue;
+          const up = await uploadFile(f);
+          const range = (q as any).getSelection?.(true);
+          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        }
+      } catch (err: any) {
+        setError(err?.message || '이미지 업로드 실패');
+      }
+    };
+    const onDrop = async (e: DragEvent) => {
+      try {
+        const files = e.dataTransfer?.files as FileList | undefined;
+        if (!files || !files.length) return;
+        const imgs = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        for (const f of imgs) {
+          const up = await uploadFile(f);
+          const range = (q as any).getSelection?.(true);
+          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        }
+      } catch (err: any) {
+        setError(err?.message || '이미지 업로드 실패');
+      }
+    };
+    const onDragOver = (e: DragEvent) => { e.preventDefault(); e.stopPropagation(); };
+    (q.root as HTMLElement)?.addEventListener('paste', onPaste as any);
+    (q.root as HTMLElement)?.addEventListener('drop', onDrop as any);
+    (q.root as HTMLElement)?.addEventListener('dragover', onDragOver as any);
     quillRef.current = q;
   }, []);
 
@@ -111,16 +154,20 @@ export function ApprovalsSubmit() {
       input.type = 'file';
       input.accept = 'image/*';
       input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        const up = await uploadFile(file);
-        const editor = quillRef.current as any;
-        const range = editor?.getSelection?.(true);
-        if (editor && range) {
-          editor.insertEmbed(range.index, 'image', up.url, 'user');
-          editor.setSelection(range.index + 1, 0, 'user');
-        } else if (editor) {
-          editor.insertEmbed(0, 'image', up.url, 'user');
+        try {
+          const file = input.files?.[0];
+          if (!file) return;
+          const up = await uploadFile(file);
+          const editor = quillRef.current as any;
+          const range = editor?.getSelection?.(true);
+          if (editor && range) {
+            editor.insertEmbed(range.index, 'image', up.url, 'user');
+            editor.setSelection(range.index + 1, 0, 'user');
+          } else if (editor) {
+            editor.insertEmbed(0, 'image', up.url, 'user');
+          }
+        } catch (e: any) {
+          setError(e?.message || '이미지 업로드 실패');
         }
       };
       input.click();
