@@ -67,6 +67,26 @@ export function ProcessTemplates() {
   const descEditorEl = useRef<HTMLDivElement | null>(null);
   const descQuillRef = useRef<Quill | null>(null);
   const [descHtml, setDescHtml] = useState('');
+  const ensureDescQuill = () => {
+    if (descQuillRef.current || !descEditorEl.current) return;
+    const toolbar = [
+      [{ header: [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['link', 'image'],
+      [{ color: [] }, { background: [] }],
+      [{ align: [] }],
+      ['clean'],
+    ];
+    const q = new Quill(descEditorEl.current, {
+      theme: 'snow',
+      modules: { toolbar },
+      placeholder: '업무 프로세스 정의를 입력하세요. 파일 링크나 이미지를 삽입할 수 있습니다.',
+    } as any);
+    q.on('text-change', () => setDescHtml(q.root.innerHTML));
+    q.enable(true);
+    descQuillRef.current = q;
+  };
   const taskPreview = (() => {
     try {
       if (bpmnJsonText.trim()) {
@@ -99,32 +119,24 @@ export function ProcessTemplates() {
   }, []);
 
   useEffect(() => {
-    if (!descEditorEl.current) return;
-    if (!descQuillRef.current) {
-      const toolbar = [
-        [{ header: [1, 2, 3, false] }],
-        ['bold', 'italic', 'underline', 'strike'],
-        [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image'],
-        [{ color: [] }, { background: [] }],
-        [{ align: [] }],
-        ['clean'],
-      ];
-      const q = new Quill(descEditorEl.current, {
-        theme: 'snow',
-        modules: { toolbar },
-        placeholder: '업무 프로세스 정의를 입력하세요. 파일 링크나 이미지를 삽입할 수 있습니다.',
-      } as any);
-      q.on('text-change', () => setDescHtml(q.root.innerHTML));
-      descQuillRef.current = q;
-    }
+    if (!editing) return;
+    ensureDescQuill();
+  }, [editing]);
+
+  useEffect(() => {
+    ensureDescQuill();
     const html = (editing?.description || '').toString();
     setDescHtml(html);
     try {
       descQuillRef.current?.setContents([] as any);
       descQuillRef.current?.clipboard.dangerouslyPasteHTML(html || '');
     } catch {}
-  }, [editing?.id]);
+  }, [selectedId]);
+
+  useEffect(() => {
+    const t = setTimeout(() => ensureDescQuill(), 0);
+    return () => clearTimeout(t);
+  }, [editing, selectedId]);
 
   async function insertFilesToDesc(files: FileList | null) {
     if (!files || files.length === 0) return;
