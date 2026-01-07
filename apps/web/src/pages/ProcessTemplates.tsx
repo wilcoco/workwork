@@ -124,7 +124,7 @@ export function ProcessTemplates() {
       descQuillRef.current?.setContents([] as any);
       descQuillRef.current?.clipboard.dangerouslyPasteHTML(html || '');
     } catch {}
-  }, [editing]);
+  }, [editing?.id]);
 
   async function insertFilesToDesc(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -200,6 +200,7 @@ export function ProcessTemplates() {
         body: JSON.stringify({ actorId: userId }),
       });
       await loadList();
+      setEditing((prev) => (prev ? { ...prev, official: true } : prev) as any);
       alert('공식 템플릿으로 지정되었습니다.');
     } catch (e: any) {
       alert('공식 지정에 실패했습니다. 권한이 없을 수 있습니다.');

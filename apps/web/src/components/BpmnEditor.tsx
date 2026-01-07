@@ -47,6 +47,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const nodeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const edgeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const nodeTypes = useMemo(() => ({
@@ -57,6 +58,8 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     gateway_xor: LabeledNode,
   }), []);
   const defaultEdgeOptions = useMemo(() => ({ type: 'smoothstep' as const }), []);
+  const [panelWidth, setPanelWidth] = useState<number>(320);
+  const dragging = useRef<{ active: boolean; startX: number; startWidth: number }>({ active: false, startX: 0, startWidth: 320 });
 
   const toJson = useCallback(() => {
     const j = {
@@ -153,6 +156,29 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [selectedNodeId, selectedEdgeId]);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!dragging.current.active || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const rightWidth = Math.max(260, Math.min(rect.width - 240, rect.right - e.clientX));
+      setPanelWidth(rightWidth);
+      e.preventDefault();
+    }
+    function onUp() {
+      dragging.current.active = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    if (dragging.current.active) {
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [dragging.current.active]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -384,8 +410,8 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
   }, [nodes, toJson, fromJson, jsonText, edges, selectedNodeId, selectedEdgeId]);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: 8, border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480 }}>
-      <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%' }}>
+    <div ref={containerRef} style={{ display: 'grid', gridTemplateColumns: `minmax(0, 1fr) 6px ${panelWidth}px`, gap: 8, border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480 }}>
+      <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%', minWidth: 0 }}>
         <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" className="btn" onClick={() => addNode('start')}>Start</button>
@@ -399,7 +425,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             <button type="button" className="btn btn-outline" onClick={autoLinearize}>선형 연결 자동생성</button>
           </div>
         </div>
-        <div style={{ height: '100%' }}>
+        <div style={{ height: '100%', minWidth: 0 }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -420,7 +446,17 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
           </ReactFlow>
         </div>
       </div>
-      {sidePanel}
+      <div
+        onMouseDown={(e) => {
+          dragging.current.active = true;
+          dragging.current.startX = e.clientX;
+          dragging.current.startWidth = panelWidth;
+        }}
+        style={{ cursor: 'col-resize', width: 6, background: 'transparent' }}
+      />
+      <div style={{ minWidth: 0 }}>
+        {sidePanel}
+      </div>
     </div>
   );
 }
