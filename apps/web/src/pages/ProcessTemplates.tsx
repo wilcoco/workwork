@@ -41,9 +41,23 @@ interface ProcessTemplateDto {
   status?: string;
   official?: boolean;
   tasks: ProcessTaskTemplateDto[];
+  createdAt?: string;
+  owner?: { id: string; name: string; orgUnit?: { id: string; name: string } };
+  orgUnit?: { id: string; name: string };
 }
 
 export function ProcessTemplates() {
+  function stripHtml(html: string): string {
+    if (!html) return '';
+    const el = typeof document !== 'undefined' ? document.createElement('div') : null;
+    if (!el) return String(html).replace(/<[^>]+>/g, ' ');
+    el.innerHTML = html;
+    return (el.textContent || el.innerText || '').replace(/\s+/g, ' ').trim();
+  }
+  function fmt(s?: string) {
+    if (!s) return '';
+    try { return new Date(s).toLocaleString(); } catch { return s; }
+  }
   const nav = useNavigate();
   const [items, setItems] = useState<ProcessTemplateDto[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -406,9 +420,12 @@ export function ProcessTemplates() {
                   <span style={{ fontSize: 11, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '0px 6px', borderRadius: 6 }}>공식</span>
                 ) : null}
               </div>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>{it.description}</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>{stripHtml(it.description || '').slice(0, 180)}</div>
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
                 유형: {it.type === 'RECURRING' ? '반복' : '프로젝트'} · 공개: {it.visibility}
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                작성자: {it.owner?.name || '-'} · 소속: {it.orgUnit?.name || it.owner?.orgUnit?.name || '-'} · 작성일: {fmt(it.createdAt)}
               </div>
             </div>
           ))}

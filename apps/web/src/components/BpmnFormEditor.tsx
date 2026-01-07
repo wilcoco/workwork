@@ -261,7 +261,10 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
   const elRef = useRef<HTMLDivElement | null>(null);
   const qref = useRef<Quill | null>(null);
   const [html, setHtml] = useState<string>(initialHtml || '');
+  const lastHtmlRef = useRef<string>(initialHtml || '');
+  const applyingRef = useRef<boolean>(false);
 
+  // init once
   useEffect(() => {
     if (!elRef.current || qref.current) return;
     const toolbar = [
@@ -275,26 +278,40 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
     ];
     const q = new Quill(elRef.current, { theme: 'snow', modules: { toolbar }, placeholder: '노드 설명을 입력하세요.' } as any);
     q.on('text-change', () => {
+      if (applyingRef.current) return;
       const next = q.root.innerHTML;
+      lastHtmlRef.current = next;
       setHtml(next);
     });
     try {
-      q.clipboard.dangerouslyPasteHTML(initialHtml || '');
-    } catch {}
+      applyingRef.current = true;
+      q.setContents(q.clipboard.convert(initialHtml || ''));
+      lastHtmlRef.current = q.root.innerHTML;
+    } finally {
+      applyingRef.current = false;
+    }
     qref.current = q;
-  }, [initialHtml]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     onChangeHtml(html);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html]);
 
+  // apply external prop changes without duplicating
   useEffect(() => {
-    if (!qref.current) return;
+    const q = qref.current;
+    if (!q) return;
+    if ((initialHtml || '') === (lastHtmlRef.current || '')) return;
     try {
-      qref.current.clipboard.dangerouslyPasteHTML(initialHtml || '');
-      setHtml(initialHtml || '');
-    } catch {}
+      applyingRef.current = true;
+      q.setContents(q.clipboard.convert(initialHtml || ''));
+      lastHtmlRef.current = q.root.innerHTML;
+      setHtml(lastHtmlRef.current);
+    } finally {
+      applyingRef.current = false;
+    }
   }, [initialHtml]);
 
   async function onAttachFiles(e: React.ChangeEvent<HTMLInputElement>) {

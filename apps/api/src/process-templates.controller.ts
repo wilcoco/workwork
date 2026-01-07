@@ -123,7 +123,11 @@ export class ProcessTemplatesController {
     return this.prisma.processTemplate.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: { tasks: { orderBy: { orderHint: 'asc' } } },
+      include: {
+        tasks: { orderBy: { orderHint: 'asc' } },
+        owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+        orgUnit: { select: { id: true, name: true } },
+      },
     });
   }
 
@@ -173,7 +177,7 @@ export class ProcessTemplatesController {
             type,
             ownerId,
             visibility,
-            orgUnitId,
+            orgUnitId: orgUnitId ?? owner.orgUnitId ?? undefined,
             recurrenceType,
             recurrenceDetail,
             bpmnJson,
