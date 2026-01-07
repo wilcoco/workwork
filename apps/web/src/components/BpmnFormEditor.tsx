@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
-import { uploadFiles } from '../lib/upload';
+import { uploadFiles, uploadFile } from '../lib/upload';
 
 type BpmnNode = {
   id: string;
@@ -276,13 +276,74 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
       [{ align: [] }],
       ['clean'],
     ];
-    const q = new Quill(elRef.current, { theme: 'snow', modules: { toolbar }, placeholder: '노드 설명을 입력하세요.' } as any);
+    const q = new Quill(elRef.current, {
+      theme: 'snow',
+      modules: {
+        toolbar: {
+          container: toolbar,
+          handlers: {
+            image: async function () {
+              try {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = async () => {
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  const up = await uploadFile(file);
+                  const range = (q as any).getSelection?.(true);
+                  if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+                  else (q as any).insertEmbed(0, 'image', up.url, 'user');
+                };
+                input.click();
+              } catch {}
+            },
+          },
+        },
+      },
+      placeholder: '노드 설명을 입력하세요.',
+    } as any);
     q.on('text-change', () => {
       if (applyingRef.current) return;
       const next = q.root.innerHTML;
       lastHtmlRef.current = next;
       setHtml(next);
     });
+    // paste & drop image handling
+    const onPaste = async (e: any) => {
+      try {
+        const items = e.clipboardData?.items as DataTransferItemList | undefined;
+        if (!items) return;
+        const imgs = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        for (const it of imgs) {
+          const f = it.getAsFile();
+          if (!f) continue;
+          const up = await uploadFile(f);
+          const range = (q as any).getSelection?.(true);
+          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        }
+      } catch {}
+    };
+    const onDrop = async (e: any) => {
+      try {
+        const files = e.dataTransfer?.files as FileList | undefined;
+        if (!files || !files.length) return;
+        const imgs = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        for (const f of imgs) {
+          const up = await uploadFile(f);
+          const range = (q as any).getSelection?.(true);
+          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        }
+      } catch {}
+    };
+    elRef.current?.addEventListener('paste', onPaste);
+    elRef.current?.addEventListener('drop', onDrop);
     try {
       applyingRef.current = true;
       q.setContents(q.clipboard.convert(initialHtml || ''));

@@ -5,7 +5,7 @@ import { BpmnEditor } from '../components/BpmnEditor';
 import { BpmnFormEditor } from '../components/BpmnFormEditor';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
-import { uploadFiles } from '../lib/upload';
+import { uploadFiles, uploadFile } from '../lib/upload';
 import '../styles/editor.css';
 
 interface ProcessTaskTemplateDto {
@@ -94,12 +94,70 @@ export function ProcessTemplates() {
     ];
     const q = new Quill(descEditorEl.current, {
       theme: 'snow',
-      modules: { toolbar },
+      modules: {
+        toolbar: {
+          container: toolbar,
+          handlers: {
+            image: async function () {
+              try {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = async () => {
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  const up = await uploadFile(file);
+                  const range = (q as any).getSelection?.(true);
+                  if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+                  else (q as any).insertEmbed(0, 'image', up.url, 'user');
+                };
+                input.click();
+              } catch {}
+            },
+          },
+        },
+      },
       placeholder: '업무 프로세스 정의를 입력하세요. 파일 링크나 이미지를 삽입할 수 있습니다.',
     } as any);
     q.on('text-change', () => setDescHtml(q.root.innerHTML));
     q.enable(true);
     descQuillRef.current = q;
+    const onPaste = async (e: ClipboardEvent) => {
+      try {
+        const items = e.clipboardData?.items as DataTransferItemList | undefined;
+        if (!items) return;
+        const imgs: DataTransferItem[] = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        for (const it of imgs) {
+          const f = it.getAsFile();
+          if (!f) continue;
+          const up = await uploadFile(f);
+          const range = (q as any).getSelection?.(true);
+          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        }
+      } catch {}
+    };
+    const onDrop = async (e: DragEvent) => {
+      try {
+        const files = e.dataTransfer?.files as FileList | undefined;
+        if (!files || !files.length) return;
+        const imgs: File[] = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        for (const f of imgs) {
+          const up = await uploadFile(f);
+          const range = (q as any).getSelection?.(true);
+          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        }
+      } catch {}
+    };
+    descEditorEl.current?.addEventListener('paste', onPaste);
+    descEditorEl.current?.addEventListener('drop', onDrop);
   };
   const taskPreview = (() => {
     try {
