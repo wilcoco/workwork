@@ -574,7 +574,7 @@ export function ProcessTemplates() {
               </div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>저장 시 아래 과제 목록은 편집된 흐름 기준으로 재생성됩니다.</div>
             </div>
-            {/* 노드 설명은 BpmnFormEditor 내에서 각 노드의 '설명' 필드를 리치 에디터로 직접 입력합니다. */}
+            
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <h3>과제 미리보기 (읽기 전용)</h3>

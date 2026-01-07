@@ -87,6 +87,35 @@ export function ProcessStart() {
           __source: 'bpmn',
         }));
     }
+
+  async function cloneTemplateForStart() {
+    if (!userId) { alert('로그인이 필요합니다.'); return; }
+    if (!selectedFull?.id) { alert('템플릿을 선택하세요.'); return; }
+    const title = (cloneTitle || '').trim();
+    if (!title) { alert('새 템플릿 제목을 입력하세요.'); return; }
+    let bpmn: any = (selectedFull as any)?.bpmnJson;
+    try { if (typeof bpmn === 'string' && bpmn.trim().startsWith('{')) bpmn = JSON.parse(bpmn); } catch {}
+    try {
+      const body: any = {
+        title,
+        description: selectedFull.description || '',
+        type: (selectedFull.type as any) || 'PROJECT',
+        ownerId: userId,
+        visibility: 'PUBLIC',
+        bpmnJson: bpmn,
+      };
+      const created = await apiJson<ProcessTemplateDto>(`/api/process-templates`, { method: 'POST', body: JSON.stringify(body) });
+      if (created?.id) {
+        setTemplates((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
+        setTplId(created.id);
+        setSelectedFull(created);
+        setCloneTitle(`${created.title} (사본)`);
+        alert('사본 템플릿이 생성되었습니다. 이 템플릿으로 시작 정보를 입력하세요.');
+      }
+    } catch (e: any) {
+      alert(e?.message || '사본 템플릿 생성 중 오류가 발생했습니다.');
+    }
+  }
     return [];
   }, [selected, selectedFull]);
 
@@ -194,6 +223,34 @@ export function ProcessStart() {
     }
   }
 
+  async function cloneTemplateForStart() {
+    if (!userId) { alert('로그인이 필요합니다.'); return; }
+    if (!selectedFull?.id) { alert('템플릿을 선택하세요.'); return; }
+    const title = (cloneTitle || '').trim();
+    if (!title) { alert('새 템플릿 제목을 입력하세요.'); return; }
+    let bpmn: any = (selectedFull as any)?.bpmnJson;
+    try { if (typeof bpmn === 'string' && bpmn.trim().startsWith('{')) bpmn = JSON.parse(bpmn); } catch {}
+    try {
+      const body: any = {
+        title,
+        description: selectedFull.description || '',
+        type: (selectedFull.type as any) || 'PROJECT',
+        ownerId: userId,
+        visibility: 'PUBLIC',
+        bpmnJson: bpmn,
+      };
+      const created = await apiJson<ProcessTemplateDto>(`/api/process-templates`, { method: 'POST', body: JSON.stringify(body) });
+      if (created?.id) {
+        setTemplates((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
+        setTplId(created.id);
+        setSelectedFull(created);
+        setCloneTitle(`${created.title} (사본)`);
+        alert('사본 템플릿이 생성되었습니다. 이 템플릿으로 시작 정보를 입력하세요.');
+      }
+    } catch (e: any) {
+      alert(e?.message || '사본 템플릿 생성 중 오류가 발생했습니다.');
+    }
+  }
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <h2>새 프로세스 시작</h2>

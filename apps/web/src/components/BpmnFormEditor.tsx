@@ -38,7 +38,7 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         type: (n.type || 'task') as any,
         name: n.name || '',
         taskType: n.taskType || undefined,
-        description: n.description || undefined,
+        description: n.description || n.descriptionHtml || undefined,
         assigneeHint: n.assigneeHint || undefined,
         stageLabel: n.stageLabel || undefined,
         deadlineOffsetDays: typeof n.deadlineOffsetDays === 'number' ? n.deadlineOffsetDays : undefined,
