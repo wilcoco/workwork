@@ -339,6 +339,11 @@ export function CoopsRequest() {
               onChange={(e) => setAttachUrl(e.target.value)}
               style={{ ...input, flex: 1 }}
             />
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
+            >OneDrive 열기</button>
             <button type="button" className="btn btn-outline" onClick={addAttachmentUrl}>추가</button>
           </div>
           {attachments.length > 0 && (

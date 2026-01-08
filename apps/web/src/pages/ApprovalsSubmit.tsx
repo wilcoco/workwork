@@ -355,6 +355,11 @@ export function ApprovalsSubmit() {
             onChange={(e) => setAttachUrl(e.target.value)}
             style={{ ...input, flex: 1 }}
           />
+          <button
+            type="button"
+            style={ghostBtn}
+            onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
+          >OneDrive 열기</button>
           <button type="button" style={ghostBtn} onClick={addAttachmentUrl}>추가</button>
         </div>
         {attachments.length > 0 && (

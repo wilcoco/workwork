@@ -665,6 +665,11 @@ export function ProcessTemplates() {
                   />
                   <button
                     type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
+                  >OneDrive 열기</button>
+                  <button
+                    type="button"
                     className="btn btn-sm"
                     onClick={() => {
                       insertLinkToDesc(descAttachUrl);

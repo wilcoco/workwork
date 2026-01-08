@@ -504,6 +504,11 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
             value={attachUrl}
             onChange={(e) => setAttachUrl(e.target.value)}
           />
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
+          >OneDrive 열기</button>
           <button type="button" className="btn btn-sm" onClick={addAttachmentUrl}>추가</button>
         </div>
         <span style={{ marginLeft: 8, color: '#9ca3af', fontSize: 12 }}>#{nodeId}</span>
