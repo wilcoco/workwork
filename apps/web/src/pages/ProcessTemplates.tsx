@@ -81,18 +81,7 @@ export function ProcessTemplates() {
   const descEditorEl = useRef<HTMLDivElement | null>(null);
   const descQuillRef = useRef<Quill | null>(null);
   const [descHtml, setDescHtml] = useState('');
-  const [descAttachUrl, setDescAttachUrl] = useState('');
-
-  function isAllowedOneDriveUrl(raw: string) {
-    try {
-      const u = new URL(raw);
-      const h = u.hostname.toLowerCase();
-      if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
-      return h === '1drv.ms' || h === 'onedrive.live.com' || h.endsWith('.sharepoint.com') || h.endsWith('.sharepoint-df.com');
-    } catch {
-      return false;
-    }
-  }
+  const descAttachInputRef = useRef<HTMLInputElement | null>(null);
   const ensureDescQuill = () => {
     if (descQuillRef.current || !descEditorEl.current) return;
     const toolbar = [
@@ -321,18 +310,24 @@ export function ProcessTemplates() {
     return () => clearTimeout(t);
   }, [editing, selectedId]);
 
-  function insertLinkToDesc(urlRaw: string) {
-    const url = (urlRaw || '').trim();
-    if (!url) return;
-    if (!isAllowedOneDriveUrl(url)) {
-      alert('원드라이브/SharePoint 링크만 첨부할 수 있습니다.');
-      return;
-    }
+  async function addDescAttachmentFiles(list: FileList | null) {
     const q = descQuillRef.current as any;
-    const range = q?.getSelection?.(true);
-    const linkHtml = `<a href="${url}" target="_blank" rel="noreferrer">${url}</a>`;
-    if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
-    else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
+    if (!q) return;
+    const files = Array.from(list || []);
+    if (!files.length) return;
+    for (const f of files) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const up = await uploadFile(f);
+        const label = up.name || f.name;
+        const linkHtml = `<a href="${up.url}" target="_blank" rel="noreferrer">${label}</a>`;
+        const range = q?.getSelection?.(true);
+        if (range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
+        else q.clipboard.dangerouslyPasteHTML(0, linkHtml);
+      } catch {
+        alert('첨부 파일 업로드에 실패했습니다. 다시 시도하세요.');
+      }
+    }
   }
 
   async function checkInUse(tmplId?: string | null) {
@@ -658,24 +653,16 @@ export function ProcessTemplates() {
                 <label>첨부 파일</label>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
-                    placeholder="클라우드 파일 URL"
-                    value={descAttachUrl}
-                    onChange={(e) => setDescAttachUrl(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-ghost"
-                    onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
-                  >OneDrive 열기</button>
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => {
-                      insertLinkToDesc(descAttachUrl);
-                      setDescAttachUrl('');
+                    ref={descAttachInputRef}
+                    type="file"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      addDescAttachmentFiles(e.currentTarget.files);
+                      e.currentTarget.value = '';
                     }}
-                  >추가</button>
+                  />
+                  <button type="button" className="btn btn-sm" onClick={() => descAttachInputRef.current?.click()}>파일 선택</button>
                 </div>
               </div>
             </div>

@@ -28,7 +28,7 @@ export function WorklogQuickNew() {
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<Array<{ url: string; name?: string; filename?: string }>>([]);
-  const [attachUrl, setAttachUrl] = useState('');
+  const attachInputRef = useRef<HTMLInputElement | null>(null);
   const quillRef = useRef<Quill | null>(null);
   const editorEl = useRef<HTMLDivElement | null>(null);
   const [plainMode, setPlainMode] = useState(false);
@@ -262,17 +262,6 @@ export function WorklogQuickNew() {
     return (el.textContent || el.innerText || '').replace(/\s+/g, ' ').trim();
   }
 
-  function isAllowedOneDriveUrl(raw: string) {
-    try {
-      const u = new URL(raw);
-      const h = u.hostname.toLowerCase();
-      if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
-      return h === '1drv.ms' || h === 'onedrive.live.com' || h.endsWith('.sharepoint.com') || h.endsWith('.sharepoint-df.com');
-    } catch {
-      return false;
-    }
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -394,15 +383,18 @@ export function WorklogQuickNew() {
     }
   }
 
-  function addAttachmentUrl() {
-    const url = (attachUrl || '').trim();
-    if (!url) return;
-    if (!isAllowedOneDriveUrl(url)) {
-      setError('원드라이브/SharePoint 링크만 첨부할 수 있습니다.');
-      return;
+  async function addAttachmentFiles(list: FileList | null) {
+    const files = Array.from(list || []);
+    if (!files.length) return;
+    try {
+      for (const f of files) {
+        // eslint-disable-next-line no-await-in-loop
+        const up = await uploadFile(f);
+        setAttachments((prev) => [...prev, { url: up.url, name: up.name || f.name, filename: up.filename || f.name }]);
+      }
+    } catch (e: any) {
+      setError(e?.message || '첨부 파일 업로드 실패');
     }
-    setAttachments((prev) => [...prev, { url, name: url, filename: url }]);
-    setAttachUrl('');
   }
 
   function removeAttachment(idx: number) {
@@ -572,17 +564,16 @@ export function WorklogQuickNew() {
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <input
-                placeholder="클라우드 파일 URL"
-                value={attachUrl}
-                onChange={(e) => setAttachUrl(e.target.value)}
-                style={{ ...input, flex: 1 }}
+                ref={attachInputRef}
+                type="file"
+                multiple
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  addAttachmentFiles(e.currentTarget.files);
+                  e.currentTarget.value = '';
+                }}
               />
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost"
-                onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
-              >OneDrive 열기</button>
-              <button type="button" className="btn btn-sm" onClick={addAttachmentUrl}>추가</button>
+              <button type="button" className="btn btn-sm" onClick={() => attachInputRef.current?.click()}>파일 선택</button>
             </div>
             {attachments.length > 0 && (
               <div className="attachments">
