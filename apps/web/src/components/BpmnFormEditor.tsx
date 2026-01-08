@@ -268,6 +268,7 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
   const lastHtmlRef = useRef<string>(initialHtml || '');
   const applyingRef = useRef<boolean>(false);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
+  const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
 
   // init once
   useEffect(() => {
@@ -503,13 +504,28 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
               e.currentTarget.value = '';
             }}
           />
-          <button type="button" className="btn btn-sm" onClick={() => attachInputRef.current?.click()}>파일 선택</button>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              if (!attachOneDriveOk) {
+                const ok = window.confirm('원드라이브(회사)에서 받은 파일만 업로드하세요. 계속할까요?');
+                if (!ok) return;
+                setAttachOneDriveOk(true);
+              }
+              attachInputRef.current?.click();
+            }}
+          >파일 선택</button>
           <button
             type="button"
             className="btn btn-sm btn-ghost"
             onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
           >OneDrive 열기</button>
         </div>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
+          <input type="checkbox" checked={attachOneDriveOk} onChange={(e) => setAttachOneDriveOk(e.target.checked)} />
+          원드라이브 파일만 업로드합니다
+        </label>
         <div style={{ fontSize: 12, color: '#64748b' }}>원드라이브 파일만 올려주세요. 업로드하면 본문에 링크로 삽입됩니다.</div>
         <span style={{ marginLeft: 8, color: '#9ca3af', fontSize: 12 }}>#{nodeId}</span>
       </div>

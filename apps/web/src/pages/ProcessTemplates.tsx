@@ -82,6 +82,7 @@ export function ProcessTemplates() {
   const descQuillRef = useRef<Quill | null>(null);
   const [descHtml, setDescHtml] = useState('');
   const descAttachInputRef = useRef<HTMLInputElement | null>(null);
+  const [descAttachOneDriveOk, setDescAttachOneDriveOk] = useState<boolean>(false);
   const ensureDescQuill = () => {
     if (descQuillRef.current || !descEditorEl.current) return;
     const toolbar = [
@@ -662,13 +663,28 @@ export function ProcessTemplates() {
                       e.currentTarget.value = '';
                     }}
                   />
-                  <button type="button" className="btn btn-sm" onClick={() => descAttachInputRef.current?.click()}>파일 선택</button>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      if (!descAttachOneDriveOk) {
+                        const ok = window.confirm('원드라이브(회사)에서 받은 파일만 업로드하세요. 계속할까요?');
+                        if (!ok) return;
+                        setDescAttachOneDriveOk(true);
+                      }
+                      descAttachInputRef.current?.click();
+                    }}
+                  >파일 선택</button>
                   <button
                     type="button"
                     className="btn btn-sm btn-ghost"
                     onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
                   >OneDrive 열기</button>
                 </div>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
+                  <input type="checkbox" checked={descAttachOneDriveOk} onChange={(e) => setDescAttachOneDriveOk(e.target.checked)} />
+                  원드라이브 파일만 업로드합니다
+                </label>
                 <div style={{ fontSize: 12, color: '#64748b' }}>원드라이브 파일만 올려주세요. 업로드하면 본문에 링크로 삽입됩니다. (브라우저 제한으로 원드라이브 폴더를 자동으로 열 수는 없습니다)</div>
               </div>
             </div>

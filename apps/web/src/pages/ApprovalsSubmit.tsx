@@ -26,6 +26,7 @@ export function ApprovalsSubmit() {
   const editorEl = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<Quill | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
+  const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
 
   const requestedById = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
 
@@ -351,13 +352,28 @@ export function ApprovalsSubmit() {
               e.currentTarget.value = '';
             }}
           />
-          <button type="button" style={ghostBtn} onClick={() => attachInputRef.current?.click()}>파일 선택</button>
+          <button
+            type="button"
+            style={ghostBtn}
+            onClick={() => {
+              if (!attachOneDriveOk) {
+                const ok = window.confirm('원드라이브(회사)에서 받은 파일만 업로드하세요. 계속할까요?');
+                if (!ok) return;
+                setAttachOneDriveOk(true);
+              }
+              attachInputRef.current?.click();
+            }}
+          >파일 선택</button>
           <button
             type="button"
             style={ghostBtn}
             onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
           >OneDrive 열기</button>
         </div>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
+          <input type="checkbox" checked={attachOneDriveOk} onChange={(e) => setAttachOneDriveOk(e.target.checked)} />
+          원드라이브 파일만 업로드합니다
+        </label>
         <div style={{ fontSize: 12, color: '#64748b' }}>원드라이브 파일만 올려주세요. (브라우저 제한으로 원드라이브 폴더를 자동으로 열 수는 없습니다)</div>
         {attachments.length > 0 && (
           <div className="attachments">
