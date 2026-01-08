@@ -19,6 +19,25 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
+function InnerFlow(props: any) {
+  const { onPaneCoord, children, ...rest } = props;
+  const rf = useReactFlow();
+  return (
+    <ReactFlow
+      {...rest}
+      onPaneClick={(e: any) => {
+        const conv = (rf as any).screenToFlowPosition || (rf as any).project;
+        if (conv) {
+          const p = conv({ x: e.clientX, y: e.clientY });
+          onPaneCoord?.(p);
+        }
+      }}
+    >
+      {children}
+    </ReactFlow>
+  );
+}
+
 function LabeledNode({ data }: { data: any }) {
   const kind = data?.kind as string | undefined;
   const bg = kind === 'start' ? '#ecfdf5' : kind === 'end' ? '#fee2e2' : '#ffffff';
@@ -415,25 +434,6 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
       </div>
     );
   }, [nodes, toJson, fromJson, jsonText, edges, selectedNodeId, selectedEdgeId]);
-
-  function InnerFlow(props: any) {
-    const { onPaneCoord, children, ...rest } = props;
-    const rf = useReactFlow();
-    return (
-      <ReactFlow
-        {...rest}
-        onPaneClick={(e: any) => {
-          const conv = (rf as any).screenToFlowPosition || (rf as any).project;
-          if (conv) {
-            const p = conv({ x: e.clientX, y: e.clientY });
-            onPaneCoord?.(p);
-          }
-        }}
-      >
-        {children}
-      </ReactFlow>
-    );
-  }
 
   return (
     <div ref={containerRef} style={{ display: 'grid', gridTemplateColumns: `${graphWidth}px 6px minmax(320px, 1fr)`, gap: 8, border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480, overflow: 'hidden' }}>
