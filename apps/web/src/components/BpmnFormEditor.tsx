@@ -504,7 +504,13 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
             }}
           />
           <button type="button" className="btn btn-sm" onClick={() => attachInputRef.current?.click()}>파일 선택</button>
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost"
+            onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
+          >OneDrive 열기</button>
         </div>
+        <div style={{ fontSize: 12, color: '#64748b' }}>원드라이브 파일만 올려주세요. 업로드하면 본문에 링크로 삽입됩니다.</div>
         <span style={{ marginLeft: 8, color: '#9ca3af', fontSize: 12 }}>#{nodeId}</span>
       </div>
     </div>

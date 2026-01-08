@@ -663,7 +663,13 @@ export function ProcessTemplates() {
                     }}
                   />
                   <button type="button" className="btn btn-sm" onClick={() => descAttachInputRef.current?.click()}>파일 선택</button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
+                  >OneDrive 열기</button>
                 </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>원드라이브 파일만 올려주세요. 업로드하면 본문에 링크로 삽입됩니다. (브라우저 제한으로 원드라이브 폴더를 자동으로 열 수는 없습니다)</div>
               </div>
             </div>
             <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
