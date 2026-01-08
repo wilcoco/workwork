@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
+import { toSafeHtml } from '../lib/richText';
 
 export function ApprovalsMine() {
   const [userId, setUserId] = useState<string>('');
@@ -99,7 +100,7 @@ export function ApprovalsMine() {
                 )
               )}
               {it.subjectType === 'PROCESS' && it._doc?.summaryHtml ? (
-                <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: it._doc.summaryHtml }} />
+                <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it._doc.summaryHtml) }} />
               ) : null}
               {it._doc?.attachments?.files?.length ? (
                 <div className="attachments" style={{ marginTop: 8 }}>
@@ -149,7 +150,7 @@ export function ApprovalsMine() {
                     )
                   )}
                   {it.subjectType === 'PROCESS' && it._doc?.summaryHtml ? (
-                    <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: it._doc.summaryHtml }} />
+                    <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it._doc.summaryHtml) }} />
                   ) : null}
                   {wl?.attachments?.files?.length ? (
                     <div className="attachments" style={{ marginTop: 8 }}>

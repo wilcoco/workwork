@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { toSafeHtml } from '../lib/richText';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 
 interface ProcessTaskTemplateDto {
@@ -271,7 +272,13 @@ export function ProcessStart() {
             <div style={{ display: 'grid', gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 700 }}>{selected.title}</div>
-                {!!selected.description && <div style={{ fontSize: 12, color: '#6b7280' }}>{selected.description}</div>}
+                {!!selected.description && (
+                  <div
+                    className="rich-content"
+                    style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}
+                    dangerouslySetInnerHTML={{ __html: toSafeHtml(selected.description) }}
+                  />
+                )}
               </div>
               <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
                 <label>
@@ -389,8 +396,15 @@ export function ProcessStart() {
                     <div key={t.id || idx} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 8 }}>
                       <div style={{ fontWeight: 600 }}>{t.name}{t.stageLabel ? ` · ${t.stageLabel}` : ''}</div>
                       <div style={{ fontSize: 12, color: '#6b7280' }}>{t.taskType}</div>
-                      {(t.assigneeHint || t.description) && (
-                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>담당자 힌트: {t.assigneeHint || t.description}</div>
+                      {!!t.assigneeHint && (
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>담당자 힌트: {t.assigneeHint}</div>
+                      )}
+                      {!!t.description && (
+                        <div
+                          className="rich-content"
+                          style={{ fontSize: 12, color: '#334155', marginTop: 6 }}
+                          dangerouslySetInnerHTML={{ __html: toSafeHtml(String(t.description)) }}
+                        />
                       )}
                       <div style={{ marginTop: 6 }}>
                         <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>담당자(복수 선택 가능)</label>

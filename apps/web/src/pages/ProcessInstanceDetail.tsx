@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { toSafeHtml } from '../lib/richText';
 import { UserPicker, type PickedUser } from '../components/UserPicker';
 
 interface ProcTask {
@@ -515,7 +516,7 @@ export function ProcessInstanceDetail() {
                   <div style={{ fontWeight: 600, fontSize: 13 }}>업무일지: {it.worklog.title}</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>{it.worklog.createdAt ? new Date(it.worklog.createdAt).toLocaleString() : ''}{it.worklog.createdBy ? ` · ${it.worklog.createdBy.name}` : ''}</div>
                   {it.worklog.contentHtml ? (
-                    <div style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: it.worklog.contentHtml }} />
+                    <div className="rich-content" style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it.worklog.contentHtml) }} />
                   ) : null}
                 </div>
               )}
@@ -524,7 +525,7 @@ export function ProcessInstanceDetail() {
                   <div style={{ fontWeight: 600, fontSize: 13 }}>협조: {it.cooperation.category || '-'}</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>{it.cooperation.status || ''}{it.cooperation.assignee ? ` · 담당: ${it.cooperation.assignee.name}` : ''}{it.cooperation.dueAt ? ` · 기한: ${new Date(it.cooperation.dueAt).toLocaleString()}` : ''}</div>
                   {it.cooperation.worklog?.contentHtml ? (
-                    <div style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: it.cooperation.worklog.contentHtml }} />
+                    <div className="rich-content" style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it.cooperation.worklog.contentHtml) }} />
                   ) : null}
                 </div>
               )}
