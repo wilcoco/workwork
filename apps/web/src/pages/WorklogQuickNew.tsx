@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { uploadFile } from '../lib/upload';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
-import { uploadFile, uploadFiles, type UploadResp } from '../lib/upload';
 import '../styles/editor.css';
 import { todayKstYmd } from '../lib/time';
 
@@ -27,7 +27,8 @@ export function WorklogQuickNew() {
   const [urgent, setUrgent] = useState<boolean>(false);
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
-  const [attachments, setAttachments] = useState<UploadResp[]>([]);
+  const [attachments, setAttachments] = useState<Array<{ url: string; name?: string; filename?: string }>>([]);
+  const [attachUrl, setAttachUrl] = useState('');
   const quillRef = useRef<Quill | null>(null);
   const editorEl = useRef<HTMLDivElement | null>(null);
   const [plainMode, setPlainMode] = useState(false);
@@ -188,16 +189,41 @@ export function WorklogQuickNew() {
         const items = e.clipboardData?.items as DataTransferItemList | undefined;
         if (!items) return;
         const imgs = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
-        if (!imgs.length) return;
-        e.preventDefault();
-        e.stopPropagation();
-        for (const it of imgs) {
-          const f = it.getAsFile();
-          if (!f) continue;
-          const up = await uploadFile(f);
+        const html = e.clipboardData?.getData('text/html') || '';
+        if (imgs.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          for (const it of imgs) {
+            const f = it.getAsFile();
+            if (!f) continue;
+            const up = await uploadFile(f);
+            const range = (q as any).getSelection?.(true);
+            if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+            else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          }
+          return;
+        }
+        if (html && (html.includes('src="data:') || html.includes("src='data:"))) {
+          e.preventDefault();
+          e.stopPropagation();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const imgsEl = Array.from(doc.images || []).filter((im) => im.src.startsWith('data:'));
+          for (const im of imgsEl) {
+            try {
+              const res = await fetch(im.src);
+              const blob = await res.blob();
+              const f = new File([blob], 'pasted.' + (blob.type.includes('png') ? 'png' : 'jpg'), { type: blob.type });
+              const up = await uploadFile(f);
+              im.src = up.url;
+            } catch {
+              im.remove();
+            }
+          }
           const range = (q as any).getSelection?.(true);
-          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          const sane = doc.body.innerHTML;
+          if (range) (q as any).clipboard.dangerouslyPasteHTML(range.index, sane, 'user');
+          else (q as any).clipboard.dangerouslyPasteHTML(0, sane, 'user');
+          return;
         }
       } catch (err: any) {
         setError(err?.message || '이미지 업로드 실패');
@@ -208,14 +234,16 @@ export function WorklogQuickNew() {
         const files = e.dataTransfer?.files as FileList | undefined;
         if (!files || !files.length) return;
         const imgs = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
-        if (!imgs.length) return;
-        e.preventDefault();
-        e.stopPropagation();
-        for (const f of imgs) {
-          const up = await uploadFile(f);
-          const range = (q as any).getSelection?.(true);
-          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+        if (imgs.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          for (const f of imgs) {
+            const up = await uploadFile(f);
+            const range = (q as any).getSelection?.(true);
+            if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+            else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          }
+          return;
         }
       } catch (err: any) {
         setError(err?.message || '이미지 업로드 실패');
@@ -232,6 +260,17 @@ export function WorklogQuickNew() {
     const el = document.createElement('div');
     el.innerHTML = html || '';
     return (el.textContent || el.innerText || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isAllowedOneDriveUrl(raw: string) {
+    try {
+      const u = new URL(raw);
+      const h = u.hostname.toLowerCase();
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+      return h === '1drv.ms' || h === 'onedrive.live.com' || h.endsWith('.sharepoint.com') || h.endsWith('.sharepoint-df.com');
+    } catch {
+      return false;
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -355,16 +394,15 @@ export function WorklogQuickNew() {
     }
   }
 
-  async function onAttachFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    try {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-      const ups = await uploadFiles(files);
-      setAttachments((prev) => [...prev, ...ups]);
-      e.target.value = '';
-    } catch (e: any) {
-      setError(e?.message || '파일 업로드 실패');
+  function addAttachmentUrl() {
+    const url = (attachUrl || '').trim();
+    if (!url) return;
+    if (!isAllowedOneDriveUrl(url)) {
+      setError('원드라이브/SharePoint 링크만 첨부할 수 있습니다.');
+      return;
     }
+    setAttachments((prev) => [...prev, { url, name: url, filename: url }]);
+    setAttachUrl('');
   }
 
   function removeAttachment(idx: number) {
@@ -532,12 +570,20 @@ export function WorklogQuickNew() {
           
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
-            <input type="file" multiple onChange={onAttachFiles} />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                placeholder="클라우드 파일 URL"
+                value={attachUrl}
+                onChange={(e) => setAttachUrl(e.target.value)}
+                style={{ ...input, flex: 1 }}
+              />
+              <button type="button" className="btn btn-sm" onClick={addAttachmentUrl}>추가</button>
+            </div>
             {attachments.length > 0 && (
               <div className="attachments">
                 {attachments.map((f, i) => (
-                  <div key={f.filename + i} className="attachment-item" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <a className="file-link" href={f.url} target="_blank" rel="noreferrer">{f.name}</a>
+                  <div key={`${f.url}-${i}`} className="attachment-item" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <a className="file-link" href={f.url} target="_blank" rel="noreferrer">{f.name || f.url}</a>
                     <button type="button" className="btn btn-sm btn-danger" onClick={() => removeAttachment(i)}>삭제</button>
                   </div>
                 ))}

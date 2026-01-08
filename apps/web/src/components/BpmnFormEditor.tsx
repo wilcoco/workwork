@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
-import { uploadFiles, uploadFile } from '../lib/upload';
+import { uploadFile } from '../lib/upload';
 
 type BpmnNode = {
   id: string;
@@ -205,14 +205,18 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
                   담당자 힌트
                   <input value={n.assigneeHint || ''} onChange={(e) => updateNode(n.id, { assigneeHint: e.target.value })} />
                 </label>
-                <label>
-                  스테이지
-                  <input value={n.stageLabel || ''} onChange={(e) => updateNode(n.id, { stageLabel: e.target.value })} />
-                </label>
-                <label>
-                  마감 오프셋(D+)
-                  <input type="number" value={n.deadlineOffsetDays ?? ''} onChange={(e) => updateNode(n.id, { deadlineOffsetDays: e.target.value ? Number(e.target.value) : undefined })} />
-                </label>
+                {false && (
+                  <label>
+                    스테이지
+                    <input value={n.stageLabel || ''} onChange={(e) => updateNode(n.id, { stageLabel: e.target.value })} />
+                  </label>
+                )}
+                {false && (
+                  <label>
+                    마감 오프셋(D+)
+                    <input type="number" value={n.deadlineOffsetDays ?? ''} onChange={(e) => updateNode(n.id, { deadlineOffsetDays: e.target.value ? Number(e.target.value) : undefined })} />
+                  </label>
+                )}
               </>
             )}
           </div>
@@ -261,8 +265,20 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
   const elRef = useRef<HTMLDivElement | null>(null);
   const qref = useRef<Quill | null>(null);
   const [html, setHtml] = useState<string>(initialHtml || '');
+  const [attachUrl, setAttachUrl] = useState<string>('');
   const lastHtmlRef = useRef<string>(initialHtml || '');
   const applyingRef = useRef<boolean>(false);
+
+  function isAllowedOneDriveUrl(raw: string) {
+    try {
+      const u = new URL(raw);
+      const h = u.hostname.toLowerCase();
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+      return h === '1drv.ms' || h === 'onedrive.live.com' || h.endsWith('.sharepoint.com') || h.endsWith('.sharepoint-df.com');
+    } catch {
+      return false;
+    }
+  }
 
   // init once
   useEffect(() => {
@@ -313,43 +329,93 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
       lastHtmlRef.current = next;
       setHtml(next);
     });
-    // paste & drop image handling
+    // paste & drop: allow image uploads (with compression). Convert data URIs by uploading.
     const onPaste = async (e: ClipboardEvent) => {
       try {
         const items = e.clipboardData?.items as DataTransferItemList | undefined;
-        if (!items) return;
-        const imgs = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
-        if (!imgs.length) return;
-        e.preventDefault();
-        e.stopPropagation();
-        for (const it of imgs) {
-          const f = it.getAsFile();
-          if (!f) continue;
-          const up = await uploadFile(f);
+        const html = e.clipboardData?.getData('text/html') || '';
+        if (items) {
+          const imgs = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
+          if (imgs.length) {
+            e.preventDefault();
+            e.stopPropagation();
+            for (const it of imgs) {
+              const file = it.getAsFile();
+              if (!file) continue;
+              const up = await uploadFile(file);
+              const range = (q as any).getSelection?.(true);
+              if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+              else (q as any).insertEmbed(0, 'image', up.url, 'user');
+            }
+            return;
+          }
+        }
+        if (html && (html.includes('src="data:') || html.includes("src='data:"))) {
+          e.preventDefault();
+          e.stopPropagation();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const imgsEl = Array.from(doc.images || []).filter((im) => im.src.startsWith('data:'));
+          for (const im of imgsEl) {
+            try {
+              const res = await fetch(im.src);
+              const blob = await res.blob();
+              const f = new File([blob], 'pasted.' + (blob.type.includes('png') ? 'png' : 'jpg'), { type: blob.type });
+              const up = await uploadFile(f);
+              im.src = up.url;
+            } catch {
+              im.remove();
+            }
+          }
           const range = (q as any).getSelection?.(true);
-          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          const sane = doc.body.innerHTML;
+          if (range) (q as any).clipboard.dangerouslyPasteHTML(range.index, sane, 'user');
+          else (q as any).clipboard.dangerouslyPasteHTML(0, sane, 'user');
         }
       } catch {
-        alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+        alert('이미지 업로드에 실패했습니다. 다시 시도하세요.');
       }
     };
     const onDrop = async (e: DragEvent) => {
       try {
+        const html = (e.dataTransfer && (e.dataTransfer.getData && e.dataTransfer.getData('text/html'))) || '';
         const files = e.dataTransfer?.files as FileList | undefined;
-        if (!files || !files.length) return;
-        const imgs = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
-        if (!imgs.length) return;
-        e.preventDefault();
-        e.stopPropagation();
-        for (const f of imgs) {
-          const up = await uploadFile(f);
+        if (files && files.length) {
+          const imgs = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
+          if (imgs.length) {
+            e.preventDefault();
+            e.stopPropagation();
+            for (const f of imgs) {
+              const up = await uploadFile(f);
+              const range = (q as any).getSelection?.(true);
+              if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+              else (q as any).insertEmbed(0, 'image', up.url, 'user');
+            }
+            return;
+          }
+        }
+        if (html && (html.includes('src="data:') || html.includes("src='data:"))) {
+          e.preventDefault();
+          e.stopPropagation();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const imgsEl = Array.from(doc.images || []).filter((im) => im.src.startsWith('data:'));
+          for (const im of imgsEl) {
+            try {
+              const res = await fetch(im.src);
+              const blob = await res.blob();
+              const f = new File([blob], 'drop.' + (blob.type.includes('png') ? 'png' : 'jpg'), { type: blob.type });
+              const up = await uploadFile(f);
+              im.src = up.url;
+            } catch {
+              im.remove();
+            }
+          }
           const range = (q as any).getSelection?.(true);
-          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          const sane = doc.body.innerHTML;
+          if (range) (q as any).clipboard.dangerouslyPasteHTML(range.index, sane, 'user');
+          else (q as any).clipboard.dangerouslyPasteHTML(0, sane, 'user');
         }
       } catch {
-        alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+        alert('이미지 업로드에 실패했습니다. 다시 시도하세요.');
       }
     };
     const onDragOver = (e: DragEvent) => {
@@ -359,13 +425,33 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
     (q.root as HTMLElement)?.addEventListener('paste', onPaste as any);
     (q.root as HTMLElement)?.addEventListener('drop', onDrop as any);
     (q.root as HTMLElement)?.addEventListener('dragover', onDragOver as any);
-    try {
-      applyingRef.current = true;
-      q.setContents(q.clipboard.convert(initialHtml || ''));
-      lastHtmlRef.current = q.root.innerHTML;
-    } finally {
-      applyingRef.current = false;
-    }
+    (async () => {
+      try {
+        applyingRef.current = true;
+        let content = initialHtml || '';
+        if (content.includes('src="data:') || content.includes("src='data:")) {
+          const doc = new DOMParser().parseFromString(content, 'text/html');
+          const imgsEl = Array.from(doc.images || []).filter((im) => im.src.startsWith('data:'));
+          for (const im of imgsEl) {
+            try {
+              const res = await fetch(im.src);
+              const blob = await res.blob();
+              const f = new File([blob], 'init.' + (blob.type.includes('png') ? 'png' : 'jpg'), { type: blob.type });
+              const up = await uploadFile(f);
+              im.src = up.url;
+            } catch {
+              im.remove();
+            }
+          }
+          content = doc.body.innerHTML;
+        }
+        q.setContents(q.clipboard.convert(content));
+        lastHtmlRef.current = q.root.innerHTML;
+        setHtml(lastHtmlRef.current);
+      } finally {
+        applyingRef.current = false;
+      }
+    })();
     qref.current = q;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -390,20 +476,19 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
     }
   }, [initialHtml]);
 
-  async function onAttachFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    try {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-      const ups = await uploadFiles(files);
-      const q = qref.current as any;
-      const range = q?.getSelection?.(true);
-      ups.forEach((f: any) => {
-        const linkHtml = `<a href="${f.url}" target="_blank" rel="noreferrer">${f.name}</a>`;
-        if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
-        else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
-      });
-      e.target.value = '' as any;
-    } catch {}
+  function addAttachmentUrl() {
+    const url = (attachUrl || '').trim();
+    if (!url) return;
+    if (!isAllowedOneDriveUrl(url)) {
+      alert('원드라이브/SharePoint 링크만 첨부할 수 있습니다.');
+      return;
+    }
+    const q = qref.current as any;
+    const range = q?.getSelection?.(true);
+    const linkHtml = `<a href="${url}" target="_blank" rel="noreferrer">${url}</a>`;
+    if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
+    else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
+    setAttachUrl('');
   }
 
   return (
@@ -413,7 +498,14 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
       </div>
       <div style={{ marginTop: 6 }}>
         <label>첨부 파일</label>
-        <input type="file" multiple onChange={onAttachFiles} />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            placeholder="클라우드 파일 URL"
+            value={attachUrl}
+            onChange={(e) => setAttachUrl(e.target.value)}
+          />
+          <button type="button" className="btn btn-sm" onClick={addAttachmentUrl}>추가</button>
+        </div>
         <span style={{ marginLeft: 8, color: '#9ca3af', fontSize: 12 }}>#{nodeId}</span>
       </div>
     </div>

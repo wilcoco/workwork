@@ -5,7 +5,7 @@ import { BpmnEditor } from '../components/BpmnEditor';
 import { BpmnFormEditor } from '../components/BpmnFormEditor';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
-import { uploadFiles, uploadFile } from '../lib/upload';
+import { uploadFile } from '../lib/upload';
 import '../styles/editor.css';
 
 interface ProcessTaskTemplateDto {
@@ -81,6 +81,18 @@ export function ProcessTemplates() {
   const descEditorEl = useRef<HTMLDivElement | null>(null);
   const descQuillRef = useRef<Quill | null>(null);
   const [descHtml, setDescHtml] = useState('');
+  const [descAttachUrl, setDescAttachUrl] = useState('');
+
+  function isAllowedOneDriveUrl(raw: string) {
+    try {
+      const u = new URL(raw);
+      const h = u.hostname.toLowerCase();
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+      return h === '1drv.ms' || h === 'onedrive.live.com' || h.endsWith('.sharepoint.com') || h.endsWith('.sharepoint-df.com');
+    } catch {
+      return false;
+    }
+  }
   const ensureDescQuill = () => {
     if (descQuillRef.current || !descEditorEl.current) return;
     const toolbar = [
@@ -104,12 +116,16 @@ export function ProcessTemplates() {
                 input.type = 'file';
                 input.accept = 'image/*';
                 input.onchange = async () => {
-                  const file = input.files?.[0];
-                  if (!file) return;
-                  const up = await uploadFile(file);
-                  const range = (q as any).getSelection?.(true);
-                  if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-                  else (q as any).insertEmbed(0, 'image', up.url, 'user');
+                  try {
+                    const file = input.files?.[0];
+                    if (!file) return;
+                    const up = await uploadFile(file);
+                    const range = (q as any).getSelection?.(true);
+                    if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+                    else (q as any).insertEmbed(0, 'image', up.url, 'user');
+                  } catch {
+                    alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+                  }
                 };
                 input.click();
               } catch {}
@@ -127,37 +143,85 @@ export function ProcessTemplates() {
         const items = e.clipboardData?.items as DataTransferItemList | undefined;
         if (!items) return;
         const imgs: DataTransferItem[] = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
-        if (!imgs.length) return;
-        e.preventDefault();
-        e.stopPropagation();
-        for (const it of imgs) {
-          const f = it.getAsFile();
-          if (!f) continue;
-          const up = await uploadFile(f);
+        const html = e.clipboardData?.getData('text/html') || '';
+        if (imgs.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          for (const it of imgs) {
+            const f = it.getAsFile();
+            if (!f) continue;
+            const up = await uploadFile(f);
+            const range = (q as any).getSelection?.(true);
+            if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+            else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          }
+          return;
+        }
+        if (html && (html.includes('src="data:') || html.includes("src='data:"))) {
+          e.preventDefault();
+          e.stopPropagation();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const imgsEl = Array.from(doc.images || []).filter((im) => im.src.startsWith('data:'));
+          for (const im of imgsEl) {
+            try {
+              const res = await fetch(im.src);
+              const blob = await res.blob();
+              const f = new File([blob], 'pasted.' + (blob.type.includes('png') ? 'png' : 'jpg'), { type: blob.type });
+              const up = await uploadFile(f);
+              im.src = up.url;
+            } catch {
+              im.remove();
+            }
+          }
           const range = (q as any).getSelection?.(true);
-          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          const sane = doc.body.innerHTML;
+          if (range) (q as any).clipboard.dangerouslyPasteHTML(range.index, sane, 'user');
+          else (q as any).clipboard.dangerouslyPasteHTML(0, sane, 'user');
+          return;
         }
       } catch {
-        alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+        alert('이미지 처리에 실패했습니다. 이미지 URL을 사용하세요.');
       }
     };
     const onDrop = async (e: DragEvent) => {
       try {
+        const html = (e.dataTransfer && (e.dataTransfer.getData && e.dataTransfer.getData('text/html'))) || '';
         const files = e.dataTransfer?.files as FileList | undefined;
-        if (!files || !files.length) return;
-        const imgs: File[] = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
-        if (!imgs.length) return;
-        e.preventDefault();
-        e.stopPropagation();
-        for (const f of imgs) {
-          const up = await uploadFile(f);
+        const imgs: File[] = files ? Array.from(files).filter((f: File) => f.type.startsWith('image/')) : [];
+        if (imgs.length) {
+          e.preventDefault();
+          e.stopPropagation();
+          for (const f of imgs) {
+            const up = await uploadFile(f);
+            const range = (q as any).getSelection?.(true);
+            if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
+            else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          }
+          return;
+        }
+        if (html && (html.includes('src="data:') || html.includes("src='data:"))) {
+          e.preventDefault();
+          e.stopPropagation();
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const imgsEl = Array.from(doc.images || []).filter((im) => im.src.startsWith('data:'));
+          for (const im of imgsEl) {
+            try {
+              const res = await fetch(im.src);
+              const blob = await res.blob();
+              const f = new File([blob], 'drop.' + (blob.type.includes('png') ? 'png' : 'jpg'), { type: blob.type });
+              const up = await uploadFile(f);
+              im.src = up.url;
+            } catch {
+              im.remove();
+            }
+          }
           const range = (q as any).getSelection?.(true);
-          if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-          else (q as any).insertEmbed(0, 'image', up.url, 'user');
+          const sane = doc.body.innerHTML;
+          if (range) (q as any).clipboard.dangerouslyPasteHTML(range.index, sane, 'user');
+          else (q as any).clipboard.dangerouslyPasteHTML(0, sane, 'user');
         }
       } catch {
-        alert('이미지 업로드에 실패했습니다. 파일 크기/형식을 확인하고 다시 시도하세요.');
+        alert('이미지 처리에 실패했습니다. 이미지 URL을 사용하세요.');
       }
     };
     const onDragOver = (e: DragEvent) => {
@@ -168,6 +232,44 @@ export function ProcessTemplates() {
     (q.root as HTMLElement)?.addEventListener('drop', onDrop as any);
     (q.root as HTMLElement)?.addEventListener('dragover', onDragOver as any);
   };
+  async function replaceDataUrisInHtml(html: string): Promise<string> {
+    try {
+      if (!html || (!html.includes('src="data:') && !html.includes("src='data:"))) return html || '';
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const imgs = Array.from(doc.images || []).filter((im) => im.src && im.src.startsWith('data:'));
+      for (const im of imgs) {
+        try {
+          const res = await fetch(im.src);
+          const blob = await res.blob();
+          const ext = blob.type.includes('png') ? 'png' : (blob.type.includes('gif') ? 'gif' : (blob.type.includes('webp') ? 'webp' : 'jpg'));
+          const f = new File([blob], 'img.' + ext, { type: blob.type });
+          const up = await uploadFile(f);
+          im.src = up.url;
+        } catch {
+          im.remove();
+        }
+      }
+      return doc.body.innerHTML;
+    } catch {
+      return html || '';
+    }
+  }
+
+  async function sanitizeBpmnJsonDescriptions(bpmn: any): Promise<any> {
+    try {
+      const nodes = Array.isArray(bpmn?.nodes) ? bpmn.nodes : [];
+      for (const n of nodes) {
+        const desc = typeof n?.description === 'string' ? n.description : '';
+        if (desc && (desc.includes('src="data:') || desc.includes("src='data:"))) {
+          n.description = await replaceDataUrisInHtml(desc);
+        }
+      }
+      return bpmn;
+    } catch {
+      return bpmn;
+    }
+  }
+
   const taskPreview = (() => {
     try {
       if (bpmnJsonText.trim()) {
@@ -219,16 +321,18 @@ export function ProcessTemplates() {
     return () => clearTimeout(t);
   }, [editing, selectedId]);
 
-  async function insertFilesToDesc(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const ups = await uploadFiles(files);
+  function insertLinkToDesc(urlRaw: string) {
+    const url = (urlRaw || '').trim();
+    if (!url) return;
+    if (!isAllowedOneDriveUrl(url)) {
+      alert('원드라이브/SharePoint 링크만 첨부할 수 있습니다.');
+      return;
+    }
     const q = descQuillRef.current as any;
     const range = q?.getSelection?.(true);
-    ups.forEach((f) => {
-      const linkHtml = `<a href="${f.url}" target="_blank" rel="noreferrer">${f.name}</a>`;
-      if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
-      else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
-    });
+    const linkHtml = `<a href="${url}" target="_blank" rel="noreferrer">${url}</a>`;
+    if (q && range) q.clipboard.dangerouslyPasteHTML(range.index, linkHtml);
+    else if (q) q.clipboard.dangerouslyPasteHTML(0, linkHtml);
   }
 
   async function checkInUse(tmplId?: string | null) {
@@ -355,7 +459,9 @@ export function ProcessTemplates() {
       return;
     }
     // Apply rich text description content
-    const desc = descHtml || '';
+    let desc = descHtml || '';
+    // Replace any embedded data URI images in description with uploaded URLs
+    try { desc = await replaceDataUrisInHtml(desc); } catch {}
     const editingWithDesc = { ...editing, description: desc } as ProcessTemplateDto;
     let bpmnObj: any = undefined;
     const raw = (bpmnJsonText || '').trim();
@@ -370,6 +476,10 @@ export function ProcessTemplates() {
     } else if ((editing as any).bpmnJson) {
       // 편집기 자동 동기화 이전에 열려 있던 경우 대비: 기존 저장된 bpmnJson을 유지 저장
       bpmnObj = (editing as any).bpmnJson;
+    }
+    // Sanitize node descriptions: convert any data URI images to uploaded URLs
+    if (bpmnObj) {
+      try { bpmnObj = await sanitizeBpmnJsonDescriptions(bpmnObj); } catch {}
     }
     const body = {
       ...editingWithDesc,
@@ -546,7 +656,22 @@ export function ProcessTemplates() {
               </div>
               <div style={{ marginTop: 6 }}>
                 <label>첨부 파일</label>
-                <input type="file" multiple onChange={async (e) => { await insertFilesToDesc(e.target.files); e.target.value = '' as any; }} />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    placeholder="클라우드 파일 URL"
+                    value={descAttachUrl}
+                    onChange={(e) => setDescAttachUrl(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      insertLinkToDesc(descAttachUrl);
+                      setDescAttachUrl('');
+                    }}
+                  >추가</button>
+                </div>
               </div>
             </div>
             <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
@@ -686,7 +811,7 @@ export function ProcessTemplates() {
                 {taskPreview.map((t: any, idx: number) => (
                   <div key={t.id || idx} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <b>#{idx + 1}{t.stageLabel ? ` · ${t.stageLabel}` : ''}</b>
+                      <b>#{idx + 1}</b>
                       <span style={{ color: '#6b7280' }}>{t.taskType}</span>
                     </div>
                     <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
@@ -694,10 +819,12 @@ export function ProcessTemplates() {
                         <label>과제 이름</label>
                         <div>{t.name || '-'}</div>
                       </div>
-                      <div>
-                        <label>마감 기한 오프셋(D+)</label>
-                        <div>{typeof t.deadlineOffsetDays === 'number' ? t.deadlineOffsetDays : '-'}</div>
-                      </div>
+                      {false && (
+                        <div>
+                          <label>마감 기한 오프셋(D+)</label>
+                          <div>{typeof t.deadlineOffsetDays === 'number' ? t.deadlineOffsetDays : '-'}</div>
+                        </div>
+                      )}
                     </div>
                     {t.description ? (
                       <div>
