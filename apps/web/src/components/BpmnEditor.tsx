@@ -34,9 +34,9 @@ function LabeledNode({ data }: { data: any }) {
       fontSize: 12,
       fontWeight: 600,
     }}>
-      <Handle type="target" position={Position.Top} />
+      <Handle type="target" position={Position.Top} style={{ width: 12, height: 12, background: '#0F3D73', border: '2px solid #ffffff' }} />
       <div>{data?.label || data?.name || ''}</div>
-      <Handle type="source" position={Position.Bottom} />
+      <Handle type="source" position={Position.Bottom} style={{ width: 12, height: 12, background: '#0F3D73', border: '2px solid #ffffff' }} />
     </div>
   );
 }
@@ -64,6 +64,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
   const [graphWidth, setGraphWidth] = useState<number>(520);
   const [resizing, setResizing] = useState<boolean>(false);
   const lastPaneClick = useRef<{ x: number; y: number } | null>(null);
+  const syncTimerRef = useRef<number | null>(null);
 
   const toJson = useCallback(() => {
     const j = {
@@ -136,10 +137,25 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
 
   // Auto-sync: whenever graph changes, reflect to parent JSON
   useEffect(() => {
-    if (importingRef.current) { importingRef.current = false; return; }
-    toJson();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges]);
+    if (syncTimerRef.current) {
+      window.clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
+    }
+    if (importingRef.current) {
+      importingRef.current = false;
+      return;
+    }
+    syncTimerRef.current = window.setTimeout(() => {
+      syncTimerRef.current = null;
+      toJson();
+    }, 150);
+    return () => {
+      if (syncTimerRef.current) {
+        window.clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+    };
+  }, [nodes, edges, toJson]);
 
   // When parent JSON changes (e.g., auto-linearize), import into editor without causing emit loop
   useEffect(() => {
@@ -258,45 +274,6 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     const label = type === 'start' ? 'Start' : type === 'end' ? 'End' : type.startsWith('gateway') ? (type === 'gateway_parallel' ? 'AND' : 'XOR') : '새 과제';
     const isTask = type === 'task';
     const selNodeId = selectedNodeId;
-    const selEdgeId = selectedEdgeId;
-
-    // 1) If an edge is selected, insert node into that edge (split it)
-    if (selEdgeId) {
-      const edge = edges.find((e) => String(e.id) === String(selEdgeId));
-      if (edge) {
-        const src = nodes.find((n) => String(n.id) === String(edge.source));
-        const tgt = nodes.find((n) => String(n.id) === String(edge.target));
-        const y = src && tgt ? Math.round(((src.position?.y || 60) + (tgt.position?.y || 180)) / 2) : (src ? (src.position?.y || 60) + 60 : (tgt ? (tgt.position?.y || 60) - 60 : 60));
-        const newNode: Node<any> = {
-          id,
-          type,
-          position: { x: 180, y },
-          sourcePosition: Position.Bottom,
-          targetPosition: Position.Top,
-          style: { width: 180 },
-          data: isTask ? { name: '새 과제', taskType: 'TASK', label, kind: type } : { name: label, label, kind: type },
-        };
-        setNodes((prev: Node<any>[]) => {
-          const found = prev.findIndex((n) => (n.position?.y || 0) > y);
-          if (found !== -1) {
-            const before = prev.slice(0, found);
-            const after = prev.slice(found);
-            return [...before, newNode, ...after];
-          }
-          return [...prev, newNode];
-        });
-        setEdges((prev: Edge<any>[]) => {
-          const others = prev.filter((e) => String(e.id) !== String(selEdgeId));
-          const cond = (edge as any).data?.condition;
-          const e1: Edge<any> = { id: `e${Date.now()}_a`, source: String(edge.source), target: String(id) } as any;
-          const e2: Edge<any> = { id: `e${Date.now()}_b`, source: String(id), target: String(edge.target), data: cond ? { condition: cond } : undefined, label: cond ? String(cond) : undefined } as any;
-          return [...others, e1, e2];
-        });
-        setSelectedNodeId(id);
-        setSelectedEdgeId(null);
-        return;
-      }
-    }
 
     // 2) Otherwise, insert at last pane click position if available; else fallback to previous logic
     setNodes((prev: Node<any>[]) => {
@@ -330,15 +307,6 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
       }
       return [...prev, newNode];
     });
-    if (selNodeId && type !== 'start' && type !== 'end') {
-      setEdges((prev: Edge<any>[]) => {
-        const incoming = prev.filter((e) => String(e.target) === String(selNodeId));
-        const others = prev.filter((e) => String(e.target) !== String(selNodeId));
-        const rewired = incoming.map((e) => ({ ...e, target: id }));
-        const newEdge: Edge<any> = { id: `e${Date.now()}_ins`, source: String(id), target: String(selNodeId) } as any;
-        return [...others, ...rewired, newEdge];
-      });
-    }
     setSelectedNodeId(id);
     setSelectedEdgeId(null);
   };
@@ -496,6 +464,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
               onSelectionChange={onSelectionChange as any}
               onNodeClick={(_: any, n: any) => { setSelectedNodeId(String(n.id)); setSelectedEdgeId(null); }}
               onEdgeClick={(_: any, e: any) => { setSelectedEdgeId(String(e.id)); setSelectedNodeId(null); }}
+              onNodeDragStop={() => { toJson(); }}
               nodesDraggable={true}
               nodesConnectable={true}
               elementsSelectable={true}
