@@ -422,11 +422,39 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                 조건(XOR)
                 <input
                   value={((e as any).data?.condition || '')}
+                  placeholder="예: last.approval.status == 'APPROVED'"
                   onChange={(ev) => {
                     const val = ev.target.value;
                     setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: val || undefined } : x)));
                   }}
                 />
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    onClick={() => {
+                      const val = "last.approval.status == 'APPROVED'";
+                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: val || undefined } : x)));
+                    }}
+                  >승인</button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    onClick={() => {
+                      const val = "last.approval.status == 'REJECTED'";
+                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: val || undefined } : x)));
+                    }}
+                  >반려</button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => {
+                      const val = '';
+                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: val || undefined } : x)));
+                    }}
+                  >비우기</button>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>사용 가능 변수: last.approval.status</div>
               </label>
             </div>
           </div>

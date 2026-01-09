@@ -892,12 +892,22 @@ export class ProcessesController {
     // XOR groups: evaluate conditions
     if (byGroup.size) {
       const inst = await tx.processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true } });
+      const lastTask = await tx.processTaskInstance.findFirst({
+        where: { instanceId, taskTemplateId: justCompletedTemplateId },
+        orderBy: { actualEndAt: 'desc' },
+        select: { approvalRequestId: true },
+      });
+      const lastApprovalReqId = lastTask?.approvalRequestId || null;
+      const lastApproval = lastApprovalReqId
+        ? await tx.approvalRequest.findUnique({ where: { id: lastApprovalReqId }, select: { id: true, status: true } })
+        : null;
       const ctx = {
         itemCode: inst?.itemCode || null,
         moldCode: inst?.moldCode || null,
         carModelCode: inst?.carModelCode || null,
         initiativeId: inst?.initiativeId || null,
         startedBy: { id: inst?.startedById || '', role: inst?.startedBy?.role || '' },
+        last: lastApproval ? { approval: { id: lastApproval.id, status: lastApproval.status } } : {},
       };
       for (const [g, list] of byGroup.entries()) {
         let selected: any | null = null;
@@ -1042,6 +1052,22 @@ export class ProcessesController {
           if (reqId) linkData.approvalRequestId = reqId;
         }
       }
+      const isApprovalTask = String(task.taskType).toUpperCase() === 'APPROVAL';
+      if (isApprovalTask) {
+        const appr = linkData.approvalRequestId
+          ? await tx.approvalRequest.findUnique({ where: { id: String(linkData.approvalRequestId) }, select: { status: true } })
+          : null;
+        const st = String(appr?.status || '').toUpperCase();
+        const alreadyFinal = st === 'APPROVED' || st === 'REJECTED' || st === 'EXPIRED';
+        if (!alreadyFinal) {
+          const updated = await tx.processTaskInstance.update({
+            where: { id: taskId },
+            data: { status: 'IN_PROGRESS', actualStartAt: task.actualStartAt || new Date(), actualEndAt: null, ...linkData },
+          });
+          return updated;
+        }
+      }
+
       const updated = await tx.processTaskInstance.update({
         where: { id: taskId },
         data: { status: 'COMPLETED', actualEndAt: new Date(), ...linkData },
@@ -1063,5 +1089,39 @@ export class ProcessesController {
       }
       return updated;
     });
+  }
+
+  async finalizeTasksLinkedToApprovalRequest(tx: any, approvalRequestId: string, actorId: string, decisionReason?: string) {
+    const tasks = await tx.processTaskInstance.findMany({ where: { approvalRequestId } });
+    if (!tasks.length) return;
+
+    const unlockKeys = new Set<string>();
+    for (const t of tasks) {
+      const st = String(t.status).toUpperCase();
+      if (st === 'COMPLETED' || st === 'SKIPPED') continue;
+      await tx.processTaskInstance.update({
+        where: { id: t.id },
+        data: { status: 'COMPLETED', actualEndAt: new Date(), decidedById: actorId, decisionReason: decisionReason || null },
+      });
+      const nextChain = await tx.processTaskInstance.findFirst({
+        where: { instanceId: t.instanceId, taskTemplateId: t.taskTemplateId, status: 'CHAIN_WAIT' },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (nextChain) {
+        await tx.processTaskInstance.update({ where: { id: nextChain.id }, data: { status: 'READY' } });
+      } else {
+        unlockKeys.add(`${t.instanceId}::${t.taskTemplateId}`);
+      }
+      const remain = await tx.processTaskInstance.count({ where: { instanceId: t.instanceId, status: { notIn: ['COMPLETED', 'SKIPPED'] } } });
+      if (remain === 0) {
+        await tx.processInstance.update({ where: { id: t.instanceId }, data: { status: 'COMPLETED', endAt: new Date() } });
+      }
+    }
+
+    for (const key of unlockKeys) {
+      const [instanceId, templateId] = key.split('::');
+      if (!instanceId || !templateId) continue;
+      await this.unlockReadyDownstreams(tx, instanceId, templateId);
+    }
   }
 }

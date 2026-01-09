@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '
 import { IsArray, IsDateString, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PrismaService } from './prisma.service';
+import { ProcessesController } from './processes.controller';
 
 class CreateApprovalDto {
   @IsString()
@@ -217,15 +218,17 @@ export class ApprovalsController {
     if (!req) throw new BadRequestException('request not found');
 
     if (!req.steps || req.steps.length === 0) {
-      // single-step legacy
-      const updated = await this.prisma.approvalRequest.update({ where: { id }, data: { status: 'APPROVED' } });
-      // If this approval is for a car dispatch, also mark the dispatch as approved
-      if (updated.subjectType === 'CAR_DISPATCH') {
-        await (this.prisma as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
-      }
-      await this.prisma.event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id, comment: dto.comment } } });
-      await this.prisma.notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
-      return updated;
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'APPROVED' } });
+        if (updated.subjectType === 'CAR_DISPATCH') {
+          await (tx as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
+        }
+        const engine = new ProcessesController(this.prisma);
+        await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+        await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id, comment: dto.comment } } });
+        await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
+        return updated;
+      });
     }
 
     // multi-step
@@ -236,28 +239,33 @@ export class ApprovalsController {
     }
     if (pending.approverId !== dto.actorId) throw new BadRequestException('not current approver');
 
-    await this.prisma.approvalStep.update({ where: { id: pending.id }, data: { status: 'APPROVED' as any, comment: dto.comment, actedAt: new Date() } });
-    await this.prisma.event.create({ data: { subjectType: 'ApprovalStep', subjectId: pending.id, activity: 'ApprovalStepApproved', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo } } });
-
     // find next step
     const next = req.steps.find((s: any) => s.stepNo === pending.stepNo + 1);
     if (next) {
-      // advance current approver to next step
-      await this.prisma.approvalRequest.update({ where: { id }, data: { approverId: next.approverId } });
-      // keep request pending, notify next approver
-      await this.prisma.notification.create({ data: { userId: next.approverId, type: 'ApprovalRequested', subjectType: req.subjectType, subjectId: req.subjectId, payload: { requestId: id } } });
-      await this.prisma.event.create({ data: { subjectType: req.subjectType, subjectId: req.subjectId, activity: 'ApprovalRequested', userId: dto.actorId, attrs: { requestId: id, nextStepNo: next.stepNo } } });
+      await this.prisma.$transaction(async (tx) => {
+        await (tx as any).approvalStep.update({ where: { id: pending.id }, data: { status: 'APPROVED' as any, comment: dto.comment, actedAt: new Date() } });
+        await (tx as any).event.create({ data: { subjectType: 'ApprovalStep', subjectId: pending.id, activity: 'ApprovalStepApproved', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo } } });
+        await (tx as any).approvalRequest.update({ where: { id }, data: { approverId: next.approverId } });
+        await (tx as any).notification.create({ data: { userId: next.approverId, type: 'ApprovalRequested', subjectType: req.subjectType, subjectId: req.subjectId, payload: { requestId: id } } });
+        await (tx as any).event.create({ data: { subjectType: req.subjectType, subjectId: req.subjectId, activity: 'ApprovalRequested', userId: dto.actorId, attrs: { requestId: id, nextStepNo: next.stepNo } } });
+      });
       return await this.prisma.approvalRequest.findUnique({ where: { id }, include: { steps: true } });
-    } else {
-      // last step approved -> finalize
-      const updated = await this.prisma.approvalRequest.update({ where: { id }, data: { status: 'APPROVED' } });
-      if (updated.subjectType === 'CAR_DISPATCH') {
-        await (this.prisma as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
-      }
-      await this.prisma.event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id } } });
-      await this.prisma.notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
-      return updated;
     }
+
+    // last step approved -> finalize
+    return this.prisma.$transaction(async (tx) => {
+      await (tx as any).approvalStep.update({ where: { id: pending.id }, data: { status: 'APPROVED' as any, comment: dto.comment, actedAt: new Date() } });
+      await (tx as any).event.create({ data: { subjectType: 'ApprovalStep', subjectId: pending.id, activity: 'ApprovalStepApproved', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo } } });
+      const updated = await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'APPROVED' } });
+      if (updated.subjectType === 'CAR_DISPATCH') {
+        await (tx as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
+      }
+      const engine = new ProcessesController(this.prisma);
+      await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+      await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id } } });
+      await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
+      return updated;
+    });
   }
 
   @Post(':id/reject')
@@ -266,26 +274,34 @@ export class ApprovalsController {
     if (!req) throw new BadRequestException('request not found');
 
     if (!req.steps || req.steps.length === 0) {
-      const updated = await this.prisma.approvalRequest.update({ where: { id }, data: { status: 'REJECTED' } });
-      if (updated.subjectType === 'CAR_DISPATCH') {
-        await (this.prisma as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
-      }
-      await this.prisma.event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, reason: dto.comment } } });
-      await this.prisma.notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
-      return updated;
+      return this.prisma.$transaction(async (tx) => {
+        const updated = await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'REJECTED' } });
+        if (updated.subjectType === 'CAR_DISPATCH') {
+          await (tx as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
+        }
+        const engine = new ProcessesController(this.prisma);
+        await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+        await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, reason: dto.comment } } });
+        await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
+        return updated;
+      });
     }
 
     const pending = req.steps.find((s: any) => s.status === 'PENDING');
     if (!pending) return req;
     if (pending.approverId !== dto.actorId) throw new BadRequestException('not current approver');
 
-    await this.prisma.approvalStep.update({ where: { id: pending.id }, data: { status: 'REJECTED' as any, comment: dto.comment, actedAt: new Date() } });
-    const updated = await this.prisma.approvalRequest.update({ where: { id }, data: { status: 'REJECTED' } });
-    if (updated.subjectType === 'CAR_DISPATCH') {
-      await (this.prisma as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
-    }
-    await this.prisma.event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo, reason: dto.comment } } });
-    await this.prisma.notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
-    return updated;
+    return this.prisma.$transaction(async (tx) => {
+      await (tx as any).approvalStep.update({ where: { id: pending.id }, data: { status: 'REJECTED' as any, comment: dto.comment, actedAt: new Date() } });
+      const updated = await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'REJECTED' } });
+      if (updated.subjectType === 'CAR_DISPATCH') {
+        await (tx as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
+      }
+      const engine = new ProcessesController(this.prisma);
+      await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+      await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo, reason: dto.comment } } });
+      await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
+      return updated;
+    });
   }
 }
