@@ -39,7 +39,7 @@ import { AttendanceRequest } from './pages/AttendanceRequest';
 import { AttendanceReport } from './pages/AttendanceReport';
 import { AdminHolidays } from './pages/AdminHolidays';
 import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
-import { ProcessInbox } from './pages/ProcessInbox';
+import { ProcessMy } from './pages/ProcessMy';
 import { ProcessStart } from './pages/ProcessStart';
 import { ProcessTemplates } from './pages/ProcessTemplates';
 import { ProcessDashboard } from './pages/ProcessDashboard';
@@ -139,7 +139,7 @@ export function App() {
           <Route path="/attendance/report" element={<AttendanceReport />} />
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
           <Route path="/process/dashboard" element={<ProcessDashboard />} />
-          <Route path="/process/inbox" element={<ProcessInbox />} />
+          <Route path="/process/my" element={<ProcessMy />} />
           <Route path="/process/start" element={<ProcessStart />} />
           <Route path="/process/templates" element={<ProcessTemplates />} />
           {SHOW_APPROVALS && (
@@ -262,7 +262,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
         </NavDropdown>
         <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
           <Link to={`/process/start?return=${encodeURIComponent(location.pathname + location.search)}`}>새 프로세스 시작</Link>
-          <Link to="/process/inbox">내 할 일</Link>
+          <Link to="/process/my">참여 프로세스</Link>
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
         </NavDropdown>
@@ -444,7 +444,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
     if (path.startsWith('/process')) {
       return [
         { to: '/process/start', label: '새 프로세스 시작' },
-        { to: '/process/inbox', label: '내 할 일' },
+        { to: '/process/my', label: '참여 프로세스' },
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         { to: '/process/templates', label: '프로세스 템플릿' },
       ];

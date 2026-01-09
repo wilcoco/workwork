@@ -284,6 +284,49 @@ export class ProcessesController {
     });
   }
 
+  @Get('my')
+  async myProcesses(@Query('userId') userId?: string) {
+    if (!userId) return [];
+    const taskInstances = await this.prisma.processTaskInstance.findMany({
+      where: { assigneeId: userId },
+      select: { instanceId: true },
+    });
+    const startedInstances = await this.prisma.processInstance.findMany({
+      where: { startedById: userId },
+      select: { id: true },
+    });
+    const instanceIds = Array.from(new Set([
+      ...taskInstances.map((t: any) => t.instanceId),
+      ...startedInstances.map((i: any) => i.id),
+    ]));
+    if (!instanceIds.length) return [];
+    const rows = await this.prisma.processInstance.findMany({
+      where: { id: { in: instanceIds } },
+      orderBy: { startAt: 'desc' },
+      include: {
+        template: { select: { id: true, title: true } },
+        startedBy: { select: { id: true, name: true } },
+        tasks: { select: { id: true, status: true, assigneeId: true } },
+      },
+    });
+    return rows.map((r: any) => {
+      const myTasks = (r.tasks || []).filter((t: any) => t.assigneeId === userId);
+      const total = myTasks.length;
+      const completed = myTasks.filter((t: any) => t.status === 'COMPLETED').length;
+      const inProgress = myTasks.filter((t: any) => t.status === 'IN_PROGRESS' || t.status === 'READY').length;
+      return {
+        id: r.id,
+        title: r.title,
+        status: r.status,
+        startAt: r.startAt,
+        endAt: r.endAt,
+        template: r.template,
+        startedBy: r.startedBy,
+        myTaskSummary: { total, completed, inProgress },
+      };
+    });
+  }
+
   @Get('inbox')
   async inbox(@Query('assigneeId') assigneeId?: string, @Query('status') status?: string) {
     if (!assigneeId) return [];
