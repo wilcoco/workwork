@@ -39,6 +39,8 @@ export function WorklogQuickNew() {
   const [visibility, setVisibility] = useState<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'>('ALL');
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
   const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; instance: { id: string; title: string } }>>([]);
+  const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
+  const [processDetailLoading, setProcessDetailLoading] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('teamName') || '';
@@ -386,6 +388,23 @@ export function WorklogQuickNew() {
     }
   }
 
+  async function openProcessDetail() {
+    const isProc = selection.startsWith('proc:');
+    const tid = isProc ? selection.substring(5) : taskInstanceId;
+    const t = myProcTasks.find((x) => x.id === tid);
+    const pid = t?.instance?.id || processInstanceId;
+    if (!pid) return;
+    setProcessDetailLoading(true);
+    try {
+      const d = await apiJson<any>(`/api/processes/${encodeURIComponent(pid)}`);
+      setProcessDetailPopup(d);
+    } catch {
+      alert('프로세스 정보를 불러오지 못했습니다.');
+    } finally {
+      setProcessDetailLoading(false);
+    }
+  }
+
   async function addAttachmentFiles(list: FileList | null) {
     const files = Array.from(list || []);
     if (!files.length) return;
@@ -478,6 +497,11 @@ export function WorklogQuickNew() {
                 </optgroup>
               )}
             </select>
+            {(selection.startsWith('proc:') || taskInstanceId) && (
+              <button type="button" className="btn btn-ghost" style={{ marginTop: 4, fontSize: 12 }} onClick={openProcessDetail} disabled={processDetailLoading}>
+                {processDetailLoading ? '불러오는 중...' : '프로세스 상세 보기 (이전 업무일지 확인)'}
+              </button>
+            )}
           </div>
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
@@ -620,6 +644,54 @@ export function WorklogQuickNew() {
           </div>
         </form>
       </div>
+
+      {processDetailPopup && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={() => setProcessDetailPopup(null)}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 'min(700px, 90vw)', maxHeight: '80vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h4 style={{ margin: 0 }}>프로세스 상세: {processDetailPopup.title}</h4>
+              <button className="btn" onClick={() => setProcessDetailPopup(null)}>닫기</button>
+            </div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+              상태: {processDetailPopup.status} · 시작: {processDetailPopup.startAt ? new Date(processDetailPopup.startAt).toLocaleDateString() : '-'}
+            </div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {(processDetailPopup.tasks || []).map((t: any) => (
+                <div key={t.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600 }}>{t.name}</span>
+                    <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{t.taskType}</span>
+                    <span style={{
+                      fontSize: 11,
+                      padding: '2px 6px',
+                      borderRadius: 999,
+                      background: t.status === 'COMPLETED' ? '#DCFCE7' : t.status === 'IN_PROGRESS' ? '#DBEAFE' : '#F1F5F9',
+                      color: t.status === 'COMPLETED' ? '#166534' : t.status === 'IN_PROGRESS' ? '#1E3A8A' : '#334155',
+                    }}>{t.status}</span>
+                  </div>
+                  {(t.worklogs || []).length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 4 }}>업무일지 ({t.worklogs.length}건)</div>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {(t.worklogs || []).map((wl: any) => (
+                          <div key={wl.id} style={{ fontSize: 12, padding: 8, background: '#f9fafb', borderRadius: 6 }}>
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                              <span style={{ color: '#6b7280' }}>{new Date(wl.createdAt).toLocaleString()}</span>
+                              <span style={{ fontWeight: 500 }}>{wl.createdBy?.name || '-'}</span>
+                            </div>
+                            <div style={{ color: '#475569' }} dangerouslySetInnerHTML={{ __html: wl.note || '(내용 없음)' }} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!(t.worklogs || []).length && <div style={{ fontSize: 12, color: '#9ca3af' }}>업무일지 없음</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
