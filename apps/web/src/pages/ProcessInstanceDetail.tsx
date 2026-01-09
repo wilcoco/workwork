@@ -115,7 +115,7 @@ export function ProcessInstanceDetail() {
       const params = new URLSearchParams(loc.search || '');
       const ret = (params.get('return') || '').trim();
       if (ret && ret.startsWith('/')) nav(ret);
-      else nav('/process/instances');
+      else nav('/process/my');
     }
   }, [error]);
 
