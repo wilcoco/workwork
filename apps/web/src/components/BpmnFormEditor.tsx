@@ -249,7 +249,32 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
                   ))}
                 </select>
               </label>
-              {/* 조건 입력은 기본 UI에서 숨김 처리 */}
+              <label>
+                조건(XOR)
+                <input
+                  value={e.condition || ''}
+                  placeholder="예: last.approval.status == 'APPROVED'"
+                  onChange={(ev) => updateEdge(e.id, { condition: ev.target.value || undefined })}
+                />
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    onClick={() => updateEdge(e.id, { condition: "last.approval.status == 'APPROVED'" })}
+                  >승인</button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline"
+                    onClick={() => updateEdge(e.id, { condition: "last.approval.status == 'REJECTED'" })}
+                  >반려</button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => updateEdge(e.id, { condition: undefined })}
+                  >비우기</button>
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>사용 가능 변수: last.approval.status</div>
+              </label>
             </div>
           </div>
         ))}
