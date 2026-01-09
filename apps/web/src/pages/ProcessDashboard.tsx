@@ -419,18 +419,20 @@ export function ProcessDashboard() {
                                   <div style={{ fontSize: 11, color: '#b91c1c' }}>미완료 선행: {predBlocks.sort((a,b)=>a-b).join(', ')}</div>
                                 ) : null}
                               </div>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <div style={{ display: 'grid', gap: 4 }}>
                                 {line.length ? line.map((ins: any) => {
                                   const st = statusBadge(ins.status);
                                   const a = (it.assignees || []).find(x => x.id === ins.assigneeId);
                                   const isMe = me && a?.id === me.id;
                                   return (
-                                    <span key={ins.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: st.bg, color: st.fg, borderRadius: 999, padding: '0 8px', border: (st as any).border ? `1px solid ${(st as any).border}` : '1px solid transparent' }}>
+                                    <div key={ins.id} style={{ display: 'flex', gap: 8, alignItems: 'center', background: st.bg, color: st.fg, borderRadius: 6, padding: '4px 8px', border: (st as any).border ? `1px solid ${(st as any).border}` : '1px solid transparent' }}>
                                       <span style={{ width: 6, height: 6, borderRadius: 999, background: st.fg, display: 'inline-block' }} />
-                                      <span>{a?.name || '담당 미지정'}</span>
-                                      <span style={{ opacity: 0.7 }}>{String(ins.status)}</span>
-                                      {isMe ? <span style={{ background: '#0EA5E9', color: 'white', borderRadius: 6, padding: '0 4px' }}>ME</span> : null}
-                                    </span>
+                                      <span style={{ fontWeight: 600 }}>{a?.name || '담당 미지정'}</span>
+                                      <span style={{ color: '#6b7280', fontSize: 11 }}>계획: {fmtDate(ins.plannedStartAt)} ~ {fmtDate(ins.plannedEndAt)}</span>
+                                      {ins.actualEndAt && <span style={{ color: '#059669', fontSize: 11 }}>완료: {fmtDate(ins.actualEndAt)}</span>}
+                                      <span style={{ opacity: 0.8 }}>{String(ins.status)}</span>
+                                      {isMe ? <span style={{ background: '#0EA5E9', color: 'white', borderRadius: 6, padding: '0 4px', fontSize: 10 }}>ME</span> : null}
+                                    </div>
                                   );
                                 }) : <span style={{ fontSize: 12, color: '#94a3b8' }}>체인 없음</span>}
                               </div>
