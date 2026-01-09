@@ -350,46 +350,32 @@ export class ProcessesController {
 
   @Get(':id')
   async getOne(@Param('id') id: string) {
-    const result = await (this.prisma as any).processInstance.findUnique({
-      where: { id },
-      include: {
-        template: { include: { tasks: { orderBy: { orderHint: 'asc' } } } },
-        startedBy: true,
-        initiative: true,
-        tasks: {
-          orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
-          include: {
-            assignee: { select: { id: true, name: true } },
+    try {
+      const result = await (this.prisma as any).processInstance.findUnique({
+        where: { id },
+        include: {
+          template: { include: { tasks: { orderBy: { orderHint: 'asc' } } } },
+          startedBy: true,
+          initiative: true,
+          tasks: {
+            orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
+            include: {
+              assignee: { select: { id: true, name: true } },
+            },
           },
         },
-      },
-    });
-    // Fetch worklogs separately to avoid migration issues
-    if (result?.tasks?.length) {
-      const taskIds = result.tasks.map((t: any) => t.id);
-      try {
-        const worklogs = await (this.prisma as any).worklog.findMany({
-          where: { processTaskInstanceId: { in: taskIds } },
-          select: { id: true, note: true, createdAt: true, processTaskInstanceId: true, createdBy: { select: { id: true, name: true } } },
-          orderBy: { createdAt: 'asc' },
-        });
-        const wlMap = new Map<string, any[]>();
-        for (const wl of worklogs) {
-          const arr = wlMap.get(wl.processTaskInstanceId) || [];
-          arr.push(wl);
-          wlMap.set(wl.processTaskInstanceId, arr);
-        }
-        for (const t of result.tasks) {
-          (t as any).worklogs = wlMap.get(t.id) || [];
-        }
-      } catch (e) {
-        console.log('worklogs fetch skipped (migration pending):', e);
+      });
+      // Add empty worklogs array to each task (migration may not be applied yet)
+      if (result?.tasks?.length) {
         for (const t of result.tasks) {
           (t as any).worklogs = [];
         }
       }
+      return result;
+    } catch (e) {
+      console.error('getOne process error:', id, e);
+      throw e;
     }
-    return result;
   }
 
   @Get(':id/timeline')
