@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { BpmnMiniView } from '../components/BpmnMiniView';
+import { toSafeHtml } from '../lib/richText';
 
 interface MyProcess {
   id: string;
@@ -18,7 +20,18 @@ interface ProcessDetail {
   status: string;
   startAt?: string;
   endAt?: string;
-  template?: { id: string; title: string };
+  template?: {
+    id: string;
+    title: string;
+    description?: string;
+    bpmnJson?: any;
+    tasks?: Array<{
+      id: string;
+      name: string;
+      taskType: string;
+      description?: string;
+    }>;
+  };
   tasks?: Array<{
     id: string;
     name: string;
@@ -132,8 +145,45 @@ export function ProcessMy() {
                     시작: {fmtTime(detail.startAt)}{detail.endAt ? ` · 완료: ${fmtTime(detail.endAt)}` : ''}
                   </div>
                 </div>
+
+                {detail.template?.description && (
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>프로세스 설명</div>
+                    <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(detail.template.description) }} />
+                  </div>
+                )}
+
+                {detail.template?.bpmnJson && (
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 600, fontSize: 12 }}>업무 흐름도</div>
+                    <BpmnMiniView bpmn={detail.template.bpmnJson} height={300} />
+                  </div>
+                )}
+
+                {(detail.template?.tasks || []).length > 0 && (
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>노드별 설명</div>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {(detail.template?.tasks || []).map((tmplTask) => (
+                        <div key={tmplTask.id} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 10 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                            <span style={{ fontWeight: 600 }}>{tmplTask.name || '-'}</span>
+                            <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{tmplTask.taskType}</span>
+                          </div>
+                          {tmplTask.description ? (
+                            <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(tmplTask.description) }} />
+                          ) : (
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>설명 없음</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', background: '#f9fafb', padding: '8px 10px', fontWeight: 600, fontSize: 12 }}>
+                  <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 600, fontSize: 12 }}>진행 현황</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', background: '#f9fafb', padding: '8px 10px', fontWeight: 600, fontSize: 12, borderTop: '1px solid #eef2f7' }}>
                     <div>과제</div>
                     <div>담당자</div>
                     <div>계획시작</div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 import { BpmnMiniView } from '../components/BpmnMiniView';
+import { toSafeHtml } from '../lib/richText';
 
 interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'; }
 
@@ -301,19 +302,56 @@ export function ProcessDashboard() {
               </button>
             </div>
             {expanded[it.id] && (
-              <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
-                <div style={{ marginBottom: 10, border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
-                  <div style={{ padding: '6px 8px', background: '#f9fafb', fontWeight: 700, fontSize: 12 }}>흐름 미리보기</div>
+              <div style={{ gridColumn: '1 / -1', marginTop: 8, display: 'grid', gap: 10 }}>
+                {(() => {
+                  const d = detailMap[it.id];
+                  if (d?.template?.description) {
+                    return (
+                      <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 12 }}>
+                        <div style={{ fontWeight: 600, marginBottom: 8 }}>프로세스 설명</div>
+                        <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(d.template.description) }} />
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ padding: '6px 8px', background: '#f9fafb', fontWeight: 700, fontSize: 12 }}>업무 흐름도</div>
                   {detailLoading[it.id] ? (
                     <div style={{ padding: 10, fontSize: 12, color: '#64748b' }}>불러오는 중…</div>
                   ) : (
                     (() => {
                       const d = detailMap[it.id];
                       if (!d?.template?.bpmnJson) return <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>BPMN 정보가 없습니다.</div>;
-                      return <div style={{ padding: 8 }}><BpmnMiniView bpmn={d.template.bpmnJson} height={260} /></div>;
+                      return <div style={{ padding: 8 }}><BpmnMiniView bpmn={d.template.bpmnJson} height={300} /></div>;
                     })()
                   )}
                 </div>
+                {(() => {
+                  const d = detailMap[it.id];
+                  const tmplTasks = (d?.template?.tasks || []) as any[];
+                  if (!tmplTasks.length) return null;
+                  return (
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 12 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 8 }}>노드별 설명</div>
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        {tmplTasks.map((tt: any) => (
+                          <div key={tt.id} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 10 }}>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                              <span style={{ fontWeight: 600 }}>{tt.name || '-'}</span>
+                              <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{tt.taskType}</span>
+                            </div>
+                            {tt.description ? (
+                              <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(tt.description) }} />
+                            ) : (
+                              <div style={{ fontSize: 12, color: '#9ca3af' }}>설명 없음</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1.2fr 1fr 1fr 1fr 1fr 0.9fr', background: '#f9fafb', padding: '6px 8px', fontWeight: 600, fontSize: 12 }}>
                     <div>단계/과제</div>
