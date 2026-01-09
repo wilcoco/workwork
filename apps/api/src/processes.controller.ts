@@ -641,6 +641,14 @@ export class ProcessesController {
         // Auto-select XOR branch if initial READY tasks are XOR siblings
         await this.autoSelectXorAtInit(tx, inst.id);
 
+        const initialApprovals = await tx.processTaskInstance.findMany({
+          where: { instanceId: inst.id, taskType: 'APPROVAL', status: 'READY' },
+          select: { id: true },
+        });
+        for (const t of initialApprovals) {
+          await this.autoCreateApprovalForTaskInstance(tx, inst.id, t.id);
+        }
+
         const full = await tx.processInstance.findUnique({
           where: { id: inst.id },
           include: {
@@ -1007,6 +1015,10 @@ export class ProcessesController {
         where: { id: taskId },
         data: { status: 'IN_PROGRESS', actualStartAt: new Date() },
       });
+
+      if (String(task.taskType).toUpperCase() === 'APPROVAL') {
+        await this.autoCreateApprovalForTaskInstance(tx, id, taskId);
+      }
       // XOR runtime selection: if this task belongs to an XOR group, skip sibling branch tasks
       const tmpl = await tx.processTaskTemplate.findUnique({ where: { id: task.taskTemplateId } });
       const groupKey = tmpl?.xorGroupKey || null;
@@ -1078,7 +1090,12 @@ export class ProcessesController {
         orderBy: { createdAt: 'asc' },
       });
       if (nextChain) {
-        await tx.processTaskInstance.update({ where: { id: nextChain.id }, data: { status: 'READY' } });
+        const nextTmpl = await tx.processTaskTemplate.findUnique({ where: { id: nextChain.taskTemplateId } });
+        if (String(nextTmpl?.taskType || '').toUpperCase() === 'APPROVAL') {
+          await this.autoCreateApprovalForTaskInstance(tx, id, nextChain.id);
+        } else {
+          await tx.processTaskInstance.update({ where: { id: nextChain.id }, data: { status: 'READY' } });
+        }
       } else {
         await this.unlockReadyDownstreams(tx, id, task.taskTemplateId);
       }
@@ -1108,7 +1125,12 @@ export class ProcessesController {
         orderBy: { createdAt: 'asc' },
       });
       if (nextChain) {
-        await tx.processTaskInstance.update({ where: { id: nextChain.id }, data: { status: 'READY' } });
+        const nextTmpl = await tx.processTaskTemplate.findUnique({ where: { id: nextChain.taskTemplateId } });
+        if (String(nextTmpl?.taskType || '').toUpperCase() === 'APPROVAL') {
+          await this.autoCreateApprovalForTaskInstance(tx, t.instanceId, nextChain.id);
+        } else {
+          await tx.processTaskInstance.update({ where: { id: nextChain.id }, data: { status: 'READY' } });
+        }
       } else {
         unlockKeys.add(`${t.instanceId}::${t.taskTemplateId}`);
       }
