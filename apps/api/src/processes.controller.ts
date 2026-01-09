@@ -360,15 +360,35 @@ export class ProcessesController {
           orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
           include: {
             assignee: { select: { id: true, name: true } },
-            worklogs: {
-              select: { id: true, note: true, createdAt: true, createdById: true, createdBy: { select: { id: true, name: true } } },
-              orderBy: { createdAt: 'asc' },
-            },
           },
         },
       },
     });
-    console.log('getOne process:', id, 'template:', result?.template?.id, 'bpmnJson:', !!result?.template?.bpmnJson, 'tasks:', result?.template?.tasks?.length, 'instanceTasks:', result?.tasks?.length);
+    // Fetch worklogs separately to avoid migration issues
+    if (result?.tasks?.length) {
+      const taskIds = result.tasks.map((t: any) => t.id);
+      try {
+        const worklogs = await (this.prisma as any).worklog.findMany({
+          where: { processTaskInstanceId: { in: taskIds } },
+          select: { id: true, note: true, createdAt: true, processTaskInstanceId: true, createdBy: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        });
+        const wlMap = new Map<string, any[]>();
+        for (const wl of worklogs) {
+          const arr = wlMap.get(wl.processTaskInstanceId) || [];
+          arr.push(wl);
+          wlMap.set(wl.processTaskInstanceId, arr);
+        }
+        for (const t of result.tasks) {
+          (t as any).worklogs = wlMap.get(t.id) || [];
+        }
+      } catch (e) {
+        console.log('worklogs fetch skipped (migration pending):', e);
+        for (const t of result.tasks) {
+          (t as any).worklogs = [];
+        }
+      }
+    }
     return result;
   }
 
