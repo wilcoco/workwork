@@ -359,16 +359,20 @@ export class ProcessesController {
           initiative: true,
           tasks: {
             orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
-            include: {
-              assignee: { select: { id: true, name: true } },
-            },
           },
         },
       });
-      // Add empty worklogs array to each task (migration may not be applied yet)
+      // Add empty worklogs array and fetch assignee separately
       if (result?.tasks?.length) {
+        const assigneeIds = result.tasks.map((t: any) => t.assigneeId).filter(Boolean);
+        const assignees = assigneeIds.length ? await (this.prisma as any).user.findMany({
+          where: { id: { in: assigneeIds } },
+          select: { id: true, name: true },
+        }) : [];
+        const assigneeMap = new Map(assignees.map((a: any) => [a.id, a]));
         for (const t of result.tasks) {
           (t as any).worklogs = [];
+          (t as any).assignee = t.assigneeId ? assigneeMap.get(t.assigneeId) || null : null;
         }
       }
       return result;
