@@ -126,8 +126,11 @@ export function ProcessDashboard() {
     setDetailLoading((prev) => ({ ...prev, [id]: true }));
     try {
       const d = await apiJson<any>(`/api/processes/${encodeURIComponent(id)}`);
+      console.log('ensureDetail response:', id, d);
       setDetailMap((prev) => ({ ...prev, [id]: d }));
-    } catch {}
+    } catch (err) {
+      console.error('ensureDetail error:', id, err);
+    }
     finally {
       setDetailLoading((prev) => ({ ...prev, [id]: false }));
     }

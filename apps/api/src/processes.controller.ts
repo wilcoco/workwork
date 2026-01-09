@@ -350,7 +350,7 @@ export class ProcessesController {
 
   @Get(':id')
   async getOne(@Param('id') id: string) {
-    return (this.prisma as any).processInstance.findUnique({
+    const result = await (this.prisma as any).processInstance.findUnique({
       where: { id },
       include: {
         template: { include: { tasks: { orderBy: { orderHint: 'asc' } } } },
@@ -368,6 +368,8 @@ export class ProcessesController {
         },
       },
     });
+    console.log('getOne process:', id, 'template:', result?.template?.id, 'bpmnJson:', !!result?.template?.bpmnJson, 'tasks:', result?.template?.tasks?.length, 'instanceTasks:', result?.tasks?.length);
+    return result;
   }
 
   @Get(':id/timeline')
