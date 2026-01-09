@@ -395,13 +395,18 @@ export function WorklogQuickNew() {
     const tid = isProc ? selection.substring(5) : taskInstanceId;
     const t = myProcTasks.find((x) => x.id === tid);
     const pid = t?.instance?.id || processInstanceId;
-    if (!pid) return;
+    console.log('openProcessDetail:', { isProc, tid, t, pid, selection, processInstanceId, myProcTasks });
+    if (!pid) {
+      alert('프로세스 ID를 찾을 수 없습니다.');
+      return;
+    }
     setProcessDetailLoading(true);
     try {
       const d = await apiJson<any>(`/api/processes/${encodeURIComponent(pid)}`);
       setProcessDetailPopup(d);
-    } catch {
-      alert('프로세스 정보를 불러오지 못했습니다.');
+    } catch (err: any) {
+      console.error('openProcessDetail error:', err);
+      alert('프로세스 정보를 불러오지 못했습니다: ' + (err?.message || ''));
     } finally {
       setProcessDetailLoading(false);
     }
