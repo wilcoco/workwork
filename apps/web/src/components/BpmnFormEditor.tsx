@@ -174,14 +174,14 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         {nodes.map((n) => (
           <div key={n.id} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <b>{n.id}</b>
-              <span style={{ color: '#6b7280' }}>{n.type}</span>
+              <label style={{ flex: 1 }}>
+                {n.type === 'start' ? '시작' : n.type === 'end' ? '종료' : '이름'}
+                {(n.type === 'task' || n.type === 'gateway_parallel' || n.type === 'gateway_xor') && (
+                  <input value={n.name || ''} onChange={(e) => updateNode(n.id, { name: e.target.value })} />
+                )}
+              </label>
               <button type="button" className="btn btn-ghost" onClick={() => removeNode(n.id)}>삭제</button>
             </div>
-            <label>
-              이름
-              <input value={n.name || ''} onChange={(e) => updateNode(n.id, { name: e.target.value })} />
-            </label>
             {n.type === 'task' && (
               <>
                 <label>
@@ -229,23 +229,23 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         {edges.map((e) => (
           <div key={e.id} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, display: 'grid', gap: 6 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <b>{e.id}</b>
+              <span style={{ fontWeight: 600, flex: 1 }}>연결: {(() => { const sn = nodes.find((x) => x.id === e.source); const tn = nodes.find((x) => x.id === e.target); return `${sn?.name || (sn?.type === 'start' ? '시작' : sn?.type === 'end' ? '종료' : sn?.type) || e.source} → ${tn?.name || (tn?.type === 'start' ? '시작' : tn?.type === 'end' ? '종료' : tn?.type) || e.target}`; })()}</span>
               <button type="button" className="btn btn-ghost" onClick={() => removeEdge(e.id)}>삭제</button>
             </div>
-            <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+            <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
               <label>
-                Source
+                시작
                 <select value={e.source} onChange={(ev) => updateEdge(e.id, { source: ev.target.value })}>
-                  {nodeOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                  {nodes.map((n) => (
+                    <option key={n.id} value={n.id}>{n.name || (n.type === 'start' ? '시작' : n.type === 'end' ? '종료' : n.type)}</option>
                   ))}
                 </select>
               </label>
               <label>
-                Target
+                도착
                 <select value={e.target} onChange={(ev) => updateEdge(e.id, { target: ev.target.value })}>
-                  {nodeOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                  {nodes.map((n) => (
+                    <option key={n.id} value={n.id}>{n.name || (n.type === 'start' ? '시작' : n.type === 'end' ? '종료' : n.type)}</option>
                   ))}
                 </select>
               </label>

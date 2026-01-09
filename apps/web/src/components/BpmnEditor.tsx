@@ -354,13 +354,12 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             ref={(r) => { nodeCardRefs.current[String(n.id)] = r; }}
             style={{ border: '1px solid ' + (String(n.id) === selectedNodeId ? '#0F3D73' : '#e5e7eb'), boxShadow: String(n.id) === selectedNodeId ? '0 0 0 2px rgba(15,61,115,0.2)' : 'none', borderRadius: 6, padding: 8, background: String(n.id) === selectedNodeId ? '#F0F6FD' : '#fff' }}
           >
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <div style={{ fontWeight: 600 }}>{String(n.id)} · {String(n.type)}</div>
-              <button type="button" className="btn btn-ghost" onClick={() => removeNode(String(n.id))}>삭제</button>
-            </div>
             {n.type === 'task' && (
               <>
-                <label>이름<input value={(n.data as any)?.name || ''} onChange={(e) => onNodeLabelChange(n.id, 'name', e.target.value)} /></label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <label style={{ flex: 1 }}>이름<input value={(n.data as any)?.name || ''} onChange={(e) => onNodeLabelChange(n.id, 'name', e.target.value)} /></label>
+                  <button type="button" className="btn btn-ghost" onClick={() => removeNode(String(n.id))}>삭제</button>
+                </div>
                 <label>타입<select value={(n.data as any)?.taskType || 'TASK'} onChange={(e) => onNodeLabelChange(n.id, 'taskType', e.target.value)}>
                   <option value="TASK">TASK</option>
                   <option value="WORKLOG">WORKLOG</option>
@@ -391,8 +390,17 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             )}
             {(n.type === 'gateway_parallel' || n.type === 'gateway_xor') && (
               <>
-                <label>제목<input value={(n.data as any)?.name || ''} onChange={(e) => onNodeLabelChange(n.id, 'name', e.target.value)} /></label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <label style={{ flex: 1 }}>제목<input value={(n.data as any)?.name || ''} onChange={(e) => onNodeLabelChange(n.id, 'name', e.target.value)} /></label>
+                  <button type="button" className="btn btn-ghost" onClick={() => removeNode(String(n.id))}>삭제</button>
+                </div>
               </>
+            )}
+            {n.type !== 'task' && n.type !== 'gateway_parallel' && n.type !== 'gateway_xor' && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontWeight: 600 }}>{n.type === 'start' ? '시작' : n.type === 'end' ? '종료' : String(n.type)}</span>
+                <button type="button" className="btn btn-ghost" onClick={() => removeNode(String(n.id))}>삭제</button>
+              </div>
             )}
           </div>
         ))}
@@ -406,18 +414,10 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             style={{ border: '1px solid ' + (String(e.id) === selectedEdgeId ? '#0F3D73' : '#e5e7eb'), boxShadow: String(e.id) === selectedEdgeId ? '0 0 0 2px rgba(15,61,115,0.2)' : 'none', borderRadius: 6, padding: 8, background: String(e.id) === selectedEdgeId ? '#F0F6FD' : '#fff' }}
           >
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <div style={{ fontWeight: 600 }}>{String(e.id)}</div>
+              <span style={{ fontWeight: 600, flex: 1 }}>연결: {(() => { const sn = nodes.find((x: any) => String(x.id) === String(e.source)); const tn = nodes.find((x: any) => String(x.id) === String(e.target)); return `${(sn?.data as any)?.name || (sn?.type === 'start' ? '시작' : sn?.type === 'end' ? '종료' : sn?.type) || e.source} → ${(tn?.data as any)?.name || (tn?.type === 'start' ? '시작' : tn?.type === 'end' ? '종료' : tn?.type) || e.target}`; })()}</span>
               <button type="button" className="btn btn-ghost" onClick={() => removeEdge(String(e.id))}>삭제</button>
             </div>
-            <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-              <label>
-                Source
-                <input value={String(e.source)} readOnly />
-              </label>
-              <label>
-                Target
-                <input value={String(e.target)} readOnly />
-              </label>
+            <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(1, minmax(0, 1fr))', gap: 8 }}>
               <label>
                 조건(XOR)
                 <input
