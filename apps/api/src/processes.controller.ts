@@ -359,6 +359,7 @@ export class ProcessesController {
         tasks: {
           orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
           include: {
+            assignee: { select: { id: true, name: true } },
             worklogs: {
               select: { id: true, note: true, createdAt: true, createdById: true, createdBy: { select: { id: true, name: true } } },
               orderBy: { createdAt: 'asc' },
