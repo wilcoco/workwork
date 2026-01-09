@@ -162,6 +162,8 @@ export function WorklogQuickNew() {
     if (quillRef.current) return; // already initialized
     const toolbar = [
       [{ header: [1, 2, 3, false] }],
+      [{ size: ['small', false, 'large', 'huge'] }],
+      [{ font: [] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{ list: 'ordered' }, { list: 'bullet' }],
       ['link', 'image'],

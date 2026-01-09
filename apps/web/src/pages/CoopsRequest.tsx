@@ -37,6 +37,8 @@ export function CoopsRequest() {
     if (quillRef.current) return;
     const toolbar = [
       [{ header: [1, 2, 3, false] }],
+      [{ size: ['small', false, 'large', 'huge'] }],
+      [{ font: [] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{ list: 'ordered' }, { list: 'bullet' }],
       ['link', 'image'],
