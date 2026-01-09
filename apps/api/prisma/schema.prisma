@@ -221,21 +221,23 @@ model Initiative {
 }
 
 model Worklog {
-  id                 String   @id @default(cuid())
-  initiativeId       String
-  initiative         Initiative @relation(fields: [initiativeId], references: [id])
-  date               DateTime  @default(now())
-  progressPct        Int       @default(0)
-  timeSpentMinutes   Int       @default(0)
-  blockerCode        String?
-  note               String?
-  createdById        String
-  createdBy          User      @relation("WorklogCreator", fields: [createdById], references: [id])
-  attachments        Json?
-  createdAt          DateTime  @default(now())
-  urgent             Boolean   @default(false)
-  progressEntries    ProgressEntry[]
-  visibility         WorklogVisibility @default(ALL)
+  id                    String   @id @default(cuid())
+  initiativeId          String
+  initiative            Initiative @relation(fields: [initiativeId], references: [id])
+  date                  DateTime  @default(now())
+  progressPct           Int       @default(0)
+  timeSpentMinutes      Int       @default(0)
+  blockerCode           String?
+  note                  String?
+  createdById           String
+  createdBy             User      @relation("WorklogCreator", fields: [createdById], references: [id])
+  attachments           Json?
+  createdAt             DateTime  @default(now())
+  urgent                Boolean   @default(false)
+  progressEntries       ProgressEntry[]
+  visibility            WorklogVisibility @default(ALL)
+  processTaskInstanceId String?
+  processTaskInstance   ProcessTaskInstance? @relation("TaskWorklogs", fields: [processTaskInstanceId], references: [id])
 }
 
 model Event {
@@ -648,6 +650,7 @@ model ProcessTaskInstance {
   decisionReason    String?
   initiativeId      String?
   initiative        Initiative?        @relation(fields: [initiativeId], references: [id])
+  worklogs          Worklog[]          @relation("TaskWorklogs")
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }

@@ -7,7 +7,7 @@ type BpmnNode = {
   id: string;
   type: 'start' | 'task' | 'gateway_parallel' | 'gateway_xor' | 'end';
   name?: string;
-  taskType?: 'TASK' | 'WORKLOG' | 'COOPERATION' | 'APPROVAL';
+  taskType?: 'WORKLOG' | 'APPROVAL';
   description?: string;
   assigneeHint?: string;
   stageLabel?: string;
@@ -89,7 +89,7 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
     const base: BpmnNode = { id, type: newNodeType };
     if (newNodeType === 'task') {
       base.name = '새 과제';
-      base.taskType = 'TASK';
+      base.taskType = 'WORKLOG';
     } else if (newNodeType === 'start') {
       base.name = 'Start';
     } else if (newNodeType === 'end') {
@@ -186,11 +186,9 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
               <>
                 <label>
                   과제 타입
-                  <select value={n.taskType || 'TASK'} onChange={(e) => updateNode(n.id, { taskType: e.target.value as any })}>
-                    <option value="TASK">TASK</option>
-                    <option value="WORKLOG">WORKLOG</option>
-                    <option value="COOPERATION">COOPERATION</option>
-                    <option value="APPROVAL">APPROVAL</option>
+                  <select value={n.taskType || 'WORKLOG'} onChange={(e) => updateNode(n.id, { taskType: e.target.value as any })}>
+                    <option value="WORKLOG">업무일지</option>
+                    <option value="APPROVAL">결재</option>
                   </select>
                 </label>
                 <div>

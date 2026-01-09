@@ -334,14 +334,14 @@ export function WorklogQuickNew() {
           body: JSON.stringify({ actorId: userId, worklogId: wl.id }),
         });
       }
-      // If process task selected or coming from process inbox, complete the task and link worklog
+      // If process task selected or coming from process inbox, link worklog to task (without completing)
       if (isProc || taskInstanceId) {
         try {
           const tid = isProc ? selection.substring(5) : taskInstanceId;
           const t = myProcTasks.find((x) => x.id === tid);
           const pid = t?.instance?.id || processInstanceId;
           if (pid && tid) {
-            await apiJson(`/api/processes/${encodeURIComponent(pid)}/tasks/${encodeURIComponent(tid)}/complete`, {
+            await apiJson(`/api/processes/${encodeURIComponent(pid)}/tasks/${encodeURIComponent(tid)}/link-worklog`, {
               method: 'POST',
               body: JSON.stringify({ worklogId: wl.id }),
             });

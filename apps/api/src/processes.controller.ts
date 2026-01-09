@@ -356,7 +356,15 @@ export class ProcessesController {
         template: { include: { tasks: { orderBy: { orderHint: 'asc' } } } },
         startedBy: true,
         initiative: true,
-        tasks: { orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }] },
+        tasks: {
+          orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
+          include: {
+            worklogs: {
+              select: { id: true, note: true, createdAt: true, createdById: true, createdBy: { select: { id: true, name: true } } },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
       },
     });
   }
@@ -1041,6 +1049,30 @@ export class ProcessesController {
         }
       }
     }
+  }
+
+  @Post(':id/tasks/:taskId/link-worklog')
+  async linkWorklog(@Param('id') id: string, @Param('taskId') taskId: string, @Body() body: any) {
+    return this.prisma.$transaction(async (tx) => {
+      const task = await tx.processTaskInstance.findUnique({ where: { id: taskId } });
+      if (!task || task.instanceId !== id) throw new BadRequestException('task not found');
+      const { worklogId } = body || {};
+      if (!worklogId) throw new BadRequestException('worklogId required');
+      // Link worklog to task without completing it
+      const updated = await tx.processTaskInstance.update({
+        where: { id: taskId },
+        data: { 
+          status: task.status === 'READY' ? 'IN_PROGRESS' : task.status,
+          actualStartAt: task.actualStartAt || new Date(),
+        },
+      });
+      // Also link worklog to this task instance via a join or just store in worklog
+      await tx.worklog.update({
+        where: { id: worklogId },
+        data: { processTaskInstanceId: taskId },
+      });
+      return updated;
+    });
   }
 
   @Post(':id/tasks/:taskId/start')

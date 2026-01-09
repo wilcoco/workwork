@@ -314,7 +314,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         sourcePosition: Position.Bottom,
         targetPosition: Position.Top,
         style: { width: 180 },
-        data: isTask ? { name: '새 과제', taskType: 'TASK', label, kind: type } : { name: label, label, kind: type },
+        data: isTask ? { name: '새 과제', taskType: 'WORKLOG', label, kind: type } : { name: label, label, kind: type },
       };
       if (idx >= 0 && !lastPaneClick.current) {
         const before = prev.slice(0, idx);
@@ -360,11 +360,9 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                   <label style={{ flex: 1 }}>이름<input value={(n.data as any)?.name || ''} onChange={(e) => onNodeLabelChange(n.id, 'name', e.target.value)} /></label>
                   <button type="button" className="btn btn-ghost" onClick={() => removeNode(String(n.id))}>삭제</button>
                 </div>
-                <label>타입<select value={(n.data as any)?.taskType || 'TASK'} onChange={(e) => onNodeLabelChange(n.id, 'taskType', e.target.value)}>
-                  <option value="TASK">TASK</option>
-                  <option value="WORKLOG">WORKLOG</option>
-                  <option value="COOPERATION">COOPERATION</option>
-                  <option value="APPROVAL">APPROVAL</option>
+                <label>타입<select value={(n.data as any)?.taskType || 'WORKLOG'} onChange={(e) => onNodeLabelChange(n.id, 'taskType', e.target.value)}>
+                  <option value="WORKLOG">업무일지</option>
+                  <option value="APPROVAL">결재</option>
                 </select></label>
                 <div>
                   <label>설명</label>
