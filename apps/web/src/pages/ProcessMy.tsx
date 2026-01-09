@@ -160,60 +160,45 @@ export function ProcessMy() {
                   </div>
                 )}
 
-                {(detail.template?.tasks || []).length > 0 && (
-                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 8 }}>노드별 설명</div>
-                    <div style={{ display: 'grid', gap: 10 }}>
-                      {(detail.template?.tasks || []).map((tmplTask) => (
-                        <div key={tmplTask.id} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 10 }}>
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                            <span style={{ fontWeight: 600 }}>{tmplTask.name || '-'}</span>
-                            <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{tmplTask.taskType}</span>
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 12 }}>과제 진행 현황</div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {(detail.template?.tasks || []).map((tmplTask) => {
+                      const instanceTasks = (detail.tasks || []).filter((t) => t.name === tmplTask.name);
+                      return (
+                        <div key={tmplTask.id} style={{ border: '1px solid #eef2f7', borderRadius: 8, padding: 12 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                            <span style={{ fontWeight: 700, fontSize: 14 }}>{tmplTask.name || '-'}</span>
+                            <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 8px', borderRadius: 4 }}>{tmplTask.taskType}</span>
                           </div>
-                          {tmplTask.description ? (
-                            <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(tmplTask.description) }} />
+                          {tmplTask.description && (
+                            <div style={{ fontSize: 13, marginBottom: 10, padding: 8, background: '#fafafa', borderRadius: 6 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(tmplTask.description) }} />
+                          )}
+                          {instanceTasks.length > 0 ? (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              {instanceTasks.map((t) => (
+                                <div key={t.id} style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, padding: '6px 8px', background: '#f9fafb', borderRadius: 6 }}>
+                                  <span style={{ fontWeight: 600, minWidth: 80 }}>{t.assignee?.name || '담당 미지정'}</span>
+                                  <span style={{ color: '#6b7280' }}>계획: {fmt(t.plannedStartAt)} ~ {fmt(t.plannedEndAt)}</span>
+                                  {t.actualEndAt && <span style={{ color: '#059669' }}>완료: {fmt(t.actualEndAt)}</span>}
+                                  <span style={{
+                                    fontSize: 11,
+                                    padding: '2px 6px',
+                                    borderRadius: 999,
+                                    background: t.status === 'COMPLETED' ? '#DCFCE7' : t.status === 'IN_PROGRESS' ? '#DBEAFE' : t.status === 'READY' ? '#E0F2FE' : '#F1F5F9',
+                                    color: t.status === 'COMPLETED' ? '#166534' : t.status === 'IN_PROGRESS' ? '#1E3A8A' : t.status === 'READY' ? '#075985' : '#334155',
+                                  }}>{t.status}</span>
+                                </div>
+                              ))}
+                            </div>
                           ) : (
-                            <div style={{ fontSize: 12, color: '#9ca3af' }}>설명 없음</div>
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>진행 정보 없음</div>
                           )}
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
+                    {!(detail.template?.tasks || []).length && <div style={{ fontSize: 12, color: '#9ca3af' }}>과제가 없습니다.</div>}
                   </div>
-                )}
-
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-                  <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 600, fontSize: 12 }}>진행 현황</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', background: '#f9fafb', padding: '8px 10px', fontWeight: 600, fontSize: 12, borderTop: '1px solid #eef2f7' }}>
-                    <div>과제</div>
-                    <div>담당자</div>
-                    <div>계획시작</div>
-                    <div>계획완료</div>
-                    <div>실완료</div>
-                    <div>상태</div>
-                  </div>
-                  {(detail.tasks || []).map((t) => (
-                    <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr', padding: '8px 10px', borderTop: '1px solid #eef2f7', fontSize: 12, alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{t.name || '-'}</div>
-                        {t.stageLabel && <div style={{ color: '#6b7280' }}>{t.stageLabel}</div>}
-                        <div style={{ color: '#9ca3af' }}>{t.taskType}</div>
-                      </div>
-                      <div>{t.assignee?.name || '-'}</div>
-                      <div>{fmt(t.plannedStartAt)}</div>
-                      <div>{fmt(t.plannedEndAt)}</div>
-                      <div>{fmt(t.actualEndAt)}</div>
-                      <div>
-                        <span style={{
-                          fontSize: 11,
-                          padding: '2px 6px',
-                          borderRadius: 999,
-                          background: t.status === 'COMPLETED' ? '#DCFCE7' : t.status === 'IN_PROGRESS' ? '#DBEAFE' : t.status === 'READY' ? '#E0F2FE' : '#F1F5F9',
-                          color: t.status === 'COMPLETED' ? '#166534' : t.status === 'IN_PROGRESS' ? '#1E3A8A' : t.status === 'READY' ? '#075985' : '#334155',
-                        }}>{t.status}</span>
-                      </div>
-                    </div>
-                  ))}
-                  {!(detail.tasks || []).length && <div style={{ padding: 12, fontSize: 12, color: '#9ca3af' }}>과제가 없습니다.</div>}
                 </div>
               </div>
             )}
