@@ -243,18 +243,6 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     return () => { try { ro.disconnect(); } catch {} };
   }, []);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      if (selectedNodeId) {
-        removeNode(selectedNodeId);
-      } else if (selectedEdgeId) {
-        removeEdge(selectedEdgeId);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [selectedNodeId, selectedEdgeId]);
 
   function removeNode(id: string) {
     setNodes((nds: Node<any>[]) => nds.filter((n) => String(n.id) !== id));
