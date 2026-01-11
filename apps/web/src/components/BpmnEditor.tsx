@@ -483,6 +483,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
               nodesConnectable={true}
               elementsSelectable={true}
               connectOnClick={true}
+              deleteKeyCode={null}
               fitView
               style={{ width: '100%', height: '100%' }}
               onPaneCoord={(p: { x: number; y: number }) => { lastPaneClick.current = p; }}
