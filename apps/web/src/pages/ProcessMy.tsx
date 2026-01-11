@@ -178,8 +178,8 @@ export function ProcessMy() {
 
                 {detail.template?.bpmnJson && (
                   <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-                    <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 600, fontSize: 12 }}>업무 흐름도</div>
-                    <BpmnMiniView bpmn={detail.template.bpmnJson} height={300} />
+                    <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #e5e7eb' }}>업무 흐름도</div>
+                    <div style={{ padding: 12 }}><BpmnMiniView bpmn={detail.template.bpmnJson} height={400} /></div>
                   </div>
                 )}
 

@@ -433,8 +433,8 @@ export function ApprovalsSubmit() {
               )}
               {processDetailPopup.template?.bpmnJson && (
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
-                  <div style={{ padding: '6px 8px', background: '#f9fafb', fontWeight: 700, fontSize: 12 }}>업무 흐름도</div>
-                  <div style={{ padding: 8 }}><BpmnMiniView bpmn={processDetailPopup.template.bpmnJson} height={250} /></div>
+                  <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #e5e7eb' }}>업무 흐름도</div>
+                  <div style={{ padding: 12 }}><BpmnMiniView bpmn={processDetailPopup.template.bpmnJson} height={400} /></div>
                 </div>
               )}
               {(processDetailPopup.template?.tasks || []).length > 0 && (
