@@ -37,20 +37,37 @@
 .quill-box .ql-toolbar { border-radius: 6px 6px 0 0; }
 .quill-box .ql-container { border-radius: 0 0 6px 6px; }
 
+.ql-toolbar .ql-picker {
+  position: relative;
+  z-index: 1;
+}
+
+.ql-toolbar .ql-picker.ql-expanded {
+  z-index: 10000;
+}
+
 .ql-toolbar .ql-picker-options {
-  z-index: 9999 !important;
+  z-index: 10001 !important;
   position: absolute !important;
   background: #fff;
   border: 1px solid #ccc;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-
-.ql-toolbar .ql-picker {
-  position: relative;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .ql-toolbar .ql-expanded .ql-picker-options {
   display: block !important;
   top: 100% !important;
   left: 0 !important;
+}
+
+/* Ensure toolbar container doesn't clip dropdowns */
+.ql-toolbar.ql-snow {
+  overflow: visible !important;
+}
+
+/* Ensure parent containers don't clip the dropdown */
+.quill-box {
+  overflow: visible !important;
 }
