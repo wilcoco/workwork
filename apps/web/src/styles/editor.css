@@ -11,6 +11,35 @@
   word-break: break-word;
 }
 
+/* Override inline font-size styles from pasted content */
+.ql-editor h1,
+.ql-editor .ql-size-huge {
+  font-size: 2em !important;
+}
+
+.ql-editor h2 {
+  font-size: 1.5em !important;
+}
+
+.ql-editor h3 {
+  font-size: 1.17em !important;
+}
+
+.ql-editor .ql-size-large {
+  font-size: 1.5em !important;
+}
+
+.ql-editor .ql-size-small {
+  font-size: 0.75em !important;
+}
+
+/* Reset inline font-size on spans inside headers */
+.ql-editor h1 *,
+.ql-editor h2 *,
+.ql-editor h3 * {
+  font-size: inherit !important;
+}
+
 .ql-toolbar {
   border: none;
   border-bottom: 1px solid #e5e7eb;
