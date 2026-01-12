@@ -337,7 +337,7 @@ export function WorklogQuickNew() {
           body: JSON.stringify({ actorId: userId, worklogId: wl.id }),
         });
       }
-      // If process task selected or coming from process inbox, link worklog to task (without completing)
+      // If process task selected or coming from process inbox, link worklog to task
       if (isProc || taskInstanceId) {
         try {
           const tid = isProc ? selection.substring(5) : taskInstanceId;
@@ -348,6 +348,13 @@ export function WorklogQuickNew() {
               method: 'POST',
               body: JSON.stringify({ worklogId: wl.id }),
             });
+            // If initiativeDone is checked, complete the process task
+            if (initiativeDone) {
+              await apiJson(`/api/processes/${encodeURIComponent(pid)}/tasks/${encodeURIComponent(tid)}/complete`, {
+                method: 'POST',
+                body: JSON.stringify({ actorId: userId }),
+              });
+            }
           }
         } catch {}
       }
