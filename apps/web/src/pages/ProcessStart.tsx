@@ -19,6 +19,8 @@ interface ProcessTemplateDto {
   type: 'RECURRING' | 'PROJECT';
   bpmnJson?: any;
   tasks: ProcessTaskTemplateDto[];
+  createdAt?: string;
+  owner?: { id: string; name: string; orgUnit?: { id: string; name: string } };
 }
 
 export function ProcessStart() {
@@ -426,7 +428,7 @@ export function ProcessStart() {
           <select value={tplId} onChange={(e) => setTplId(e.target.value)}>
             <option value="">선택</option>
             {templates.map(t => (
-              <option key={t.id} value={t.id}>{t.title}</option>
+              <option key={t.id} value={t.id}>{t.title}{t.owner?.name ? ` (${t.owner.name})` : ''}</option>
             ))}
           </select>
           {!templates.length && !loading && <div style={{ fontSize: 12, color: '#9ca3af' }}>사용 가능한 템플릿이 없습니다.</div>}
@@ -436,6 +438,11 @@ export function ProcessStart() {
             <div style={{ display: 'grid', gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 700 }}>{selected.title}</div>
+                {(selected as any).owner?.name && (
+                  <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                    📝 작성자: {(selected as any).owner.name}{(selected as any).owner.orgUnit?.name ? ` · ${(selected as any).owner.orgUnit.name}` : ''}{(selected as any).createdAt ? ` · ${new Date((selected as any).createdAt).toLocaleDateString()}` : ''}
+                  </div>
+                )}
                 {!!selected.description && (
                   <div
                     className="rich-content"
