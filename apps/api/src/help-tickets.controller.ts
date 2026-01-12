@@ -96,7 +96,7 @@ export class HelpTicketsController {
     });
     const ticketIds = items.map((t) => t.id);
 
-    // 협조 제목 (요청 시 작성한 업무일지) — HelpRequested 이벤트의 worklogId -> Worklog.note 첫 줄
+    // 업무 요청 제목 (요청 시 작성한 업무일지) — HelpRequested 이벤트의 worklogId -> Worklog.note 첫 줄
     let requestTitles: Record<string, string | null> = {};
     if (ticketIds.length > 0) {
       const events = await this.prisma.event.findMany({
@@ -128,7 +128,7 @@ export class HelpTicketsController {
       }
     }
 
-    // 대응 업무일지 (assignee가 협조를 처리하며 작성한 업무일지) — HelpResolved 이벤트의 worklogId -> Worklog.note 첫 줄
+    // 대응 업무일지 (assignee가 업무 요청을 처리하며 작성한 업무일지) — HelpResolved 이벤트의 worklogId -> Worklog.note 첫 줄
     let responseMap: Record<string, { id: string | null; title: string | null }> = {};
     if (ticketIds.length > 0) {
       const events = await this.prisma.event.findMany({
@@ -166,7 +166,7 @@ export class HelpTicketsController {
         const resp = responseMap[t.id] || { id: null, title: null };
         let statusLabel: string;
         if (t.status === 'OPEN') statusLabel = '미수신';
-        else if (t.status === 'DONE') statusLabel = '협조 완료';
+        else if (t.status === 'DONE') statusLabel = '업무 요청 완료';
         else statusLabel = '수신';
         return {
           id: t.id,
@@ -175,13 +175,13 @@ export class HelpTicketsController {
           status: t.status,
           requester: t.requester ? { id: t.requester.id, name: t.requester.name } : null,
           assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null,
-          // 협조 제목: 협조 생성시 작성한 업무일지(메모) 첫 줄을 사용
+          // 업무 요청 제목: 업무 요청 생성시 작성한 업무일지(메모) 첫 줄을 사용
           helpTitle: requestTitles[t.id] ?? null,
           slaMinutes: t.slaMinutes ?? undefined,
           createdAt: t.createdAt,
           updatedAt: t.updatedAt,
           resolvedAt: t.resolvedAt || null,
-          // 보낸 협조 화면에서 사용할 부가 정보
+          // 보낸 업무 요청 화면에서 사용할 부가 정보
           assigneeName: t.assignee?.name ?? null,
           statusLabel,
           responseWorklogId: resp.id,

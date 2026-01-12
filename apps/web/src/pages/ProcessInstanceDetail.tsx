@@ -522,7 +522,7 @@ export function ProcessInstanceDetail() {
               )}
               {it.cooperation && (
                 <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8 }}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>협조: {it.cooperation.category || '-'}</div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>업무 요청: {it.cooperation.category || '-'}</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>{it.cooperation.status || ''}{it.cooperation.assignee ? ` · 담당: ${it.cooperation.assignee.name}` : ''}{it.cooperation.dueAt ? ` · 기한: ${new Date(it.cooperation.dueAt).toLocaleString()}` : ''}</div>
                   {it.cooperation.worklog?.contentHtml ? (
                     <div className="rich-content" style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it.cooperation.worklog.contentHtml) }} />

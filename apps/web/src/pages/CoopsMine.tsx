@@ -1,4 +1,4 @@
-// 보낸 협조 리스트: 내가 요청한 HelpTicket들을 상태/대응 업무일지 링크와 함께 보여주는 화면
+// 보낸 업무 요청 리스트: 내가 요청한 HelpTicket들을 상태/대응 업무일지 링크와 함께 보여주는 화면
 import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
 
@@ -90,9 +90,9 @@ export function CoopsMine() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {loading && <div>로딩중…</div>}
-        {!loading && !items.length && <div>보낸 협조 내역이 없습니다.</div>}
+        {!loading && !items.length && <div>보낸 업무 요청 내역이 없습니다.</div>}
         {!loading && items.map((it) => {
-          const canOpen = it.statusLabel === '협조 완료' && !!it.responseWorklogId;
+          const canOpen = it.statusLabel === '업무 요청 완료' && !!it.responseWorklogId;
           return (
             <div key={it.id} style={card}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -124,7 +124,7 @@ export function CoopsMine() {
               return (
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <b>협조 대응 업무일지</b>
+                    <b>업무 요청 대응 업무일지</b>
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
                       {activeWl.wl.date ? new Date(activeWl.wl.date).toLocaleString() : ''}
                     </span>

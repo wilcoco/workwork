@@ -215,11 +215,11 @@ export function WorklogNew() {
           <input type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
         </label>
         <label>
-          협조 카테고리(선택)
+          업무 요청 카테고리(선택)
           <input value={helpCategory} onChange={(e) => setHelpCategory(e.target.value)} />
         </label>
         <label>
-          협조 담당자 User ID(선택)
+          업무 요청 담당자 User ID(선택)
           <select value={helpAssigneeId} onChange={(e) => setHelpAssigneeId(e.target.value)}>
             <option value="">선택 안함</option>
             {users.map((u) => (
@@ -228,7 +228,7 @@ export function WorklogNew() {
           </select>
         </label>
         <label>
-          협조 기한(ISO, 선택)
+          업무 요청 기한(ISO, 선택)
           <input type="date" value={helpDueAt} onChange={(e) => setHelpDueAt(e.target.value)} />
         </label>
         <label>

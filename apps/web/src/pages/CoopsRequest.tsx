@@ -53,7 +53,7 @@ export function CoopsRequest() {
           handlers: { image: onImageUpload },
         },
       },
-      placeholder: '협조 요청 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요.',
+      placeholder: '업무 요청 내용을 입력하고, 이미지 버튼으로 그림을 업로드하세요.',
     } as any);
     q.on('text-change', () => setContentHtml(q.root.innerHTML));
     // robust paste/drop to avoid navigation and base64 embeds
@@ -279,7 +279,7 @@ export function CoopsRequest() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {okMsg && <div style={{ color: '#0F3D73' }}>{okMsg}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
-        <h3>프로세스 협조 대상 (선택)</h3>
+        <h3>프로세스 업무 요청 대상 (선택)</h3>
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
           {(procTasks || []).map((t: any) => (
             <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -293,7 +293,7 @@ export function CoopsRequest() {
               </button>
             </div>
           ))}
-          {!procTasks.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>현재 협조 대상 프로세스 과제가 없습니다.</div>}
+          {!procTasks.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>현재 업무 요청 대상 프로세스 과제가 없습니다.</div>}
         </div>
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
@@ -377,7 +377,7 @@ export function CoopsRequest() {
         <input value={queue} onChange={(e) => setQueue(e.target.value)} style={input} />
         <label>SLA 분(선택)</label>
         <input type="number" value={slaMinutes} onChange={(e) => setSlaMinutes(e.target.value)} style={input} />
-        <button onClick={submit} disabled={!requesterId || loading} style={primaryBtn}>{loading ? '요청중…' : '협조 요청'}</button>
+        <button onClick={submit} disabled={!requesterId || loading} style={primaryBtn}>{loading ? '요청중…' : '업무 요청'}</button>
       </div>
     </div>
   );

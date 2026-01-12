@@ -55,7 +55,7 @@ export function CoopsInbox() {
   async function act(kind: 'accept' | 'start' | 'resolve' | 'decline', ticketId: string, notificationId?: string) {
     try {
       if (!ticketId) {
-        window.alert('티켓 ID가 없어 협조를 처리할 수 없습니다. 알림 payload를 확인해주세요.');
+        window.alert('티켓 ID가 없어 업무 요청을 처리할 수 없습니다. 알림 payload를 확인해주세요.');
         return;
       }
       const body: any = { actorId: userId };
@@ -64,7 +64,7 @@ export function CoopsInbox() {
       if (notificationId) await markRead(notificationId);
       await load();
     } catch (e: any) {
-      setError(e?.message || '협조 처리 중 오류가 발생했습니다');
+      setError(e?.message || '업무 요청 처리 중 오류가 발생했습니다');
     }
   }
 
@@ -100,7 +100,7 @@ export function CoopsInbox() {
             </div>
           );
         })}
-        {!items.length && <div>내게 할당된 협조 없음</div>}
+        {!items.length && <div>내게 할당된 업무 요청 없음</div>}
       </div>
       {active && (
         <div style={modalOverlay} onClick={() => setActive(null)}>

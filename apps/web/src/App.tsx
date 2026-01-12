@@ -248,11 +248,11 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           </NavDropdown>
         )}
         {SHOW_COOPS && (
-          <NavDropdown label="협조" active={location.pathname.startsWith('/coops')}>
+          <NavDropdown label="업무 요청" active={location.pathname.startsWith('/coops')}>
             <Link to="/coops/request">요청 하기</Link>
-            <Link to="/coops/inbox">받은 협조</Link>
-            <Link to="/coops/mine">보낸 협조</Link>
-            <Link to="/coops/status">협조 통계</Link>
+            <Link to="/coops/inbox">받은 업무 요청</Link>
+            <Link to="/coops/mine">보낸 업무 요청</Link>
+            <Link to="/coops/status">업무 요청 통계</Link>
           </NavDropdown>
         )}
         <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance')}>
@@ -421,9 +421,9 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_
     if (SHOW_COOPS && path.startsWith('/coops')) {
       return [
         { to: '/coops/request', label: '요청 하기' },
-        { to: '/coops/inbox', label: '받은 협조' },
-        { to: '/coops/mine', label: '보낸 협조' },
-        { to: '/coops/status', label: '협조 통계' },
+        { to: '/coops/inbox', label: '받은 업무 요청' },
+        { to: '/coops/mine', label: '보낸 업무 요청' },
+        { to: '/coops/status', label: '업무 요청 통계' },
       ];
     }
     if (path.startsWith('/dispatch') || path.startsWith('/attendance')) {

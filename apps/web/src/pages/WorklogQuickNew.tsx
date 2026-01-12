@@ -122,7 +122,7 @@ export function WorklogQuickNew() {
         setTeamTasks(tasks);
         setTeamKpis(kpis);
 
-        // Load 협조(HelpTicket) assigned to me and 이미 수락/진행 중인 것들만 노출
+        // Load 업무 요청(HelpTicket) assigned to me and 이미 수락/진행 중인 것들만 노출
         try {
           const acc = await apiJson<{ items: any[] }>(`/api/help-tickets?assigneeId=${encodeURIComponent(myId)}&status=ACCEPTED`);
           const prog = await apiJson<{ items: any[] }>(`/api/help-tickets?assigneeId=${encodeURIComponent(myId)}&status=IN_PROGRESS`);
@@ -131,11 +131,11 @@ export function WorklogQuickNew() {
           for (const t of all) dedup[t.id] = t;
           const tickets = Object.values(dedup).map((t: any) => {
             const who = t.requester?.name || '요청자 미상';
-            const cat = t.category || '일반 협조';
+            const cat = t.category || '일반 업무 요청';
             const helpTitle = t.helpTitle || '';
             const titlePart = helpTitle ? ` · ${helpTitle}` : '';
-            // 협조 제목 중심으로 표시: 협조: [카테고리] · [협조제목] · [요청자]
-            return { id: String(t.id), label: `협조: ${cat}${titlePart} · ${who}` };
+            // 업무 요청 제목 중심으로 표시: 업무 요청: [카테고리] · [제목] · [요청자]
+            return { id: String(t.id), label: `업무 요청: ${cat}${titlePart} · ${who}` };
           });
           setHelpTickets(tickets);
         } catch {}
@@ -329,7 +329,7 @@ export function WorklogQuickNew() {
           });
         }
       }
-      // Help: 협조 선택으로 생성된 업무일지인 경우, 해당 HelpTicket을 협조 완료로 표시하고 대응 업무일지 링크를 저장한다.
+      // Help: 업무 요청 선택으로 생성된 업무일지인 경우, 해당 HelpTicket을 업무 요청 완료로 표시하고 대응 업무일지 링크를 저장한다.
       if (isHelp) {
         const ticketId = selectedId;
         await apiJson(`/api/help-tickets/${encodeURIComponent(ticketId)}/resolve`, {
@@ -450,7 +450,7 @@ export function WorklogQuickNew() {
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제 / 협조 추가</label>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제 / 업무 요청 추가</label>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
@@ -466,7 +466,7 @@ export function WorklogQuickNew() {
               )}
               <optgroup label="OKR 과제">
                 {(() => {
-                  // OKR 과제에는 순수 OKR만 노출하고, KPI에 속한 과제와 결재/협조(Auto Objective) 과제는 모두 제외한다.
+                  // OKR 과제에는 순수 OKR만 노출하고, KPI에 속한 과제와 결재/업무 요청(Auto Objective) 과제는 모두 제외한다.
                   const list = myTasks.filter((t) => {
                     if (t.isKpi) return false;
                     const obj = String(t.objTitle || '');
@@ -503,7 +503,7 @@ export function WorklogQuickNew() {
                 ) : null}
               </optgroup>
               {helpTickets.length > 0 && (
-                <optgroup label="협조 추가">
+                <optgroup label="업무 요청 추가">
                   {helpTickets.map((t) => (
                     <option key={`help-${t.id}`} value={`help:${t.id}`}>{t.label}</option>
                   ))}
