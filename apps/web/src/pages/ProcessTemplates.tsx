@@ -625,7 +625,7 @@ export function ProcessTemplates() {
         {editing ? (
           <div style={{ display: 'grid', gap: 12 }}>
             <h2>업무 프로세스 정의</h2>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 {editing?.official ? (
                   <span style={{ fontSize: 12, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '2px 6px', borderRadius: 6 }}>★ 공식 템플릿</span>
@@ -634,10 +634,15 @@ export function ProcessTemplates() {
                 )}
               </div>
               {editing?.id ? (
-                <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>
                   기존 인스턴스: {inUseCount}건 {inUseCount > 0 ? '· 구조 변경은 복제로 저장됩니다' : ''}
                 </span>
               ) : null}
+              {editing?.owner?.name && (
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                  📝 작성자: {editing.owner.name}{editing.owner.orgUnit?.name ? ` · ${editing.owner.orgUnit.name}` : ''}{editing.createdAt ? ` · ${fmt(editing.createdAt)}` : ''}
+                </span>
+              )}
             </div>
             <div>
               <label>업무프로세스 제목</label>
