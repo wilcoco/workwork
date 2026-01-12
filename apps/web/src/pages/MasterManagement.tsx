@@ -100,20 +100,20 @@ export function MasterManagement() {
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <input
           value={newCode}
           onChange={(e) => setNewCode(e.target.value)}
           placeholder="코드"
-          style={inputStyle}
+          style={{ ...inputStyle, minWidth: 140, flex: '0 0 140px' }}
         />
         <input
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="이름"
-          style={{ ...inputStyle, flex: 1 }}
+          style={{ ...inputStyle, minWidth: 200, flex: '1 1 240px' }}
         />
-        <button onClick={add} disabled={saving} style={primaryBtn}>
+        <button onClick={add} disabled={saving} style={{ ...primaryBtn, flex: '0 0 auto' }}>
           {saving ? '추가 중...' : '추가'}
         </button>
       </div>
