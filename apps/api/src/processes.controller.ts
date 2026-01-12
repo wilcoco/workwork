@@ -173,16 +173,21 @@ export class ProcessesController {
     const items = await this.prisma.processTaskInstance.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: { instance: { include: { template: true } } },
+      include: { instance: { include: { template: { include: { tasks: true } } } } },
     });
-    return items.map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      stageLabel: t.stageLabel,
-      taskType: t.taskType,
-      status: t.status,
-      instance: { id: t.instance.id, title: t.instance.title, status: t.instance.status, templateTitle: t.instance.template?.title },
-    }));
+    return items.map((t: any) => {
+      // Find matching template task to get description
+      const tmplTask = (t.instance?.template?.tasks || []).find((tt: any) => tt.name === t.name);
+      return {
+        id: t.id,
+        name: t.name,
+        stageLabel: t.stageLabel,
+        taskType: t.taskType,
+        status: t.status,
+        description: tmplTask?.description || null,
+        instance: { id: t.instance.id, title: t.instance.title, status: t.instance.status, templateTitle: t.instance.template?.title },
+      };
+    });
   }
 
   private getCtxValue(ctx: any, path: string): any {

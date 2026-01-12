@@ -318,11 +318,23 @@ export function ApprovalsSubmit() {
           ))}
           {!procTasks.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>현재 결재 대상 프로세스 과제가 없습니다.</div>}
         </div>
-        {(selectedTask || processInstanceId) && (
-          <button type="button" style={{ ...ghostBtn, marginTop: 4, fontSize: 12 }} onClick={openProcessDetail} disabled={processDetailLoading}>
-            {processDetailLoading ? '불러오는 중...' : '프로세스 상세 보기 (이전 업무일지 확인)'}
-          </button>
-        )}
+        {(selectedTask || processInstanceId) && (() => {
+          const tid = selectedTask?.taskId || taskInstanceId;
+          const task = procTasks.find((t: any) => t.id === tid);
+          return (
+            <div style={{ marginTop: 8 }}>
+              {task?.description && (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginBottom: 8, background: '#f9fafb' }}>
+                  <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 6 }}>과제 설명</div>
+                  <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(task.description) }} />
+                </div>
+              )}
+              <button type="button" style={{ ...ghostBtn, fontSize: 12 }} onClick={openProcessDetail} disabled={processDetailLoading}>
+                {processDetailLoading ? '불러오는 중...' : '프로세스 상세 보기 (이전 업무일지 확인)'}
+              </button>
+            </div>
+          );
+        })()}
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
         <label>팀</label>

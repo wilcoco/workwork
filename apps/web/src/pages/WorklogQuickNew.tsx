@@ -40,7 +40,7 @@ export function WorklogQuickNew() {
   const [error, setError] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'>('ALL');
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
-  const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; instance: { id: string; title: string } }>>([]);
+  const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; description?: string; instance: { id: string; title: string } }>>([]);
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
 
@@ -510,11 +510,23 @@ export function WorklogQuickNew() {
                 </optgroup>
               )}
             </select>
-            {(selection.startsWith('proc:') || taskInstanceId) && (
-              <button type="button" className="btn btn-ghost" style={{ marginTop: 4, fontSize: 12 }} onClick={openProcessDetail} disabled={processDetailLoading}>
-                {processDetailLoading ? '불러오는 중...' : '프로세스 상세 보기 (이전 업무일지 확인)'}
-              </button>
-            )}
+            {(selection.startsWith('proc:') || taskInstanceId) && (() => {
+              const tid = selection.startsWith('proc:') ? selection.substring(5) : taskInstanceId;
+              const selectedTask = myProcTasks.find((t) => t.id === tid);
+              return (
+                <div style={{ marginTop: 8 }}>
+                  {selectedTask?.description && (
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginBottom: 8, background: '#f9fafb' }}>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 6 }}>과제 설명</div>
+                      <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(selectedTask.description) }} />
+                    </div>
+                  )}
+                  <button type="button" className="btn btn-ghost" style={{ fontSize: 12 }} onClick={openProcessDetail} disabled={processDetailLoading}>
+                    {processDetailLoading ? '불러오는 중...' : '프로세스 상세 보기 (이전 업무일지 확인)'}
+                  </button>
+                </div>
+              );
+            })()}
           </div>
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
