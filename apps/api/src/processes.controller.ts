@@ -269,8 +269,8 @@ export class ProcessesController {
     return req.id as string;
   }
 
-  private async buildApprovalData(tx: any, instanceId: string): Promise<{ html: string; tasks: any[] }> {
-    const inst = await (tx as any).processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true, template: true } });
+  private async buildApprovalData(tx: any, instanceId: string): Promise<{ html: string; tasks: any[]; pendingTask?: any }> {
+    const inst = await (tx as any).processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true, template: { include: { tasks: true } } } });
     const tasks = await (tx as any).processTaskInstance.findMany({ where: { instanceId }, orderBy: [{ stageLabel: 'asc' as any }, { createdAt: 'asc' as any }] });
     const completed = tasks.filter((x: any) => String(x.status).toUpperCase() === 'COMPLETED');
     
@@ -345,6 +345,7 @@ export class ProcessesController {
           title: (wl.note || '').split('\n')[0] || wl.title || '업무일지',
           note: wl.note,
           contentHtml: (wl.attachments as any)?.contentHtml || '',
+          files: (wl.attachments as any)?.files || [],
           createdAt: wl.createdAt,
           createdBy: wl.createdBy,
         })),
@@ -357,7 +358,22 @@ export class ProcessesController {
     const table = `<table style=\"border-collapse:collapse;width:100%;margin-top:8px;\">${head(['#','단계/과제','유형','완료시각','관련 업무일지'])}${rows.join('')}</table>`;
     const meta = `<div style=\"margin:6px 0;color:#64748b;font-size:12px;\">시작: ${inst?.startAt ? new Date(inst.startAt).toLocaleString() : ''} · 시작자: ${safe(inst?.startedBy?.name)}</div>`;
     
-    return { html: `${header}${meta}${table}`, tasks: taskData };
+    // Find pending approval task and its description
+    const pendingApproval = tasks.find((t: any) => String(t.taskType).toUpperCase() === 'APPROVAL' && ['READY', 'IN_PROGRESS'].includes(String(t.status).toUpperCase()));
+    let pendingTask: any = undefined;
+    if (pendingApproval) {
+      const tmplTask = (inst?.template?.tasks || []).find((tt: any) => tt.name === pendingApproval.name);
+      pendingTask = {
+        id: pendingApproval.id,
+        name: pendingApproval.name,
+        stageLabel: pendingApproval.stageLabel,
+        taskType: pendingApproval.taskType,
+        status: pendingApproval.status,
+        description: tmplTask?.description || null,
+      };
+    }
+    
+    return { html: `${header}${meta}${table}`, tasks: taskData, pendingTask };
   }
 
   @Get(':id/approval-summary')

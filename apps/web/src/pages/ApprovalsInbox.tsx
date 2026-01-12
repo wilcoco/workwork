@@ -10,7 +10,7 @@ export function ApprovalsInbox() {
   const [active, setActive] = useState<any | null>(null);
   const [comment, setComment] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
-  const [worklogPopup, setWorklogPopup] = useState<{ id: string; title: string; contentHtml: string; note: string; createdAt: string; createdBy?: { name: string } } | null>(null);
+  const [worklogPopup, setWorklogPopup] = useState<{ id: string; title: string; contentHtml: string; note: string; files?: any[]; createdAt: string; createdBy?: { name: string } } | null>(null);
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -45,7 +45,7 @@ export function ApprovalsInbox() {
           try {
             const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}`);
             const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}/approval-summary`);
-            doc = { process: inst, summaryHtml: sum?.html || '', summaryTasks: sum?.tasks || [] };
+            doc = { process: inst, summaryHtml: sum?.html || '', summaryTasks: sum?.tasks || [], pendingTask: sum?.pendingTask || null };
           } catch {}
         }
         return { ...a, _doc: doc };
@@ -155,6 +155,12 @@ export function ApprovalsInbox() {
                 ) : (
                   <div style={{ color: '#334155', marginTop: 6 }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
                 )
+              )}
+              {st === 'PROCESS' && doc?.pendingTask?.description && (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginTop: 6, background: '#f9fafb' }}>
+                  <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 6 }}>결재 과제 설명</div>
+                  <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
+                </div>
               )}
               {st === 'PROCESS' && doc?.summaryHtml ? (
                 <div
@@ -284,6 +290,12 @@ export function ApprovalsInbox() {
                       <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
                     )
                   )}
+                  {st === 'PROCESS' && doc?.pendingTask?.description && (
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginTop: 6, background: '#f9fafb' }}>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 6 }}>결재 과제 설명</div>
+                      <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
+                    </div>
+                  )}
                   {st === 'PROCESS' && doc?.summaryHtml ? (
                     <div
                       className="rich-content"
@@ -391,6 +403,22 @@ export function ApprovalsInbox() {
               </div>
             ) : (
               <div style={{ color: '#9ca3af', padding: 12 }}>내용 없음</div>
+            )}
+            {worklogPopup.files && worklogPopup.files.length > 0 && (
+              <div style={{ marginTop: 12, padding: 12, background: '#f9fafb', borderRadius: 8 }}>
+                <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 8 }}>첨부파일</div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {worklogPopup.files.map((f: any, i: number) => {
+                    const url = absLink(f.url as string);
+                    const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
+                    return (
+                      <a key={i} href={url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73', fontSize: 13, textDecoration: 'underline' }}>
+                        {name}
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button onClick={() => setWorklogPopup(null)} style={ghostBtn}>닫기</button>
