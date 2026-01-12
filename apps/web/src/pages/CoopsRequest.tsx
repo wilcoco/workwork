@@ -223,6 +223,7 @@ export function CoopsRequest() {
             content: stripHtml(contentHtml),
             contentHtml: contentHtml || undefined,
             attachments: { files: attachments },
+            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode) ? tags : undefined,
           }),
         }
       );
@@ -232,7 +233,7 @@ export function CoopsRequest() {
       if (slaMinutes) body.slaMinutes = Number(slaMinutes) || 0;
       if (worklogId) body.worklogId = worklogId;
       if (dueDate) body.dueAt = /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? `${dueDate}T00:00:00+09:00` : dueDate;
-      if (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode) body.tags = tags;
+      if (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode) body.tags = tags;
       // 복수 담당자에게 각각 요청 생성
       const createdIds: string[] = [];
       if (assigneeIds.length > 0) {

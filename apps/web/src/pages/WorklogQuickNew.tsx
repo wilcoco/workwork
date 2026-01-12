@@ -297,7 +297,7 @@ export function WorklogQuickNew() {
             date,
             urgent,
             visibility,
-            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode) ? tags : undefined,
+            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode) ? tags : undefined,
           }),
         }
       );

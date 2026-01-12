@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Query, Param, Body } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
 @Controller('masters')
@@ -20,7 +20,7 @@ export class MastersController {
   @Post(':type')
   async create(@Param('type') type: string, @Body() body: { code: string; name: string }) {
     const model = this.getModel(type);
-    if (!model) throw new Error('Invalid type');
+    if (!model) throw new BadRequestException('Invalid master type');
     const item = await model.create({ data: { code: body.code, name: body.name } });
     return item;
   }
@@ -28,7 +28,7 @@ export class MastersController {
   @Delete(':type/:id')
   async remove(@Param('type') type: string, @Param('id') id: string) {
     const model = this.getModel(type);
-    if (!model) throw new Error('Invalid type');
+    if (!model) throw new BadRequestException('Invalid master type');
     await model.delete({ where: { id } });
     return { ok: true };
   }
@@ -61,7 +61,7 @@ export class MastersController {
   async suppliers(@Query('q') q?: string) {
     const where: any = {};
     if (q) where.OR = [{ code: { contains: q, mode: 'insensitive' } }, { name: { contains: q, mode: 'insensitive' } }];
-    const items = await this.prisma.supplier.findMany({ where, orderBy: { code: 'asc' }, take: 200 });
+    const items = await (this.prisma as any).supplier.findMany({ where, orderBy: { code: 'asc' }, take: 200 });
     return { items };
   }
 
@@ -69,7 +69,7 @@ export class MastersController {
   async equipments(@Query('q') q?: string) {
     const where: any = {};
     if (q) where.OR = [{ code: { contains: q, mode: 'insensitive' } }, { name: { contains: q, mode: 'insensitive' } }];
-    const items = await this.prisma.equipment.findMany({ where, orderBy: { code: 'asc' }, take: 200 });
+    const items = await (this.prisma as any).equipment.findMany({ where, orderBy: { code: 'asc' }, take: 200 });
     return { items };
   }
 }

@@ -267,7 +267,7 @@ export function ApprovalsSubmit() {
             content: stripHtml(contentHtml),
             contentHtml: contentHtml || undefined,
             attachments: { files: attachments },
-            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode) ? tags : undefined,
+            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode) ? tags : undefined,
           }),
         }
       );

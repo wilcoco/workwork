@@ -140,6 +140,7 @@ class CreateSimpleWorklogDto {
   @IsOptional() @IsBoolean() urgent?: boolean;
   @IsOptional() @IsString() contentHtml?: string;
   @IsOptional() attachments?: any;
+  @IsOptional() tags?: any;
   @IsOptional() @IsString() initiativeId?: string;
   @IsOptional() @IsString() userGoalId?: string;
   @IsOptional() @IsString() keyResultId?: string;
@@ -512,6 +513,7 @@ export class WorklogsController {
         createdById: user.id,
         note,
         attachments: attachmentsJson as any,
+        tags: (dto as any).tags as any,
         date: dateValSimple,
         urgent: !!dto.urgent,
         visibility: (dto.visibility as any) ?? 'ALL',

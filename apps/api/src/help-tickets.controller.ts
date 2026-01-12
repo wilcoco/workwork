@@ -31,6 +31,9 @@ class CreateHelpTicketDto {
   @IsOptional()
   @IsString()
   worklogId?: string;
+
+  @IsOptional()
+  tags?: any;
 }
 
 class ActDto {
@@ -226,6 +229,7 @@ export class HelpTicketsController {
         // Prisma model has optional dueAt: DateTime?; only set when provided
         ...(dto.dueAt ? { dueAt: new Date(dto.dueAt) } : {}),
         slaMinutes: dto.slaMinutes,
+        tags: (dto as any).tags as any,
       },
     });
     await this.prisma.event.create({
