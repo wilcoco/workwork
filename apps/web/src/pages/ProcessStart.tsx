@@ -33,6 +33,12 @@ export function ProcessStart() {
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
 
+  // AI 검색 관련 상태
+  const [aiQuery, setAiQuery] = useState('');
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiResults, setAiResults] = useState<Array<{ template: ProcessTemplateDto; score: number; reason: string }>>([]);
+  const [showAiSearch, setShowAiSearch] = useState(true);
+
   const [startTitle, setStartTitle] = useState('');
   const [itemCode, setItemCode] = useState('');
   const [moldCode, setMoldCode] = useState('');
@@ -89,36 +95,89 @@ export function ProcessStart() {
         }));
     }
 
-  async function cloneTemplateForStart() {
-    if (!userId) { alert('로그인이 필요합니다.'); return; }
-    if (!selectedFull?.id) { alert('템플릿을 선택하세요.'); return; }
-    const title = (cloneTitle || '').trim();
-    if (!title) { alert('새 템플릿 제목을 입력하세요.'); return; }
-    let bpmn: any = (selectedFull as any)?.bpmnJson;
-    try { if (typeof bpmn === 'string' && bpmn.trim().startsWith('{')) bpmn = JSON.parse(bpmn); } catch {}
-    try {
-      const body: any = {
-        title,
-        description: selectedFull.description || '',
-        type: (selectedFull.type as any) || 'PROJECT',
-        ownerId: userId,
-        visibility: 'PUBLIC',
-        bpmnJson: bpmn,
-      };
-      const created = await apiJson<ProcessTemplateDto>(`/api/process-templates`, { method: 'POST', body: JSON.stringify(body) });
-      if (created?.id) {
-        setTemplates((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
-        setTplId(created.id);
-        setSelectedFull(created);
-        setCloneTitle(`${created.title} (사본)`);
-        alert('사본 템플릿이 생성되었습니다. 이 템플릿으로 시작 정보를 입력하세요.');
-      }
-    } catch (e: any) {
-      alert(e?.message || '사본 템플릿 생성 중 오류가 발생했습니다.');
-    }
-  }
     return [];
   }, [selected, selectedFull]);
+
+  // AI 기반 프로세스 검색
+  async function searchWithAI() {
+    if (!aiQuery.trim()) return;
+    setAiSearching(true);
+    setAiResults([]);
+    try {
+      // 간단한 키워드 매칭 + 유사도 기반 검색
+      const query = aiQuery.toLowerCase();
+      const keywords = query.split(/\s+/).filter(Boolean);
+      
+      const scored = templates.map(t => {
+        let score = 0;
+        const reasons: string[] = [];
+        const title = (t.title || '').toLowerCase();
+        const desc = (t.description || '').toLowerCase();
+        
+        // 제목 매칭
+        for (const kw of keywords) {
+          if (title.includes(kw)) {
+            score += 30;
+            reasons.push(`제목에 "${kw}" 포함`);
+          }
+          if (desc.includes(kw)) {
+            score += 20;
+            reasons.push(`설명에 "${kw}" 포함`);
+          }
+        }
+        
+        // 과제 이름 매칭
+        const tasks = t.tasks || [];
+        for (const task of tasks) {
+          const taskName = (task.name || '').toLowerCase();
+          const taskDesc = (task.description || '').toLowerCase();
+          for (const kw of keywords) {
+            if (taskName.includes(kw)) {
+              score += 15;
+              reasons.push(`과제 "${task.name}"에 "${kw}" 포함`);
+            }
+            if (taskDesc.includes(kw)) {
+              score += 10;
+            }
+          }
+        }
+        
+        // 특정 키워드 패턴 매칭
+        const patterns: Array<{ keywords: string[]; boost: number; label: string }> = [
+          { keywords: ['이관', '양산', '이전'], boost: 25, label: '이관/양산 관련' },
+          { keywords: ['금형', '몰드', 'mold'], boost: 25, label: '금형 관련' },
+          { keywords: ['품질', '검사', '불량'], boost: 25, label: '품질 관련' },
+          { keywords: ['결재', '승인', '검토'], boost: 20, label: '결재 프로세스' },
+          { keywords: ['신규', '개발', '설계'], boost: 20, label: '신규 개발' },
+          { keywords: ['변경', '수정', 'ecn', 'eco'], boost: 20, label: '변경 관리' },
+          { keywords: ['출하', '납품', '배송'], boost: 20, label: '출하/납품' },
+          { keywords: ['입고', '자재', '구매'], boost: 20, label: '자재/구매' },
+        ];
+        
+        for (const p of patterns) {
+          const matched = p.keywords.some(pk => query.includes(pk) && (title.includes(pk) || desc.includes(pk)));
+          if (matched) {
+            score += p.boost;
+            reasons.push(p.label);
+          }
+        }
+        
+        return { template: t, score, reason: [...new Set(reasons)].slice(0, 3).join(', ') || '일반 매칭' };
+      });
+      
+      const filtered = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
+      setAiResults(filtered);
+      
+      if (!filtered.length) {
+        // 검색 결과가 없으면 모든 템플릿 표시
+        setAiResults(templates.slice(0, 5).map(t => ({ template: t, score: 0, reason: '전체 템플릿' })));
+      }
+    } catch (e: any) {
+      console.error('AI search error:', e);
+    } finally {
+      setAiSearching(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -256,6 +315,111 @@ export function ProcessStart() {
     <div style={{ display: 'grid', gap: 12 }}>
       <h2>새 프로세스 시작</h2>
       {loading && <div>불러오는 중...</div>}
+
+      {/* AI 프로세스 검색 */}
+      {showAiSearch && (
+        <div style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%)', border: '2px solid #16a34a', borderRadius: 12, padding: 16, marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 20 }}>🤖</span>
+            <div style={{ fontWeight: 700, fontSize: 16, color: '#15803d' }}>AI 프로세스 찾기</div>
+            <button
+              type="button"
+              onClick={() => setShowAiSearch(false)}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280' }}
+            >
+              ✕
+            </button>
+          </div>
+          <div style={{ fontSize: 13, color: '#166534', marginBottom: 12 }}>
+            어떤 업무를 처리하고 싶으신가요? 자연어로 설명해주시면 적합한 프로세스를 추천해드립니다.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={aiQuery}
+              onChange={(e) => setAiQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && searchWithAI()}
+              placeholder="예: 금형 이관 작업을 진행하고 싶어요, 품질 검사 프로세스가 필요해요..."
+              style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid #86efac', fontSize: 14 }}
+            />
+            <button
+              type="button"
+              onClick={searchWithAI}
+              disabled={aiSearching || !aiQuery.trim()}
+              style={{
+                background: '#16a34a',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '10px 20px',
+                fontWeight: 600,
+                cursor: aiSearching || !aiQuery.trim() ? 'not-allowed' : 'pointer',
+                opacity: aiSearching || !aiQuery.trim() ? 0.6 : 1,
+              }}
+            >
+              {aiSearching ? '검색 중...' : '🔍 검색'}
+            </button>
+          </div>
+          {aiResults.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: '#15803d', marginBottom: 8 }}>
+                추천 프로세스 ({aiResults.length}개)
+              </div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {aiResults.map((r, idx) => (
+                  <div
+                    key={r.template.id || idx}
+                    onClick={() => {
+                      setTplId(r.template.id || '');
+                      setShowAiSearch(false);
+                    }}
+                    style={{
+                      background: '#fff',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: 8,
+                      padding: 12,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#16a34a')}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#bbf7d0')}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontWeight: 600, color: '#166534' }}>{r.template.title}</div>
+                      {r.score > 0 && (
+                        <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '2px 6px', borderRadius: 4 }}>
+                          매칭도 {Math.min(100, r.score)}%
+                        </span>
+                      )}
+                    </div>
+                    {r.reason && (
+                      <div style={{ fontSize: 12, color: '#22c55e', marginTop: 4 }}>💡 {r.reason}</div>
+                    )}
+                    {r.template.description && (
+                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.template.description.replace(/<[^>]*>/g, '').substring(0, 80)}...
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ marginTop: 12, fontSize: 12, color: '#6b7280' }}>
+            💡 팁: "이관", "금형", "품질", "결재", "변경" 등의 키워드를 포함하면 더 정확한 결과를 얻을 수 있습니다.
+          </div>
+        </div>
+      )}
+
+      {!showAiSearch && (
+        <button
+          type="button"
+          onClick={() => setShowAiSearch(true)}
+          style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#16a34a', cursor: 'pointer', width: 'fit-content' }}
+        >
+          🤖 AI로 프로세스 찾기
+        </button>
+      )}
+
       <div className="resp-2" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 380px) minmax(0, 1fr)', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ display: 'grid', gap: 8 }}>
           <label>템플릿 선택</label>
