@@ -6,14 +6,10 @@ import { uploadFile } from '../lib/upload';
 import '../styles/editor.css';
 
 export function CoopsRequest() {
-  const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const processInstanceId = params?.get('processInstanceId') || '';
-  const taskInstanceId = params?.get('taskInstanceId') || '';
-  const [procTasks, setProcTasks] = useState<any[]>([]);
-  const [selectedTask, setSelectedTask] = useState<{ instanceId: string; taskId: string } | null>(null);
   const [category, setCategory] = useState('General');
   const [queue, setQueue] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('');
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [slaMinutes, setSlaMinutes] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -139,17 +135,6 @@ export function CoopsRequest() {
     })();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!requesterId) return;
-        const items = await apiJson<any[]>(`/api/processes/inbox?assigneeId=${encodeURIComponent(requesterId)}&status=READY`);
-        const list = (items || []).filter((t: any) => String(t.taskType).toUpperCase() === 'COOPERATION');
-        setProcTasks(list);
-        if (processInstanceId && taskInstanceId) setSelectedTask({ instanceId: processInstanceId, taskId: taskInstanceId });
-      } catch {}
-    })();
-  }, [requesterId]);
 
   useEffect(() => {
     (async () => {
@@ -242,30 +227,30 @@ export function CoopsRequest() {
       const worklogId = resWl.id;
       const body: any = { category, requesterId };
       if (queue) body.queue = queue;
-      if (assigneeId) body.assigneeId = assigneeId;
       if (slaMinutes) body.slaMinutes = Number(slaMinutes) || 0;
       if (worklogId) body.worklogId = worklogId;
       if (dueDate) body.dueAt = /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? `${dueDate}T00:00:00+09:00` : dueDate;
-      const res = await apiJson<any>('/api/help-tickets', { method: 'POST', body: JSON.stringify(body) });
-      setOkMsg(`요청 생성: ${res?.id || ''}`);
-      // If invoked from a process task, complete it with cooperationId
-      const linkage = selectedTask || (processInstanceId && taskInstanceId ? { instanceId: processInstanceId, taskId: taskInstanceId } : null);
-      if (linkage && res?.id) {
-        try {
-          await apiJson(`/api/processes/${encodeURIComponent(linkage.instanceId)}/tasks/${encodeURIComponent(linkage.taskId)}/complete`, {
-            method: 'POST',
-            body: JSON.stringify({ cooperationId: res.id }),
-          });
-        } catch {}
+      // 복수 담당자에게 각각 요청 생성
+      const createdIds: string[] = [];
+      if (assigneeIds.length > 0) {
+        for (const aid of assigneeIds) {
+          const ticketBody = { ...body, assigneeId: aid };
+          const res = await apiJson<any>('/api/help-tickets', { method: 'POST', body: JSON.stringify(ticketBody) });
+          if (res?.id) createdIds.push(res.id);
+        }
+      } else {
+        // 담당자 미지정 시 하나만 생성
+        const res = await apiJson<any>('/api/help-tickets', { method: 'POST', body: JSON.stringify(body) });
+        if (res?.id) createdIds.push(res.id);
       }
+      setOkMsg(`요청 생성 완료: ${createdIds.length}건`);
       setQueue('');
-      setAssigneeId('');
+      setAssigneeIds([]);
       setSlaMinutes('');
       setTitle('');
       setDueDate('');
       setContentHtml('');
       setAttachments([]);
-      setSelectedTask(null);
     } catch (e: any) {
       setError(e?.message || '요청 실패');
     } finally {
@@ -279,24 +264,6 @@ export function CoopsRequest() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {okMsg && <div style={{ color: '#0F3D73' }}>{okMsg}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
-        <h3>프로세스 업무 요청 대상 (선택)</h3>
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, display: 'grid', gap: 8 }}>
-          {(procTasks || []).map((t: any) => (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ flex: 1 }}>
-                <b>{t.instance?.title || '-'}</b>
-                <span style={{ marginLeft: 8, color: '#64748b' }}>{t.stageLabel ? `· ${t.stageLabel}` : ''}</span>
-                <div style={{ fontSize: 12, color: '#334155' }}>{t.name}</div>
-              </div>
-              <button type="button" className="btn btn-outline" onClick={() => setSelectedTask({ instanceId: t.instance?.id, taskId: t.id })}>
-                {selectedTask?.taskId === t.id ? '선택됨' : '선택'}
-              </button>
-            </div>
-          ))}
-          {!procTasks.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>현재 업무 요청 대상 프로세스 과제가 없습니다.</div>}
-        </div>
-      </div>
-      <div style={{ display: 'grid', gap: 8 }}>
         <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
           <label>팀</label>
           <select value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input}>
@@ -306,21 +273,77 @@ export function CoopsRequest() {
           </select>
           <label>제목</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} style={input} />
-          <div className="resp-2">
-            <label>
-              담당자(선택)
-              <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} style={input}>
-                <option value="">선택 안함</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <label>담당자 (복수 선택 가능)</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                value={selectedTeamFilter}
+                onChange={(e) => setSelectedTeamFilter(e.target.value)}
+                style={{ ...input, flex: '0 0 auto', minWidth: 120 }}
+              >
+                <option value="">전체 팀</option>
+                {teams.map((t) => (
+                  <option key={t} value={t}>{t}</option>
                 ))}
               </select>
-            </label>
-            <label>
-              요청 기한(선택)
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={input} />
-            </label>
+              <select
+                value=""
+                onChange={(e) => {
+                  const uid = e.target.value;
+                  if (uid && !assigneeIds.includes(uid)) {
+                    setAssigneeIds([...assigneeIds, uid]);
+                  }
+                }}
+                style={{ ...input, flex: 1 }}
+              >
+                <option value="">담당자 추가...</option>
+                {users
+                  .filter((u) => !selectedTeamFilter || u.orgName === selectedTeamFilter)
+                  .filter((u) => !assigneeIds.includes(u.id))
+                  .map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
+                  ))}
+              </select>
+            </div>
+            {assigneeIds.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {assigneeIds.map((aid) => {
+                  const u = users.find((x) => x.id === aid);
+                  return (
+                    <span
+                      key={aid}
+                      style={{
+                        background: '#e0f2fe',
+                        color: '#0369a1',
+                        padding: '4px 8px',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      {u?.name || aid}{u?.orgName ? ` · ${u.orgName}` : ''}
+                      <button
+                        type="button"
+                        onClick={() => setAssigneeIds(assigneeIds.filter((x) => x !== aid))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#0369a1' }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            {!assigneeIds.length && (
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>담당자를 선택하지 않으면 미지정 상태로 요청됩니다.</div>
+            )}
           </div>
+          <label>
+            요청 기한(선택)
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={input} />
+          </label>
           <label>내용</label>
           <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden' }}>
             <div ref={editorEl} style={{ minHeight: 240, width: '100%' }} />
