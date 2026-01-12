@@ -16,3 +16,13 @@ CREATE TABLE IF NOT EXISTS "Supplier" (
   CONSTRAINT "Supplier_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "Supplier_code_key" ON "Supplier"("code");
+
+-- Create Equipment master table
+CREATE TABLE IF NOT EXISTS "Equipment" (
+  "id" TEXT NOT NULL,
+  "code" TEXT NOT NULL,
+  "name" TEXT NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "Equipment_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "Equipment_code_key" ON "Equipment"("code");

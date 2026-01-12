@@ -11,6 +11,7 @@ export interface DocumentTagsValue {
   moldCode?: string;
   carModelCode?: string;
   supplierCode?: string;
+  equipmentCode?: string;
 }
 
 interface DocumentTagsProps {
@@ -24,24 +25,28 @@ export function DocumentTags({ value, onChange, compact }: DocumentTagsProps) {
   const [molds, setMolds] = useState<MasterItem[]>([]);
   const [carModels, setCarModels] = useState<MasterItem[]>([]);
   const [suppliers, setSuppliers] = useState<MasterItem[]>([]);
+  const [equipments, setEquipments] = useState<MasterItem[]>([]);
   const [manualItem, setManualItem] = useState(false);
   const [manualMold, setManualMold] = useState(false);
   const [manualCarModel, setManualCarModel] = useState(false);
   const [manualSupplier, setManualSupplier] = useState(false);
+  const [manualEquipment, setManualEquipment] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [im, mm, cm, sm] = await Promise.all([
+        const [im, mm, cm, sm, em] = await Promise.all([
           apiJson<{ items: MasterItem[] }>(`/api/masters/items`),
           apiJson<{ items: MasterItem[] }>(`/api/masters/molds`),
           apiJson<{ items: MasterItem[] }>(`/api/masters/car-models`),
           apiJson<{ items: MasterItem[] }>(`/api/masters/suppliers`).catch(() => ({ items: [] })),
+          apiJson<{ items: MasterItem[] }>(`/api/masters/equipments`).catch(() => ({ items: [] })),
         ]);
         setItems(im?.items || []);
         setMolds(mm?.items || []);
         setCarModels(cm?.items || []);
         setSuppliers(sm?.items || []);
+        setEquipments(em?.items || []);
       } catch {}
     })();
   }, []);
@@ -64,8 +69,8 @@ export function DocumentTags({ value, onChange, compact }: DocumentTagsProps) {
   };
 
   const gridStyle: React.CSSProperties = compact
-    ? { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }
-    : { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 };
+    ? { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }
+    : { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8 };
 
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10, background: '#f8fafc' }}>
@@ -183,6 +188,34 @@ export function DocumentTags({ value, onChange, compact }: DocumentTagsProps) {
             </div>
           )}
         </div>
+        <div>
+          <label style={labelStyle}>설비</label>
+          {!manualEquipment ? (
+            <div style={{ display: 'grid', gap: 4 }}>
+              <select
+                value={value.equipmentCode || ''}
+                onChange={(e) => onChange({ ...value, equipmentCode: e.target.value || undefined })}
+                style={inputStyle}
+              >
+                <option value="">선택</option>
+                {equipments.map((eq) => (
+                  <option key={eq.code} value={eq.code}>{eq.code} · {eq.name}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setManualEquipment(true)} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>직접 입력</button>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 4 }}>
+              <input
+                value={value.equipmentCode || ''}
+                onChange={(e) => onChange({ ...value, equipmentCode: e.target.value || undefined })}
+                placeholder="설비 입력"
+                style={inputStyle}
+              />
+              <button type="button" onClick={() => setManualEquipment(false)} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>목록에서 선택</button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -195,6 +228,7 @@ export function DocumentTagsDisplay({ tags }: { tags?: DocumentTagsValue | null 
   if (tags.moldCode) parts.push(`금형: ${tags.moldCode}`);
   if (tags.carModelCode) parts.push(`차종: ${tags.carModelCode}`);
   if (tags.supplierCode) parts.push(`협력사: ${tags.supplierCode}`);
+  if (tags.equipmentCode) parts.push(`설비: ${tags.equipmentCode}`);
   if (!parts.length) return null;
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>

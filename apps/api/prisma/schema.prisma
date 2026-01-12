@@ -711,3 +711,10 @@ model Supplier {
   name      String
   createdAt DateTime @default(now())
 }
+
+model Equipment {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}

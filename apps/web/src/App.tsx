@@ -43,6 +43,7 @@ import { ProcessMy } from './pages/ProcessMy';
 import { ProcessStart } from './pages/ProcessStart';
 import { ProcessTemplates } from './pages/ProcessTemplates';
 import { ProcessDashboard } from './pages/ProcessDashboard';
+import { MasterManagement } from './pages/MasterManagement';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -134,6 +135,7 @@ export function App() {
           <Route path="/admin/tools" element={<AdminTools />} />
           <Route path="/admin/cars" element={<CarAdmin />} />
           <Route path="/admin/holidays" element={<AdminHolidays />} />
+          <Route path="/admin/masters" element={<MasterManagement />} />
           <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
           <Route path="/attendance/request" element={<AttendanceRequest />} />
           <Route path="/attendance/report" element={<AttendanceReport />} />
@@ -271,6 +273,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           <Link to="/admin/members">구성원</Link>
           <Link to="/admin/holidays">휴일 캘린더</Link>
           <Link to="/admin/cars">차량 관리</Link>
+          <Link to="/admin/masters">기준정보 관리</Link>
           <Link to="/admin/tools">시스템 도구</Link>
         </NavDropdown>
         <span className="nav-right">
