@@ -4,6 +4,7 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
 import '../styles/editor.css';
+import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
 
 export function CoopsRequest() {
   const [category, setCategory] = useState('General');
@@ -25,6 +26,7 @@ export function CoopsRequest() {
   const quillRef = useRef<Quill | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
+  const [tags, setTags] = useState<DocumentTagsValue>({});
 
   const requesterId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
 
@@ -230,6 +232,7 @@ export function CoopsRequest() {
       if (slaMinutes) body.slaMinutes = Number(slaMinutes) || 0;
       if (worklogId) body.worklogId = worklogId;
       if (dueDate) body.dueAt = /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? `${dueDate}T00:00:00+09:00` : dueDate;
+      if (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode) body.tags = tags;
       // 복수 담당자에게 각각 요청 생성
       const createdIds: string[] = [];
       if (assigneeIds.length > 0) {
@@ -251,6 +254,7 @@ export function CoopsRequest() {
       setDueDate('');
       setContentHtml('');
       setAttachments([]);
+      setTags({});
     } catch (e: any) {
       setError(e?.message || '요청 실패');
     } finally {
@@ -397,6 +401,7 @@ export function CoopsRequest() {
         <input value={queue} onChange={(e) => setQueue(e.target.value)} style={input} />
         <label>SLA 분(선택)</label>
         <input type="number" value={slaMinutes} onChange={(e) => setSlaMinutes(e.target.value)} style={input} />
+        <DocumentTags value={tags} onChange={setTags} compact />
         <button onClick={submit} disabled={!requesterId || loading} style={primaryBtn}>{loading ? '요청중…' : '업무 요청'}</button>
       </div>
     </div>

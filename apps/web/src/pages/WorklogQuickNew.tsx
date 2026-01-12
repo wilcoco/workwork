@@ -8,6 +8,7 @@ import '../styles/editor.css';
 import { todayKstYmd } from '../lib/time';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
+import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
 
 export function WorklogQuickNew() {
   const nav = useNavigate();
@@ -43,6 +44,7 @@ export function WorklogQuickNew() {
   const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; description?: string; instance: { id: string; title: string } }>>([]);
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
+  const [tags, setTags] = useState<DocumentTagsValue>({});
 
   useEffect(() => {
     const stored = localStorage.getItem('teamName') || '';
@@ -295,6 +297,7 @@ export function WorklogQuickNew() {
             date,
             urgent,
             visibility,
+            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode) ? tags : undefined,
           }),
         }
       );
@@ -659,8 +662,9 @@ export function WorklogQuickNew() {
               </div>
             )}
           </div>
+          <DocumentTags value={tags} onChange={setTags} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); }}>
+            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); setTags({}); }}>
               초기화
             </button>
             <button className="btn btn-primary" disabled={loading}>
