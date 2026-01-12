@@ -28,4 +28,12 @@ export class MastersController {
     const items = await this.prisma.carModel.findMany({ where, orderBy: { code: 'asc' }, take: 200 });
     return { items };
   }
+
+  @Get('suppliers')
+  async suppliers(@Query('q') q?: string) {
+    const where: any = {};
+    if (q) where.OR = [{ code: { contains: q, mode: 'insensitive' } }, { name: { contains: q, mode: 'insensitive' } }];
+    const items = await this.prisma.supplier.findMany({ where, orderBy: { code: 'asc' }, take: 200 });
+    return { items };
+  }
 }

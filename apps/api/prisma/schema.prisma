@@ -232,6 +232,7 @@ model Worklog {
   createdById           String
   createdBy             User      @relation("WorklogCreator", fields: [createdById], references: [id])
   attachments           Json?
+  tags                  Json?
   createdAt             DateTime  @default(now())
   urgent                Boolean   @default(false)
   progressEntries       ProgressEntry[]
@@ -362,6 +363,7 @@ model ApprovalRequest {
   approverId     String
   approver       User            @relation("ApprovalApprover", fields: [approverId], references: [id])
   dueAt          DateTime?
+  tags           Json?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   steps          ApprovalStep[]
@@ -413,6 +415,7 @@ model HelpTicket {
   status       HelpStatus  @default(OPEN)
   dueAt        DateTime?
   slaMinutes   Int?
+  tags         Json?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   resolvedAt   DateTime?
@@ -615,6 +618,7 @@ model ProcessInstance {
   itemCode        String?          // 품번 등 기준 정보 코드
   moldCode        String?          // 금형 번호
   carModelCode    String?          // 차종 코드
+  supplierCode    String?          // 협력사 코드
   initiativeId    String?
   initiative      Initiative?      @relation(fields: [initiativeId], references: [id])
   modifiedById    String?
@@ -695,6 +699,13 @@ model Mold {
 }
 
 model CarModel {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model Supplier {
   id        String   @id @default(cuid())
   code      String   @unique
   name      String
