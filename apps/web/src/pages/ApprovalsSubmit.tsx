@@ -7,6 +7,7 @@ import { uploadFile } from '../lib/upload';
 import '../styles/editor.css';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
+import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
 
 export function ApprovalsSubmit() {
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -31,6 +32,7 @@ export function ApprovalsSubmit() {
   const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
+  const [tags, setTags] = useState<DocumentTagsValue>({});
 
   const requestedById = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
 
@@ -265,6 +267,7 @@ export function ApprovalsSubmit() {
             content: stripHtml(contentHtml),
             contentHtml: contentHtml || undefined,
             attachments: { files: attachments },
+            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode) ? tags : undefined,
           }),
         }
       );
@@ -289,6 +292,7 @@ export function ApprovalsSubmit() {
       setContentHtml('');
       setAttachments([]);
       setSelectedTask(null);
+      setTags({});
     } catch (e: any) {
       setError(e?.message || '요청 실패');
     } finally {
@@ -421,6 +425,7 @@ export function ApprovalsSubmit() {
             ))}
           </div>
         )}
+        <DocumentTags value={tags} onChange={setTags} compact />
         <button onClick={submit} disabled={!requestedById || loading} style={primaryBtn}>
           {loading ? '요청중…' : '결재 요청'}
         </button>
