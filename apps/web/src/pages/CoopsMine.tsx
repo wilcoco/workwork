@@ -101,9 +101,9 @@ export function CoopsMine() {
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4, fontSize: 12, color: '#334155' }}>
-                <span>대상자: {it.assigneeName || '-'}</span>
-                <span>마감: {it.dueAt ? new Date(it.dueAt).toLocaleDateString() : '-'}</span>
-                <span>상태: {renderStatus(it)}</span>
+                <span>📥 담당자: {it.assigneeName || '미지정'}</span>
+                <span>📅 마감: {it.dueAt ? new Date(it.dueAt).toLocaleDateString() : '-'}</span>
+                <span>📊 상태: {renderStatus(it)}</span>
               </div>
               {canOpen && (
                 <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>

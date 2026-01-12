@@ -75,7 +75,7 @@ export function CoopsInbox() {
         {items.map((n) => {
           const wl = (n as any)._doc as any | null;
           const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : '문서 정보 없음';
-          const meta = wl ? `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
+          const requesterInfo = wl ? `📤 요청자: ${wl.userName || '-'}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
           const when = wl?.date || wl?.createdAt || n.createdAt;
           return (
             <div key={n.id} style={card} onClick={() => setActive(n)}>
@@ -83,7 +83,7 @@ export function CoopsInbox() {
                 <b>{title}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
               </div>
-              {meta && <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>}
+              {requesterInfo && <div style={{ fontSize: 12, color: '#334155' }}>{requesterInfo}</div>}
               {wl && (
                 wl.attachments?.contentHtml ? (
                   <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
@@ -109,7 +109,7 @@ export function CoopsInbox() {
               const n = active;
               const wl = (n as any)._doc as any | null;
               const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : '문서 정보 없음';
-              const meta = wl ? `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
+              const requesterInfoModal = wl ? `📤 요청자: ${wl.userName || '-'}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
               const when = wl?.date || wl?.createdAt || n.createdAt;
               return (
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -117,7 +117,7 @@ export function CoopsInbox() {
                     <b>{title}</b>
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
                   </div>
-                  {meta && <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>}
+                  {requesterInfoModal && <div style={{ fontSize: 12, color: '#334155' }}>{requesterInfoModal}</div>}
                   {wl && (
                     wl.attachments?.contentHtml ? (
                       <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
