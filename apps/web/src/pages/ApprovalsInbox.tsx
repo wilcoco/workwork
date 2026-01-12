@@ -157,9 +157,9 @@ export function ApprovalsInbox() {
                 )
               )}
               {st === 'PROCESS' && doc?.pendingTask?.description && (
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginTop: 6, background: '#f9fafb' }}>
-                  <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 6 }}>결재 과제 설명</div>
-                  <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
+                <div style={{ border: '2px solid #ea580c', borderRadius: 8, padding: 12, marginTop: 6, background: '#fff7ed' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#c2410c', marginBottom: 6 }}>📋 결재 과제 설명</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#9a3412' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
                 </div>
               )}
               {st === 'PROCESS' && doc?.summaryHtml ? (
@@ -291,9 +291,9 @@ export function ApprovalsInbox() {
                     )
                   )}
                   {st === 'PROCESS' && doc?.pendingTask?.description && (
-                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginTop: 6, background: '#f9fafb' }}>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 6 }}>결재 과제 설명</div>
-                      <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
+                    <div style={{ border: '2px solid #ea580c', borderRadius: 8, padding: 12, marginTop: 6, background: '#fff7ed' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#c2410c', marginBottom: 6 }}>📋 결재 과제 설명</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#9a3412' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
                     </div>
                   )}
                   {st === 'PROCESS' && doc?.summaryHtml ? (

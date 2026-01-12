@@ -324,9 +324,9 @@ export function ApprovalsSubmit() {
           return (
             <div style={{ marginTop: 8 }}>
               {task?.description && (
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginBottom: 8, background: '#f9fafb' }}>
-                  <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 6 }}>과제 설명</div>
-                  <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(task.description) }} />
+                <div style={{ border: '2px solid #ea580c', borderRadius: 8, padding: 12, marginBottom: 8, background: '#fff7ed' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#c2410c', marginBottom: 6 }}>📋 과제 설명</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#9a3412' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(task.description) }} />
                 </div>
               )}
               <button type="button" style={{ ...ghostBtn, fontSize: 12 }} onClick={openProcessDetail} disabled={processDetailLoading}>
