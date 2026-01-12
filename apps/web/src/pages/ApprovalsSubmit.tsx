@@ -272,6 +272,7 @@ export function ApprovalsSubmit() {
         }
       );
       const body: any = { subjectType: 'Worklog', subjectId: res.id, requestedById };
+      if (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode) body.tags = tags;
       body.steps = steps.map((s) => ({ approverId: s.id }));
       if (dueAt) body.dueAt = new Date(dueAt).toISOString();
       const res2 = await apiJson<any>('/api/approvals', { method: 'POST', body: JSON.stringify(body) });

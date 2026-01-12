@@ -30,6 +30,9 @@ class CreateApprovalDto {
   @ValidateNested({ each: true })
   @Type(() => CreateApprovalStepInput)
   steps?: CreateApprovalStepInput[];
+
+  @IsOptional()
+  tags?: any;
 }
 
 class ActApprovalDto {
@@ -171,6 +174,7 @@ export class ApprovalsController {
         approverId: firstApprover,
         requestedById: dto.requestedById,
         dueAt: dto.dueAt ? new Date(dto.dueAt) : undefined,
+        tags: (dto as any).tags as any,
       },
     });
 
