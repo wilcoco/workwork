@@ -33,22 +33,24 @@ export function ApprovalsInbox() {
       const base = (res.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const enriched = await Promise.all(base.map(async (a: any) => {
         let doc: any = null;
-        const st = a.subjectType;
+        const stRaw = a.subjectType;
+        const st = String(stRaw || '');
+        const stNorm = st.toUpperCase();
         const sid = a.subjectId;
-        if (st === 'Worklog' && sid) {
+        if ((stNorm === 'WORKLOG' || stNorm === 'WORKLOGS') && sid) {
           try { doc = await apiJson<any>(`/api/worklogs/${encodeURIComponent(sid)}`); } catch {}
-        } else if (st === 'CAR_DISPATCH' && sid) {
+        } else if (stNorm === 'CAR_DISPATCH' && sid) {
           try { doc = await apiJson<any>(`/api/car-dispatch/${encodeURIComponent(sid)}`); } catch {}
-        } else if (st === 'ATTENDANCE' && sid) {
+        } else if (stNorm === 'ATTENDANCE' && sid) {
           try { doc = await apiJson<any>(`/api/attendance/${encodeURIComponent(sid)}`); } catch {}
-        } else if (st === 'PROCESS' && sid) {
+        } else if (stNorm === 'PROCESS' && sid) {
           try {
             const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}`);
             const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}/approval-summary`);
             doc = { process: inst, summaryHtml: sum?.html || '', summaryTasks: sum?.tasks || [], pendingTask: sum?.pendingTask || null };
           } catch {}
         }
-        return { ...a, _doc: doc };
+        return { ...a, _doc: doc, _stNorm: stNorm };
       }));
       setItems(enriched);
     } catch (e: any) {
@@ -84,12 +86,12 @@ export function ApprovalsInbox() {
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((a) => {
           const doc = (a as any)._doc as any | null;
-          const st = a.subjectType;
+          const stNorm = String((a as any)._stNorm || a.subjectType || '').toUpperCase();
           let title = '문서 정보 없음';
           let meta = '';
           let when = a.createdAt as string | undefined;
 
-          if (st === 'CAR_DISPATCH' && doc) {
+          if (stNorm === 'CAR_DISPATCH' && doc) {
             title = `배차 신청 - ${doc.carName || ''}`.trim();
             const timeRange = doc.startAt && doc.endAt
               ? `${new Date(doc.startAt).toLocaleString()} ~ ${new Date(doc.endAt).toLocaleString()}`
@@ -103,7 +105,7 @@ export function ApprovalsInbox() {
             ].filter(Boolean);
             meta = parts.join(' · ');
             when = doc.createdAt || doc.startAt || when;
-          } else if (st === 'ATTENDANCE' && doc) {
+          } else if (stNorm === 'ATTENDANCE' && doc) {
             let kind: string;
             if (doc.type === 'OT') kind = 'OT';
             else if (doc.type === 'VACATION') kind = '휴가';
@@ -125,12 +127,14 @@ export function ApprovalsInbox() {
             ].filter(Boolean);
             meta = parts.join(' · ');
             when = doc.createdAt || doc.date || when;
-          } else if (st === 'Worklog' && doc) {
+          } else if (stNorm === 'WORKLOG' && doc) {
             const wl = doc;
             title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
-            meta = `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}`;
+            const who = wl?.createdBy?.name || wl.userName || '';
+            const team = wl?.createdBy?.orgUnit?.name || wl.teamName || '';
+            meta = `${who}${team ? ` · ${team}` : ''}`;
             when = wl?.date || wl?.createdAt || when;
-          } else if (st === 'PROCESS' && doc) {
+          } else if (stNorm === 'PROCESS' && doc) {
             const inst = doc.process;
             title = `프로세스 결재 - ${(inst?.title || '').trim()}`;
             const parts = [
@@ -149,20 +153,20 @@ export function ApprovalsInbox() {
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
-              {st === 'Worklog' && doc && (
+              {stNorm === 'WORKLOG' && doc && (
                 doc.attachments?.contentHtml ? (
                   <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(doc.attachments.contentHtml) }} />
                 ) : (
                   <div style={{ color: '#334155', marginTop: 6 }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
                 )
               )}
-              {st === 'PROCESS' && doc?.pendingTask?.description && (
+              {stNorm === 'PROCESS' && doc?.pendingTask?.description && (
                 <div style={{ border: '2px solid #16a34a', borderRadius: 8, padding: 12, marginTop: 6, background: '#f0fdf4' }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: '#15803d', marginBottom: 6 }}>📋 결재 과제 설명</div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
                 </div>
               )}
-              {st === 'PROCESS' && doc?.summaryHtml ? (
+              {stNorm === 'PROCESS' && doc?.summaryHtml ? (
                 <div
                   className="rich-content"
                   style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }}
@@ -183,12 +187,13 @@ export function ApprovalsInbox() {
                   }}
                 />
               ) : null}
-              {st === 'Worklog' && doc?.attachments?.files?.length ? (
+              {stNorm === 'WORKLOG' && doc?.attachments?.files?.length ? (
                 <div className="attachments" style={{ marginTop: 8 }}>
                   {doc.attachments.files.map((f: any, i: number) => {
-                    const url = absLink(f.url as string);
-                    const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-                    const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+                    const raw = pickFileUrl(f);
+                    const url = absLink(raw);
+                    const name = pickFileName(f, url);
+                    const isImg = isImageAttachment(f, url);
                     return (
                       <div key={(f.filename || f.url) + i} className="attachment-item">
                         {isImg ? (
@@ -218,12 +223,12 @@ export function ApprovalsInbox() {
             {(() => {
               const n = active;
               const doc = (n as any)._doc as any | null;
-              const st = n.subjectType;
+              const stNorm = String((n as any)._stNorm || n.subjectType || '').toUpperCase();
               let title = '문서 정보 없음';
               let meta = '';
               let when = n.createdAt as string | undefined;
 
-              if (st === 'CAR_DISPATCH' && doc) {
+              if (stNorm === 'CAR_DISPATCH' && doc) {
                 title = `배차 신청 - ${doc.carName || ''}`.trim();
                 const timeRange = doc.startAt && doc.endAt
                   ? `${new Date(doc.startAt).toLocaleString()} ~ ${new Date(doc.endAt).toLocaleString()}`
@@ -237,7 +242,7 @@ export function ApprovalsInbox() {
                 ].filter(Boolean);
                 meta = parts.join(' · ');
                 when = doc.createdAt || doc.startAt || when;
-              } else if (st === 'ATTENDANCE' && doc) {
+              } else if (stNorm === 'ATTENDANCE' && doc) {
                 let kind: string;
                 if (doc.type === 'OT') kind = 'OT';
                 else if (doc.type === 'VACATION') kind = '휴가';
@@ -259,12 +264,14 @@ export function ApprovalsInbox() {
                 ].filter(Boolean);
                 meta = parts.join(' · ');
                 when = doc.createdAt || doc.date || when;
-              } else if (st === 'Worklog' && doc) {
+              } else if (stNorm === 'WORKLOG' && doc) {
                 const wl = doc;
                 title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
-                meta = `${wl.userName || ''}${wl.teamName ? ` · ${wl.teamName}` : ''}`;
+                const who = wl?.createdBy?.name || wl.userName || '';
+                const team = wl?.createdBy?.orgUnit?.name || wl.teamName || '';
+                meta = `${who}${team ? ` · ${team}` : ''}`;
                 when = wl?.date || wl?.createdAt || when;
-              } else if (st === 'PROCESS' && doc) {
+              } else if (stNorm === 'PROCESS' && doc) {
                 const inst = doc.process;
                 title = `프로세스 결재 - ${(inst?.title || '').trim()}`;
                 const parts = [
@@ -283,20 +290,20 @@ export function ApprovalsInbox() {
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
                   </div>
                   {meta && <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>}
-                  {st === 'Worklog' && doc && (
+                  {stNorm === 'WORKLOG' && doc && (
                     doc.attachments?.contentHtml ? (
                       <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(doc.attachments.contentHtml) }} />
                     ) : (
                       <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
                     )
                   )}
-                  {st === 'PROCESS' && doc?.pendingTask?.description && (
+                  {stNorm === 'PROCESS' && doc?.pendingTask?.description && (
                     <div style={{ border: '2px solid #16a34a', borderRadius: 8, padding: 12, marginTop: 6, background: '#f0fdf4' }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: '#15803d', marginBottom: 6 }}>📋 결재 과제 설명</div>
                       <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
                     </div>
                   )}
-                  {st === 'PROCESS' && doc?.summaryHtml ? (
+                  {stNorm === 'PROCESS' && doc?.summaryHtml ? (
                     <div
                       className="rich-content"
                       style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }}
@@ -317,12 +324,13 @@ export function ApprovalsInbox() {
                       }}
                     />
                   ) : null}
-                  {st === 'Worklog' && doc?.attachments?.files?.length ? (
+                  {stNorm === 'WORKLOG' && doc?.attachments?.files?.length ? (
                     <div className="attachments" style={{ marginTop: 8 }}>
                       {doc.attachments.files.map((f: any, i: number) => {
-                        const url = absLink(f.url as string);
-                        const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-                        const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+                        const raw = pickFileUrl(f);
+                        const url = absLink(raw);
+                        const name = pickFileName(f, url);
+                        const isImg = isImageAttachment(f, url);
                         return (
                           <div key={(f.filename || f.url) + i} className="attachment-item" style={{ marginBottom: 6 }}>
                             {isImg ? (
@@ -409,12 +417,18 @@ export function ApprovalsInbox() {
                 <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 8 }}>첨부파일</div>
                 <div style={{ display: 'grid', gap: 6 }}>
                   {worklogPopup.files.map((f: any, i: number) => {
-                    const url = absLink(f.url as string);
-                    const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
+                    const raw = pickFileUrl(f);
+                    const url = absLink(raw);
+                    const name = pickFileName(f, url);
+                    const isImg = isImageAttachment(f, url);
                     return (
-                      <a key={i} href={url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73', fontSize: 13, textDecoration: 'underline' }}>
-                        {name}
-                      </a>
+                      isImg ? (
+                        <img key={i} src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
+                      ) : (
+                        <a key={i} href={url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73', fontSize: 13, textDecoration: 'underline' }}>
+                          {name}
+                        </a>
+                      )
                     );
                   })}
                 </div>
@@ -500,6 +514,35 @@ function absLink(url: string): string {
   if (!url) return url;
   if (/^https?:\/\//i.test(url)) return url;
   return apiUrl(url);
+}
+
+function pickFileUrl(f: any): string {
+  if (!f) return '';
+  if (typeof f === 'string') return f;
+  return String(f.url || f.path || f.href || f.downloadUrl || '');
+}
+
+function pickFileName(f: any, url: string): string {
+  if (f && typeof f === 'object') {
+    const n = f.name || f.originalName || f.filename;
+    if (n) return String(n);
+  }
+  try {
+    const last = decodeURIComponent((url.split('/').pop() || url));
+    return last || url;
+  } catch {
+    return url;
+  }
+}
+
+function isImageAttachment(f: any, url: string): boolean {
+  if (f && typeof f === 'object') {
+    const t = String(f.type || '').toLowerCase();
+    if (t.startsWith('image/')) return true;
+    const n = String(f.name || f.originalName || f.filename || '').toLowerCase();
+    if (/(png|jpe?g|gif|webp|bmp|svg)$/.test(n)) return true;
+  }
+  return /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
 }
 
 function statusLabel(s?: string): string {
