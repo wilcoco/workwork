@@ -516,9 +516,9 @@ export function WorklogQuickNew() {
               return (
                 <div style={{ marginTop: 8 }}>
                   {selectedTask?.description && (
-                    <div style={{ border: '2px solid #ea580c', borderRadius: 8, padding: 12, marginBottom: 8, background: '#fff7ed' }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#c2410c', marginBottom: 6 }}>📋 과제 설명</div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#9a3412' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(selectedTask.description) }} />
+                    <div style={{ border: '2px solid #16a34a', borderRadius: 8, padding: 12, marginBottom: 8, background: '#f0fdf4' }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#15803d', marginBottom: 6 }}>📋 과제 설명</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(selectedTask.description) }} />
                     </div>
                   )}
                   <button type="button" className="btn btn-ghost" style={{ fontSize: 12 }} onClick={openProcessDetail} disabled={processDetailLoading}>
