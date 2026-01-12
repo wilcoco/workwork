@@ -264,33 +264,101 @@ export class ProcessesController {
     return req.id as string;
   }
 
-  private async buildApprovalHtml(tx: any, instanceId: string): Promise<string> {
+  private async buildApprovalData(tx: any, instanceId: string): Promise<{ html: string; tasks: any[] }> {
     const inst = await (tx as any).processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true, template: true } });
     const tasks = await (tx as any).processTaskInstance.findMany({ where: { instanceId }, orderBy: [{ stageLabel: 'asc' as any }, { createdAt: 'asc' as any }] });
     const completed = tasks.filter((x: any) => String(x.status).toUpperCase() === 'COMPLETED');
-    const wlIds = completed.map((x: any) => x.worklogId).filter(Boolean) as string[];
-    const wls = wlIds.length ? await (tx as any).worklog.findMany({ where: { id: { in: wlIds } } }) : [];
-    const wlMap = new Map<string, any>();
-    for (const w of wls) wlMap.set(w.id, w);
+    
+    // Collect all worklog IDs from tasks (both legacy worklogId and new worklogs relation)
+    const taskIds = completed.map((t: any) => t.id);
+    let allWorklogs: any[] = [];
+    if (taskIds.length) {
+      allWorklogs = await (tx as any).worklog.findMany({
+        where: { processTaskInstanceId: { in: taskIds } },
+        include: { createdBy: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'asc' as any },
+      });
+    }
+    // Also fetch legacy worklogId references
+    const legacyWlIds = completed.map((x: any) => x.worklogId).filter(Boolean) as string[];
+    if (legacyWlIds.length) {
+      const legacyWls = await (tx as any).worklog.findMany({
+        where: { id: { in: legacyWlIds } },
+        include: { createdBy: { select: { id: true, name: true } } },
+      });
+      // Merge without duplicates
+      const existingIds = new Set(allWorklogs.map((w: any) => w.id));
+      for (const w of legacyWls) {
+        if (!existingIds.has(w.id)) allWorklogs.push(w);
+      }
+    }
+    
+    // Group worklogs by task
+    const wlByTask = new Map<string, any[]>();
+    for (const w of allWorklogs) {
+      const tid = w.processTaskInstanceId;
+      if (tid) {
+        wlByTask.set(tid, [...(wlByTask.get(tid) || []), w]);
+      }
+    }
+    // Also map legacy worklogId
+    for (const t of completed) {
+      if (t.worklogId) {
+        const wl = allWorklogs.find((w: any) => w.id === t.worklogId);
+        if (wl && !wlByTask.get(t.id)?.some((w: any) => w.id === wl.id)) {
+          wlByTask.set(t.id, [...(wlByTask.get(t.id) || []), wl]);
+        }
+      }
+    }
+    
     const safe = (s: any) => (s == null ? '' : String(s));
     const row = (cols: string[]) => `<tr>${cols.map((c) => `<td style="padding:4px 6px;border:1px solid #e5e7eb;vertical-align:top;">${c}</td>`).join('')}</tr>`;
     const head = (cols: string[]) => `<tr>${cols.map((c) => `<th style=\"padding:6px;border:1px solid #e5e7eb;background:#f9fafb;text-align:left;\">${c}</th>`).join('')}</tr>`;
+    
+    const taskData: any[] = [];
     const rows = completed.map((t: any, idx: number) => {
-      const wl = t.worklogId ? wlMap.get(t.worklogId) : null;
+      const taskWorklogs = wlByTask.get(t.id) || [];
       const when = t.actualEndAt ? new Date(t.actualEndAt).toLocaleString() : '';
-      const html = (wl?.attachments as any)?.contentHtml || '';
-      return row([String(idx + 1), `${safe(t.name)}${t.stageLabel ? ` · ${safe(t.stageLabel)}` : ''}`, safe(t.taskType), when, html ? `<div style=\"font-size:12px;color:#334155;\">${html}</div>` : '-']);
+      
+      // Build worklog links HTML
+      let wlHtml = '-';
+      if (taskWorklogs.length) {
+        wlHtml = taskWorklogs.map((wl: any) => {
+          const title = ((wl.note || '').split('\n')[0] || wl.title || '업무일지').substring(0, 30);
+          return `<span data-worklog-id="${wl.id}" style="color:#0F3D73;cursor:pointer;text-decoration:underline;">${title}${title.length >= 30 ? '...' : ''}</span>`;
+        }).join(', ');
+      }
+      
+      taskData.push({
+        id: t.id,
+        name: t.name,
+        stageLabel: t.stageLabel,
+        taskType: t.taskType,
+        actualEndAt: t.actualEndAt,
+        worklogs: taskWorklogs.map((wl: any) => ({
+          id: wl.id,
+          title: (wl.note || '').split('\n')[0] || wl.title || '업무일지',
+          note: wl.note,
+          contentHtml: (wl.attachments as any)?.contentHtml || '',
+          createdAt: wl.createdAt,
+          createdBy: wl.createdBy,
+        })),
+      });
+      
+      return row([String(idx + 1), `${safe(t.name)}${t.stageLabel ? ` · ${safe(t.stageLabel)}` : ''}`, safe(t.taskType), when, wlHtml]);
     });
+    
     const header = `<div style=\"font-weight:700;font-size:16px;margin:6px 0;\">${safe(inst?.title)}</div>`;
-    const table = `<table style=\"border-collapse:collapse;width:100%;margin-top:8px;\">${head(['#','단계/과제','유형','완료시각','관련 업무일지 요약'])}${rows.join('')}</table>`;
+    const table = `<table style=\"border-collapse:collapse;width:100%;margin-top:8px;\">${head(['#','단계/과제','유형','완료시각','관련 업무일지'])}${rows.join('')}</table>`;
     const meta = `<div style=\"margin:6px 0;color:#64748b;font-size:12px;\">시작: ${inst?.startAt ? new Date(inst.startAt).toLocaleString() : ''} · 시작자: ${safe(inst?.startedBy?.name)}</div>`;
-    return `${header}${meta}${table}`;
+    
+    return { html: `${header}${meta}${table}`, tasks: taskData };
   }
 
   @Get(':id/approval-summary')
   async approvalSummary(@Param('id') id: string) {
-    const html = await this.buildApprovalHtml(this.prisma as any, id);
-    return { html } as any;
+    const data = await this.buildApprovalData(this.prisma as any, id);
+    return data as any;
   }
 
   private async ensureInitiativeForUserProcess(tx: any, userId: string, inst: any, taskName: string): Promise<string> {

@@ -10,6 +10,7 @@ export function ApprovalsInbox() {
   const [active, setActive] = useState<any | null>(null);
   const [comment, setComment] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
+  const [worklogPopup, setWorklogPopup] = useState<{ id: string; title: string; contentHtml: string; note: string; createdAt: string; createdBy?: { name: string } } | null>(null);
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -44,7 +45,7 @@ export function ApprovalsInbox() {
           try {
             const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}`);
             const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}/approval-summary`);
-            doc = { process: inst, summaryHtml: sum?.html || '' };
+            doc = { process: inst, summaryHtml: sum?.html || '', summaryTasks: sum?.tasks || [] };
           } catch {}
         }
         return { ...a, _doc: doc };
@@ -156,7 +157,25 @@ export function ApprovalsInbox() {
                 )
               )}
               {st === 'PROCESS' && doc?.summaryHtml ? (
-                <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.summaryHtml) }} />
+                <div
+                  className="rich-content"
+                  style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }}
+                  dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.summaryHtml) }}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    const wlId = target.getAttribute('data-worklog-id');
+                    if (wlId && doc.summaryTasks) {
+                      for (const t of doc.summaryTasks) {
+                        const wl = (t.worklogs || []).find((w: any) => w.id === wlId);
+                        if (wl) {
+                          e.stopPropagation();
+                          setWorklogPopup(wl);
+                          break;
+                        }
+                      }
+                    }
+                  }}
+                />
               ) : null}
               {st === 'Worklog' && doc?.attachments?.files?.length ? (
                 <div className="attachments" style={{ marginTop: 8 }}>
@@ -266,7 +285,25 @@ export function ApprovalsInbox() {
                     )
                   )}
                   {st === 'PROCESS' && doc?.summaryHtml ? (
-                    <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.summaryHtml) }} />
+                    <div
+                      className="rich-content"
+                      style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }}
+                      dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.summaryHtml) }}
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        const wlId = target.getAttribute('data-worklog-id');
+                        if (wlId && doc.summaryTasks) {
+                          for (const t of doc.summaryTasks) {
+                            const wl = (t.worklogs || []).find((w: any) => w.id === wlId);
+                            if (wl) {
+                              e.stopPropagation();
+                              setWorklogPopup(wl);
+                              break;
+                            }
+                          }
+                        }
+                      }}
+                    />
                   ) : null}
                   {st === 'Worklog' && doc?.attachments?.files?.length ? (
                     <div className="attachments" style={{ marginTop: 8 }}>
@@ -327,6 +364,37 @@ export function ApprovalsInbox() {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+      {worklogPopup && (
+        <div style={modalOverlay} onClick={() => setWorklogPopup(null)}>
+          <div style={{ ...modalBody, maxWidth: 700 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <b style={{ fontSize: 16 }}>{worklogPopup.title?.substring(0, 50) || '업무일지'}</b>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
+                {worklogPopup.createdAt ? new Date(worklogPopup.createdAt).toLocaleString() : ''}
+              </span>
+            </div>
+            {worklogPopup.createdBy?.name && (
+              <div style={{ fontSize: 12, color: '#475569', marginBottom: 8 }}>작성자: {worklogPopup.createdBy.name}</div>
+            )}
+            {worklogPopup.contentHtml ? (
+              <div
+                className="rich-content"
+                style={{ border: '1px solid #eee', borderRadius: 8, padding: 12, maxHeight: 400, overflow: 'auto' }}
+                dangerouslySetInnerHTML={{ __html: toSafeHtml(worklogPopup.contentHtml) }}
+              />
+            ) : worklogPopup.note ? (
+              <div style={{ whiteSpace: 'pre-wrap', color: '#334155', padding: 12, background: '#f9fafb', borderRadius: 8 }}>
+                {worklogPopup.note}
+              </div>
+            ) : (
+              <div style={{ color: '#9ca3af', padding: 12 }}>내용 없음</div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <button onClick={() => setWorklogPopup(null)} style={ghostBtn}>닫기</button>
+            </div>
           </div>
         </div>
       )}
