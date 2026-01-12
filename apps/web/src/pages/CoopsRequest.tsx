@@ -265,12 +265,9 @@ export function CoopsRequest() {
       {okMsg && <div style={{ color: '#0F3D73' }}>{okMsg}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
-          <label>팀</label>
-          <select value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input}>
-            {teams.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+          {teamName && (
+            <div style={{ fontSize: 12, color: '#64748b' }}>요청자 소속: <b>{teamName}</b></div>
+          )}
           <label>제목</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} style={input} />
           <div style={{ display: 'grid', gap: 8 }}>

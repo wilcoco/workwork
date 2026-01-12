@@ -134,6 +134,16 @@ export function CoopsStatus() {
                     ⏱️ 처리 시간: {Math.round((new Date(it.resolvedAt).getTime() - new Date(it.createdAt).getTime()) / (1000 * 60 * 60))}시간
                   </div>
                 )}
+                {it.responseWorklogId && (
+                  <div style={{ marginTop: 6 }}>
+                    <a
+                      href={`/worklog/${it.responseWorklogId}`}
+                      style={{ fontSize: 12, color: '#0369a1', textDecoration: 'underline' }}
+                    >
+                      📋 대응 업무일지 보기
+                    </a>
+                  </div>
+                )}
               </div>
             );
           })}
