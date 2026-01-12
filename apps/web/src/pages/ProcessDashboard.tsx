@@ -318,43 +318,47 @@ export function ProcessDashboard() {
                   }
                   return null;
                 })()}
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
-                  <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #e5e7eb' }}>업무 흐름도</div>
-                  {detailLoading[it.id] ? (
-                    <div style={{ padding: 10, fontSize: 12, color: '#64748b' }}>불러오는 중…</div>
-                  ) : (
-                    (() => {
-                      const d = detailMap[it.id];
-                      if (!d?.template?.bpmnJson) return <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>BPMN 정보가 없습니다.</div>;
-                      return <div style={{ padding: 12 }}><BpmnMiniView bpmn={d.template.bpmnJson} height={400} /></div>;
-                    })()
-                  )}
-                </div>
-                {(() => {
-                  const d = detailMap[it.id];
-                  const tmplTasks = (d?.template?.tasks || []) as any[];
-                  if (!tmplTasks.length) return null;
-                  return (
-                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 12 }}>
-                      <div style={{ fontWeight: 600, marginBottom: 8 }}>노드별 설명</div>
-                      <div style={{ display: 'grid', gap: 10 }}>
-                        {tmplTasks.map((tt: any) => (
-                          <div key={tt.id} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 10 }}>
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                              <span style={{ fontWeight: 600 }}>{tt.name || '-'}</span>
-                              <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{tt.taskType}</span>
-                            </div>
-                            {tt.description ? (
-                              <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(tt.description) }} />
-                            ) : (
-                              <div style={{ fontSize: 12, color: '#9ca3af' }}>설명 없음</div>
-                            )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #e5e7eb' }}>업무 흐름도</div>
+                    {detailLoading[it.id] ? (
+                      <div style={{ padding: 10, fontSize: 12, color: '#64748b' }}>불러오는 중…</div>
+                    ) : (
+                      (() => {
+                        const d = detailMap[it.id];
+                        if (!d?.template?.bpmnJson) return <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>BPMN 정보가 없습니다.</div>;
+                        return <div style={{ padding: 12 }}><BpmnMiniView bpmn={d.template.bpmnJson} height={400} /></div>;
+                      })()
+                    )}
+                  </div>
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #e5e7eb' }}>노드별 설명</div>
+                    <div style={{ padding: 12, maxHeight: 400, overflowY: 'auto' }}>
+                      {(() => {
+                        const d = detailMap[it.id];
+                        const tmplTasks = (d?.template?.tasks || []) as any[];
+                        if (!tmplTasks.length) return <div style={{ fontSize: 12, color: '#9ca3af' }}>노드 정보가 없습니다.</div>;
+                        return (
+                          <div style={{ display: 'grid', gap: 10 }}>
+                            {tmplTasks.map((tt: any) => (
+                              <div key={tt.id} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 10 }}>
+                                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                                  <span style={{ fontWeight: 600 }}>{tt.name || '-'}</span>
+                                  <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{tt.taskType}</span>
+                                </div>
+                                {tt.description ? (
+                                  <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(tt.description) }} />
+                                ) : (
+                                  <div style={{ fontSize: 12, color: '#9ca3af' }}>설명 없음</div>
+                                )}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })()}
                     </div>
-                  );
-                })()}
+                  </div>
+                </div>
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
                   <div style={{ padding: '6px 8px', background: '#f9fafb', fontWeight: 700, fontSize: 12 }}>과제 진행 현황</div>
                   {detailLoading[it.id] && <div style={{ padding: 10, fontSize: 12, color: '#64748b' }}>불러오는 중…</div>}

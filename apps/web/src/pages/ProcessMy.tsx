@@ -176,12 +176,40 @@ export function ProcessMy() {
                   </div>
                 )}
 
-                {detail.template?.bpmnJson && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
                     <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #e5e7eb' }}>업무 흐름도</div>
-                    <div style={{ padding: 12 }}><BpmnMiniView bpmn={detail.template.bpmnJson} height={400} /></div>
+                    {detail.template?.bpmnJson ? (
+                      <div style={{ padding: 12 }}><BpmnMiniView bpmn={detail.template.bpmnJson} height={400} /></div>
+                    ) : (
+                      <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>BPMN 정보가 없습니다.</div>
+                    )}
                   </div>
-                )}
+                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+                    <div style={{ padding: '8px 12px', background: '#f9fafb', fontWeight: 700, fontSize: 13, borderBottom: '1px solid #e5e7eb' }}>노드별 설명</div>
+                    <div style={{ padding: 12, maxHeight: 400, overflowY: 'auto' }}>
+                      {(detail.template?.tasks || []).length > 0 ? (
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          {(detail.template?.tasks || []).map((tt) => (
+                            <div key={tt.id} style={{ border: '1px solid #eef2f7', borderRadius: 6, padding: 10 }}>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                                <span style={{ fontWeight: 600 }}>{tt.name || '-'}</span>
+                                <span style={{ fontSize: 11, color: '#6b7280', background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{tt.taskType}</span>
+                              </div>
+                              {tt.description ? (
+                                <div style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(tt.description) }} />
+                              ) : (
+                                <div style={{ fontSize: 12, color: '#9ca3af' }}>설명 없음</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: '#9ca3af' }}>노드 정보가 없습니다.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontWeight: 600, marginBottom: 12 }}>과제 진행 현황</div>
