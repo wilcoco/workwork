@@ -202,6 +202,14 @@ export function ApprovalsSubmit() {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
+      // Some browsers (notably Safari) may block file pickers when the input is not in DOM.
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      input.style.top = '0';
+      input.style.width = '1px';
+      input.style.height = '1px';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
       input.onchange = async () => {
         try {
           const file = input.files?.[0];
@@ -217,6 +225,8 @@ export function ApprovalsSubmit() {
           }
         } catch (e: any) {
           setError(e?.message || '이미지 업로드 실패');
+        } finally {
+          try { document.body.removeChild(input); } catch {}
         }
       };
       input.click();
@@ -387,7 +397,8 @@ export function ApprovalsSubmit() {
             ref={attachInputRef}
             type="file"
             multiple
-            style={{ display: 'none' }}
+            // Do not use display:none; some browsers block programmatic click for file inputs.
+            style={{ position: 'fixed', left: -9999, top: 0, width: 1, height: 1, opacity: 0 }}
             onChange={(e) => {
               addAttachmentFiles(e.currentTarget.files);
               e.currentTarget.value = '';
