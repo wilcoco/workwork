@@ -1,4 +1,4 @@
-import { apiFetch, API_BASE } from './api';
+import { apiFetch, API_BASE, apiUrl } from './api';
 
 export type UploadResp = {
   url: string;
@@ -127,10 +127,57 @@ export async function uploadFile(file: File): Promise<UploadResp> {
   }
   const fd = new FormData();
   fd.append('file', file);
-  const res = await apiFetch('/api/uploads', { method: 'POST', body: fd });
-  const text = await res.text();
+
+  const isChromeDesktop = (() => {
+    try {
+      const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+      const isChrome = /Chrome\//.test(ua) && !/Edg\//.test(ua) && !/OPR\//.test(ua);
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+      return isChrome && !isMobile;
+    } catch {
+      return false;
+    }
+  })();
+
+  async function postViaXhr(): Promise<{ status: number; text: string }> {
+    const url = apiUrl('/api/uploads');
+    return await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', url, true);
+      xhr.responseType = 'text';
+      xhr.onload = () => {
+        const status = xhr.status || 0;
+        const text = typeof xhr.response === 'string' ? xhr.response : (xhr.responseText || '');
+        resolve({ status, text });
+      };
+      xhr.onerror = () => {
+        reject(new Error('upload failed'));
+      };
+      xhr.onabort = () => {
+        reject(new Error('upload aborted'));
+      };
+      xhr.send(fd);
+    });
+  }
+
+  let status: number;
+  let text: string;
+  if (isChromeDesktop) {
+    try {
+      ({ status, text } = await postViaXhr());
+    } catch {
+      const res = await apiFetch('/api/uploads', { method: 'POST', body: fd });
+      status = res.status;
+      text = await res.text();
+    }
+  } else {
+    const res = await apiFetch('/api/uploads', { method: 'POST', body: fd });
+    status = res.status;
+    text = await res.text();
+  }
+
   const data = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new Error((data?.message as any) || text || `${res.status}`);
+  if (!(status >= 200 && status < 300)) throw new Error((data?.message as any) || text || `${status}`);
   const out = data as UploadResp;
   if (out && out.url && !/^https?:\/\//i.test(out.url)) {
     // If server gave '/files/...' without global prefix, fix to '/api/files/...'
