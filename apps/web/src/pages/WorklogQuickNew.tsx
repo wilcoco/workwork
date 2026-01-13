@@ -473,7 +473,7 @@ export function WorklogQuickNew() {
                   const list = myTasks.filter((t) => {
                     if (t.isKpi) return false;
                     const obj = String(t.objTitle || '');
-                    if (obj.startsWith('Auto Objective')) return false;
+                    if (obj.toLowerCase().includes('auto objective')) return false;
                     return true;
                   });
                   return list.map((t) => {
