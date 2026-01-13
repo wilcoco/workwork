@@ -1,18 +1,10 @@
 import { BadRequestException, Controller, Get, Param, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import * as fs from 'fs';
+import { memoryStorage } from 'multer';
+import { extname } from 'path';
 import type { Response } from 'express';
+import { randomUUID } from 'crypto';
 import { PrismaService } from './prisma.service';
-
-function ensureDir(dir: string) {
-  try {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  } catch {
-    // ignore
-  }
-}
 
 @Controller()
 export class UploadsController {
@@ -21,44 +13,43 @@ export class UploadsController {
   @Post('uploads')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const dir = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
-          ensureDir(dir);
-          cb(null, dir);
-        },
-        filename: (req, file, cb) => {
-          const base = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname || '');
-          cb(null, base + ext);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
     })
   )
   async upload(@UploadedFile() file: Express.Multer.File) {
     if (!file) throw new BadRequestException('file is required');
-    // 1) Read bytes for DB persistence (from disk storage path)
-    const dir = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
-    const path = join(dir, file.filename);
-    let data: Buffer | undefined;
-    try {
-      data = fs.readFileSync(path);
-    } catch {
-      data = file.buffer as any; // fallback when memory storage is used
-    }
+    const ext = extname(file.originalname || '');
+    const filename = `${randomUUID()}${ext}`;
+
+    // 1) Read bytes for DB persistence
+    const data = file.buffer as any as Buffer | undefined;
     if (!data) throw new BadRequestException('unable to read uploaded file');
 
     // 2) Save to DB (Upload model)
-    const rec = await this.prisma.upload.create({
-      data: {
-        filename: file.filename,
-        originalName: file.originalname || null,
-        contentType: file.mimetype || null,
-        size: file.size,
-        data,
-      } as any,
-    });
+    let rec: any;
+    try {
+      rec = await this.prisma.upload.create({
+        data: {
+          filename,
+          originalName: file.originalname || null,
+          contentType: file.mimetype || null,
+          size: file.size,
+          data,
+        } as any,
+      });
+    } catch (e) {
+      try {
+        console.error('[uploads] create failed', {
+          message: (e as any)?.message,
+          code: (e as any)?.code,
+          originalName: file.originalname,
+          contentType: file.mimetype,
+          size: file.size,
+        });
+      } catch {}
+      throw new BadRequestException('upload failed');
+    }
 
     // 3) Return DB-backed URL by default (respect global prefix 'api')
     const basePath = process.env.PUBLIC_UPLOAD_BASE || '/api/files/';
@@ -69,7 +60,7 @@ export class UploadsController {
       name: file.originalname,
       size: file.size,
       type: file.mimetype,
-      filename: file.filename,
+      filename,
     };
   }
 
