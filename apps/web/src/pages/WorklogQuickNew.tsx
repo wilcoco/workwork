@@ -46,6 +46,12 @@ export function WorklogQuickNew() {
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
   const [tags, setTags] = useState<DocumentTagsValue>({});
 
+  function canUpdateKrForTask(t: { isKpi?: boolean; krOwnerId?: string | null } | undefined) {
+    if (!t) return false;
+    if (t.isKpi) return myRole === 'MANAGER';
+    return !!(t.krOwnerId && t.krOwnerId === myUserId);
+  }
+
   useEffect(() => {
     const stored = localStorage.getItem('teamName') || '';
     if (stored) setTeamName(stored);
@@ -62,10 +68,10 @@ export function WorklogQuickNew() {
         try {
           const mine = await apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`);
           const mokrs = await apiJson<{ items: any[] }>(`/api/okrs/my?userId=${encodeURIComponent(uid)}`);
-          const meta: Record<string, { objTitle: string; krTitle: string; isKpi: boolean; krTarget: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }> = {};
+          const meta: Record<string, { objTitle: string; krTitle: string; isKpi: boolean; krTarget: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST'; krOwnerId?: string | null }> = {};
           for (const o of (mokrs.items || [])) {
             for (const kr of (o.keyResults || [])) {
-              meta[kr.id] = { objTitle: o.title, krTitle: kr.title, isKpi: !!o.pillar, krTarget: typeof kr.target === 'number' ? kr.target : null, krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction };
+              meta[kr.id] = { objTitle: o.title, krTitle: kr.title, isKpi: !!o.pillar, krTarget: typeof kr.target === 'number' ? kr.target : null, krUnit: kr.unit, krBaseline: (typeof kr.baseline === 'number' ? kr.baseline : null), krDirection: (kr as any)?.direction, krOwnerId: (kr as any)?.ownerId ?? null };
             }
           }
           const its = (mine.items || []).map((ii: any) => {
@@ -80,7 +86,7 @@ export function WorklogQuickNew() {
               return (parts.length > 1 ? parts[parts.length - 1] : ii.title) as string;
             })();
             const title = (ii.title as string);
-            return { id: ii.id, title, initTitle, objTitle: mm?.objTitle, krTitle: mm?.krTitle, isKpi: mm?.isKpi, period: pc, startAt: s, krId: ii.keyResultId, krTarget: mm?.krTarget ?? null, krUnit: mm?.krUnit, krBaseline: mm?.krBaseline ?? null, krDirection: mm?.krDirection };
+            return { id: ii.id, title, initTitle, objTitle: mm?.objTitle, krTitle: mm?.krTitle, isKpi: mm?.isKpi, period: pc, startAt: s, krId: ii.keyResultId, krTarget: mm?.krTarget ?? null, krUnit: mm?.krUnit, krBaseline: mm?.krBaseline ?? null, krDirection: mm?.krDirection, krOwnerId: mm?.krOwnerId ?? null };
           });
           setMyTasks(its);
         } catch {}
@@ -309,27 +315,39 @@ export function WorklogQuickNew() {
       const selected = isInit ? [...teamTasks, ...myTasks].find((x) => x.id === selectedId) : undefined;
       // Progress: initiative done (help 선택 시에는 제외)
       if (isInit && initiativeDone) {
-        await apiJson('/api/progress', {
-          method: 'POST',
-          body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: selectedId, actorId: userId, worklogId: wl.id, initiativeDone: true, note: title || undefined, at: date }),
-        });
+        const mine = myTasks.some((x) => x.id === selectedId);
+        const team = teamTasks.some((x) => x.id === selectedId);
+        const canUpdateInit = mine ? true : (team ? myRole === 'MANAGER' : false);
+        if (canUpdateInit) {
+          try {
+            await apiJson('/api/progress', {
+              method: 'POST',
+              body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: selectedId, actorId: userId, worklogId: wl.id, initiativeDone: true, note: title || undefined, at: date }),
+            });
+          } catch {}
+        }
       }
       // Progress: KR value (explicit or achieved) — help 선택 시에는 KR가 없으므로 그대로 조건 유지
       if ((isKR || selected?.krId) && (krValue !== '' || krAchieved)) {
-        let valueToSend: number | null = null;
-        if (krValue !== '') {
-          valueToSend = Number(krValue);
-        } else if (krAchieved) {
-          const tgt = isKR
-            ? (teamKpis.find((k) => k.id === selectedId)?.krTarget ?? null)
-            : (typeof selected!.krTarget === 'number' ? selected!.krTarget : null);
-          if (tgt != null) valueToSend = tgt;
-        }
-        if (valueToSend != null) {
-          await apiJson('/api/progress', {
-            method: 'POST',
-            body: JSON.stringify({ subjectType: 'KR', subjectId: isKR ? selectedId : (selected as any).krId, actorId: userId, worklogId: wl.id, krValue: valueToSend, note: title || undefined, at: date }),
-          });
+        const canUpdateKr = isKR ? (myRole === 'MANAGER') : canUpdateKrForTask(selected as any);
+        if (canUpdateKr) {
+          let valueToSend: number | null = null;
+          if (krValue !== '') {
+            valueToSend = Number(krValue);
+          } else if (krAchieved) {
+            const tgt = isKR
+              ? (teamKpis.find((k) => k.id === selectedId)?.krTarget ?? null)
+              : (typeof selected!.krTarget === 'number' ? selected!.krTarget : null);
+            if (tgt != null) valueToSend = tgt;
+          }
+          if (valueToSend != null) {
+            try {
+              await apiJson('/api/progress', {
+                method: 'POST',
+                body: JSON.stringify({ subjectType: 'KR', subjectId: isKR ? selectedId : (selected as any).krId, actorId: userId, worklogId: wl.id, krValue: valueToSend, note: title || undefined, at: date }),
+              });
+            } catch {}
+          }
         }
       }
       // Help: 업무 요청 선택으로 생성된 업무일지인 경우, 해당 HelpTicket을 업무 요청 완료로 표시하고 대응 업무일지 링크를 저장한다.
@@ -457,6 +475,9 @@ export function WorklogQuickNew() {
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
+              setError(null);
+              setKrValue('');
+              setKrAchieved(false);
               // Keep current date as-is (default is today in KST)
             }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="" disabled>대상을 선택하세요</option>
@@ -478,9 +499,13 @@ export function WorklogQuickNew() {
                   });
                   return list.map((t) => {
                     const initLabel = String(t.initTitle || (() => { const parts = String(t.title||'').split('/'); return parts.length>1? parts[parts.length-1].trim() : (t.title||''); })());
-                    const prefix = `${t.objTitle || ''} / ${(t.isKpi ? 'KPI' : 'KR')}: ${t.krTitle || ''}`.trim();
+                    const parts: string[] = [];
+                    if (t.objTitle) parts.push(String(t.objTitle));
+                    if (t.krTitle) parts.push(`${t.isKpi ? 'KPI' : 'KR'}: ${t.krTitle}`);
+                    const prefix = parts.join(' / ');
+                    const label = prefix ? `${prefix} / ${initLabel}` : initLabel;
                     return (
-                      <option key={`init-${t.id}`} value={`init:${t.id}`}>{prefix} / {initLabel}</option>
+                      <option key={`init-${t.id}`} value={`init:${t.id}`}>{label}</option>
                     );
                   });
                 })()}
@@ -570,7 +595,10 @@ export function WorklogQuickNew() {
               const sId = id;
               const mine = myTasks.some((x) => x.id === sId);
               const team = teamTasks.some((x) => x.id === sId);
-              if (mine) return false;
+              if (mine) {
+                const t = myTasks.find((x) => x.id === sId) as any;
+                return !canUpdateKrForTask(t);
+              }
               if (team) return myRole !== 'MANAGER';
               return true;
             })();
