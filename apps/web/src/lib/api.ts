@@ -38,8 +38,9 @@ export function apiFetch(input: string, init?: RequestInit) {
   const url = apiUrl(input);
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const headers = new Headers(init?.headers || {});
-  if (token) headers.set('Authorization', `Bearer ${token}`);
   const body: any = (init as any)?.body;
+  const isUpload = (body instanceof FormData) && String(input || '').startsWith('/api/uploads');
+  if (token && !isUpload) headers.set('Authorization', `Bearer ${token}`);
   const method = init?.method || (body instanceof FormData ? 'POST' : undefined);
   return fetch(url, { ...init, method, headers });
 }
