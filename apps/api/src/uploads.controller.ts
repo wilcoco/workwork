@@ -1,8 +1,8 @@
-import { BadRequestException, Controller, Get, Param, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Post, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { extname } from 'path';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { PrismaService } from './prisma.service';
 
@@ -17,10 +17,21 @@ export class UploadsController {
       limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
     })
   )
-  async upload(@UploadedFile() file: Express.Multer.File) {
+  async upload(@UploadedFile() file: Express.Multer.File, @Req() req: Request) {
+    const rid = String((req as any)?.headers?.['x-railway-request-id'] || (req as any)?.headers?.['x-request-id'] || '');
+    const started = Date.now();
     if (!file) throw new BadRequestException('file is required');
     const ext = extname(file.originalname || '');
     const filename = `${randomUUID()}${ext}`;
+
+    try {
+      console.log('[uploads] handler start', {
+        rid,
+        originalName: file.originalname,
+        contentType: file.mimetype,
+        size: file.size,
+      });
+    } catch {}
 
     // 1) Read bytes for DB persistence
     const data = file.buffer as any as Buffer | undefined;
@@ -43,6 +54,7 @@ export class UploadsController {
         console.error('[uploads] create failed', {
           message: (e as any)?.message,
           code: (e as any)?.code,
+          rid,
           originalName: file.originalname,
           contentType: file.mimetype,
           size: file.size,
@@ -55,6 +67,9 @@ export class UploadsController {
     const basePath = process.env.PUBLIC_UPLOAD_BASE || '/api/files/';
     const prefix = basePath.endsWith('/') ? basePath : basePath + '/';
     const dbUrl = `${prefix}${encodeURIComponent(rec.id)}`;
+    try {
+      console.log('[uploads] handler ok', { rid, uploadId: rec.id, ms: Date.now() - started });
+    } catch {}
     return {
       url: dbUrl,
       name: file.originalname,
