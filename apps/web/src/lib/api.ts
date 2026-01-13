@@ -6,15 +6,14 @@ function resolveApiBase(): string {
     base = String(base || '').trim();
     if (!base) throw new Error('VITE_API_BASE is required');
 
-    // Avoid redirects (e.g. http -> https) that may downgrade POST to GET in some environments.
-    // Keep localhost as-is for local dev.
     const isHttpsPage = typeof window !== 'undefined' && window.location?.protocol === 'https:';
     const isLocal = /^(http:\/\/)?(localhost|127\.0\.0\.1|\[::1\])([:/]|$)/i.test(base);
     if (isHttpsPage && !isLocal && base.startsWith('http://')) {
       base = 'https://' + base.slice('http://'.length);
     }
 
-    // Normalize trailing slashes for consistent URL joins.
+    base = base.replace(/\/+$/, '');
+    if (base.endsWith('/api')) base = base.slice(0, -4);
     base = base.replace(/\/+$/, '');
     // eslint-disable-next-line no-console
     console.log('[api] API_BASE', { override: !!override, base });

@@ -202,7 +202,6 @@ export function ApprovalsSubmit() {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
-      // Some browsers (notably Safari) may block file pickers when the input is not in DOM.
       input.style.position = 'fixed';
       input.style.left = '-9999px';
       input.style.top = '0';
@@ -397,7 +396,6 @@ export function ApprovalsSubmit() {
             ref={attachInputRef}
             type="file"
             multiple
-            // Do not use display:none; some browsers block programmatic click for file inputs.
             style={{ position: 'fixed', left: -9999, top: 0, width: 1, height: 1, opacity: 0 }}
             onChange={(e) => {
               addAttachmentFiles(e.currentTarget.files);
