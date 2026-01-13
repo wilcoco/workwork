@@ -19,6 +19,11 @@ async function bootstrap() {
       const url = String(req.originalUrl || req.url || '');
       if (url.startsWith('/api/uploads')) {
         const rid = String(req.headers['x-railway-request-id'] || req.headers['x-request-id'] || randomUUID());
+        try {
+          req._rid = rid;
+          if (!req.headers['x-request-id']) req.headers['x-request-id'] = rid;
+          if (!res.getHeader('x-request-id')) res.setHeader('x-request-id', rid);
+        } catch {}
         const started = Date.now();
         try {
           console.log('[http] uploads start', {
