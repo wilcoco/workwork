@@ -104,12 +104,29 @@ export function App() {
   const SHOW_COOPS = (import.meta.env.VITE_SHOW_COOPS ?? 'true') === 'true';
   return (
     <BrowserRouter>
-      <DeployBanner />
-      <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
-      <div className="container">
-        <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
-      </div>
-      <div className="container page">
+      <AppShell SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
+    </BrowserRouter>
+  );
+}
+
+function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean }) {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const isEmbed = params.get('embed') === '1' || params.get('embed') === 'true';
+
+  return (
+    <>
+      {!isEmbed && <DeployBanner />}
+      {!isEmbed && <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />}
+      {!isEmbed && (
+        <div className="container">
+          <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
+        </div>
+      )}
+      <div
+        className="container page"
+        style={isEmbed ? { maxWidth: '100%', paddingLeft: 0, paddingRight: 0 } : undefined}
+      >
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/worklogs/new" element={<WorklogNew />} />
@@ -162,7 +179,7 @@ export function App() {
           )}
         </Routes>
       </div>
-    </BrowserRouter>
+    </>
   );
 }
 

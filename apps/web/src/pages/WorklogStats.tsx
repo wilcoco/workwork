@@ -324,24 +324,38 @@ export function WorklogStats() {
                                   KR: {kr.keyResultTitle}
                                   <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>· {kr.totalCount}건 · {formatMinutesAsHmKo(kr.totalMinutes)}</span>
                                 </div>
-                                {kr.items.map((it: DetailItem) => (
-                                  <button
-                                    key={it.id}
-                                    type="button"
-                                    onClick={() => setSelectedWorklogId(it.id)}
-                                    style={{ textAlign: 'left', border: selectedWorklogId === it.id ? '2px solid #0F3D73' : '1px solid #e5e7eb', borderRadius: 10, padding: 10, background: '#fff', cursor: 'pointer' }}
-                                  >
-                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
-                                      <div style={{ fontWeight: 700, color: '#0f172a' }}>{it.title || '(제목 없음)'}</div>
-                                      <div style={{ fontSize: 12, color: '#64748b' }}>{formatMinutesAsHmKo(it.timeSpentMinutes)}</div>
-                                    </div>
-                                    <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
-                                      {formatKstDatetime(it.createdAt)}
-                                      {it.initiativeTitle ? ` · ${it.initiativeTitle}` : (it.taskName ? ` · ${it.taskName}` : '')}
-                                    </div>
-                                    {it.excerpt ? <div style={{ marginTop: 6, fontSize: 12, color: '#334155' }}>{it.excerpt}</div> : null}
-                                  </button>
-                                ))}
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                                    gap: 8,
+                                  }}
+                                >
+                                  {kr.items.map((it: DetailItem) => (
+                                    <button
+                                      key={it.id}
+                                      type="button"
+                                      onClick={() => setSelectedWorklogId(it.id)}
+                                      style={{
+                                        textAlign: 'left',
+                                        border: selectedWorklogId === it.id ? '2px solid #0F3D73' : '1px solid #e5e7eb',
+                                        borderRadius: 10,
+                                        padding: 10,
+                                        background: '#fff',
+                                        cursor: 'pointer',
+                                        display: 'grid',
+                                        gap: 6,
+                                        minHeight: 86,
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 800, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.title || '(제목 없음)'}</div>
+                                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 12, color: '#64748b' }}>
+                                        <div style={{ whiteSpace: 'nowrap' }}>{formatKstDatetime(it.createdAt)}</div>
+                                        <div style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}>{formatMinutesAsHmKo(it.timeSpentMinutes)}</div>
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -356,7 +370,7 @@ export function WorklogStats() {
                 {selectedWorklogId ? (
                   <iframe
                     title="worklog-detail"
-                    src={`/worklogs/${encodeURIComponent(selectedWorklogId)}`}
+                    src={`/worklogs/${encodeURIComponent(selectedWorklogId)}?embed=1`}
                     style={{ width: '100%', height: '100%', border: 'none' }}
                   />
                 ) : (

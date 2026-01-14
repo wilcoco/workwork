@@ -751,7 +751,7 @@ export class WorklogsController {
         initiative: { include: { keyResult: { include: { objective: true } } } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 500,
+      take: 2000,
     });
 
     const mapped = items.map((it: any) => {
