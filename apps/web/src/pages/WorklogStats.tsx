@@ -21,7 +21,22 @@ export function WorklogStats() {
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<{ from: string; to: string; days: number; total: number; teams: Array<{ teamName: string; total: number; members: Array<{ userName: string; count: number; minutes: number }> }> } | null>(null);
+  const [data, setData] = useState<{
+    from: string;
+    to: string;
+    days: number;
+    total: number;
+    teams: Array<{
+      teamName: string;
+      total: number;
+      members: Array<{
+        userName: string;
+        count: number;
+        minutes: number;
+        recent?: Array<{ id: string; title: string; createdAt?: string; date?: string }>;
+      }>;
+    }>;
+  } | null>(null);
   const [team, setTeam] = useState('');
   const [user, setUser] = useState('');
   const [isMobile, setIsMobile] = useState(false);
@@ -160,6 +175,8 @@ export function WorklogStats() {
     return m;
   }, [data]);
 
+  const fmtDateOnly = (s?: string) => (s ? new Date(s).toLocaleDateString() : '');
+
   const teamOptions = useMemo(() => {
     const s = new Set<string>();
     if (data) {
@@ -223,6 +240,7 @@ export function WorklogStats() {
                     const width = Math.max(4, Math.round(ratio * 100));
                     const mRatio = maxMinutes > 0 ? (m.minutes / maxMinutes) : 0;
                     const mWidth = Math.max(4, Math.round(mRatio * 100));
+                    const recent = Array.isArray(m.recent) ? m.recent : [];
                     return (
                       <button
                         key={m.userName}
@@ -232,8 +250,23 @@ export function WorklogStats() {
                       >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <div style={{ fontWeight: 600 }}>{m.userName}</div>
-                          <div style={{ color: '#475569' }}>{m.count}건 · {formatMinutesAsHmKo(m.minutes)}</div>
                         </div>
+
+                        {recent.length ? (
+                          <div style={{ display: 'grid', gap: 4 }}>
+                            {recent.map((r) => (
+                              <div key={r.id} style={{ display: 'flex', gap: 10, fontSize: 12, color: '#334155', alignItems: 'baseline' }}>
+                                <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{r.title}</div>
+                                <div style={{ marginLeft: 'auto', color: '#64748b', whiteSpace: 'nowrap' }}>{fmtDateOnly(r.date || r.createdAt)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12, color: '#94a3b8' }}>최근 업무일지 없음</div>
+                        )}
+
+                        <div style={{ color: '#475569', fontSize: 12 }}>{m.count}건 · {formatMinutesAsHmKo(m.minutes)}</div>
+
                         <div style={{ height: 12, background: '#f1f5f9', borderRadius: 999 }}>
                           <div style={{ width: `${width}%`, height: 12, background: '#0F3D73', borderRadius: 999 }} />
                         </div>
@@ -254,11 +287,11 @@ export function WorklogStats() {
 
       {detailOpen && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: 16, boxSizing: 'border-box' }}
           onClick={() => { setDetailOpen(false); setDetail(null); setSelectedWorklogId(null); setDetailCtx(null); }}
         >
           <div
-            style={{ background: '#fff', borderRadius: 12, padding: 0, width: 'min(1100px, 96vw)', height: 'min(85vh, 920px)', display: 'grid', gridTemplateRows: '44px 1fr', overflow: 'hidden' }}
+            style={{ background: '#fff', borderRadius: 12, padding: 0, width: 'min(1100px, 96vw)', height: 'min(85vh, 920px)', maxHeight: 'calc(100vh - 32px)', display: 'grid', gridTemplateRows: '44px 1fr', overflow: 'hidden' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }}>

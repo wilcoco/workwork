@@ -672,20 +672,33 @@ export class WorklogsController {
       orderBy: { date: 'desc' },
       take: 2000,
     });
-    type Bucket = { [userName: string]: { count: number; minutes: number } };
+    const RECENT_LIMIT = 3;
+    type Recent = { id: string; title: string; createdAt?: any; date?: any };
+    type Bucket = { [userName: string]: { count: number; minutes: number; recent: Recent[] } };
     const byTeam = new Map<string, Bucket>();
     for (const it of items) {
       const team = (it as any)?.createdBy?.orgUnit?.name || '미지정팀';
       const user = (it as any)?.createdBy?.name || '익명';
       if (!byTeam.has(team)) byTeam.set(team, {});
       const bucket = byTeam.get(team)!;
-      if (!bucket[user]) bucket[user] = { count: 0, minutes: 0 };
+      if (!bucket[user]) bucket[user] = { count: 0, minutes: 0, recent: [] };
       bucket[user].count += 1;
       bucket[user].minutes += Number((it as any).timeSpentMinutes ?? 0) || 0;
+
+      if (bucket[user].recent.length < RECENT_LIMIT) {
+        const lines = String((it as any).note || '').split(/\n+/);
+        const title = lines[0] || (it as any).title || '(제목 없음)';
+        bucket[user].recent.push({
+          id: String((it as any).id),
+          title,
+          createdAt: (it as any).createdAt,
+          date: (it as any).date,
+        });
+      }
     }
     const teams = Array.from(byTeam.entries()).map(([teamName, bucket]) => {
       const members = Object.entries(bucket)
-        .map(([userName, v]) => ({ userName, count: v.count, minutes: v.minutes }))
+        .map(([userName, v]) => ({ userName, count: v.count, minutes: v.minutes, recent: v.recent }))
         .sort((a, b) => (b.count - a.count) || (b.minutes - a.minutes));
       const total = members.reduce((s, m) => s + m.count, 0);
       return { teamName, total, members };
