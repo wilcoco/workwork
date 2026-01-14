@@ -2,6 +2,21 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 import { formatKstDatetime, formatMinutesAsHmKo } from '../lib/time';
 
+type DetailItem = {
+  id: string;
+  createdAt: string;
+  date: string;
+  timeSpentMinutes: number;
+  title: string;
+  excerpt: string;
+  userName: string;
+  teamName: string;
+  taskName?: string;
+  objectiveTitle?: string;
+  keyResultTitle?: string;
+  initiativeTitle?: string;
+};
+
 export function WorklogStats() {
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(false);
@@ -16,8 +31,62 @@ export function WorklogStats() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailCtx, setDetailCtx] = useState<{ teamName: string; userName: string } | null>(null);
-  const [detail, setDetail] = useState<{ from: string; to: string; days: number; totalCount: number; totalMinutes: number; items: Array<{ id: string; createdAt: string; date: string; timeSpentMinutes: number; title: string; excerpt: string; userName: string; teamName: string; taskName?: string }> } | null>(null);
+  const [detail, setDetail] = useState<{ from: string; to: string; days: number; totalCount: number; totalMinutes: number; items: DetailItem[] } | null>(null);
   const [selectedWorklogId, setSelectedWorklogId] = useState<string | null>(null);
+
+  const groupedDetail = useMemo(() => {
+    if (!detail) {
+      return [] as Array<{
+        objectiveTitle: string;
+        totalCount: number;
+        totalMinutes: number;
+        keyResults: Array<{ keyResultTitle: string; totalCount: number; totalMinutes: number; items: DetailItem[] }>;
+      }>;
+    }
+
+    const objectiveMap = new Map<
+      string,
+      {
+        totalCount: number;
+        totalMinutes: number;
+        keyResultMap: Map<string, { totalCount: number; totalMinutes: number; items: DetailItem[] }>;
+      }
+    >();
+
+    for (const it of detail.items) {
+      const objectiveTitle = it.objectiveTitle || '상위 과제 없음';
+      const keyResultTitle = it.keyResultTitle || 'KR 없음';
+      const minutes = Number(it.timeSpentMinutes) || 0;
+
+      if (!objectiveMap.has(objectiveTitle)) {
+        objectiveMap.set(objectiveTitle, { totalCount: 0, totalMinutes: 0, keyResultMap: new Map() });
+      }
+      const obj = objectiveMap.get(objectiveTitle)!;
+      obj.totalCount += 1;
+      obj.totalMinutes += minutes;
+
+      if (!obj.keyResultMap.has(keyResultTitle)) {
+        obj.keyResultMap.set(keyResultTitle, { totalCount: 0, totalMinutes: 0, items: [] });
+      }
+      const kr = obj.keyResultMap.get(keyResultTitle)!;
+      kr.totalCount += 1;
+      kr.totalMinutes += minutes;
+      kr.items.push(it);
+    }
+
+    const objectives = Array.from(objectiveMap.entries()).map(([objectiveTitle, obj]) => {
+      const keyResults = Array.from(obj.keyResultMap.entries())
+        .map(([keyResultTitle, kr]) => {
+          const items = [...kr.items].sort((a, b) => (String(b.createdAt).localeCompare(String(a.createdAt))));
+          return { keyResultTitle, totalCount: kr.totalCount, totalMinutes: kr.totalMinutes, items };
+        })
+        .sort((a, b) => (b.totalMinutes - a.totalMinutes) || (b.totalCount - a.totalCount) || a.keyResultTitle.localeCompare(b.keyResultTitle));
+      return { objectiveTitle, totalCount: obj.totalCount, totalMinutes: obj.totalMinutes, keyResults };
+    });
+
+    objectives.sort((a, b) => (b.totalMinutes - a.totalMinutes) || (b.totalCount - a.totalCount) || a.objectiveTitle.localeCompare(b.objectiveTitle));
+    return objectives;
+  }, [detail]);
 
   async function load() {
     setLoading(true);
@@ -210,23 +279,39 @@ export function WorklogStats() {
                         기간: {formatKstDatetime(detail.from)} ~ {formatKstDatetime(detail.to)} · {detail.totalCount}건 · {formatMinutesAsHmKo(detail.totalMinutes)}
                       </div>
                       <div style={{ display: 'grid', gap: 8 }}>
-                        {detail.items.map((it) => (
-                          <button
-                            key={it.id}
-                            type="button"
-                            onClick={() => setSelectedWorklogId(it.id)}
-                            style={{ textAlign: 'left', border: selectedWorklogId === it.id ? '2px solid #0F3D73' : '1px solid #e5e7eb', borderRadius: 10, padding: 10, background: '#fff', cursor: 'pointer' }}
-                          >
-                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
-                              <div style={{ fontWeight: 700, color: '#0f172a' }}>{it.title || '(제목 없음)'}</div>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>{formatMinutesAsHmKo(it.timeSpentMinutes)}</div>
+                        {groupedDetail.map((obj) => (
+                          <div key={obj.objectiveTitle} style={{ display: 'grid', gap: 8 }}>
+                            <div style={{ fontWeight: 800, color: '#0f172a', marginTop: 6 }}>
+                              {obj.objectiveTitle}
+                              <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>· {obj.totalCount}건 · {formatMinutesAsHmKo(obj.totalMinutes)}</span>
                             </div>
-                            <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
-                              {formatKstDatetime(it.createdAt)}
-                              {it.taskName ? ` · ${it.taskName}` : ''}
-                            </div>
-                            {it.excerpt ? <div style={{ marginTop: 6, fontSize: 12, color: '#334155' }}>{it.excerpt}</div> : null}
-                          </button>
+                            {obj.keyResults.map((kr) => (
+                              <div key={kr.keyResultTitle} style={{ display: 'grid', gap: 8, paddingLeft: 8 }}>
+                                <div style={{ fontWeight: 700, color: '#334155' }}>
+                                  KR: {kr.keyResultTitle}
+                                  <span style={{ marginLeft: 8, fontSize: 12, color: '#64748b' }}>· {kr.totalCount}건 · {formatMinutesAsHmKo(kr.totalMinutes)}</span>
+                                </div>
+                                {kr.items.map((it: DetailItem) => (
+                                  <button
+                                    key={it.id}
+                                    type="button"
+                                    onClick={() => setSelectedWorklogId(it.id)}
+                                    style={{ textAlign: 'left', border: selectedWorklogId === it.id ? '2px solid #0F3D73' : '1px solid #e5e7eb', borderRadius: 10, padding: 10, background: '#fff', cursor: 'pointer' }}
+                                  >
+                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+                                      <div style={{ fontWeight: 700, color: '#0f172a' }}>{it.title || '(제목 없음)'}</div>
+                                      <div style={{ fontSize: 12, color: '#64748b' }}>{formatMinutesAsHmKo(it.timeSpentMinutes)}</div>
+                                    </div>
+                                    <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
+                                      {formatKstDatetime(it.createdAt)}
+                                      {it.initiativeTitle ? ` · ${it.initiativeTitle}` : (it.taskName ? ` · ${it.taskName}` : '')}
+                                    </div>
+                                    {it.excerpt ? <div style={{ marginTop: 6, fontSize: 12, color: '#334155' }}>{it.excerpt}</div> : null}
+                                  </button>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
                         ))}
                         {detail.items.length === 0 && <div style={{ color: '#94a3b8' }}>업무일지가 없습니다.</div>}
                       </div>

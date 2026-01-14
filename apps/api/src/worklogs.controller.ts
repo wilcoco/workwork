@@ -733,7 +733,10 @@ export class WorklogsController {
             ],
           }
         : { ...where, visibility: { in: visibilityIn as any } },
-      include: { createdBy: { include: { orgUnit: true } }, initiative: true },
+      include: {
+        createdBy: { include: { orgUnit: true } },
+        initiative: { include: { keyResult: { include: { objective: true } } } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 500,
     });
@@ -752,6 +755,9 @@ export class WorklogsController {
         userName: it.createdBy?.name,
         teamName: it.createdBy?.orgUnit?.name,
         taskName: it.initiative?.title,
+        objectiveTitle: it.initiative?.keyResult?.objective?.title,
+        keyResultTitle: it.initiative?.keyResult?.title,
+        initiativeTitle: it.initiative?.title,
       };
     });
 
