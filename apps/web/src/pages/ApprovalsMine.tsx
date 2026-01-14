@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
-import { toSafeHtml } from '../lib/richText';
+import { WorklogDocument } from '../components/WorklogDocument';
+import { ProcessDocument } from '../components/ProcessDocument';
 
 export function ApprovalsMine() {
   const [userId, setUserId] = useState<string>('');
@@ -47,7 +48,7 @@ export function ApprovalsMine() {
           try {
             const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(a.subjectId)}`);
             const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(a.subjectId)}/approval-summary`);
-            doc = { process: inst, summaryHtml: sum?.html || '' };
+            doc = { process: inst, summaryTasks: sum?.tasks || [], pendingTask: sum?.pendingTask || null };
             docTitle = `프로세스 결재 - ${(inst?.title || '').trim()}`;
             docDate = inst?.createdAt || a.createdAt;
           } catch {}
@@ -93,31 +94,13 @@ export function ApprovalsMine() {
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
               {stepSummary && <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{stepSummary}</div>}
               {it.subjectType === 'Worklog' && it._doc && (
-                it._doc.attachments?.contentHtml ? (
-                  <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(it._doc.attachments.contentHtml) }} />
-                ) : (
-                  <div style={{ color: '#334155', marginTop: 6 }}>{String(it._doc?.note || '').split('\n').slice(1).join('\n')}</div>
-                )
+                <div style={{ marginTop: 6 }}>
+                  <WorklogDocument worklog={it._doc} variant="compact" />
+                </div>
               )}
-              {it.subjectType === 'PROCESS' && it._doc?.summaryHtml ? (
-                <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it._doc.summaryHtml) }} />
-              ) : null}
-              {it._doc?.attachments?.files?.length ? (
-                <div className="attachments" style={{ marginTop: 8 }}>
-                  {it._doc.attachments.files.map((f: any, i: number) => {
-                    const url = absLink(f.url as string);
-                    const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-                    const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
-                    return (
-                      <div key={(f.filename || f.url) + i} className="attachment-item">
-                        {isImg ? (
-                          <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
-                        ) : (
-                          <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
-                        )}
-                      </div>
-                    );
-                  })}
+              {it.subjectType === 'PROCESS' && it._doc ? (
+                <div style={{ marginTop: 6 }}>
+                  <ProcessDocument processDoc={it._doc} variant="content" />
                 </div>
               ) : null}
             </div>
@@ -143,31 +126,13 @@ export function ApprovalsMine() {
                   </div>
                   <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
                   {it.subjectType === 'Worklog' && wl && (
-                    wl.attachments?.contentHtml ? (
-                      <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
-                    ) : (
-                      <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(wl?.note || '').split('\n').slice(1).join('\n')}</div>
-                    )
+                    <div style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
+                      <WorklogDocument worklog={wl} variant="full" />
+                    </div>
                   )}
-                  {it.subjectType === 'PROCESS' && it._doc?.summaryHtml ? (
-                    <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it._doc.summaryHtml) }} />
-                  ) : null}
-                  {wl?.attachments?.files?.length ? (
-                    <div className="attachments" style={{ marginTop: 8 }}>
-                      {wl.attachments.files.map((f: any, i: number) => {
-                        const url = absLink(f.url as string);
-                        const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-                        const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
-                        return (
-                          <div key={(f.filename || f.url) + i} className="attachment-item" style={{ marginBottom: 6 }}>
-                            {isImg ? (
-                              <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
-                            ) : (
-                              <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
-                            )}
-                          </div>
-                        );
-                      })}
+                  {it.subjectType === 'PROCESS' && it._doc ? (
+                    <div style={{ marginTop: 8, maxHeight: 520, overflow: 'auto' }}>
+                      <ProcessDocument processDoc={it._doc} variant="full" />
                     </div>
                   ) : null}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>

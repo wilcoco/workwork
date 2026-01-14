@@ -101,6 +101,7 @@ export class HelpTicketsController {
 
     // 업무 요청 제목 (요청 시 작성한 업무일지) — HelpRequested 이벤트의 worklogId -> Worklog.note 첫 줄
     let requestTitles: Record<string, string | null> = {};
+    let requestWorklogIds: Record<string, string | null> = {};
     if (ticketIds.length > 0) {
       const events = await this.prisma.event.findMany({
         where: { subjectType: 'HelpTicket', activity: 'HelpRequested', subjectId: { in: ticketIds } },
@@ -124,9 +125,11 @@ export class HelpTicketsController {
           byWl[w.id] = title;
         }
         requestTitles = {};
+        requestWorklogIds = {};
         for (const tId of ticketIds) {
           const wlId = byTicket[tId];
           requestTitles[tId] = wlId ? (byWl[wlId] ?? null) : null;
+          requestWorklogIds[tId] = wlId || null;
         }
       }
     }
@@ -180,9 +183,12 @@ export class HelpTicketsController {
           assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null,
           // 업무 요청 제목: 업무 요청 생성시 작성한 업무일지(메모) 첫 줄을 사용
           helpTitle: requestTitles[t.id] ?? null,
+          requestWorklogId: requestWorklogIds[t.id] ?? null,
+          requestWorklogTitle: requestTitles[t.id] ?? null,
           slaMinutes: t.slaMinutes ?? undefined,
           createdAt: t.createdAt,
           updatedAt: t.updatedAt,
+          dueAt: t.dueAt || null,
           resolvedAt: t.resolvedAt || null,
           // 보낸 업무 요청 화면에서 사용할 부가 정보
           assigneeName: t.assignee?.name ?? null,
@@ -216,6 +222,57 @@ export class HelpTicketsController {
     // Ensure consistent keys
     for (const k of ['OPEN','ACCEPTED','IN_PROGRESS','BLOCKED','DONE','CANCELLED']) if (!(k in out)) out[k] = 0;
     return { counts: out };
+  }
+
+  @Get(':id')
+  async getOne(@Param('id') id: string) {
+    const t = await this.prisma.helpTicket.findUnique({ where: { id }, include: { requester: true, assignee: true } });
+    if (!t) throw new BadRequestException('ticket not found');
+
+    const events = await this.prisma.event.findMany({
+      where: { subjectType: 'HelpTicket', subjectId: id, activity: { in: ['HelpRequested', 'HelpResolved'] } as any },
+      orderBy: { ts: 'desc' },
+    });
+    const reqEv = events.find((e: any) => e.activity === 'HelpRequested');
+    const resEv = events.find((e: any) => e.activity === 'HelpResolved');
+    const requestWorklogId = (reqEv?.attrs as any)?.worklogId || null;
+    const responseWorklogId = (resEv?.attrs as any)?.worklogId || null;
+
+    const wlIds = [requestWorklogId, responseWorklogId].filter(Boolean) as string[];
+    const wls = wlIds.length ? await this.prisma.worklog.findMany({ where: { id: { in: wlIds } }, select: { id: true, note: true } }) : [];
+    const wlTitle = (wlId: string | null) => {
+      if (!wlId) return null;
+      const w = wls.find((x) => x.id === wlId);
+      if (!w) return null;
+      const raw = String(w.note || '').trim();
+      return raw.split('\n')[0] || raw || null;
+    };
+
+    let statusLabel: string;
+    if (t.status === 'OPEN') statusLabel = '미수신';
+    else if (t.status === 'DONE') statusLabel = '업무 요청 완료';
+    else statusLabel = '수신';
+
+    return {
+      id: t.id,
+      category: t.category,
+      queue: t.queue || null,
+      status: t.status,
+      requester: t.requester ? { id: t.requester.id, name: t.requester.name } : null,
+      assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null,
+      slaMinutes: t.slaMinutes ?? undefined,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      dueAt: t.dueAt || null,
+      resolvedAt: t.resolvedAt || null,
+      statusLabel,
+      requestWorklogId,
+      requestWorklogTitle: wlTitle(requestWorklogId),
+      helpTitle: wlTitle(requestWorklogId),
+      responseWorklogId,
+      responseWorklogTitle: wlTitle(responseWorklogId),
+      assigneeName: t.assignee?.name ?? null,
+    };
   }
 
   @Post()

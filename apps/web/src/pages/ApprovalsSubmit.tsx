@@ -8,6 +8,7 @@ import '../styles/editor.css';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
+import { WorklogDocument } from '../components/WorklogDocument';
 
 export function ApprovalsSubmit() {
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -551,7 +552,12 @@ export function ApprovalsSubmit() {
                                                 <span style={{ color: '#6b7280' }}>{new Date(wl.createdAt).toLocaleString()}</span>
                                                 <span style={{ fontWeight: 500 }}>{wl.createdBy?.name || '-'}</span>
                                               </div>
-                                              <div style={{ color: '#475569' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(wl.note || '(내용 없음)') }} />
+                                              <div style={{ marginTop: 4 }}>
+                                                <WorklogDocument
+                                                  worklog={wl}
+                                                  variant="content"
+                                                />
+                                              </div>
                                             </div>
                                           ))}
                                         </div>

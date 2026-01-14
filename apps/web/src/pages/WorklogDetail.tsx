@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { apiFetch, apiUrl } from '../lib/api';
-import { formatKstDatetime, formatMinutesAsHmKo } from '../lib/time';
+import { apiFetch } from '../lib/api';
+import { WorklogDocument } from '../components/WorklogDocument';
 
 export function WorklogDetail() {
   const { id } = useParams();
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -35,78 +34,9 @@ export function WorklogDetail() {
   if (error) return <div style={{ color: 'red' }}>{error}</div>;
   if (!data) return <div>데이터 없음</div>;
 
-  function absLink(url: string): string {
-    if (!url) return url;
-    if (/^https?:\/\//i.test(url)) return url;
-    return apiUrl(url);
-  }
-
-  function absolutizeUploads(html: string): string {
-    if (!html) return html;
-    return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
-  }
-
-  function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
-    const target = e.target as HTMLElement | null;
-    if (target && target.tagName === 'IMG') {
-      e.preventDefault();
-      const src = (target as HTMLImageElement).src;
-      if (src) setZoomSrc(src);
-    }
-  }
-
   return (
-    <div style={{ display: 'grid', gap: 8 }}>
-      <h2>업무일지 상세</h2>
-      <div><b>ID:</b> {data.id}</div>
-      <div style={{ display: 'grid', gap: 4 }}>
-        <div><b>상위 과제(OKR):</b> {data?.initiative?.keyResult?.objective?.title ? `${data.initiative.keyResult.objective.title} / KR: ${data.initiative.keyResult.title}` : '-'}</div>
-        <div><b>과제(initiative):</b> {data?.initiative?.title || data.initiativeId || '-'}</div>
-        {data?.process && (
-          <div><b>프로세스:</b> {data.process.instance?.title || ''} / {data.process.task?.name || ''}</div>
-        )}
-      </div>
-      <div><b>작성자:</b> {data?.createdBy?.name || data.createdById}</div>
-      <div><b>진척%:</b> {data.progressPct}</div>
-      <div><b>소요시간:</b> {formatMinutesAsHmKo(Number(data.timeSpentMinutes) || 0)}</div>
-      <div><b>차단코드:</b> {data.blockerCode || '-'}</div>
-      {data.attachments?.contentHtml ? (
-        <div>
-          <b>내용(HTML):</b>
-          <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 12, marginTop: 6 }}
-               onClick={onContentClick}
-               dangerouslySetInnerHTML={{ __html: absolutizeUploads(data.attachments.contentHtml) }} />
-        </div>
-      ) : (
-        <div><b>노트:</b> {data.note || '-'}</div>
-      )}
-      {Array.isArray(data.attachments?.files) && data.attachments.files.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <b>첨부:</b>
-          <div className="attachments" style={{ marginTop: 6 }}>
-            {data.attachments.files.map((f: any, i: number) => {
-              const url = absLink(f.url as string);
-              const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-              const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
-              return (
-                <div className="attachment-item" key={(f.filename || f.url) + i}>
-                  {isImg ? (
-                    <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8, cursor: 'zoom-in' }} onClick={() => setZoomSrc(url)} />
-                  ) : (
-                    <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      <div><b>작성일:</b> {formatKstDatetime(data.createdAt)}</div>
-      {zoomSrc && (
-        <div className="image-overlay" onClick={() => setZoomSrc(null)}>
-          <img src={zoomSrc} alt="preview" />
-        </div>
-      )}
+    <div style={{ maxWidth: 980, margin: '24px auto', padding: 12 }}>
+      <WorklogDocument worklog={data} variant="full" />
     </div>
   );
 }

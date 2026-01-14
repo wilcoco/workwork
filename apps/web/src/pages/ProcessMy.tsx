@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
+import { WorklogDocument } from '../components/WorklogDocument';
 
 interface MyProcess {
   id: string;
@@ -290,7 +291,10 @@ export function ProcessMy() {
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
               작성자: {worklogPopup.createdBy?.name || '-'} · {new Date(worklogPopup.createdAt).toLocaleString()}
             </div>
-            <div style={{ padding: 12, background: '#f9fafb', borderRadius: 8, fontSize: 14 }} dangerouslySetInnerHTML={{ __html: toSafeHtml(worklogPopup.note || '(내용 없음)') }} />
+            <div style={{ marginBottom: 8, fontWeight: 800, fontSize: 16 }}>
+              {String(worklogPopup.note || '').split(/\n+/)[0] || '(제목 없음)'}
+            </div>
+            <WorklogDocument worklog={worklogPopup} variant="content" />
           </div>
         </div>
       )}

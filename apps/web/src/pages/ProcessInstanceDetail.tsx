@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toSafeHtml } from '../lib/richText';
 import { UserPicker, type PickedUser } from '../components/UserPicker';
+import { WorklogDocument } from '../components/WorklogDocument';
 
 interface ProcTask {
   id: string;
@@ -42,14 +43,14 @@ type TimelineItem = {
   status: string;
   actualStartAt?: string;
   actualEndAt?: string;
-  worklog?: { id: string; title: string; createdAt?: string; createdBy?: { id: string; name: string } | null; contentHtml?: string | null } | null;
+  worklog?: { id: string; title: string; createdAt?: string; createdBy?: { id: string; name: string } | null; contentHtml?: string | null; note?: string | null } | null;
   cooperation?: {
     id: string;
     category?: string;
     status?: string;
     assignee?: { id: string; name: string } | null;
     dueAt?: string;
-    worklog?: { id: string; title: string; createdAt?: string; createdBy?: { id: string; name: string } | null; contentHtml?: string | null } | null;
+    worklog?: { id: string; title: string; createdAt?: string; createdBy?: { id: string; name: string } | null; contentHtml?: string | null; note?: string | null } | null;
   } | null;
   approval?: {
     id: string;
@@ -515,8 +516,10 @@ export function ProcessInstanceDetail() {
                 <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>업무일지: {it.worklog.title}</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>{it.worklog.createdAt ? new Date(it.worklog.createdAt).toLocaleString() : ''}{it.worklog.createdBy ? ` · ${it.worklog.createdBy.name}` : ''}</div>
-                  {it.worklog.contentHtml ? (
-                    <div className="rich-content" style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it.worklog.contentHtml) }} />
+                  {(it.worklog.contentHtml || it.worklog.note) ? (
+                    <div style={{ marginTop: 6 }}>
+                      <WorklogDocument worklog={it.worklog} variant="content" />
+                    </div>
                   ) : null}
                 </div>
               )}
@@ -524,8 +527,10 @@ export function ProcessInstanceDetail() {
                 <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>업무 요청: {it.cooperation.category || '-'}</div>
                   <div style={{ fontSize: 12, color: '#64748b' }}>{it.cooperation.status || ''}{it.cooperation.assignee ? ` · 담당: ${it.cooperation.assignee.name}` : ''}{it.cooperation.dueAt ? ` · 기한: ${new Date(it.cooperation.dueAt).toLocaleString()}` : ''}</div>
-                  {it.cooperation.worklog?.contentHtml ? (
-                    <div className="rich-content" style={{ marginTop: 6, color: '#334155' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(it.cooperation.worklog.contentHtml) }} />
+                  {(it.cooperation.worklog?.contentHtml || it.cooperation.worklog?.note) ? (
+                    <div style={{ marginTop: 6 }}>
+                      <WorklogDocument worklog={it.cooperation.worklog} variant="content" />
+                    </div>
                   ) : null}
                 </div>
               )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiFetch, apiJson, apiUrl } from '../lib/api';
+import { CoopDocument } from '../components/CoopDocument';
 
 export function CoopsInbox() {
   const [userId, setUserId] = useState<string>('');
@@ -30,14 +31,22 @@ export function CoopsInbox() {
         .filter((n: any) => n.type === 'HelpRequested')
         .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       const enriched = await Promise.all(base.map(async (n: any) => {
-        let doc: any = null;
-        const wlId = n.payload?.fromWorklogId;
-        if (wlId) {
-          try {
-            doc = await apiJson<any>(`/api/worklogs/${encodeURIComponent(wlId)}`);
-          } catch {}
-        }
-        return { ...n, _doc: doc };
+        const ticketId = n.payload?.ticketId;
+        let ticket: any = null;
+        let requestWl: any = null;
+        let responseWl: any = null;
+        try {
+          if (ticketId) ticket = await apiJson<any>(`/api/help-tickets/${encodeURIComponent(ticketId)}`);
+        } catch {}
+        const reqWlId = ticket?.requestWorklogId || n.payload?.fromWorklogId;
+        const resWlId = ticket?.responseWorklogId;
+        try {
+          if (reqWlId) requestWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(reqWlId)}`);
+        } catch {}
+        try {
+          if (resWlId) responseWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(resWlId)}`);
+        } catch {}
+        return { ...n, _ticket: ticket, _requestWl: requestWl, _responseWl: responseWl };
       }));
       setItems(enriched);
     } catch (e: any) {
@@ -73,23 +82,15 @@ export function CoopsInbox() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((n) => {
-          const wl = (n as any)._doc as any | null;
-          const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : '문서 정보 없음';
-          const requesterInfo = wl ? `📤 요청자: ${wl.userName || '-'}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
-          const when = wl?.date || wl?.createdAt || n.createdAt;
+          const ticket = (n as any)._ticket as any | null;
+          const requestWl = (n as any)._requestWl as any | null;
+          const responseWl = (n as any)._responseWl as any | null;
           return (
             <div key={n.id} style={card} onClick={() => setActive(n)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b>{title}</b>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
-              </div>
-              {requesterInfo && <div style={{ fontSize: 12, color: '#334155' }}>{requesterInfo}</div>}
-              {wl && (
-                wl.attachments?.contentHtml ? (
-                  <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
-                ) : (
-                  <div style={{ color: '#334155', marginTop: 6 }}>{String(wl.note || '').split('\n').slice(1).join('\n')}</div>
-                )
+              {ticket ? (
+                <CoopDocument ticket={ticket} requestWorklog={requestWl} responseWorklog={responseWl} variant="compact" />
+              ) : (
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>문서 정보 없음</div>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <button onClick={(e) => { e.stopPropagation(); act('accept', n.payload?.ticketId, n.id); }} style={primaryBtn}>수락</button>
@@ -107,23 +108,17 @@ export function CoopsInbox() {
           <div style={modalBody} onClick={(e) => e.stopPropagation()}>
             {(() => {
               const n = active;
-              const wl = (n as any)._doc as any | null;
-              const title = wl ? ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)') : '문서 정보 없음';
-              const requesterInfoModal = wl ? `📤 요청자: ${wl.userName || '-'}${wl.teamName ? ` · ${wl.teamName}` : ''}` : '';
-              const when = wl?.date || wl?.createdAt || n.createdAt;
+              const ticket = (n as any)._ticket as any | null;
+              const requestWl = (n as any)._requestWl as any | null;
+              const responseWl = (n as any)._responseWl as any | null;
               return (
                 <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <b>{title}</b>
-                    <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
-                  </div>
-                  {requesterInfoModal && <div style={{ fontSize: 12, color: '#334155' }}>{requesterInfoModal}</div>}
-                  {wl && (
-                    wl.attachments?.contentHtml ? (
-                      <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(wl.attachments.contentHtml) }} />
-                    ) : (
-                      <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(wl.note || '').split('\n').slice(1).join('\n')}</div>
-                    )
+                  {ticket ? (
+                    <div style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
+                      <CoopDocument ticket={ticket} requestWorklog={requestWl} responseWorklog={responseWl} variant="full" />
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>문서 정보 없음</div>
                   )}
                   <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
                     <button onClick={() => act('accept', n.payload?.ticketId, n.id)} style={primaryBtn}>수락</button>

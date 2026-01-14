@@ -1,11 +1,14 @@
 // 보낸 업무 요청 리스트: 내가 요청한 HelpTicket들을 상태/대응 업무일지 링크와 함께 보여주는 화면
 import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { CoopDocument } from '../components/CoopDocument';
 
 type SentHelp = {
   id: string;
   category: string;
   helpTitle: string | null;
+  requestWorklogId?: string | null;
+  requestWorklogTitle?: string | null;
   assigneeName: string | null;
   createdAt: string;
   dueAt: string | null;
@@ -19,6 +22,11 @@ type WorklogDetail = {
   id: string;
   note?: string | null;
   date?: string;
+  createdAt?: string;
+  attachments?: any;
+  createdBy?: any;
+  initiative?: any;
+  timeSpentMinutes?: number;
 };
 
 export function CoopsMine() {
@@ -26,7 +34,7 @@ export function CoopsMine() {
   const [items, setItems] = useState<SentHelp[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeWl, setActiveWl] = useState<{ ticket: SentHelp; wl: WorklogDetail } | null>(null);
+  const [activeDoc, setActiveDoc] = useState<{ ticket: SentHelp; requestWl: WorklogDetail | null; responseWl: WorklogDetail | null } | null>(null);
   const [wlLoading, setWlLoading] = useState(false);
 
   useEffect(() => {
@@ -55,13 +63,21 @@ export function CoopsMine() {
     }
   }
 
-  async function openWorklog(item: SentHelp) {
-    if (!item.responseWorklogId) return;
+  async function openDoc(item: SentHelp) {
     setWlLoading(true);
     setError(null);
     try {
-      const wl = await apiJson<WorklogDetail>(`/api/worklogs/${encodeURIComponent(item.responseWorklogId)}`);
-      setActiveWl({ ticket: item, wl });
+      let requestWl: WorklogDetail | null = null;
+      let responseWl: WorklogDetail | null = null;
+      const reqId = item.requestWorklogId;
+      const resId = item.responseWorklogId;
+      try {
+        if (reqId) requestWl = await apiJson<WorklogDetail>(`/api/worklogs/${encodeURIComponent(reqId)}`);
+      } catch {}
+      try {
+        if (resId) responseWl = await apiJson<WorklogDetail>(`/api/worklogs/${encodeURIComponent(resId)}`);
+      } catch {}
+      setActiveDoc({ ticket: item, requestWl, responseWl });
     } catch (e: any) {
       setError(e?.message || '업무일지 로드 실패');
     } finally {
@@ -77,14 +93,6 @@ export function CoopsMine() {
     return s.helpTitle || '(제목 없음)';
   }
 
-  function renderWorklogText(wl: WorklogDetail) {
-    const note = String(wl.note || '');
-    const lines = note.split(/\n+/);
-    const title = lines[0] || '';
-    const body = lines.slice(1).join('\n');
-    return { title, body };
-  }
-
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {error && <div style={{ color: 'red' }}>{error}</div>}
@@ -95,19 +103,10 @@ export function CoopsMine() {
           const canOpen = it.statusLabel === '업무 요청 완료' && !!it.responseWorklogId;
           return (
             <div key={it.id} style={card}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b>{renderTitle(it)}</b>
-                <span style={{ fontSize: 12, color: '#64748b' }}>({it.category})</span>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4, fontSize: 12, color: '#334155' }}>
-                <span>📥 담당자: {it.assigneeName || '미지정'}</span>
-                <span>📅 마감: {it.dueAt ? new Date(it.dueAt).toLocaleDateString() : '-'}</span>
-                <span>📊 상태: {renderStatus(it)}</span>
-              </div>
+              <CoopDocument ticket={it} variant="compact" />
               {canOpen && (
                 <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-                  <button type="button" style={primaryBtn} onClick={() => openWorklog(it)} disabled={wlLoading}>
+                  <button type="button" style={primaryBtn} onClick={() => openDoc(it)} disabled={wlLoading}>
                     {wlLoading ? '업무일지 여는중…' : '업무일지 보기'}
                   </button>
                 </div>
@@ -116,27 +115,19 @@ export function CoopsMine() {
           );
         })}
       </div>
-      {activeWl && (
-        <div style={modalOverlay} onClick={() => setActiveWl(null)}>
+      {activeDoc && (
+        <div style={modalOverlay} onClick={() => setActiveDoc(null)}>
           <div style={modalBody} onClick={(e) => e.stopPropagation()}>
-            {(() => {
-              const { title, body } = renderWorklogText(activeWl.wl);
-              return (
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <b>업무 요청 대응 업무일지</b>
-                    <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
-                      {activeWl.wl.date ? new Date(activeWl.wl.date).toLocaleString() : ''}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{title || '(제목 없음)'}</div>
-                  <div style={{ fontSize: 12, whiteSpace: 'pre-wrap', color: '#111827' }}>{body}</div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                    <button type="button" style={primaryBtn} onClick={() => setActiveWl(null)}>닫기</button>
-                  </div>
-                </div>
-              );
-            })()}
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <b>업무 요청 문서</b>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(activeDoc.ticket.createdAt).toLocaleString()}</span>
+              </div>
+              <CoopDocument ticket={activeDoc.ticket} requestWorklog={activeDoc.requestWl} responseWorklog={activeDoc.responseWl} variant="full" />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                <button type="button" style={primaryBtn} onClick={() => setActiveDoc(null)}>닫기</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

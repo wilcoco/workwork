@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
-import { toSafeHtml } from '../lib/richText';
+import { WorklogDocument } from '../components/WorklogDocument';
+import { ProcessDocument } from '../components/ProcessDocument';
 
 export function ApprovalsInbox() {
   const [userId, setUserId] = useState<string>('');
@@ -47,7 +48,7 @@ export function ApprovalsInbox() {
           try {
             const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}`);
             const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}/approval-summary`);
-            doc = { process: inst, summaryHtml: sum?.html || '', summaryTasks: sum?.tasks || [], pendingTask: sum?.pendingTask || null };
+            doc = { process: inst, summaryTasks: sum?.tasks || [], pendingTask: sum?.pendingTask || null };
           } catch {}
         }
         return { ...a, _doc: doc, _stNorm: stNorm };
@@ -154,58 +155,15 @@ export function ApprovalsInbox() {
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
               {stNorm === 'WORKLOG' && doc && (
-                doc.attachments?.contentHtml ? (
-                  <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(doc.attachments.contentHtml) }} />
-                ) : (
-                  <div style={{ color: '#334155', marginTop: 6 }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
-                )
-              )}
-              {stNorm === 'PROCESS' && doc?.pendingTask?.description && (
-                <div style={{ border: '2px solid #16a34a', borderRadius: 8, padding: 12, marginTop: 6, background: '#f0fdf4' }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#15803d', marginBottom: 6 }}>📋 결재 과제 설명</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
+                <div style={{ marginTop: 6 }}>
+                  <WorklogDocument worklog={doc} variant="compact" />
                 </div>
               )}
-              {stNorm === 'PROCESS' && doc?.summaryHtml ? (
-                <div
-                  className="rich-content"
-                  style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6 }}
-                  dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.summaryHtml) }}
-                  onClick={(e) => {
-                    const target = e.target as HTMLElement;
-                    const wlId = target.getAttribute('data-worklog-id');
-                    if (wlId && doc.summaryTasks) {
-                      for (const t of doc.summaryTasks) {
-                        const wl = (t.worklogs || []).find((w: any) => w.id === wlId);
-                        if (wl) {
-                          e.stopPropagation();
-                          setWorklogPopup(wl);
-                          break;
-                        }
-                      }
-                    }
-                  }}
-                />
-              ) : null}
-              {stNorm === 'WORKLOG' && doc?.attachments?.files?.length ? (
-                <div className="attachments" style={{ marginTop: 8 }}>
-                  {doc.attachments.files.map((f: any, i: number) => {
-                    const raw = pickFileUrl(f);
-                    const url = absLink(raw);
-                    const name = pickFileName(f, url);
-                    const isImg = isImageAttachment(f, url);
-                    return (
-                      <div key={(f.filename || f.url) + i} className="attachment-item">
-                        {isImg ? (
-                          <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
-                        ) : (
-                          <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
-                        )}
-                      </div>
-                    );
-                  })}
+              {stNorm === 'PROCESS' && doc && (
+                <div style={{ marginTop: 6 }}>
+                  <ProcessDocument processDoc={doc} variant="content" onOpenWorklog={(wl) => setWorklogPopup(wl)} />
                 </div>
-              ) : null}
+              )}
               {a.status === 'PENDING' && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <button onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={primaryBtn}>승인</button>
@@ -291,58 +249,15 @@ export function ApprovalsInbox() {
                   </div>
                   {meta && <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>}
                   {stNorm === 'WORKLOG' && doc && (
-                    doc.attachments?.contentHtml ? (
-                      <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(doc.attachments.contentHtml) }} />
-                    ) : (
-                      <div style={{ color: '#334155', marginTop: 6, whiteSpace: 'pre-wrap' }}>{String(doc.note || '').split('\n').slice(1).join('\n')}</div>
-                    )
-                  )}
-                  {stNorm === 'PROCESS' && doc?.pendingTask?.description && (
-                    <div style={{ border: '2px solid #16a34a', borderRadius: 8, padding: 12, marginTop: 6, background: '#f0fdf4' }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#15803d', marginBottom: 6 }}>📋 결재 과제 설명</div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.pendingTask.description) }} />
+                    <div style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
+                      <WorklogDocument worklog={doc} variant="full" />
                     </div>
                   )}
-                  {stNorm === 'PROCESS' && doc?.summaryHtml ? (
-                    <div
-                      className="rich-content"
-                      style={{ border: '1px solid #eee', borderRadius: 8, padding: 10, marginTop: 6, maxHeight: 360, overflow: 'auto' }}
-                      dangerouslySetInnerHTML={{ __html: toSafeHtml(doc.summaryHtml) }}
-                      onClick={(e) => {
-                        const target = e.target as HTMLElement;
-                        const wlId = target.getAttribute('data-worklog-id');
-                        if (wlId && doc.summaryTasks) {
-                          for (const t of doc.summaryTasks) {
-                            const wl = (t.worklogs || []).find((w: any) => w.id === wlId);
-                            if (wl) {
-                              e.stopPropagation();
-                              setWorklogPopup(wl);
-                              break;
-                            }
-                          }
-                        }
-                      }}
-                    />
-                  ) : null}
-                  {stNorm === 'WORKLOG' && doc?.attachments?.files?.length ? (
-                    <div className="attachments" style={{ marginTop: 8 }}>
-                      {doc.attachments.files.map((f: any, i: number) => {
-                        const raw = pickFileUrl(f);
-                        const url = absLink(raw);
-                        const name = pickFileName(f, url);
-                        const isImg = isImageAttachment(f, url);
-                        return (
-                          <div key={(f.filename || f.url) + i} className="attachment-item" style={{ marginBottom: 6 }}>
-                            {isImg ? (
-                              <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
-                            ) : (
-                              <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
-                            )}
-                          </div>
-                        );
-                      })}
+                  {stNorm === 'PROCESS' && doc && (
+                    <div style={{ marginTop: 8 }}>
+                      <ProcessDocument processDoc={doc} variant="full" onOpenWorklog={(wl) => setWorklogPopup(wl)} />
                     </div>
-                  ) : null}
+                  )}
                   <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                     <div>
                       <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>결재 의견</label>
@@ -389,54 +304,15 @@ export function ApprovalsInbox() {
       )}
       {worklogPopup && (
         <div style={modalOverlay} onClick={() => setWorklogPopup(null)}>
-          <div style={{ ...modalBody, maxWidth: 700 }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <b style={{ fontSize: 16 }}>{worklogPopup.title?.substring(0, 50) || '업무일지'}</b>
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
-                {worklogPopup.createdAt ? new Date(worklogPopup.createdAt).toLocaleString() : ''}
-              </span>
+          <div style={modalBody} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <b>{(worklogPopup.note || '').split('\n')[0] || worklogPopup.title || '업무일지'}</b>
+              <button style={ghostBtn} onClick={() => setWorklogPopup(null)}>닫기</button>
             </div>
-            {worklogPopup.createdBy?.name && (
-              <div style={{ fontSize: 12, color: '#475569', marginBottom: 8 }}>작성자: {worklogPopup.createdBy.name}</div>
-            )}
-            {worklogPopup.contentHtml ? (
-              <div
-                className="rich-content"
-                style={{ border: '1px solid #eee', borderRadius: 8, padding: 12, maxHeight: 400, overflow: 'auto' }}
-                dangerouslySetInnerHTML={{ __html: toSafeHtml(worklogPopup.contentHtml) }}
-              />
-            ) : worklogPopup.note ? (
-              <div style={{ whiteSpace: 'pre-wrap', color: '#334155', padding: 12, background: '#f9fafb', borderRadius: 8 }}>
-                {worklogPopup.note}
-              </div>
-            ) : (
-              <div style={{ color: '#9ca3af', padding: 12 }}>내용 없음</div>
-            )}
-            {worklogPopup.files && worklogPopup.files.length > 0 && (
-              <div style={{ marginTop: 12, padding: 12, background: '#f9fafb', borderRadius: 8 }}>
-                <div style={{ fontWeight: 600, fontSize: 12, color: '#475569', marginBottom: 8 }}>첨부파일</div>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {worklogPopup.files.map((f: any, i: number) => {
-                    const raw = pickFileUrl(f);
-                    const url = absLink(raw);
-                    const name = pickFileName(f, url);
-                    const isImg = isImageAttachment(f, url);
-                    return (
-                      isImg ? (
-                        <img key={i} src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8 }} />
-                      ) : (
-                        <a key={i} href={url} target="_blank" rel="noreferrer" style={{ color: '#0F3D73', fontSize: 13, textDecoration: 'underline' }}>
-                          {name}
-                        </a>
-                      )
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-              <button onClick={() => setWorklogPopup(null)} style={ghostBtn}>닫기</button>
-            </div>
+            <WorklogDocument
+              worklog={worklogPopup}
+              variant="full"
+            />
           </div>
         </div>
       )}

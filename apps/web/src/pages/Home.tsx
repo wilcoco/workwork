@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
+import { WorklogDocument } from '../components/WorklogDocument';
 
 type WL = { id: string; title: string; excerpt: string; userName?: string; teamName?: string; date: string };
 type FB = { id: string; subjectId: string; authorName?: string; content: string; createdAt: string };
@@ -11,7 +12,6 @@ export function Home() {
   const [comments, setComments] = useState<FB[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
   const [urgentOpen, setUrgentOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -230,16 +230,9 @@ export function Home() {
                             </div>
                           </div>
                           {viewMode === 'full' && (
-                            contentHtml ? (
-                              <div
-                                className="rich-content"
-                                onClick={(e) => { e.stopPropagation(); onContentClick(e); }}
-                                style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }}
-                                dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }}
-                              />
-                            ) : (
-                              <div style={{ color: '#334155' }}>{contentText}</div>
-                            )
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <WorklogDocument worklog={anyW} variant="content" />
+                            </div>
                           )}
                         </div>
                       );
@@ -302,16 +295,9 @@ export function Home() {
                             </div>
                           </div>
                           {viewMode === 'full' && (
-                            contentHtml ? (
-                              <div
-                                className="rich-content"
-                                onClick={(e) => { e.stopPropagation(); onContentClick(e); }}
-                                style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }}
-                                dangerouslySetInnerHTML={{ __html: absolutizeUploads(contentHtml) }}
-                              />
-                            ) : (
-                              <div style={{ color: '#334155' }}>{contentText}</div>
-                            )
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <WorklogDocument worklog={anyW} variant="content" />
+                            </div>
                           )}
                         </div>
                       );
@@ -397,11 +383,6 @@ export function Home() {
         )}
       </div>
       
-      {zoomSrc && (
-        <div className="image-overlay" onClick={() => setZoomSrc(null)}>
-          <img src={zoomSrc} alt="preview" />
-        </div>
-      )}
       {commentsOpen && (
         <div className="image-overlay" onClick={() => setCommentsOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 1000, width: '96%', maxHeight: '85vh', overflowY: 'auto', display: 'grid', gap: 10 }}>
@@ -419,43 +400,7 @@ export function Home() {
       {detail && (
         <div className="image-overlay" onClick={() => setDetail(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 1200, width: '96%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
-              <div style={{ width: 22, height: 22, borderRadius: 999, background: '#E2E8F0', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{String((detail as any).userName || '?').slice(0,1)}</div>
-              <div>{(detail as any).userName || ''}</div>
-              <div>·</div>
-              <div>{(detail as any).teamName || ''}</div>
-              <div style={{ marginLeft: 'auto', background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{formatKstDatetime((detail as any).date || (detail as any).createdAt || new Date().toISOString())}</div>
-            </div>
-            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{(detail as any).title}</div>
-            {(detail as any)?.attachments?.contentHtml ? (
-              <div
-                className="rich-content"
-                style={{ marginTop: 6, color: '#111827', border: '1px solid #eee', borderRadius: 8, padding: 12 }}
-                onClick={onContentClick}
-                dangerouslySetInnerHTML={{ __html: absolutizeUploads((detail as any).attachments.contentHtml) }}
-              />
-            ) : (
-              <div style={{ marginTop: 6, color: '#374151' }}>{(detail as any)?.note || ''}</div>
-            )}
-            {Array.isArray((detail as any)?.attachments?.files) && (detail as any).attachments.files.length > 0 && (
-              <div className="attachments" style={{ marginTop: 10 }}>
-                {(detail as any).attachments.files.map((f: any, i: number) => {
-                  const url = absLink(f.url as string);
-                  const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-                  const isImg = /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
-                  return (
-                    <div className="attachment-item" key={(f.filename || f.url) + i}>
-                      {isImg ? (
-                        <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8, cursor: 'zoom-in' }} onClick={() => setZoomSrc(url)} />
-                      ) : (
-                        <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {(detail as any)?.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#0F3D73', background: '#E6EEF7', display: 'inline-block', padding: '4px 8px', borderRadius: 999, fontWeight: 600 }}>{(detail as any).taskName}</div>}
+            <WorklogDocument worklog={detail} variant="full" />
             <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
               <CommentsBox worklogId={(detail as any).id} />
             </div>
@@ -539,13 +484,6 @@ function htmlToText(html: string): string {
   return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
 }
 
-function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
-  const target = e.target as HTMLElement | null;
-  if (target && target.tagName === 'IMG') {
-    e.preventDefault();
-  }
-}
-
 function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; filterTeam?: string; filterName?: string; viewMode?: 'summary' | 'full' }) {
   const [wl, setWl] = useState<any | null>(null);
   const [prev, setPrev] = useState<Array<{ id: string; authorName?: string; content: string; createdAt: string }>>([]);
@@ -566,8 +504,6 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
   const matches = (!filterTeam || ((wl?.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))) && (!filterName || ((wl?.userName || '').toLowerCase().includes(filterName.toLowerCase())));
   if ((filterTeam || filterName) && !matches) return null;
   const title = (wl?.note || '').split('\n')[0] || '';
-  const contentHtml = wl?.attachments?.contentHtml || '';
-  const contentText = (wl?.note || '').split('\n').slice(1).join('\n');
   const attachments = wl?.attachments || {};
   const files = attachments?.files || [];
   const firstImg = (() => {
@@ -596,12 +532,8 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
           </div>
         </div>
       </div>
-      {viewMode === 'full' && (
-        contentHtml ? (
-          <div className="rich-content" style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }} dangerouslySetInnerHTML={{ __html: absolutizeUploads(stripImgs(contentHtml)) }} />
-        ) : (
-          <div style={{ color: '#334155' }}>{contentText}</div>
-        )
+      {viewMode === 'full' && wl && (
+        <WorklogDocument worklog={wl} variant="content" />
       )}
       <div style={{ display: 'grid', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
         {prev.map((p) => (

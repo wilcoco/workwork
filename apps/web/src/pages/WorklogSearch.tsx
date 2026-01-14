@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
+import { WorklogDocument } from '../components/WorklogDocument';
 
 type Item = {
   id: string;
@@ -121,7 +122,6 @@ export function WorklogSearch() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [zoomSrc, setZoomSrc] = useState<string | null>(null);
   const [mode, setMode] = useState<'feed' | 'list'>('feed');
   const [detail, setDetail] = useState<Item | null>(null);
   const [kind, setKind] = useState<'' | 'OKR' | 'KPI'>('');
@@ -265,15 +265,6 @@ export function WorklogSearch() {
     })();
   }, [teamId, userId]);
 
-  function onContentClick(e: React.MouseEvent<HTMLDivElement>) {
-    const target = e.target as HTMLElement | null;
-    if (target && target.tagName === 'IMG') {
-      e.preventDefault();
-      const src = (target as HTMLImageElement).src;
-      if (src) setZoomSrc(src);
-    }
-  }
-
   function firstImageUrl(it: Item): string {
     const anyIt: any = it as any;
     const files = anyIt?.attachments?.files || [];
@@ -406,43 +397,7 @@ export function WorklogSearch() {
         <div style={{ display: 'grid', gap: 12 }}>
         {items.map((it) => (
           <div key={it.id} style={card}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
-              <div style={avatar}>{(it.userName || '?').slice(0, 1)}</div>
-              <div>{it.userName}</div>
-              <div>·</div>
-              <div>{it.teamName}</div>
-              <div style={{ marginLeft: 'auto', background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{formatKstDatetime(it.date)}</div>
-            </div>
-            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{it.title}</div>
-            {it.attachments?.contentHtml ? (
-              <div
-                className="rich-content"
-                style={{ marginTop: 6, color: '#111827', border: '1px solid #eee', borderRadius: 8, padding: 12 }}
-                onClick={onContentClick}
-                dangerouslySetInnerHTML={{ __html: absolutizeUploads(it.attachments.contentHtml) }}
-              />
-            ) : (
-              <div style={{ marginTop: 6, color: '#374151' }}>{it.excerpt}</div>
-            )}
-            {Array.isArray(it.attachments?.files) && it.attachments.files.length > 0 && (
-              <div className="attachments" style={{ marginTop: 10 }}>
-                {it.attachments.files.map((f: any, i: number) => {
-                  const url = absLink(f.url as string);
-                  const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-                  const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
-                  return (
-                    <div className="attachment-item" key={(f.filename || f.url) + i}>
-                      {isImg ? (
-                        <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8, cursor: 'zoom-in' }} onClick={() => setZoomSrc(url)} />
-                      ) : (
-                        <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {it.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#0F3D73', background: '#E6EEF7', display: 'inline-block', padding: '4px 8px', borderRadius: 999, fontWeight: 600 }}>{it.taskName}</div>}
+            <WorklogDocument worklog={it} variant="full" />
             <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
               <CommentsBox worklogId={it.id} />
             </div>
@@ -450,51 +405,10 @@ export function WorklogSearch() {
         ))}
         </div>
       )}
-      {zoomSrc && (
-        <div className="image-overlay" onClick={() => setZoomSrc(null)}>
-          <img src={zoomSrc} alt="preview" />
-        </div>
-      )}
       {detail && (
         <div className="image-overlay" onClick={() => setDetail(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 720, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13 }}>
-              <div style={avatar}>{(detail.userName || '?').slice(0, 1)}</div>
-              <div>{detail.userName}</div>
-              <div>·</div>
-              <div>{detail.teamName}</div>
-              <div style={{ marginLeft: 'auto', background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{formatKstDatetime(detail.date)}</div>
-            </div>
-            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{detail.title}</div>
-            {(detail as any)?.attachments?.contentHtml ? (
-              <div
-                className="rich-content"
-                style={{ marginTop: 6, color: '#111827', border: '1px solid #eee', borderRadius: 8, padding: 12 }}
-                onClick={onContentClick}
-                dangerouslySetInnerHTML={{ __html: absolutizeUploads((detail as any).attachments.contentHtml) }}
-              />
-            ) : (
-              <div style={{ marginTop: 6, color: '#374151' }}>{detail.excerpt}</div>
-            )}
-            {Array.isArray((detail as any)?.attachments?.files) && (detail as any).attachments.files.length > 0 && (
-              <div className="attachments" style={{ marginTop: 10 }}>
-                {(detail as any).attachments.files.map((f: any, i: number) => {
-                  const url = absLink(f.url as string);
-                  const name = f.name || f.filename || decodeURIComponent((url.split('/').pop() || url));
-                  const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
-                  return (
-                    <div className="attachment-item" key={(f.filename || f.url) + i}>
-                      {isImg ? (
-                        <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 8, cursor: 'zoom-in' }} onClick={() => setZoomSrc(url)} />
-                      ) : (
-                        <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {detail.taskName && <div style={{ marginTop: 10, fontSize: 12, color: '#0F3D73', background: '#E6EEF7', display: 'inline-block', padding: '4px 8px', borderRadius: 999, fontWeight: 600 }}>{detail.taskName}</div>}
+            <WorklogDocument worklog={detail} variant="full" />
             <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
               <CommentsBox worklogId={detail.id} />
             </div>
