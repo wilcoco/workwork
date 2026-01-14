@@ -12,7 +12,8 @@ export function WorklogNew() {
   const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [createdById, setCreatedById] = useState('');
   const [progressPct, setProgressPct] = useState<number>(0);
-  const [timeSpentMinutes, setTimeSpentMinutes] = useState<number>(0);
+  const [timeSpentHours, setTimeSpentHours] = useState<number>(0);
+  const [timeSpentMinutes10, setTimeSpentMinutes10] = useState<number>(0);
   const [blockerCode, setBlockerCode] = useState('');
   const [note, setNote] = useState('');
   const [krId, setKrId] = useState('');
@@ -81,13 +82,16 @@ export function WorklogNew() {
     setSubmitting(true);
     setError(null);
     try {
+      if (Number(timeSpentHours) < 0) throw new Error('업무 소요 시간(시간)은 0 이상이어야 합니다');
+      if (![0, 10, 20, 30, 40, 50].includes(Number(timeSpentMinutes10))) throw new Error('업무 소요 시간(분)은 10분 단위로 선택해 주세요');
+      const computedMinutes = (Number(timeSpentHours) || 0) * 60 + (Number(timeSpentMinutes10) || 0);
       const pidForPayload = (selectedProcInstId || processInstanceId);
       const tidForPayload = (selectedProcTaskId || taskInstanceId);
       const payload: any = {
         initiativeId,
         createdById,
         progressPct: Number(progressPct) || 0,
-        timeSpentMinutes: Number(timeSpentMinutes) || 0,
+        timeSpentMinutes: computedMinutes,
         blockerCode: blockerCode || undefined,
         note: note || undefined,
         urgent: urgent || undefined,
@@ -284,8 +288,16 @@ export function WorklogNew() {
           <input type="number" min={0} max={100} value={progressPct} onChange={(e) => setProgressPct(Number(e.target.value))} />
         </label>
         <label>
-          소요시간(분)
-          <input type="number" min={0} value={timeSpentMinutes} onChange={(e) => setTimeSpentMinutes(Number(e.target.value))} />
+          업무시간
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="number" min={0} value={timeSpentHours} onChange={(e) => setTimeSpentHours(Math.max(0, Number(e.target.value) || 0))} style={{ width: 120 }} />
+            <span style={{ fontSize: 12, color: '#6b7280' }}>시간</span>
+            <select value={timeSpentMinutes10} onChange={(e) => setTimeSpentMinutes10(Number(e.target.value))} style={{ appearance: 'auto' as any, width: 120 }}>
+              {[0, 10, 20, 30, 40, 50].map((m) => (
+                <option key={m} value={m}>{m}분</option>
+              ))}
+            </select>
+          </div>
         </label>
       </div>
 

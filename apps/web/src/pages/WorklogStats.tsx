@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { formatKstDatetime, formatMinutesAsHmKo } from '../lib/time';
 
 export function WorklogStats() {
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<{ from: string; to: string; days: number; total: number; teams: Array<{ teamName: string; total: number; members: Array<{ userName: string; count: number }> }> } | null>(null);
+  const [data, setData] = useState<{ from: string; to: string; days: number; total: number; teams: Array<{ teamName: string; total: number; members: Array<{ userName: string; count: number; minutes: number }> }> } | null>(null);
   const [team, setTeam] = useState('');
   const [user, setUser] = useState('');
   const [isMobile, setIsMobile] = useState(false);
+
+  const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailCtx, setDetailCtx] = useState<{ teamName: string; userName: string } | null>(null);
+  const [detail, setDetail] = useState<{ from: string; to: string; days: number; totalCount: number; totalMinutes: number; items: Array<{ id: string; createdAt: string; date: string; timeSpentMinutes: number; title: string; excerpt: string; userName: string; teamName: string; taskName?: string }> } | null>(null);
+  const [selectedWorklogId, setSelectedWorklogId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -17,12 +26,32 @@ export function WorklogStats() {
       const qs = new URLSearchParams({ days: String(days) });
       if (team) qs.set('team', team);
       if (user) qs.set('user', user);
+      if (myUserId) qs.set('viewerId', myUserId);
       const r = await apiJson(`/api/worklogs/stats/weekly?${qs.toString()}`);
       setData(r);
     } catch (e: any) {
       setError(e?.message || '로드 실패');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openMember(teamName: string, userName: string) {
+    setDetailOpen(true);
+    setDetailCtx({ teamName, userName });
+    setSelectedWorklogId(null);
+    setDetail(null);
+    setDetailLoading(true);
+    setDetailError(null);
+    try {
+      const qs = new URLSearchParams({ days: String(days), team: teamName, user: userName });
+      if (myUserId) qs.set('viewerId', myUserId);
+      const r = await apiJson(`/api/worklogs/stats/weekly/details?${qs.toString()}`);
+      setDetail(r);
+    } catch (e: any) {
+      setDetailError(e?.message || '상세 로드 실패');
+    } finally {
+      setDetailLoading(false);
     }
   }
 
@@ -49,6 +78,15 @@ export function WorklogStats() {
     let m = 0;
     for (const t of data.teams) {
       for (const mbr of t.members) m = Math.max(m, mbr.count);
+    }
+    return m;
+  }, [data]);
+
+  const maxMinutes = useMemo(() => {
+    if (!data) return 0;
+    let m = 0;
+    for (const t of data.teams) {
+      for (const mbr of t.members) m = Math.max(m, mbr.minutes);
     }
     return m;
   }, [data]);
@@ -108,21 +146,32 @@ export function WorklogStats() {
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
                   <h3 style={{ margin: 0 }}>{t.teamName}</h3>
                   <span style={{ fontSize: 12, color: '#64748b' }}>총 {t.total}건</span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>· 총 {formatMinutesAsHmKo(t.members.reduce((s, m) => s + (m.minutes || 0), 0))}</span>
                 </div>
                 <div style={{ display: 'grid', gap: 8 }}>
                   {t.members.map((m) => {
                     const ratio = maxCount > 0 ? (m.count / maxCount) : 0;
                     const width = Math.max(4, Math.round(ratio * 100));
+                    const mRatio = maxMinutes > 0 ? (m.minutes / maxMinutes) : 0;
+                    const mWidth = Math.max(4, Math.round(mRatio * 100));
                     return (
-                      <div key={m.userName} style={{ display: 'grid', gap: 6 }}>
+                      <button
+                        key={m.userName}
+                        type="button"
+                        onClick={() => openMember(t.teamName, m.userName)}
+                        style={{ display: 'grid', gap: 6, textAlign: 'left', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
+                      >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <div style={{ fontWeight: 600 }}>{m.userName}</div>
-                          <div style={{ color: '#475569' }}>{m.count}</div>
+                          <div style={{ color: '#475569' }}>{m.count}건 · {formatMinutesAsHmKo(m.minutes)}</div>
                         </div>
                         <div style={{ height: 12, background: '#f1f5f9', borderRadius: 999 }}>
                           <div style={{ width: `${width}%`, height: 12, background: '#0F3D73', borderRadius: 999 }} />
                         </div>
-                      </div>
+                        <div style={{ height: 12, background: '#f1f5f9', borderRadius: 999 }}>
+                          <div style={{ width: `${mWidth}%`, height: 12, background: '#16a34a', borderRadius: 999 }} />
+                        </div>
+                      </button>
                     );
                   })}
                   {t.members.length === 0 && <div style={{ color: '#94a3b8' }}>구성원 데이터가 없습니다.</div>}
@@ -130,6 +179,73 @@ export function WorklogStats() {
               </div>
             ))}
             {data.teams.length === 0 && <div style={{ color: '#94a3b8' }}>팀 데이터가 없습니다.</div>}
+          </div>
+        </div>
+      )}
+
+      {detailOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={() => { setDetailOpen(false); setDetail(null); setSelectedWorklogId(null); setDetailCtx(null); }}
+        >
+          <div
+            style={{ background: '#fff', borderRadius: 12, padding: 0, width: 'min(1100px, 96vw)', height: 'min(85vh, 920px)', display: 'grid', gridTemplateRows: '44px 1fr', overflow: 'hidden' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }}>
+              <div style={{ fontWeight: 800 }}>
+                업무일지 목록
+                {detailCtx ? ` · ${detailCtx.teamName} / ${detailCtx.userName}` : ''}
+              </div>
+              <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => { setDetailOpen(false); setDetail(null); setSelectedWorklogId(null); setDetailCtx(null); }}>닫기</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '420px 1fr', height: '100%' }}>
+              <div style={{ borderRight: isMobile ? 'none' : '1px solid #e5e7eb', overflow: 'auto' }}>
+                <div style={{ padding: 12 }}>
+                  {detailLoading && <div style={{ color: '#64748b' }}>불러오는 중...</div>}
+                  {detailError && <div style={{ color: 'red' }}>{detailError}</div>}
+                  {detail && (
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>
+                        기간: {formatKstDatetime(detail.from)} ~ {formatKstDatetime(detail.to)} · {detail.totalCount}건 · {formatMinutesAsHmKo(detail.totalMinutes)}
+                      </div>
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {detail.items.map((it) => (
+                          <button
+                            key={it.id}
+                            type="button"
+                            onClick={() => setSelectedWorklogId(it.id)}
+                            style={{ textAlign: 'left', border: selectedWorklogId === it.id ? '2px solid #0F3D73' : '1px solid #e5e7eb', borderRadius: 10, padding: 10, background: '#fff', cursor: 'pointer' }}
+                          >
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div style={{ fontWeight: 700, color: '#0f172a' }}>{it.title || '(제목 없음)'}</div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{formatMinutesAsHmKo(it.timeSpentMinutes)}</div>
+                            </div>
+                            <div style={{ marginTop: 4, fontSize: 12, color: '#64748b' }}>
+                              {formatKstDatetime(it.createdAt)}
+                              {it.taskName ? ` · ${it.taskName}` : ''}
+                            </div>
+                            {it.excerpt ? <div style={{ marginTop: 6, fontSize: 12, color: '#334155' }}>{it.excerpt}</div> : null}
+                          </button>
+                        ))}
+                        {detail.items.length === 0 && <div style={{ color: '#94a3b8' }}>업무일지가 없습니다.</div>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ overflow: 'hidden' }}>
+                {selectedWorklogId ? (
+                  <iframe
+                    title="worklog-detail"
+                    src={`/worklogs/${encodeURIComponent(selectedWorklogId)}`}
+                    style={{ width: '100%', height: '100%', border: 'none' }}
+                  />
+                ) : (
+                  <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>왼쪽에서 업무일지를 선택하면 상세가 표시됩니다.</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

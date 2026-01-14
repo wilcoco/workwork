@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { apiFetch, apiUrl } from '../lib/api';
-import { formatKstDatetime } from '../lib/time';
+import { formatKstDatetime, formatMinutesAsHmKo } from '../lib/time';
 
 export function WorklogDetail() {
   const { id } = useParams();
@@ -68,7 +68,7 @@ export function WorklogDetail() {
       </div>
       <div><b>작성자:</b> {data?.createdBy?.name || data.createdById}</div>
       <div><b>진척%:</b> {data.progressPct}</div>
-      <div><b>소요시간(분):</b> {data.timeSpentMinutes}</div>
+      <div><b>소요시간:</b> {formatMinutesAsHmKo(Number(data.timeSpentMinutes) || 0)}</div>
       <div><b>차단코드:</b> {data.blockerCode || '-'}</div>
       {data.attachments?.contentHtml ? (
         <div>

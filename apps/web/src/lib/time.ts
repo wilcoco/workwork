@@ -24,3 +24,14 @@ export function todayKstYmd(): string {
     day: '2-digit',
   }).format(now);
 }
+
+export function formatMinutesAsHmKo(totalMinutes: number): string {
+  const m0 = Number(totalMinutes) || 0;
+  const sign = m0 < 0 ? '-' : '';
+  const m = Math.abs(m0);
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  if (h <= 0) return `${sign}${mm}분`;
+  if (mm === 0) return `${sign}${h}시간`;
+  return `${sign}${h}시간 ${mm}분`;
+}

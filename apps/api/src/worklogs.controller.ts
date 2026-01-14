@@ -136,6 +136,7 @@ class CreateSimpleWorklogDto {
   @IsOptional() @IsString() taskName?: string;
   @IsString() @IsNotEmpty() title!: string;
   @IsString() @IsNotEmpty() content!: string;
+  @IsOptional() @IsInt() @Min(0) timeSpentMinutes?: number;
   @IsOptional() @IsDateString() date?: string;
   @IsOptional() @IsBoolean() urgent?: boolean;
   @IsOptional() @IsString() contentHtml?: string;
@@ -512,6 +513,7 @@ export class WorklogsController {
         initiativeId: initiativeId,
         createdById: user.id,
         note,
+        timeSpentMinutes: dto.timeSpentMinutes ?? 0,
         attachments: attachmentsJson as any,
         tags: (dto as any).tags as any,
         date: dateValSimple,
@@ -670,24 +672,92 @@ export class WorklogsController {
       orderBy: { date: 'desc' },
       take: 2000,
     });
-    type Bucket = { [userName: string]: number };
+    type Bucket = { [userName: string]: { count: number; minutes: number } };
     const byTeam = new Map<string, Bucket>();
     for (const it of items) {
       const team = (it as any)?.createdBy?.orgUnit?.name || '미지정팀';
       const user = (it as any)?.createdBy?.name || '익명';
       if (!byTeam.has(team)) byTeam.set(team, {});
       const bucket = byTeam.get(team)!;
-      bucket[user] = (bucket[user] || 0) + 1;
+      if (!bucket[user]) bucket[user] = { count: 0, minutes: 0 };
+      bucket[user].count += 1;
+      bucket[user].minutes += Number((it as any).timeSpentMinutes ?? 0) || 0;
     }
     const teams = Array.from(byTeam.entries()).map(([teamName, bucket]) => {
       const members = Object.entries(bucket)
-        .map(([userName, count]) => ({ userName, count }))
-        .sort((a, b) => b.count - a.count);
+        .map(([userName, v]) => ({ userName, count: v.count, minutes: v.minutes }))
+        .sort((a, b) => (b.count - a.count) || (b.minutes - a.minutes));
       const total = members.reduce((s, m) => s + m.count, 0);
       return { teamName, total, members };
     }).sort((a, b) => b.total - a.total);
     const total = teams.reduce((s, t) => s + t.total, 0);
     return { from: from.toISOString(), to: now.toISOString(), days, total, teams };
+  }
+
+  @Get('stats/weekly/details')
+  async weeklyDetails(
+    @Query('days') daysStr?: string,
+    @Query('team') teamName?: string,
+    @Query('user') userName?: string,
+    @Query('viewerId') viewerId?: string,
+  ) {
+    const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
+    const now = new Date();
+    const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+    const where: any = { date: { gte: from, lte: now } };
+    if (teamName) where.createdBy = { orgUnit: { name: teamName } };
+    if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+
+    // Visibility filter (same rules as weeklyStats)
+    let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
+    if (viewerId) {
+      const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
+      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
+      else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
+      else visibilityIn = ['ALL'];
+    }
+
+    const items = await (this.prisma as any).worklog.findMany({
+      where: viewerId
+        ? {
+            AND: [
+              where,
+              {
+                OR: [
+                  { createdById: viewerId },
+                  { visibility: { in: visibilityIn as any } },
+                ],
+              },
+            ],
+          }
+        : { ...where, visibility: { in: visibilityIn as any } },
+      include: { createdBy: { include: { orgUnit: true } }, initiative: true },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+
+    const mapped = items.map((it: any) => {
+      const lines = String(it.note || '').split(/\n+/);
+      const title = lines[0] || '';
+      const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
+      return {
+        id: it.id,
+        createdAt: it.createdAt,
+        date: it.date,
+        timeSpentMinutes: it.timeSpentMinutes ?? 0,
+        title,
+        excerpt,
+        userName: it.createdBy?.name,
+        teamName: it.createdBy?.orgUnit?.name,
+        taskName: it.initiative?.title,
+      };
+    });
+
+    const totalCount = mapped.length;
+    const totalMinutes = mapped.reduce((s: number, x: any) => s + (Number(x.timeSpentMinutes) || 0), 0);
+    return { from: from.toISOString(), to: now.toISOString(), days, totalCount, totalMinutes, items: mapped };
   }
 
   @Get('ai/summary')

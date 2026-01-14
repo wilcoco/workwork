@@ -17,6 +17,8 @@ export function WorklogQuickNew() {
   const taskInstanceId = params?.get('taskInstanceId') || '';
   const [date, setDate] = useState<string>(() => todayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
+  const [timeSpentHours, setTimeSpentHours] = useState<number>(0);
+  const [timeSpentMinutes10, setTimeSpentMinutes10] = useState<number>(0);
   const [orgUnitId, setOrgUnitId] = useState<string>('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
@@ -284,6 +286,9 @@ export function WorklogQuickNew() {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
       if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:'))) throw new Error('대상을 선택하세요');
+      if (Number(timeSpentHours) < 0) throw new Error('업무 소요 시간(시간)은 0 이상이어야 합니다');
+      if (![0, 10, 20, 30, 40, 50].includes(Number(timeSpentMinutes10))) throw new Error('업무 소요 시간(분)은 10분 단위로 선택해 주세요');
+      const computedMinutes = (Number(timeSpentHours) || 0) * 60 + (Number(timeSpentMinutes10) || 0);
       const wl = await apiJson<{ id: string }>(
         '/api/worklogs/simple',
         {
@@ -291,6 +296,7 @@ export function WorklogQuickNew() {
           body: JSON.stringify({
             userId,
             teamName,
+            timeSpentMinutes: computedMinutes,
             initiativeId: selection.startsWith('init:') ? selection.substring(5) : undefined,
             keyResultId: selection.startsWith('kr:') ? selection.substring(3) : undefined,
             // help: 선택 시에는 별도 링크 없이 일반 업무일지로만 기록
@@ -469,6 +475,32 @@ export function WorklogQuickNew() {
           <div className="resp-2">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} required />
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
+          </div>
+          <div className="resp-2">
+            <label style={{ display: 'grid', gap: 6 }}>
+              <div style={{ fontSize: 13, color: '#6b7280' }}>업무시간 (10분 단위)</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min={0}
+                  value={timeSpentHours}
+                  onChange={(e) => setTimeSpentHours(Math.max(0, Number(e.target.value) || 0))}
+                  style={{ ...input, width: 120 }}
+                  placeholder="시간"
+                />
+                <div style={{ color: '#64748b', fontSize: 13 }}>시간</div>
+                <select
+                  value={timeSpentMinutes10}
+                  onChange={(e) => setTimeSpentMinutes10(Number(e.target.value))}
+                  style={{ ...input, width: 120, appearance: 'auto' as any }}
+                >
+                  {[0, 10, 20, 30, 40, 50].map((m) => (
+                    <option key={m} value={m}>{m}분</option>
+                  ))}
+                </select>
+              </div>
+            </label>
+            <div />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제 / 업무 요청 추가</label>
@@ -692,7 +724,7 @@ export function WorklogQuickNew() {
           </div>
           <DocumentTags value={tags} onChange={setTags} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); setTags({}); }}>
+            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); setTags({}); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
               초기화
             </button>
             <button className="btn btn-primary" disabled={loading}>
