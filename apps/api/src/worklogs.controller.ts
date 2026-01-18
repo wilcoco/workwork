@@ -724,7 +724,7 @@ export class WorklogsController {
           WHERE w."date" >= ${from} AND w."date" <= ${now}
             AND w."createdById" IN (${Prisma.join(userIds)})
             AND (
-              ${viewerId ? Prisma.sql`(w."createdById" = ${viewerId} OR w.visibility IN (${Prisma.join(visibilityIn)}))` : Prisma.sql`(w.visibility IN (${Prisma.join(visibilityIn)}))`}
+              ${viewerId ? Prisma.sql`(w."createdById" = ${viewerId} OR w."visibility" = ANY(ARRAY[${Prisma.join(visibilityIn)}]::"WorklogVisibility"[]))` : Prisma.sql`(w."visibility" = ANY(ARRAY[${Prisma.join(visibilityIn)}]::"WorklogVisibility"[]))`}
             )
         ) x
         WHERE x.rn <= ${RECENT_LIMIT}
