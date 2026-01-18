@@ -239,6 +239,12 @@ model Worklog {
   visibility            WorklogVisibility @default(ALL)
   processTaskInstanceId String?
   processTaskInstance   ProcessTaskInstance? @relation("TaskWorklogs", fields: [processTaskInstanceId], references: [id])
+
+  @@index([date])
+  @@index([createdAt])
+  @@index([createdById, date])
+  @@index([createdById, createdAt])
+  @@index([visibility, date])
 }
 
 model Event {

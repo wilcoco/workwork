@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 
 class ReportDto {
@@ -641,9 +642,24 @@ export class WorklogsController {
     const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
-    const where: any = { date: { gte: from, lte: now } };
-    if (teamName) where.createdBy = { orgUnit: { name: teamName } };
-    if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+
+    // Resolve user filters first (so we can keep Worklog queries simple + index-friendly)
+    let filterUserIds: string[] | null = null;
+    if (teamName || userName) {
+      const userWhere: any = {};
+      if (teamName) userWhere.orgUnit = { name: teamName };
+      if (userName) userWhere.name = { contains: userName, mode: 'insensitive' as any };
+      const users = await (this.prisma as any).user.findMany({
+        where: userWhere,
+        select: { id: true },
+      });
+      const ids = (users || []).map((u: any) => String(u.id));
+      if (!ids.length) {
+        return { from: from.toISOString(), to: now.toISOString(), days, total: 0, teams: [] };
+      }
+      filterUserIds = ids;
+    }
+
     // Visibility filter
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
     if (viewerId) {
@@ -654,48 +670,92 @@ export class WorklogsController {
       else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
       else visibilityIn = ['ALL'];
     }
-    const items = await (this.prisma as any).worklog.findMany({
-      where: viewerId
-        ? {
-            AND: [
-              where,
-              {
-                OR: [
-                  { createdById: viewerId },
-                  { visibility: { in: visibilityIn as any } },
-                ],
-              },
-            ],
-          }
-        : { ...where, visibility: { in: visibilityIn as any } },
-      include: { createdBy: { include: { orgUnit: true } } },
-      orderBy: { date: 'desc' },
-      take: 2000,
+
+    const baseWhere: any = { date: { gte: from, lte: now } };
+    if (filterUserIds) baseWhere.createdById = { in: filterUserIds };
+    const visibilityWhere = viewerId
+      ? {
+          AND: [
+            baseWhere,
+            {
+              OR: [
+                { createdById: viewerId },
+                { visibility: { in: visibilityIn as any } },
+              ],
+            },
+          ],
+        }
+      : { ...baseWhere, visibility: { in: visibilityIn as any } };
+
+    // DB-side aggregation
+    const agg = await (this.prisma as any).worklog.groupBy({
+      by: ['createdById'],
+      where: visibilityWhere,
+      _count: { _all: true },
+      _sum: { timeSpentMinutes: true },
     });
+
+    const userIds = (agg || []).map((r: any) => String(r.createdById));
+    if (!userIds.length) {
+      return { from: from.toISOString(), to: now.toISOString(), days, total: 0, teams: [] };
+    }
+
+    const users = await (this.prisma as any).user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, orgUnit: { select: { name: true } } },
+    });
+    const userMap = new Map<string, { name: string; teamName: string }>();
+    for (const u of (users || [])) {
+      userMap.set(String(u.id), {
+        name: String(u.name || '익명'),
+        teamName: String(u.orgUnit?.name || '미지정팀'),
+      });
+    }
+
+    // Recent per user (window function) for UI preview
     const RECENT_LIMIT = 3;
-    type Recent = { id: string; title: string; createdAt?: any; date?: any };
-    type Bucket = { [userName: string]: { count: number; minutes: number; recent: Recent[] } };
+    const recentRows: Array<{ id: string; createdById: string; createdAt: Date; date: Date; note: string | null }> = await (this.prisma as any).$queryRaw(
+      Prisma.sql`
+        SELECT x.id, x."createdById" AS "createdById", x."createdAt" AS "createdAt", x."date" AS "date", x.note
+        FROM (
+          SELECT w.id, w."createdById", w."createdAt", w."date", w.note,
+                 row_number() OVER (PARTITION BY w."createdById" ORDER BY w."createdAt" DESC, w.id DESC) AS rn
+          FROM "Worklog" w
+          WHERE w."date" >= ${from} AND w."date" <= ${now}
+            AND w."createdById" IN (${Prisma.join(userIds)})
+            AND (
+              ${viewerId ? Prisma.sql`(w."createdById" = ${viewerId} OR w.visibility IN (${Prisma.join(visibilityIn)}))` : Prisma.sql`(w.visibility IN (${Prisma.join(visibilityIn)}))`}
+            )
+        ) x
+        WHERE x.rn <= ${RECENT_LIMIT}
+      `
+    );
+
+    const recentByUser = new Map<string, Array<{ id: string; title: string; createdAt: any; date: any }>>();
+    for (const r of (recentRows || [])) {
+      const uid = String((r as any).createdById);
+      const lines = String((r as any).note || '').split(/\n+/);
+      const title = lines[0] || '(제목 없음)';
+      if (!recentByUser.has(uid)) recentByUser.set(uid, []);
+      recentByUser.get(uid)!.push({ id: String((r as any).id), title, createdAt: (r as any).createdAt, date: (r as any).date });
+    }
+
+    type Bucket = { [userName: string]: { count: number; minutes: number; recent: Array<{ id: string; title: string; createdAt?: any; date?: any }> } };
     const byTeam = new Map<string, Bucket>();
-    for (const it of items) {
-      const team = (it as any)?.createdBy?.orgUnit?.name || '미지정팀';
-      const user = (it as any)?.createdBy?.name || '익명';
+    for (const r of (agg || [])) {
+      const uid = String(r.createdById);
+      const info = userMap.get(uid) || { name: '익명', teamName: '미지정팀' };
+      const team = info.teamName;
+      const user = info.name;
       if (!byTeam.has(team)) byTeam.set(team, {});
       const bucket = byTeam.get(team)!;
-      if (!bucket[user]) bucket[user] = { count: 0, minutes: 0, recent: [] };
-      bucket[user].count += 1;
-      bucket[user].minutes += Number((it as any).timeSpentMinutes ?? 0) || 0;
-
-      if (bucket[user].recent.length < RECENT_LIMIT) {
-        const lines = String((it as any).note || '').split(/\n+/);
-        const title = lines[0] || (it as any).title || '(제목 없음)';
-        bucket[user].recent.push({
-          id: String((it as any).id),
-          title,
-          createdAt: (it as any).createdAt,
-          date: (it as any).date,
-        });
-      }
+      bucket[user] = {
+        count: Number(r._count?._all || 0),
+        minutes: Number(r._sum?.timeSpentMinutes || 0),
+        recent: recentByUser.get(uid) || [],
+      };
     }
+
     const teams = Array.from(byTeam.entries()).map(([teamName, bucket]) => {
       const members = Object.entries(bucket)
         .map(([userName, v]) => ({ userName, count: v.count, minutes: v.minutes, recent: v.recent }))
@@ -713,13 +773,28 @@ export class WorklogsController {
     @Query('team') teamName?: string,
     @Query('user') userName?: string,
     @Query('viewerId') viewerId?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limitStr?: string,
   ) {
     const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
-    const where: any = { date: { gte: from, lte: now } };
-    if (teamName) where.createdBy = { orgUnit: { name: teamName } };
-    if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+
+    const limit = Math.max(20, Math.min(parseInt(limitStr || '120', 10) || 120, 500));
+
+    // Resolve user filters (team/user) to createdById IN (...) for better performance
+    let filterUserIds: string[] | null = null;
+    if (teamName || userName) {
+      const userWhere: any = {};
+      if (teamName) userWhere.orgUnit = { name: teamName };
+      if (userName) userWhere.name = { contains: userName, mode: 'insensitive' as any };
+      const users = await (this.prisma as any).user.findMany({ where: userWhere, select: { id: true } });
+      const ids = (users || []).map((u: any) => String(u.id));
+      if (!ids.length) {
+        return { from: from.toISOString(), to: now.toISOString(), days, totalCount: 0, totalMinutes: 0, items: [], nextCursor: null, hasMore: false };
+      }
+      filterUserIds = ids;
+    }
 
     // Visibility filter (same rules as weeklyStats)
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
@@ -732,29 +807,77 @@ export class WorklogsController {
       else visibilityIn = ['ALL'];
     }
 
+    // Cursor parsing: `${createdAtISO}|${id}`
+    let cursorCreatedAt: Date | null = null;
+    let cursorId: string | null = null;
+    if (cursor) {
+      const raw = String(cursor);
+      const idx = raw.indexOf('|');
+      if (idx > 0) {
+        const ts = raw.slice(0, idx);
+        const id = raw.slice(idx + 1);
+        const d = new Date(ts);
+        if (!isNaN(d.getTime()) && id) {
+          cursorCreatedAt = d;
+          cursorId = id;
+        }
+      }
+    }
+
+    const baseWhere: any = { date: { gte: from, lte: now } };
+    if (filterUserIds) baseWhere.createdById = { in: filterUserIds };
+    const visibilityWhere = viewerId
+      ? {
+          AND: [
+            baseWhere,
+            {
+              OR: [
+                { createdById: viewerId },
+                { visibility: { in: visibilityIn as any } },
+              ],
+            },
+          ],
+        }
+      : { ...baseWhere, visibility: { in: visibilityIn as any } };
+
+    const pagingWhere = (cursorCreatedAt && cursorId)
+      ? {
+          OR: [
+            { createdAt: { lt: cursorCreatedAt } },
+            { createdAt: cursorCreatedAt, id: { lt: cursorId } },
+          ],
+        }
+      : {};
+
+    const finalWhere = Object.keys(pagingWhere).length
+      ? { AND: [visibilityWhere, pagingWhere] }
+      : visibilityWhere;
+
+    // Totals (for header) via DB aggregate (not limited by pagination)
+    const totals = await (this.prisma as any).worklog.aggregate({
+      where: visibilityWhere,
+      _count: { _all: true },
+      _sum: { timeSpentMinutes: true },
+    });
+    const totalCount = Number(totals?._count?._all || 0);
+    const totalMinutes = Number(totals?._sum?.timeSpentMinutes || 0);
+
     const items = await (this.prisma as any).worklog.findMany({
-      where: viewerId
-        ? {
-            AND: [
-              where,
-              {
-                OR: [
-                  { createdById: viewerId },
-                  { visibility: { in: visibilityIn as any } },
-                ],
-              },
-            ],
-          }
-        : { ...where, visibility: { in: visibilityIn as any } },
+      where: finalWhere,
       include: {
         createdBy: { include: { orgUnit: true } },
         initiative: { include: { keyResult: { include: { objective: true } } } },
       },
-      orderBy: { createdAt: 'desc' },
-      take: 2000,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
     });
 
-    const mapped = items.map((it: any) => {
+    const hasMore = (items || []).length > limit;
+    const page = hasMore ? (items || []).slice(0, limit) : (items || []);
+    const last = page.length ? page[page.length - 1] : null;
+    const nextCursor = last ? `${new Date(last.createdAt).toISOString()}|${last.id}` : null;
+
+    const mapped = page.map((it: any) => {
       const lines = String(it.note || '').split(/\n+/);
       const title = lines[0] || '';
       const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
@@ -774,9 +897,7 @@ export class WorklogsController {
       };
     });
 
-    const totalCount = mapped.length;
-    const totalMinutes = mapped.reduce((s: number, x: any) => s + (Number(x.timeSpentMinutes) || 0), 0);
-    return { from: from.toISOString(), to: now.toISOString(), days, totalCount, totalMinutes, items: mapped };
+    return { from: from.toISOString(), to: now.toISOString(), days, totalCount, totalMinutes, items: mapped, nextCursor, hasMore };
   }
 
   @Get('ai/summary')

@@ -44,9 +44,19 @@ export function WorklogStats() {
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailMoreLoading, setDetailMoreLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailCtx, setDetailCtx] = useState<{ teamName: string; userName: string } | null>(null);
-  const [detail, setDetail] = useState<{ from: string; to: string; days: number; totalCount: number; totalMinutes: number; items: DetailItem[] } | null>(null);
+  const [detail, setDetail] = useState<{
+    from: string;
+    to: string;
+    days: number;
+    totalCount: number;
+    totalMinutes: number;
+    items: DetailItem[];
+    nextCursor?: string | null;
+    hasMore?: boolean;
+  } | null>(null);
   const [selectedWorklogId, setSelectedWorklogId] = useState<string | null>(null);
 
   const groupedDetail = useMemo(() => {
@@ -128,7 +138,7 @@ export function WorklogStats() {
     setDetailLoading(true);
     setDetailError(null);
     try {
-      const qs = new URLSearchParams({ days: String(days), team: teamName, user: userName });
+      const qs = new URLSearchParams({ days: String(days), team: teamName, user: userName, limit: '180' });
       if (myUserId) qs.set('viewerId', myUserId);
       const r = await apiJson(`/api/worklogs/stats/weekly/details?${qs.toString()}`);
       setDetail(r);
@@ -136,6 +146,43 @@ export function WorklogStats() {
       setDetailError(e?.message || '상세 로드 실패');
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  async function loadMoreDetail() {
+    if (!detailCtx) return;
+    if (!detail?.hasMore || !detail?.nextCursor) return;
+    if (detailMoreLoading) return;
+    setDetailMoreLoading(true);
+    setDetailError(null);
+    try {
+      const qs = new URLSearchParams({
+        days: String(days),
+        team: detailCtx.teamName,
+        user: detailCtx.userName,
+        cursor: String(detail.nextCursor),
+        limit: '240',
+      });
+      if (myUserId) qs.set('viewerId', myUserId);
+      const r = await apiJson<any>(`/api/worklogs/stats/weekly/details?${qs.toString()}`);
+      setDetail((prev) => {
+        if (!prev) return r;
+        return {
+          ...prev,
+          from: r.from ?? prev.from,
+          to: r.to ?? prev.to,
+          days: r.days ?? prev.days,
+          totalCount: r.totalCount ?? prev.totalCount,
+          totalMinutes: r.totalMinutes ?? prev.totalMinutes,
+          items: [...(prev.items || []), ...(r.items || [])],
+          nextCursor: r.nextCursor,
+          hasMore: r.hasMore,
+        };
+      });
+    } catch (e: any) {
+      setDetailError(e?.message || '추가 로드 실패');
+    } finally {
+      setDetailMoreLoading(false);
     }
   }
 
@@ -329,6 +376,17 @@ export function WorklogStats() {
                       <div style={{ fontSize: 12, color: '#64748b' }}>
                         기간: {formatKstDatetime(detail.from)} ~ {formatKstDatetime(detail.to)} · {detail.totalCount}건 · {formatMinutesAsHmKo(detail.totalMinutes)}
                       </div>
+                      {detail.hasMore && detail.nextCursor ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={loadMoreDetail}
+                          disabled={detailMoreLoading}
+                          style={{ width: '100%' }}
+                        >
+                          {detailMoreLoading ? '불러오는 중…' : '더보기'}
+                        </button>
+                      ) : null}
                       <div style={{ display: 'grid', gap: 8 }}>
                         {groupedDetail.map((obj) => (
                           <div key={obj.objectiveTitle} style={{ display: 'grid', gap: 8 }}>
