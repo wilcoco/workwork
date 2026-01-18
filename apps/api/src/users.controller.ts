@@ -18,7 +18,7 @@ export class UsersController {
     if (!userId) throw new BadRequestException('userId required');
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { orgUnit: true } });
     if (!user) throw new NotFoundException('user not found');
-    return { id: user.id, name: user.name, role: user.role, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '' };
+    return { id: user.id, email: user.email, teamsUpn: (user as any).teamsUpn || '', name: user.name, role: user.role, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '' };
   }
 
   @Get()
@@ -30,6 +30,7 @@ export class UsersController {
       items: users.map((u) => ({
         id: u.id,
         email: u.email,
+        teamsUpn: (u as any).teamsUpn || '',
         name: u.name,
         role: u.role,
         orgUnitId: u.orgUnitId || '',

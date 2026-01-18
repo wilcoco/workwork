@@ -9,6 +9,7 @@ export function Signup() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [teamsUpn, setTeamsUpn] = useState('');
   const [role, setRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'>('INDIVIDUAL');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +22,7 @@ export function Signup() {
     setLoading(true);
     try {
       const payload: any = { username, password, name, role };
+      if (teamsUpn.trim()) payload.teamsUpn = teamsUpn.trim();
       const res = await apiJson<{ token: string; user: { id: string; name: string; teamName: string } }>(
         '/api/auth/signup',
         {
@@ -67,8 +69,14 @@ export function Signup() {
               ))}
             </optgroup>
           </select>
-          <label>아이디</label>
+          <label>이메일(로그인)</label>
           <input value={username} onChange={(e) => setUsername(e.target.value)} required />
+          <label>Teams ID(UPN)</label>
+          <input
+            value={teamsUpn}
+            onChange={(e) => setTeamsUpn(e.target.value)}
+            placeholder="보통 회사 이메일과 동일"
+          />
           <label>비밀번호</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           <div className="actions">

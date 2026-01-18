@@ -8,6 +8,7 @@ class SignupDto {
   @IsString() @IsNotEmpty() username!: string; // stored in User.email
   @IsString() @IsNotEmpty() password!: string;
   @IsString() @IsNotEmpty() name!: string;
+  @IsOptional() @IsString() teamsUpn?: string; // Teams UPN (often the same as email)
   @IsOptional() @IsString() teamName?: string;
   @IsOptional() @IsString() companyId?: string; // optional: allow CEO/EXEC without team
   @IsOptional() @IsString() teamId?: string;    // optional: direct team selection by id
@@ -26,6 +27,7 @@ export class AuthController {
 
   @Post('signup')
   async signup(@Body() dto: SignupDto) {
+    const teamsUpn = String(dto.teamsUpn || '').trim() || String(dto.username || '').trim() || null;
     let orgUnitId: string | null = null;
     // Prefer explicit teamId
     if (dto.teamId) {
@@ -53,6 +55,11 @@ export class AuthController {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.username } });
     if (existing) throw new BadRequestException('username already exists');
 
+    if (teamsUpn) {
+      const existingTeams = await (this.prisma as any).user.findFirst({ where: { teamsUpn } });
+      if (existingTeams) throw new BadRequestException('teamsUpn already exists');
+    }
+
     // Diagnostic log: signup intent (no sensitive data)
     try {
       console.log('[auth] signup intent', {
@@ -66,9 +73,10 @@ export class AuthController {
     } catch {}
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.prisma.user.create({
+    const user = await (this.prisma as any).user.create({
       data: {
         email: dto.username,
+        teamsUpn,
         name: dto.name,
         role: (dto.role as any) || ('INDIVIDUAL' as any),
         orgUnitId: orgUnitId,
