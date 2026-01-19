@@ -33,6 +33,11 @@ enum Role {
   INDIVIDUAL
 }
 
+enum UserStatus {
+  PENDING
+  ACTIVE
+}
+
 enum ObjectiveStatus {
   DRAFT
   ACTIVE
@@ -98,8 +103,12 @@ model User {
   id         String   @id @default(cuid())
   email      String   @unique
   teamsUpn   String?  @unique
+  entraTenantId String?
+  entraOid    String?  @unique
   name       String
   role       Role
+  status     UserStatus @default(ACTIVE)
+  activatedAt DateTime?
   orgUnitId  String?
   orgUnit    OrgUnit? @relation(fields: [orgUnitId], references: [id])
   objectives Objective[] @relation("ObjectiveOwner")

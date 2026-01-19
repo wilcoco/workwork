@@ -23,13 +23,17 @@ export function Signup() {
     try {
       const payload: any = { username, password, name, role };
       if (teamsUpn.trim()) payload.teamsUpn = teamsUpn.trim();
-      const res = await apiJson<{ token: string; user: { id: string; name: string; teamName: string } }>(
+      const res = await apiJson<{ token?: string; pending?: boolean; user: { id: string; name: string; teamName: string } }>(
         '/api/auth/signup',
         {
           method: 'POST',
           body: JSON.stringify(payload),
         }
       );
+      if (res.pending || !res.token) {
+        nav('/auth/pending');
+        return;
+      }
       localStorage.setItem('token', res.token);
       localStorage.setItem('userLogin', username);
       localStorage.setItem('userId', res.user.id);

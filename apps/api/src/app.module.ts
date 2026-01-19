@@ -10,6 +10,7 @@ import { SharesController } from './shares.controller';
 import { FeedbacksController } from './feedbacks.controller';
 import { WorklogsController } from './worklogs.controller';
 import { AuthController } from './auth.controller';
+import { EntraAuthController } from './entra-auth.controller';
 import { UploadsController } from './uploads.controller';
 import { InitiativesController } from './initiatives.controller';
 import { MyGoalsController } from './my-goals.controller';
@@ -39,6 +40,7 @@ import { MastersController } from './masters.controller';
     FeedbacksController,
     WorklogsController,
     AuthController,
+    EntraAuthController,
     UploadsController,
     InitiativesController,
     MyGoalsController,

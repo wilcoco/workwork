@@ -7,6 +7,8 @@ type UserLite = {
   email: string;
   name: string;
   role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
+  status?: 'PENDING' | 'ACTIVE' | string;
+  activatedAt?: string | null;
   orgUnitId: string;
   orgName: string;
 };
@@ -16,12 +18,17 @@ export function AdminMembers() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  const [myUserId, setMyUserId] = useState('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<{ items: UserLite[] }>('/api/users');
+      const url = myRole === 'CEO' && myUserId
+        ? `/api/users?includePending=1&userId=${encodeURIComponent(myUserId)}`
+        : '/api/users';
+      const res = await apiJson<{ items: UserLite[] }>(url);
       setItems(res.items || []);
     } catch (e: any) {
       setError(e?.message || '불러오기 실패');
@@ -31,8 +38,40 @@ export function AdminMembers() {
   }
 
   useEffect(() => {
-    load();
+    const uid = localStorage.getItem('userId') || '';
+    setMyUserId(uid);
+    if (!uid) {
+      load();
+      return;
+    }
+    (async () => {
+      try {
+        const me = await apiJson<{ id: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
+        setMyRole((me as any).role || '');
+      } catch {
+        setMyRole('');
+      }
+    })();
   }, []);
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myRole, myUserId]);
+
+  async function onActivate(id: string) {
+    if (myRole !== 'CEO' || !myUserId) return;
+    if (!confirm('해당 사용자를 승인(활성화)할까요?')) return;
+    try {
+      await apiJson(`/api/admin/users/${encodeURIComponent(id)}/activate?userId=${encodeURIComponent(myUserId)}`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setItems((prev) => prev.map((u) => (u.id === id ? { ...u, status: 'ACTIVE', activatedAt: new Date().toISOString() } : u)));
+    } catch (e: any) {
+      alert(e?.message || '승인할 수 없습니다.');
+    }
+  }
 
   async function onDelete(id: string) {
     if (!confirm('해당 구성원을 삭제할까요?')) return;
@@ -90,6 +129,7 @@ export function AdminMembers() {
                 <th style={{ textAlign: 'left' }}>이름</th>
                 <th style={{ textAlign: 'left' }}>이메일</th>
                 <th style={{ textAlign: 'left' }}>역할</th>
+                <th style={{ textAlign: 'left' }}>상태</th>
                 <th style={{ textAlign: 'left' }}>조직</th>
                 <th style={{ textAlign: 'right' }}>작업</th>
               </tr>
@@ -100,15 +140,19 @@ export function AdminMembers() {
                   <td>{u.name}</td>
                   <td>{u.email}</td>
                   <td>{roleLabel(u.role)}</td>
+                  <td>{(u as any).status === 'PENDING' ? '승인대기' : '활성'}</td>
                   <td>{u.orgName || '-'}</td>
                   <td style={{ textAlign: 'right' }}>
+                    {myRole === 'CEO' && (u as any).status === 'PENDING' && (
+                      <button className="btn btn-sm" style={{ marginRight: 8 }} onClick={() => onActivate(u.id)}>승인</button>
+                    )}
                     <button className="btn btn-sm btn-danger" onClick={() => onDelete(u.id)}>삭제</button>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', color: '#6b7280' }}>구성원이 없습니다</td>
+                  <td colSpan={6} style={{ textAlign: 'center', color: '#6b7280' }}>구성원이 없습니다</td>
                 </tr>
               )}
             </tbody>

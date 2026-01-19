@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
 @Controller('admin')
@@ -9,6 +9,23 @@ export class AdminController {
     if (!userId) throw new BadRequestException('userId required');
     const actor = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can perform this action');
+  }
+
+  @Post('users/:id/activate')
+  async activateUser(
+    @Param('id') id: string,
+    @Body() body: { confirm?: string },
+    @Query('userId') userId?: string,
+  ) {
+    await this.assertCeo(userId);
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const updated = await (this.prisma as any).user.update({
+      where: { id },
+      data: { status: 'ACTIVE', activatedAt: new Date() },
+    });
+    return { ok: true, user: { id: updated.id, status: (updated as any).status || 'ACTIVE', activatedAt: (updated as any).activatedAt || null } };
   }
 
   @Post('wipe')

@@ -18,21 +18,35 @@ export class UsersController {
     if (!userId) throw new BadRequestException('userId required');
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { orgUnit: true } });
     if (!user) throw new NotFoundException('user not found');
-    return { id: user.id, email: user.email, teamsUpn: (user as any).teamsUpn || '', name: user.name, role: user.role, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '' };
+    return { id: user.id, email: user.email, teamsUpn: (user as any).teamsUpn || '', name: user.name, role: user.role, status: (user as any).status || 'ACTIVE', activatedAt: (user as any).activatedAt || null, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '' };
   }
 
   @Get()
-  async list(@Query('orgUnitId') orgUnitId?: string) {
+  async list(
+    @Query('orgUnitId') orgUnitId?: string,
+    @Query('includePending') includePending?: string,
+    @Query('userId') userId?: string,
+  ) {
     const where: any = {};
     if (orgUnitId) where.orgUnitId = orgUnitId;
-    const users = await this.prisma.user.findMany({ where, include: { orgUnit: true }, orderBy: { name: 'asc' } });
+    const wantsPending = includePending === '1' || includePending === 'true';
+    if (wantsPending) {
+      if (!userId) throw new BadRequestException('userId required');
+      const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!actor || (actor.role as any) !== 'CEO') throw new BadRequestException('only CEO can include pending users');
+    } else {
+      where.status = 'ACTIVE';
+    }
+    const users = await (this.prisma as any).user.findMany({ where, include: { orgUnit: true }, orderBy: { name: 'asc' } });
     return {
-      items: users.map((u) => ({
+      items: users.map((u: any) => ({
         id: u.id,
         email: u.email,
         teamsUpn: (u as any).teamsUpn || '',
         name: u.name,
         role: u.role,
+        status: (u as any).status || 'ACTIVE',
+        activatedAt: (u as any).activatedAt || null,
         orgUnitId: u.orgUnitId || '',
         orgName: u.orgUnit?.name || '',
       })),

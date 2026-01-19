@@ -44,6 +44,8 @@ import { ProcessStart } from './pages/ProcessStart';
 import { ProcessTemplates } from './pages/ProcessTemplates';
 import { ProcessDashboard } from './pages/ProcessDashboard';
 import { MasterManagement } from './pages/MasterManagement';
+import { AuthEntraComplete } from './pages/AuthEntraComplete';
+import { AuthPending } from './pages/AuthPending';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -129,6 +131,8 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
       >
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/auth/entra/complete" element={<AuthEntraComplete />} />
+          <Route path="/auth/pending" element={<AuthPending />} />
           <Route path="/worklogs/new" element={<WorklogNew />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
           <Route path="/inbox" element={<Inbox />} />
