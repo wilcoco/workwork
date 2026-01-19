@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiJson, apiUrl } from '../lib/api';
 
@@ -10,10 +10,29 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [brandName, setBrandName] = useState<string>('');
+
   const rawCompanyName = (import.meta as any)?.env?.VITE_COMPANY_NAME ?? '';
   const companyName = String(rawCompanyName).trim().replace(/^['"]+|['"]+$/g, '');
   const norm = companyName.toLowerCase();
-  const isCams = norm.includes('캠스') || norm.includes('cams');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const b = await apiJson<{ name: string; logoPath: string }>(`/api/brand`);
+        setBrandName(String(b?.name || ''));
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const isCams = useMemo(() => {
+    const byBrand = String(brandName || '').toLowerCase();
+    if (byBrand.includes('캠스') || byBrand.includes('cams')) return true;
+    // fallback to build-time env
+    return norm.includes('캠스') || norm.includes('cams');
+  }, [brandName, norm]);
 
   const qsError = useMemo(() => {
     try {
