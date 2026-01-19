@@ -8,6 +8,23 @@ import { randomUUID } from 'crypto';
 export class EntraAuthController {
   constructor(private prisma: PrismaService) {}
 
+  private isCamsOrg() {
+    const raw = String(
+      process.env.VITE_COMPANY_NAME ||
+        process.env.COMPANY_NAME ||
+        process.env.BRAND_COMPANY_NAME ||
+        ''
+    )
+      .trim()
+      .replace(/^['"]+|['"]+$/g, '');
+    const norm = raw.toLowerCase();
+    return norm.includes('캠스') || norm.includes('cams');
+  }
+
+  private assertCamsOrgEnabled() {
+    if (!this.isCamsOrg()) throw new BadRequestException('Entra SSO not enabled');
+  }
+
   private getJwtSecret() {
     return process.env.JWT_SECRET || 'devsecret';
   }
@@ -34,6 +51,7 @@ export class EntraAuthController {
   }
 
   private getEntraConfig() {
+    this.assertCamsOrgEnabled();
     const tenantId = String(process.env.ENTRA_TENANT_ID || '').trim();
     const clientId = String(process.env.ENTRA_CLIENT_ID || '').trim();
     const clientSecret = String(process.env.ENTRA_CLIENT_SECRET || '').trim();
@@ -109,7 +127,20 @@ export class EntraAuthController {
     @Query('error_description') errorDescription?: string,
   ) {
     const webBase = this.getWebBase(req);
-    const { tenantId, clientId, clientSecret, redirectUri } = this.getEntraConfig();
+    let tenantId = '';
+    let clientId = '';
+    let clientSecret = '';
+    let redirectUri = '';
+    try {
+      const cfg = this.getEntraConfig();
+      tenantId = cfg.tenantId;
+      clientId = cfg.clientId;
+      clientSecret = cfg.clientSecret;
+      redirectUri = cfg.redirectUri;
+    } catch (e: any) {
+      const msg = encodeURIComponent(String(e?.message || 'Entra SSO not enabled').slice(0, 200));
+      return res.redirect(`${webBase}/login?error=${msg}`);
+    }
 
     if (error) {
       const msg = encodeURIComponent(String(errorDescription || error || 'entra login failed').slice(0, 200));

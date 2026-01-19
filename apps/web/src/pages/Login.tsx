@@ -10,6 +10,11 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const rawCompanyName = (import.meta as any)?.env?.VITE_COMPANY_NAME ?? '';
+  const companyName = String(rawCompanyName).trim().replace(/^['"]+|['"]+$/g, '');
+  const norm = companyName.toLowerCase();
+  const isCams = norm.includes('캠스') || norm.includes('cams');
+
   const qsError = useMemo(() => {
     try {
       const params = new URLSearchParams(location.search || '');
@@ -63,14 +68,18 @@ export function Login() {
       <div className="card" style={{ maxWidth: 420, margin: '24px auto' }}>
         <h2 style={{ margin: 0 }}>로그인</h2>
         {(qsError || error) && <div className="error">{qsError || error}</div>}
-        <div className="actions" style={{ marginTop: 12 }}>
-          <button type="button" className="btn" onClick={onMicrosoftLogin} disabled={loading}>
-            Microsoft로 로그인
-          </button>
-        </div>
-        <div style={{ marginTop: 10, color: '#6b7280', fontSize: 13 }}>
-          회사 계정(Entra ID)으로 로그인합니다. 최초 로그인은 관리자/대표 승인 후 활성화됩니다.
-        </div>
+        {isCams && (
+          <>
+            <div className="actions" style={{ marginTop: 12 }}>
+              <button type="button" className="btn" onClick={onMicrosoftLogin} disabled={loading}>
+                Microsoft로 로그인
+              </button>
+            </div>
+            <div style={{ marginTop: 10, color: '#6b7280', fontSize: 13 }}>
+              회사 계정(Entra ID)으로 로그인합니다. 최초 로그인은 관리자/대표 승인 후 활성화됩니다.
+            </div>
+          </>
+        )}
         <form onSubmit={submit} className="form">
           <label>아이디</label>
           <input value={username} onChange={(e) => setUsername(e.target.value)} required />
