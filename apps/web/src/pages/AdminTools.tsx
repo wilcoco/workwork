@@ -10,10 +10,16 @@ export function AdminTools() {
   const [confirmYesWl, setConfirmYesWl] = useState('');
   const [confirmYesKpi, setConfirmYesKpi] = useState('');
   const [confirmYesOkr, setConfirmYesOkr] = useState('');
+  const [confirmYesHelp, setConfirmYesHelp] = useState('');
+  const [confirmYesApps, setConfirmYesApps] = useState('');
+  const [confirmYesAppr, setConfirmYesAppr] = useState('');
   const [loadingProc, setLoadingProc] = useState(false);
   const [loadingWl, setLoadingWl] = useState(false);
   const [loadingKpi, setLoadingKpi] = useState(false);
   const [loadingOkr, setLoadingOkr] = useState(false);
+  const [loadingHelp, setLoadingHelp] = useState(false);
+  const [loadingApps, setLoadingApps] = useState(false);
+  const [loadingAppr, setLoadingAppr] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<any | null>(null);
 
@@ -34,6 +40,9 @@ export function AdminTools() {
   const canWipeWl = role === 'CEO' && confirmYesWl === 'YES' && !loadingWl;
   const canWipeKpi = role === 'CEO' && confirmYesKpi === 'YES' && !loadingKpi;
   const canWipeOkr = role === 'CEO' && confirmYesOkr === 'YES' && !loadingOkr;
+  const canWipeHelp = role === 'CEO' && confirmYesHelp === 'YES' && !loadingHelp;
+  const canWipeApps = role === 'CEO' && confirmYesApps === 'YES' && !loadingApps;
+  const canWipeAppr = role === 'CEO' && confirmYesAppr === 'YES' && !loadingAppr;
 
   async function onWipe() {
     if (!canWipe) return;
@@ -42,7 +51,7 @@ export function AdminTools() {
     setSummary(null);
     setLoading(true);
     try {
-      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe`, {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe?userId=${encodeURIComponent(userId)}`, {
         method: 'POST',
         body: JSON.stringify({ confirm: 'ERASE ALL' }),
       });
@@ -61,7 +70,7 @@ export function AdminTools() {
     setSummary(null);
     setLoadingProc(true);
     try {
-      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/processes`, {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/processes?userId=${encodeURIComponent(userId)}`, {
         method: 'POST',
         body: JSON.stringify({ confirm: 'YES' }),
       });
@@ -80,7 +89,7 @@ export function AdminTools() {
     setSummary(null);
     setLoadingWl(true);
     try {
-      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/worklogs`, {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/worklogs?userId=${encodeURIComponent(userId)}`, {
         method: 'POST',
         body: JSON.stringify({ confirm: 'YES' }),
       });
@@ -99,7 +108,7 @@ export function AdminTools() {
     setSummary(null);
     setLoadingKpi(true);
     try {
-      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/kpis`, {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/kpis?userId=${encodeURIComponent(userId)}`, {
         method: 'POST',
         body: JSON.stringify({ confirm: 'YES' }),
       });
@@ -118,7 +127,7 @@ export function AdminTools() {
     setSummary(null);
     setLoadingOkr(true);
     try {
-      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/okrs`, {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/okrs?userId=${encodeURIComponent(userId)}`, {
         method: 'POST',
         body: JSON.stringify({ confirm: 'YES' }),
       });
@@ -127,6 +136,63 @@ export function AdminTools() {
       setError(e?.message || '삭제 실패');
     } finally {
       setLoadingOkr(false);
+    }
+  }
+
+  async function onWipeHelpTickets() {
+    if (!canWipeHelp) return;
+    if (!confirm('업무 요청(협조) 데이터를 모두 삭제하시겠습니까?')) return;
+    setError(null);
+    setSummary(null);
+    setLoadingHelp(true);
+    try {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/help-tickets?userId=${encodeURIComponent(userId)}`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setSummary(res.summary || {});
+    } catch (e: any) {
+      setError(e?.message || '삭제 실패');
+    } finally {
+      setLoadingHelp(false);
+    }
+  }
+
+  async function onWipeApplications() {
+    if (!canWipeApps) return;
+    if (!confirm('신청(근태/배차) 데이터를 모두 삭제하시겠습니까?')) return;
+    setError(null);
+    setSummary(null);
+    setLoadingApps(true);
+    try {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/applications?userId=${encodeURIComponent(userId)}`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setSummary(res.summary || {});
+    } catch (e: any) {
+      setError(e?.message || '삭제 실패');
+    } finally {
+      setLoadingApps(false);
+    }
+  }
+
+  async function onWipeApprovals() {
+    if (!canWipeAppr) return;
+    if (!confirm('결재(ApprovalRequest/Step) 데이터를 모두 삭제하시겠습니까?')) return;
+    setError(null);
+    setSummary(null);
+    setLoadingAppr(true);
+    try {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/approvals?userId=${encodeURIComponent(userId)}`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setSummary(res.summary || {});
+    } catch (e: any) {
+      setError(e?.message || '삭제 실패');
+    } finally {
+      setLoadingAppr(false);
     }
   }
 
@@ -212,6 +278,36 @@ export function AdminTools() {
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn" disabled={!canWipeOkr} onClick={onWipeOkrs}>
                   {loadingOkr ? '삭제중…' : 'OKR 지우기'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div>업무 요청(협조) 삭제</div>
+              <input placeholder="YES" value={confirmYesHelp} onChange={(e) => setConfirmYesHelp(e.target.value)} style={input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn" disabled={!canWipeHelp} onClick={onWipeHelpTickets}>
+                  {loadingHelp ? '삭제중…' : '업무 요청 지우기'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div>신청(근태/배차) 삭제</div>
+              <input placeholder="YES" value={confirmYesApps} onChange={(e) => setConfirmYesApps(e.target.value)} style={input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn" disabled={!canWipeApps} onClick={onWipeApplications}>
+                  {loadingApps ? '삭제중…' : '신청 지우기'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div>결재 데이터 삭제</div>
+              <input placeholder="YES" value={confirmYesAppr} onChange={(e) => setConfirmYesAppr(e.target.value)} style={input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn" disabled={!canWipeAppr} onClick={onWipeApprovals}>
+                  {loadingAppr ? '삭제중…' : '결재 지우기'}
                 </button>
               </div>
             </div>

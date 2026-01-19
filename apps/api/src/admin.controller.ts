@@ -1,12 +1,19 @@
-import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
 @Controller('admin')
 export class AdminController {
   constructor(private prisma: PrismaService) {}
 
+  private async assertCeo(userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can perform this action');
+  }
+
   @Post('wipe')
-  async wipe(@Body() body: { confirm?: string }) {
+  async wipe(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'ERASE ALL') {
       throw new BadRequestException("confirm must be 'ERASE ALL'");
     }
@@ -100,7 +107,8 @@ export class AdminController {
   }
 
   @Post('wipe/processes')
-  async wipeProcesses(@Body() body: { confirm?: string }) {
+  async wipeProcesses(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -120,7 +128,8 @@ export class AdminController {
   }
 
   @Post('wipe/worklogs')
-  async wipeWorklogs(@Body() body: { confirm?: string }) {
+  async wipeWorklogs(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -140,7 +149,8 @@ export class AdminController {
   }
 
   @Post('wipe/kpis')
-  async wipeKpis(@Body() body: { confirm?: string }) {
+  async wipeKpis(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -180,7 +190,8 @@ export class AdminController {
   }
 
   @Post('wipe/okrs')
-  async wipeOkrs(@Body() body: { confirm?: string }) {
+  async wipeOkrs(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -225,6 +236,75 @@ export class AdminController {
       }, { timeout: 120000 });
     } catch (e: any) {
       throw new BadRequestException(`wipe okrs failed: ${e?.message || e}`);
+    }
+    return { ok: true, summary };
+  }
+
+  @Post('wipe/help-tickets')
+  async wipeHelpTickets(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const summary: Record<string, number> = {};
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        summary.notifications = (await (tx as any).notification.deleteMany({ where: { subjectType: 'HelpTicket' } })).count;
+        summary.events = (await (tx as any).event.deleteMany({ where: { subjectType: 'HelpTicket' } })).count;
+        summary.helpTickets = (await (tx as any).helpTicket.deleteMany({})).count;
+      }, { timeout: 120000 });
+    } catch (e: any) {
+      throw new BadRequestException(`wipe help-tickets failed: ${e?.message || e}`);
+    }
+    return { ok: true, summary };
+  }
+
+  @Post('wipe/applications')
+  async wipeApplications(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const summary: Record<string, number> = {};
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        const subjectTypes = ['ATTENDANCE', 'CAR_DISPATCH'];
+        const approvals = await (tx as any).approvalRequest.findMany({ where: { subjectType: { in: subjectTypes } }, select: { id: true } });
+        const approvalIds = (approvals || []).map((a: any) => a.id);
+        if (approvalIds.length > 0) {
+          summary.approvalSteps = (await (tx as any).approvalStep.deleteMany({ where: { requestId: { in: approvalIds } } })).count;
+          summary.approvalRequests = (await (tx as any).approvalRequest.deleteMany({ where: { id: { in: approvalIds } } })).count;
+        } else {
+          summary.approvalSteps = 0;
+          summary.approvalRequests = 0;
+        }
+        summary.notifications = (await (tx as any).notification.deleteMany({ where: { subjectType: { in: subjectTypes as any } } })).count;
+        summary.events = (await (tx as any).event.deleteMany({ where: { subjectType: { in: subjectTypes as any } } })).count;
+        summary.attendanceRequests = (await (tx as any).attendanceRequest.deleteMany({})).count;
+        summary.carDispatchRequests = (await (tx as any).carDispatchRequest.deleteMany({})).count;
+      }, { timeout: 120000 });
+    } catch (e: any) {
+      throw new BadRequestException(`wipe applications failed: ${e?.message || e}`);
+    }
+    return { ok: true, summary };
+  }
+
+  @Post('wipe/approvals')
+  async wipeApprovals(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const summary: Record<string, number> = {};
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        summary.notifications = (await (tx as any).notification.deleteMany({ where: { type: { in: ['ApprovalRequested', 'ApprovalGranted', 'ApprovalRejected'] as any } } })).count;
+        summary.events = (await (tx as any).event.deleteMany({ where: { OR: [{ subjectType: 'ApprovalStep' }, { activity: { in: ['ApprovalRequested', 'ApprovalGranted', 'ApprovalRejected', 'ApprovalStepApproved'] as any } }] } })).count;
+        summary.approvalSteps = (await (tx as any).approvalStep.deleteMany({})).count;
+        summary.approvalRequests = (await (tx as any).approvalRequest.deleteMany({})).count;
+      }, { timeout: 120000 });
+    } catch (e: any) {
+      throw new BadRequestException(`wipe approvals failed: ${e?.message || e}`);
     }
     return { ok: true, summary };
   }
