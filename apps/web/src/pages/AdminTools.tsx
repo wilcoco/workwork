@@ -23,6 +23,11 @@ export function AdminTools() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<any | null>(null);
 
+  const [userDataQuery, setUserDataQuery] = useState('');
+  const [userDataLoading, setUserDataLoading] = useState(false);
+  const [userDataError, setUserDataError] = useState<string | null>(null);
+  const [userDataResult, setUserDataResult] = useState<any | null>(null);
+
   useEffect(() => {
     const uid = localStorage.getItem('userId') || '';
     setUserId(uid);
@@ -62,6 +67,35 @@ export function AdminTools() {
       setLoading(false);
     }
   }
+
+  async function onLoadUserData() {
+    if (role !== 'CEO') return;
+    const q = (userDataQuery || '').trim();
+    if (!q) {
+      setUserDataError('검색어를 입력해 주세요');
+      return;
+    }
+    setUserDataError(null);
+    setUserDataResult(null);
+    setUserDataLoading(true);
+    try {
+      const res = await apiJson<any>(`/api/admin/user-data?userId=${encodeURIComponent(userId)}&q=${encodeURIComponent(q)}`);
+      setUserDataResult(res);
+    } catch (e: any) {
+      setUserDataError(e?.message || '조회 실패');
+    } finally {
+      setUserDataLoading(false);
+    }
+  }
+
+  const userDataPretty = useMemo(() => {
+    if (!userDataResult) return '';
+    try {
+      return JSON.stringify(userDataResult, null, 2);
+    } catch {
+      return String(userDataResult);
+    }
+  }, [userDataResult]);
 
   async function onWipeProcesses() {
     if (!canWipeProc) return;
@@ -311,6 +345,34 @@ export function AdminTools() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ fontWeight: 700 }}>사용자 데이터 잔존 조회</div>
+        {role !== 'CEO' ? (
+          <div style={{ marginTop: 10, color: '#64748b' }}>권한이 없습니다. 대표이사(CEO)만 조회할 수 있습니다.</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+            <div style={{ color: '#6b7280', fontSize: 13 }}>이름/이메일/Teams UPN으로 검색해서 해당 사용자의 남은 데이터(카운트/샘플)를 확인합니다.</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                placeholder="예: 성세용"
+                value={userDataQuery}
+                onChange={(e) => setUserDataQuery(e.target.value)}
+                style={{ ...input, flex: 1 }}
+              />
+              <button className="btn" disabled={userDataLoading || !userDataQuery.trim()} onClick={onLoadUserData}>
+                {userDataLoading ? '조회중…' : '조회'}
+              </button>
+            </div>
+            {userDataError && <div style={{ color: 'red' }}>{userDataError}</div>}
+            {userDataResult && (
+              <pre style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, overflowX: 'auto' }}>
+                {userDataPretty}
+              </pre>
+            )}
           </div>
         )}
       </div>

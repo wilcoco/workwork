@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
 @Controller('admin')
@@ -307,5 +307,167 @@ export class AdminController {
       throw new BadRequestException(`wipe approvals failed: ${e?.message || e}`);
     }
     return { ok: true, summary };
+  }
+
+  @Get('user-data')
+  async userData(
+    @Query('userId') userId?: string,
+    @Query('targetUserId') targetUserId?: string,
+    @Query('q') q?: string,
+  ) {
+    await this.assertCeo(userId);
+
+    const take = 10;
+    let users: Array<{ id: string; name: string; email: string; teamsUpn?: string | null }> = [];
+    if (targetUserId) {
+      const u = await (this.prisma as any).user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, name: true, email: true, teamsUpn: true },
+      });
+      if (u) users = [u];
+    } else if (q && String(q).trim()) {
+      const qq = String(q).trim();
+      users = await (this.prisma as any).user.findMany({
+        where: {
+          OR: [
+            { name: { contains: qq, mode: 'insensitive' as any } },
+            { email: { contains: qq, mode: 'insensitive' as any } },
+            { teamsUpn: { contains: qq, mode: 'insensitive' as any } },
+          ],
+        },
+        select: { id: true, name: true, email: true, teamsUpn: true },
+        take,
+        orderBy: { name: 'asc' },
+      });
+    }
+
+    if (!users.length) throw new BadRequestException('target user not found');
+
+    const items = await Promise.all(
+      users.map(async (u) => {
+        const uid = u.id;
+
+        const [
+          worklogs,
+          approvals,
+          approvalSteps,
+          helpTickets,
+          attendance,
+          carDispatch,
+          notifications,
+          events,
+          shares,
+          feedbacks,
+          delegations,
+          checklistTicks,
+          progressEntries,
+          keyResultAssignments,
+          objectivesOwned,
+          keyResultsOwned,
+          initiativesOwned,
+          processTemplatesOwned,
+          processInstances,
+          processStopEvents,
+          processTaskInstances,
+          userGoals,
+          orgUnitsManaged,
+        ] = await Promise.all([
+          (this.prisma as any).worklog.count({ where: { createdById: uid } }),
+          (this.prisma as any).approvalRequest.count({ where: { OR: [{ requestedById: uid }, { approverId: uid }] } }),
+          (this.prisma as any).approvalStep.count({ where: { approverId: uid } }),
+          (this.prisma as any).helpTicket.count({ where: { OR: [{ requesterId: uid }, { assigneeId: uid }] } }),
+          (this.prisma as any).attendanceRequest.count({ where: { userId: uid } }),
+          (this.prisma as any).carDispatchRequest.count({ where: { OR: [{ requesterId: uid }, { approverId: uid }] } }),
+          (this.prisma as any).notification.count({ where: { userId: uid } }),
+          (this.prisma as any).event.count({ where: { userId: uid } }),
+          (this.prisma as any).share.count({ where: { watcherId: uid } }),
+          (this.prisma as any).feedback.count({ where: { authorId: uid } }),
+          (this.prisma as any).delegation.count({ where: { OR: [{ delegatorId: uid }, { delegateeId: uid }] } }),
+          (this.prisma as any).checklistTick.count({ where: { actorId: uid } }),
+          (this.prisma as any).progressEntry.count({ where: { actorId: uid } }),
+          (this.prisma as any).keyResultAssignment.count({ where: { userId: uid } }),
+          (this.prisma as any).objective.count({ where: { ownerId: uid } }),
+          (this.prisma as any).keyResult.count({ where: { ownerId: uid } }),
+          (this.prisma as any).initiative.count({ where: { ownerId: uid } }),
+          (this.prisma as any).processTemplate.count({ where: { ownerId: uid } }),
+          (this.prisma as any).processInstance.count({ where: { OR: [{ startedById: uid }, { modifiedById: uid }] } }),
+          (this.prisma as any).processStopEvent.count({ where: { stoppedById: uid } }),
+          (this.prisma as any).processTaskInstance.count({ where: { OR: [{ assigneeId: uid }, { decidedById: uid }] } }),
+          (this.prisma as any).userGoal.count({ where: { userId: uid } }),
+          (this.prisma as any).orgUnit.count({ where: { managerId: uid } }),
+        ]);
+
+        const worklogSamples = await (this.prisma as any).worklog.findMany({
+          where: { createdById: uid },
+          select: { id: true, createdAt: true, date: true, note: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 5,
+        });
+
+        const approvalSamples = await (this.prisma as any).approvalRequest.findMany({
+          where: { OR: [{ requestedById: uid }, { approverId: uid }] },
+          select: { id: true, subjectType: true, subjectId: true, status: true, requestedById: true, approverId: true, createdAt: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 5,
+        });
+
+        const helpTicketSamples = await (this.prisma as any).helpTicket.findMany({
+          where: { OR: [{ requesterId: uid }, { assigneeId: uid }] },
+          select: { id: true, category: true, status: true, requesterId: true, assigneeId: true, createdAt: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 5,
+        });
+
+        const notificationSamples = await (this.prisma as any).notification.findMany({
+          where: { userId: uid },
+          select: { id: true, type: true, subjectType: true, subjectId: true, readAt: true, createdAt: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 5,
+        });
+
+        const mappedWorklogSamples = (worklogSamples || []).map((w: any) => {
+          const lines = String(w.note || '').split(/\n+/);
+          const title = lines[0] || '(제목 없음)';
+          return { id: String(w.id), title, createdAt: w.createdAt, date: w.date };
+        });
+
+        return {
+          user: u,
+          counts: {
+            worklogs,
+            approvals,
+            approvalSteps,
+            helpTickets,
+            attendanceRequests: attendance,
+            carDispatchRequests: carDispatch,
+            notifications,
+            events,
+            shares,
+            feedbacks,
+            delegations,
+            checklistTicks,
+            progressEntries,
+            keyResultAssignments,
+            objectivesOwned,
+            keyResultsOwned,
+            initiativesOwned,
+            processTemplatesOwned,
+            processInstances,
+            processStopEvents,
+            processTaskInstances,
+            userGoals,
+            orgUnitsManaged,
+          },
+          samples: {
+            worklogs: mappedWorklogSamples,
+            approvals: approvalSamples || [],
+            helpTickets: helpTicketSamples || [],
+            notifications: notificationSamples || [],
+          },
+        };
+      }),
+    );
+
+    return { ok: true, items };
   }
 }
