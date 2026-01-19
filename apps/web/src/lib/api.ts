@@ -1,7 +1,14 @@
 const ENV_API_BASE = import.meta.env.VITE_API_BASE as string | undefined;
 function resolveApiBase(): string {
   try {
-    const override = typeof localStorage !== 'undefined' ? localStorage.getItem('API_BASE') || '' : '';
+    const overrideRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('API_BASE') || '' : '';
+    const host = typeof window !== 'undefined' ? String(window.location?.hostname || '') : '';
+    const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(host);
+    const allowOverride = (import.meta as any)?.env?.DEV || isLocalHost || String((import.meta as any)?.env?.VITE_ALLOW_API_BASE_OVERRIDE || '').toLowerCase() === 'true';
+    const override = allowOverride ? overrideRaw : '';
+    if (!allowOverride && overrideRaw && typeof localStorage !== 'undefined') {
+      try { localStorage.removeItem('API_BASE'); } catch {}
+    }
     let base = override || ENV_API_BASE || '';
     base = String(base || '').trim();
     if (!base) throw new Error('VITE_API_BASE is required');
