@@ -15,6 +15,8 @@ export function Login() {
   const rawCompanyName = (import.meta as any)?.env?.VITE_COMPANY_NAME ?? '';
   const companyName = String(rawCompanyName).trim().replace(/^['"]+|['"]+$/g, '');
   const norm = companyName.toLowerCase();
+  const host = (typeof window !== 'undefined' ? window.location?.hostname : '') || '';
+  const hostNorm = String(host || '').toLowerCase();
 
   useEffect(() => {
     (async () => {
@@ -31,8 +33,10 @@ export function Login() {
     const byBrand = String(brandName || '').toLowerCase();
     if (byBrand.includes('캠스') || byBrand.includes('cams')) return true;
     // fallback to build-time env
-    return norm.includes('캠스') || norm.includes('cams');
-  }, [brandName, norm]);
+    if (norm.includes('캠스') || norm.includes('cams')) return true;
+    // final fallback: production domain (CAMS)
+    return hostNorm.endsWith('icams.co.kr') || hostNorm.includes('icams');
+  }, [brandName, norm, hostNorm]);
 
   const qsError = useMemo(() => {
     try {
