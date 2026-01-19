@@ -13,6 +13,7 @@ export function AdminTools() {
   const [confirmYesHelp, setConfirmYesHelp] = useState('');
   const [confirmYesApps, setConfirmYesApps] = useState('');
   const [confirmYesAppr, setConfirmYesAppr] = useState('');
+  const [confirmYesUserGoals, setConfirmYesUserGoals] = useState('');
   const [loadingProc, setLoadingProc] = useState(false);
   const [loadingWl, setLoadingWl] = useState(false);
   const [loadingKpi, setLoadingKpi] = useState(false);
@@ -20,6 +21,7 @@ export function AdminTools() {
   const [loadingHelp, setLoadingHelp] = useState(false);
   const [loadingApps, setLoadingApps] = useState(false);
   const [loadingAppr, setLoadingAppr] = useState(false);
+  const [loadingUserGoals, setLoadingUserGoals] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<any | null>(null);
 
@@ -48,6 +50,7 @@ export function AdminTools() {
   const canWipeHelp = role === 'CEO' && confirmYesHelp === 'YES' && !loadingHelp;
   const canWipeApps = role === 'CEO' && confirmYesApps === 'YES' && !loadingApps;
   const canWipeAppr = role === 'CEO' && confirmYesAppr === 'YES' && !loadingAppr;
+  const canWipeUserGoals = role === 'CEO' && confirmYesUserGoals === 'YES' && !loadingUserGoals;
 
   async function onWipe() {
     if (!canWipe) return;
@@ -230,6 +233,25 @@ export function AdminTools() {
     }
   }
 
+  async function onWipeUserGoals() {
+    if (!canWipeUserGoals) return;
+    if (!confirm('UserGoal(개인 목표) 데이터를 모두 삭제하시겠습니까?')) return;
+    setError(null);
+    setSummary(null);
+    setLoadingUserGoals(true);
+    try {
+      const res = await apiJson<{ ok: boolean; summary: any }>(`/api/admin/wipe/user-goals?userId=${encodeURIComponent(userId)}`, {
+        method: 'POST',
+        body: JSON.stringify({ confirm: 'YES' }),
+      });
+      setSummary(res.summary || {});
+    } catch (e: any) {
+      setError(e?.message || '삭제 실패');
+    } finally {
+      setLoadingUserGoals(false);
+    }
+  }
+
   return (
     <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto' }}>
       <div>
@@ -342,6 +364,16 @@ export function AdminTools() {
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn" disabled={!canWipeAppr} onClick={onWipeApprovals}>
                   {loadingAppr ? '삭제중…' : '결재 지우기'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div>UserGoal(개인 목표) 삭제</div>
+              <input placeholder="YES" value={confirmYesUserGoals} onChange={(e) => setConfirmYesUserGoals(e.target.value)} style={input} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn" disabled={!canWipeUserGoals} onClick={onWipeUserGoals}>
+                  {loadingUserGoals ? '삭제중…' : 'UserGoal 지우기'}
                 </button>
               </div>
             </div>

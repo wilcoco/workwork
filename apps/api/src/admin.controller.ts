@@ -309,6 +309,28 @@ export class AdminController {
     return { ok: true, summary };
   }
 
+  @Post('wipe/user-goals')
+  async wipeUserGoals(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
+    if (!body?.confirm || body.confirm !== 'YES') {
+      throw new BadRequestException("confirm must be 'YES'");
+    }
+    const summary: Record<string, number> = {};
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        // unlink FK first (Initiative.userGoalId -> UserGoal.id)
+        summary.initiativesUnlinked = (await (tx as any).initiative.updateMany({
+          where: { userGoalId: { not: null } },
+          data: { userGoalId: null },
+        })).count;
+        summary.userGoals = (await (tx as any).userGoal.deleteMany({})).count;
+      }, { timeout: 120000 });
+    } catch (e: any) {
+      throw new BadRequestException(`wipe user-goals failed: ${e?.message || e}`);
+    }
+    return { ok: true, summary };
+  }
+
   @Get('user-data')
   async userData(
     @Query('userId') userId?: string,
