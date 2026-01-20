@@ -1,4 +1,4 @@
-import { BrowserRouter, Link, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState, CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { apiJson } from './lib/api';
@@ -18,7 +18,7 @@ import { OkrInstructions } from './pages/OkrInstructions';
 import { CompanyOkrInput } from './pages/CompanyOkrInput';
 import { TeamKpiInput } from './pages/TeamKpiInput';
 import { TeamKpiBoard } from './pages/TeamKpiBoard';
-import { WorklogStats } from './pages/WorklogStats';
+import { WorklogStatsDaily } from './pages/WorklogStatsDaily';
 import { WorklogAi } from './pages/WorklogAi';
 import { TeamOkrInput } from './pages/TeamOkrInput';
 import { AdminOrgs } from './pages/AdminOrgs';
@@ -198,13 +198,39 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   const isEmbed = params.get('embed') === '1' || params.get('embed') === 'true';
   const guide = getPageGuide(location.pathname || '/', SHOW_APPROVALS, SHOW_COOPS);
 
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+  const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+  const [me, setMe] = useState<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' } | null | undefined>(undefined);
+  const isCeo = me?.role === 'CEO';
+
+  const adminGuard = (child: any) => {
+    if (!token) return <Navigate to="/login" replace />;
+    if (me === undefined) return <div style={{ color: '#64748b' }}>권한 확인중...</div>;
+    return isCeo ? child : <Navigate to="/" replace />;
+  };
+
+  useEffect(() => {
+    (async () => {
+      if (!myUserId) {
+        setMe(null);
+        return;
+      }
+      try {
+        const m = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
+        setMe(m);
+      } catch {
+        setMe(null);
+      }
+    })();
+  }, [myUserId]);
+
   return (
     <>
       {!isEmbed && <DeployBanner />}
-      {!isEmbed && <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />}
+      {!isEmbed && <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} />}
       {!isEmbed && (
         <div className="container">
-          <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
+          <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} />
         </div>
       )}
       {!isEmbed && guide && (
@@ -238,7 +264,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/login" element={<Login />} />
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
-          <Route path="/worklogs/stats" element={<WorklogStats />} />
+          <Route path="/worklogs/stats" element={<WorklogStatsDaily />} />
           <Route path="/worklogs/ai" element={<WorklogAi />} />
           <Route path="/me/goals" element={<MeGoals />} />
           <Route path="/okr/input" element={<OkrInput />} />
@@ -249,12 +275,30 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/team" element={<TeamKpiInput />} />
           <Route path="/okr/team-board" element={<TeamKpiBoard />} />
           <Route path="/okr/team-okr" element={<TeamOkrInput />} />
-          <Route path="/admin/orgs" element={<AdminOrgs />} />
-          <Route path="/admin/members" element={<AdminMembers />} />
-          <Route path="/admin/tools" element={<AdminTools />} />
-          <Route path="/admin/cars" element={<CarAdmin />} />
-          <Route path="/admin/holidays" element={<AdminHolidays />} />
-          <Route path="/admin/masters" element={<MasterManagement />} />
+          <Route
+            path="/admin/orgs"
+            element={adminGuard(<AdminOrgs />)}
+          />
+          <Route
+            path="/admin/members"
+            element={adminGuard(<AdminMembers />)}
+          />
+          <Route
+            path="/admin/tools"
+            element={adminGuard(<AdminTools />)}
+          />
+          <Route
+            path="/admin/cars"
+            element={adminGuard(<CarAdmin />)}
+          />
+          <Route
+            path="/admin/holidays"
+            element={adminGuard(<AdminHolidays />)}
+          />
+          <Route
+            path="/admin/masters"
+            element={adminGuard(<MasterManagement />)}
+          />
           <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
           <Route path="/attendance/request" element={<AttendanceRequest />} />
           <Route path="/attendance/report" element={<AttendanceReport />} />
@@ -285,7 +329,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   );
 }
 
-function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean }) {
+function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean }) {
   const nav = useNavigate();
   const location = useLocation();
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -387,14 +431,16 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SH
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
         </NavDropdown>
-        <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
-          <Link to="/admin/orgs">조직관리</Link>
-          <Link to="/admin/members">구성원</Link>
-          <Link to="/admin/holidays">휴일 캘린더</Link>
-          <Link to="/admin/cars">차량 관리</Link>
-          <Link to="/admin/masters">기준정보 관리</Link>
-          <Link to="/admin/tools">시스템 도구</Link>
-        </NavDropdown>
+        {isCeo && (
+          <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
+            <Link to="/admin/orgs">조직관리</Link>
+            <Link to="/admin/members">구성원</Link>
+            <Link to="/admin/holidays">휴일 캘린더</Link>
+            <Link to="/admin/cars">차량 관리</Link>
+            <Link to="/admin/masters">기준정보 관리</Link>
+            <Link to="/admin/tools">시스템 도구</Link>
+          </NavDropdown>
+        )}
         <span className="nav-right">
           {token ? (
             <>
@@ -511,10 +557,11 @@ function NavDropdown({ label, children, active }: { label: string; children: any
   );
 }
 
-function SubNav({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean }) {
+function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean }) {
   const location = useLocation();
   const path = location.pathname || '/';
   if (path === '/') return null;
+  if (path.startsWith('/admin') && !isCeo) return null;
   const items: Array<{ to: string; label: string }> = (() => {
     if (path === '/quick' || path.startsWith('/search') || path.startsWith('/worklogs')) {
       return [

@@ -16,6 +16,7 @@ export function WorklogQuickNew() {
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
   const processInstanceId = params?.get('processInstanceId') || '';
   const taskInstanceId = params?.get('taskInstanceId') || '';
+  const helpTicketIdParam = params?.get('helpTicketId') || '';
   const [date, setDate] = useState<string>(() => todayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [timeSpentHours, setTimeSpentHours] = useState<number>(0);
@@ -34,8 +35,8 @@ export function WorklogQuickNew() {
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<Array<{ url: string; name?: string; filename?: string }>>([]);
-  const attachInputRef = useRef<HTMLInputElement | null>(null);
   const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
+  const [attachUrl, setAttachUrl] = useState<string>('');
   const quillRef = useRef<Quill | null>(null);
   const editorEl = useRef<HTMLDivElement | null>(null);
   const [plainMode, setPlainMode] = useState(false);
@@ -148,11 +149,25 @@ export function WorklogQuickNew() {
             // 업무 요청 제목 중심으로 표시: 업무 요청: [카테고리] · [제목] · [요청자]
             return { id: String(t.id), label: `업무 요청: ${cat}${titlePart} · ${who}` };
           });
+          if (helpTicketIdParam) {
+            const exists = tickets.some((t: any) => String(t.id) === String(helpTicketIdParam));
+            if (!exists) {
+              try {
+                const t = await apiJson<any>(`/api/help-tickets/${encodeURIComponent(helpTicketIdParam)}`);
+                const who = t.requester?.name || '요청자 미상';
+                const cat = t.category || '일반 업무 요청';
+                const helpTitle = t.helpTitle || '';
+                const titlePart = helpTitle ? ` · ${helpTitle}` : '';
+                tickets.unshift({ id: String(t.id), label: `업무 요청: ${cat}${titlePart} · ${who}` });
+              } catch {}
+            }
+            setSelection((prev) => (prev ? prev : `help:${helpTicketIdParam}`));
+          }
           setHelpTickets(tickets);
         } catch {}
       } catch {}
     })();
-  }, []);
+  }, [helpTicketIdParam]);
 
   // Load my process tasks for selection (only WORKLOG tasks). If opened from process inbox, preselect that task.
   useEffect(() => {
@@ -465,18 +480,35 @@ export function WorklogQuickNew() {
     }
   }
 
-  async function addAttachmentFiles(list: FileList | null) {
-    const files = Array.from(list || []);
-    if (!files.length) return;
-    try {
-      for (const f of files) {
-        // eslint-disable-next-line no-await-in-loop
-        const up = await uploadFile(f);
-        setAttachments((prev) => [...prev, { url: up.url, name: up.name || f.name, filename: up.filename || f.name }]);
-      }
-    } catch (e: any) {
-      setError(e?.message || '첨부 파일 업로드 실패');
+  function addAttachmentLink() {
+    const raw = String(attachUrl || '').trim();
+    if (!raw) return;
+    if (!/^https?:\/\//i.test(raw)) {
+      setError('첨부 링크는 http(s) 주소여야 합니다.');
+      return;
     }
+
+    try {
+      const u = new URL(raw);
+      const h = String(u.hostname || '').toLowerCase();
+      const allowed = h === 'cams2002-my.sharepoint.com' || h.endsWith('.cams2002-my.sharepoint.com');
+      if (!allowed) {
+        window.alert('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.\n허용 도메인: cams2002-my.sharepoint.com');
+        setError('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.');
+        return;
+      }
+    } catch {
+      setError('첨부 링크 형식이 올바르지 않습니다.');
+      return;
+    }
+
+    if (!attachOneDriveOk) {
+      const ok = window.confirm('Teams/OneDrive(회사) 공유 링크만 첨부하세요. 계속할까요?');
+      if (!ok) return;
+      setAttachOneDriveOk(true);
+    }
+    setAttachments((prev) => [...prev, { url: raw, name: raw }]);
+    setAttachUrl('');
   }
 
   function removeAttachment(idx: number) {
@@ -524,6 +556,9 @@ export function WorklogQuickNew() {
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제 / 업무 요청 / 신규 과제</label>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>
+              과제 선택은 목표관리(OKR/KPI)와 연동됩니다. 여기서 선택한 OKR/KPI 과제는 목표관리에서 등록된 과제/지표(KR) 목록입니다.
+            </div>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
@@ -630,6 +665,11 @@ export function WorklogQuickNew() {
               <option value="CEO_ONLY">조회 권한: 대표이사</option>
             </select>
           </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, lineHeight: 1.45 }}>
+            긴급 보고: 품질/설비/납기 등 즉시 공유가 필요한 이슈일 때 체크합니다.
+            <br />
+            과제 완료: 이번 업무일지로 해당 과제가 완료되었을 때 체크합니다. (과제 완료로 기록됩니다)
+          </div>
           {(() => {
             if (!selection) return null;
             const isKR = selection.startsWith('kr:');
@@ -665,6 +705,9 @@ export function WorklogQuickNew() {
                   <div>목표값: {meta.target == null ? '-' : meta.target}{meta.unit ? ` ${meta.unit}` : ''}</div>
                   <div>기준: {dirLabel}</div>
                 </div>
+                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+                  목표 달성(달성값) 입력: 선택한 OKR/KPI 지표(KR)의 실적을 기록할 때 사용합니다. 숫자를 입력하거나, “목표 달성”을 체크하면 목표값이 자동으로 기록됩니다.
+                </div>
                 <div className="resp-2">
                   <label>
                     달성값 입력(선택)
@@ -697,32 +740,25 @@ export function WorklogQuickNew() {
               <div ref={editorEl} style={{ minHeight: 260, width: '100%' }} />
             )}
           </div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, lineHeight: 1.45 }}>
+            사진 입력: 상단 편집기 툴바의 이미지 버튼을 사용해 본문에 삽입해 주세요.
+          </div>
           
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
+              파일 첨부: Teams/OneDrive에 있는 파일은 업로드하지 않고, 공유 링크를 붙여넣어 첨부합니다.
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <input
-                ref={attachInputRef}
-                type="file"
-                multiple
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  addAttachmentFiles(e.currentTarget.files);
-                  e.currentTarget.value = '';
-                }}
+                value={attachUrl}
+                onChange={(e) => setAttachUrl(e.target.value)}
+                placeholder="Teams/OneDrive 공유 링크를 붙여넣으세요"
+                style={{ ...input, flex: 1, minWidth: 240 }}
               />
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => {
-                  if (!attachOneDriveOk) {
-                    const ok = window.confirm('원드라이브(회사)에서 받은 파일만 업로드하세요. 계속할까요?');
-                    if (!ok) return;
-                    setAttachOneDriveOk(true);
-                  }
-                  attachInputRef.current?.click();
-                }}
-              >파일 선택</button>
+              <button type="button" className="btn btn-sm" onClick={addAttachmentLink} disabled={!String(attachUrl || '').trim()}>
+                링크 추가
+              </button>
               <button
                 type="button"
                 className="btn btn-sm btn-ghost"
@@ -731,9 +767,9 @@ export function WorklogQuickNew() {
             </div>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
               <input type="checkbox" checked={attachOneDriveOk} onChange={(e) => setAttachOneDriveOk(e.target.checked)} />
-              원드라이브 파일만 업로드합니다
+              원드라이브/Teams 링크만 첨부합니다
             </label>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>원드라이브 파일만 올려주세요. (브라우저 제한으로 원드라이브 폴더를 자동으로 열 수는 없습니다)</div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>원드라이브/Teams 공유 링크만 첨부해 주세요.</div>
             {attachments.length > 0 && (
               <div className="attachments">
                 {attachments.map((f, i) => (

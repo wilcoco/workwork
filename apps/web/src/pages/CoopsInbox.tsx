@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
-import { apiFetch, apiJson, apiUrl } from '../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { apiJson, apiUrl } from '../lib/api';
 import { CoopDocument } from '../components/CoopDocument';
 
 export function CoopsInbox() {
+  const nav = useNavigate();
   const [userId, setUserId] = useState<string>('');
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState<any | null>(null);
+  const [active, setActive] = useState<{ ticket: any; requestWl: any | null; responseWl: any | null } | null>(null);
+  const [docLoading, setDocLoading] = useState(false);
+  const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'ACCEPTED' | 'CANCELLED'>('ALL');
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -24,31 +28,9 @@ export function CoopsInbox() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/inbox?userId=${encodeURIComponent(userId)}&onlyUnread=true`);
-      if (!res.ok) throw new Error(`Failed: ${res.status}`);
-      const json = await res.json();
-      const base = (json?.items || [])
-        .filter((n: any) => n.type === 'HelpRequested')
-        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      const enriched = await Promise.all(base.map(async (n: any) => {
-        const ticketId = n.payload?.ticketId;
-        let ticket: any = null;
-        let requestWl: any = null;
-        let responseWl: any = null;
-        try {
-          if (ticketId) ticket = await apiJson<any>(`/api/help-tickets/${encodeURIComponent(ticketId)}`);
-        } catch {}
-        const reqWlId = ticket?.requestWorklogId || n.payload?.fromWorklogId;
-        const resWlId = ticket?.responseWorklogId;
-        try {
-          if (reqWlId) requestWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(reqWlId)}`);
-        } catch {}
-        try {
-          if (resWlId) responseWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(resWlId)}`);
-        } catch {}
-        return { ...n, _ticket: ticket, _requestWl: requestWl, _responseWl: responseWl };
-      }));
-      setItems(enriched);
+      const res = await apiJson<{ items: any[] }>(`/api/help-tickets?assigneeId=${encodeURIComponent(userId)}&limit=100`);
+      const list = (res.items || []).slice().sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setItems(list);
     } catch (e: any) {
       setError(e?.message || '로드 실패');
     } finally {
@@ -56,21 +38,54 @@ export function CoopsInbox() {
     }
   }
 
-  async function markRead(id: string) {
-    await apiFetch(`/api/notifications/${id}/read`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actorId: userId }) });
-    await load();
+  async function openDoc(ticket: any) {
+    setDocLoading(true);
+    setError(null);
+    try {
+      const reqId = ticket?.requestWorklogId;
+      const resId = ticket?.responseWorklogId;
+      let requestWl: any | null = null;
+      let responseWl: any | null = null;
+      try {
+        if (reqId) requestWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(reqId)}`);
+      } catch {}
+      try {
+        if (resId) responseWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(resId)}`);
+      } catch {}
+      setActive({ ticket, requestWl, responseWl });
+    } catch (e: any) {
+      setError(e?.message || '업무일지 로드 실패');
+    } finally {
+      setDocLoading(false);
+    }
   }
 
-  async function act(kind: 'accept' | 'start' | 'resolve' | 'decline', ticketId: string, notificationId?: string) {
+  async function act(kind: 'accept' | 'decline', ticketId: string) {
     try {
       if (!ticketId) {
         window.alert('티켓 ID가 없어 업무 요청을 처리할 수 없습니다. 알림 payload를 확인해주세요.');
         return;
       }
       const body: any = { actorId: userId };
-      if (kind === 'decline') body.reason = window.prompt('거절 사유를 입력하세요') || '';
-      await apiJson(`/api/help-tickets/${ticketId}/${kind}`, { method: 'POST', body: JSON.stringify(body) });
-      if (notificationId) await markRead(notificationId);
+      if (kind === 'decline') {
+        while (true) {
+          const r = window.prompt('거절 사유를 입력하세요');
+          if (r == null) return;
+          const s = String(r).trim();
+          if (!s) {
+            window.alert('거절 사유는 필수입니다.');
+            continue;
+          }
+          body.reason = s;
+          break;
+        }
+      }
+      await apiJson(`/api/help-tickets/${encodeURIComponent(ticketId)}/${kind}`, { method: 'POST', body: JSON.stringify(body) });
+      if (kind === 'accept') {
+        window.alert('업무 요청을 수락했습니다.\n\n이 요청은 업무일지에 해당 업무 요청(업무 협조) 과제로 등록됩니다.\n향후 업무 진행 시 업무일지에서 해당 업무 요청을 선택해 처리 결과를 작성하면 요청이 완료됩니다.');
+        const go = window.confirm('지금 업무일지(빠른 작성)로 이동할까요?');
+        if (go) nav(`/quick?helpTicketId=${encodeURIComponent(ticketId)}`);
+      }
       await load();
     } catch (e: any) {
       setError(e?.message || '업무 요청 처리 중 오류가 발생했습니다');
@@ -80,51 +95,71 @@ export function CoopsInbox() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {error && <div style={{ color: 'red' }}>{error}</div>}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => setFilter('ALL')} style={filter === 'ALL' ? primaryBtn : ghostBtn}>전체</button>
+        <button type="button" onClick={() => setFilter('OPEN')} style={filter === 'OPEN' ? primaryBtn : ghostBtn}>미수신</button>
+        <button type="button" onClick={() => setFilter('ACCEPTED')} style={filter === 'ACCEPTED' ? primaryBtn : ghostBtn}>수락/진행/완료</button>
+        <button type="button" onClick={() => setFilter('CANCELLED')} style={filter === 'CANCELLED' ? primaryBtn : ghostBtn}>거절</button>
+      </div>
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.map((n) => {
-          const ticket = (n as any)._ticket as any | null;
-          const requestWl = (n as any)._requestWl as any | null;
-          const responseWl = (n as any)._responseWl as any | null;
-          return (
-            <div key={n.id} style={card} onClick={() => setActive(n)}>
-              {ticket ? (
-                <CoopDocument ticket={ticket} requestWorklog={requestWl} responseWorklog={responseWl} variant="compact" />
-              ) : (
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>문서 정보 없음</div>
-              )}
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                <button onClick={(e) => { e.stopPropagation(); act('accept', n.payload?.ticketId, n.id); }} style={primaryBtn}>수락</button>
-                <button onClick={(e) => { e.stopPropagation(); act('start', n.payload?.ticketId); }} style={ghostBtn}>시작</button>
-                <button onClick={(e) => { e.stopPropagation(); act('resolve', n.payload?.ticketId); }} style={ghostBtn}>완료</button>
-                <button onClick={(e) => { e.stopPropagation(); act('decline', n.payload?.ticketId, n.id); }} style={ghostBtn}>거절</button>
+        {items
+          .filter((t) => {
+            if (filter === 'ALL') return true;
+            if (filter === 'OPEN') return t.status === 'OPEN';
+            if (filter === 'CANCELLED') return t.status === 'CANCELLED';
+            if (filter === 'ACCEPTED') return t.status !== 'OPEN' && t.status !== 'CANCELLED';
+            return true;
+          })
+          .map((t) => {
+            const isOpen = t.status === 'OPEN';
+            const isCancelled = t.status === 'CANCELLED';
+            const canWrite = !isOpen && !isCancelled;
+            return (
+              <div key={t.id} style={card} onClick={() => openDoc(t)}>
+                <CoopDocument ticket={t} variant="compact" />
+                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                  {isOpen && (
+                    <>
+                      <button onClick={(e) => { e.stopPropagation(); act('accept', t.id); }} style={primaryBtn}>수락</button>
+                      <button onClick={(e) => { e.stopPropagation(); act('decline', t.id); }} style={ghostBtn}>거절</button>
+                    </>
+                  )}
+                  {canWrite && (
+                    <button onClick={(e) => { e.stopPropagation(); nav(`/quick?helpTicketId=${encodeURIComponent(t.id)}`); }} style={primaryBtn}>
+                      업무일지 작성
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-        {!items.length && <div>내게 할당된 업무 요청 없음</div>}
+            );
+          })}
+        {!loading && !items.length && <div>내게 할당된 업무 요청 없음</div>}
       </div>
       {active && (
         <div style={modalOverlay} onClick={() => setActive(null)}>
           <div style={modalBody} onClick={(e) => e.stopPropagation()}>
             {(() => {
-              const n = active;
-              const ticket = (n as any)._ticket as any | null;
-              const requestWl = (n as any)._requestWl as any | null;
-              const responseWl = (n as any)._responseWl as any | null;
+              const ticket = active.ticket;
+              const requestWl = active.requestWl;
+              const responseWl = active.responseWl;
+              const isOpen = ticket?.status === 'OPEN';
+              const isCancelled = ticket?.status === 'CANCELLED';
               return (
                 <div style={{ display: 'grid', gap: 8 }}>
-                  {ticket ? (
-                    <div style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
-                      <CoopDocument ticket={ticket} requestWorklog={requestWl} responseWorklog={responseWl} variant="full" />
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>문서 정보 없음</div>
-                  )}
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end' }}>
-                    <button onClick={() => act('accept', n.payload?.ticketId, n.id)} style={primaryBtn}>수락</button>
-                    <button onClick={() => act('start', n.payload?.ticketId)} style={ghostBtn}>시작</button>
-                    <button onClick={() => act('resolve', n.payload?.ticketId)} style={ghostBtn}>완료</button>
-                    <button onClick={() => act('decline', n.payload?.ticketId, n.id)} style={ghostBtn}>거절</button>
+                  <div style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
+                    <CoopDocument ticket={ticket} requestWorklog={requestWl} responseWorklog={responseWl} variant="full" />
+                  </div>
+                  {docLoading && <div style={{ fontSize: 12, color: '#94a3b8' }}>업무일지 불러오는 중…</div>}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    {isOpen && (
+                      <>
+                        <button onClick={() => act('accept', ticket.id)} style={primaryBtn}>수락</button>
+                        <button onClick={() => act('decline', ticket.id)} style={ghostBtn}>거절</button>
+                      </>
+                    )}
+                    {!isOpen && !isCancelled && (
+                      <button onClick={() => nav(`/quick?helpTicketId=${encodeURIComponent(ticket.id)}`)} style={primaryBtn}>업무일지 작성</button>
+                    )}
                     <button onClick={() => setActive(null)} style={ghostBtn}>닫기</button>
                   </div>
                 </div>

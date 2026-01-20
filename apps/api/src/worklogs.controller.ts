@@ -814,6 +814,116 @@ export class WorklogsController {
     return { from: from.toISOString(), to: now.toISOString(), days, total, teams };
   }
 
+  @Get('stats/daily')
+  async dailyStats(
+    @Query('days') daysStr?: string,
+    @Query('teamId') teamId?: string,
+    @Query('orgUnitIds') orgUnitIdsCsv?: string,
+    @Query('userId') userId?: string,
+    @Query('viewerId') viewerId?: string,
+  ) {
+    const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
+    const now = new Date();
+    const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+
+    const kstYmd = (d: Date) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+
+    // Visibility filter
+    let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
+    if (viewerId) {
+      const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
+      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
+      else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
+      else visibilityIn = ['ALL'];
+    }
+
+    // Resolve filter user ids
+    let filterUserIds: string[] | null = null;
+    const orgUnitIds: string[] = [];
+    if (teamId) orgUnitIds.push(String(teamId));
+    if (orgUnitIdsCsv) {
+      String(orgUnitIdsCsv)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .forEach((id) => orgUnitIds.push(id));
+    }
+    if (orgUnitIds.length > 0) {
+      const users = await this.prisma.user.findMany({ where: { orgUnitId: { in: orgUnitIds } }, select: { id: true } });
+      const ids = (users || []).map((u: any) => String(u.id));
+      if (!ids.length) {
+        return { from: from.toISOString(), to: now.toISOString(), days, totalCount: 0, totalMinutes: 0, groups: [] };
+      }
+      filterUserIds = ids;
+    }
+    if (userId) {
+      filterUserIds = [String(userId)];
+    }
+
+    const baseWhere: any = { date: { gte: from, lte: now } };
+    if (filterUserIds) baseWhere.createdById = { in: filterUserIds };
+    const visibilityWhere = viewerId
+      ? {
+          AND: [
+            baseWhere,
+            {
+              OR: [
+                { createdById: viewerId },
+                { visibility: { in: visibilityIn as any } },
+              ],
+            },
+          ],
+        }
+      : { ...baseWhere, visibility: { in: visibilityIn as any } };
+
+    const items = await this.prisma.worklog.findMany({
+      where: visibilityWhere,
+      include: { createdBy: { include: { orgUnit: true } } },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      take: 2000,
+    });
+
+    let totalCount = 0;
+    let totalMinutes = 0;
+    const byDay = new Map<string, any[]>();
+    for (const it of (items || [])) {
+      totalCount += 1;
+      totalMinutes += Number((it as any).timeSpentMinutes || 0);
+      const ymd = kstYmd(new Date((it as any).date || (it as any).createdAt));
+      if (!byDay.has(ymd)) byDay.set(ymd, []);
+      const lines = String((it as any).note || '').split(/\n+/);
+      const title = lines[0] || '';
+      const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
+      byDay.get(ymd)!.push({
+        id: String((it as any).id),
+        createdAt: (it as any).createdAt,
+        date: (it as any).date,
+        timeSpentMinutes: Number((it as any).timeSpentMinutes || 0),
+        title,
+        excerpt,
+        createdById: String((it as any).createdById),
+        userName: String((it as any).createdBy?.name || ''),
+        orgUnitId: String((it as any).createdBy?.orgUnitId || ''),
+        teamName: String((it as any).createdBy?.orgUnit?.name || ''),
+        urgent: !!(it as any).urgent,
+      });
+    }
+
+    const groups = Array.from(byDay.entries())
+      .map(([ymd, rows]) => {
+        const sorted = (rows || []).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+        const count = sorted.length;
+        const minutes = sorted.reduce((s: number, r: any) => s + (Number(r.timeSpentMinutes) || 0), 0);
+        return { ymd, count, minutes, items: sorted };
+      })
+      .sort((a, b) => String(b.ymd).localeCompare(String(a.ymd)));
+
+    return { from: from.toISOString(), to: now.toISOString(), days, totalCount, totalMinutes, groups };
+  }
+
   @Get('stats/weekly/details')
   async weeklyDetails(
     @Query('days') daysStr?: string,

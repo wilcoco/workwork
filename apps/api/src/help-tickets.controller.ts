@@ -172,8 +172,12 @@ export class HelpTicketsController {
         const resp = responseMap[t.id] || { id: null, title: null };
         let statusLabel: string;
         if (t.status === 'OPEN') statusLabel = '미수신';
+        else if (t.status === 'ACCEPTED') statusLabel = '수락됨';
+        else if (t.status === 'IN_PROGRESS') statusLabel = '진행중';
+        else if (t.status === 'BLOCKED') statusLabel = '보류';
         else if (t.status === 'DONE') statusLabel = '업무 요청 완료';
-        else statusLabel = '수신';
+        else if (t.status === 'CANCELLED') statusLabel = '거절';
+        else statusLabel = String(t.status);
         return {
           id: t.id,
           category: t.category,
@@ -250,8 +254,12 @@ export class HelpTicketsController {
 
     let statusLabel: string;
     if (t.status === 'OPEN') statusLabel = '미수신';
+    else if (t.status === 'ACCEPTED') statusLabel = '수락됨';
+    else if (t.status === 'IN_PROGRESS') statusLabel = '진행중';
+    else if (t.status === 'BLOCKED') statusLabel = '보류';
     else if (t.status === 'DONE') statusLabel = '업무 요청 완료';
-    else statusLabel = '수신';
+    else if (t.status === 'CANCELLED') statusLabel = '거절';
+    else statusLabel = String(t.status);
 
     return {
       id: t.id,

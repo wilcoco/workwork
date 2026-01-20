@@ -112,6 +112,11 @@ export function Login() {
             <button className="btn" disabled={loading}>{loading ? '처리중…' : '로그인'}</button>
           </div>
         </form>
+        <div className="actions" style={{ marginTop: 10 }}>
+          <button type="button" className="btn btn-ghost" onClick={() => nav('/signup')} disabled={loading}>
+            회원가입
+          </button>
+        </div>
       </div>
     </div>
   );

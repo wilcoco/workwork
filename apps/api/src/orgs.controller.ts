@@ -106,6 +106,37 @@ export class OrgsController {
     return { items };
   }
 
+  @Get('managed')
+  async managed(@Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const all = await this.prisma.orgUnit.findMany({
+      select: { id: true, name: true, parentId: true, managerId: true },
+      orderBy: { name: 'asc' },
+    });
+    const units = all.filter((u) => !/^personal\s*-/i.test(u.name || '')) as Array<{ id: string; name: string; parentId: string | null; managerId: string | null }>;
+
+    const children = new Map<string | null, Array<{ id: string; name: string }>>();
+    for (const u of units) {
+      const k = u.parentId || null;
+      if (!children.has(k)) children.set(k, []);
+      children.get(k)!.push({ id: u.id, name: u.name });
+    }
+
+    const roots = units.filter((u) => String(u.managerId || '') === String(userId)).map((u) => ({ id: u.id, name: u.name }));
+    const seen = new Map<string, string>();
+    const stack = [...roots];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      if (seen.has(cur.id)) continue;
+      seen.set(cur.id, cur.name);
+      const kids = children.get(cur.id) || [];
+      for (const k of kids) stack.push(k);
+    }
+
+    const out = Array.from(seen.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    return { items: out };
+  }
+
   @Post()
   async create(@Body() dto: CreateOrgDto, @Query('userId') userId?: string) {
     if (!userId) throw new BadRequestException('userId required');

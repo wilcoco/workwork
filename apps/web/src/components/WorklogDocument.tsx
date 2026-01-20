@@ -59,15 +59,35 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
   }
 
   function pickFileName(f: any, url: string): string {
+    const safeDecodeDeep = (s: string) => {
+      let cur = String(s || '');
+      for (let i = 0; i < 2; i++) {
+        if (!/%[0-9A-Fa-f]{2}/.test(cur)) break;
+        try {
+          const dec = decodeURIComponent(cur);
+          if (!dec || dec === cur) break;
+          cur = dec;
+        } catch {
+          break;
+        }
+      }
+      return cur;
+    };
+
     if (f && typeof f === 'object') {
       const n = f.name || f.originalName || f.filename;
-      if (n) return String(n);
+      if (n) return safeDecodeDeep(String(n));
     }
     try {
-      const last = decodeURIComponent((url.split('/').pop() || url));
-      return last || url;
+      const u = new URL(url, (typeof window !== 'undefined' ? window.location.origin : 'http://localhost'));
+      const qp = u.searchParams.get('filename') || u.searchParams.get('file') || u.searchParams.get('name') || u.searchParams.get('download') || '';
+      const candidate = qp || (u.pathname.split('/').pop() || '') || url;
+      const decoded = safeDecodeDeep(candidate);
+      if (decoded && decoded !== url) return decoded;
+      return safeDecodeDeep(url);
     } catch {
-      return url;
+      const last = (url.split('/').pop() || url);
+      return safeDecodeDeep(last || url);
     }
   }
 

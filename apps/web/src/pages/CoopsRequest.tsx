@@ -20,12 +20,11 @@ export function CoopsRequest() {
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [contentHtml, setContentHtml] = useState('');
-  const [attachments, setAttachments] = useState<Array<{ url: string; name?: string; filename?: string }>>([]);
+  const [attachments, setAttachments] = useState<Array<{ url: string; name?: string }>>([]);
+  const [attachUrl, setAttachUrl] = useState<string>('');
   const [teams, setTeams] = useState<string[]>([]);
   const editorEl = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<Quill | null>(null);
-  const attachInputRef = useRef<HTMLInputElement | null>(null);
-  const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
   const [tags, setTags] = useState<DocumentTagsValue>({});
 
   const requesterId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -181,18 +180,28 @@ export function CoopsRequest() {
     }
   }
 
-  async function addAttachmentFiles(list: FileList | null) {
-    const files = Array.from(list || []);
-    if (!files.length) return;
-    try {
-      for (const f of files) {
-        // eslint-disable-next-line no-await-in-loop
-        const up = await uploadFile(f);
-        setAttachments((prev) => [...prev, { url: up.url, name: up.name || f.name, filename: up.filename || f.name }]);
-      }
-    } catch (e: any) {
-      setError(e?.message || '첨부 파일 업로드 실패');
+  function addAttachmentLink() {
+    const raw = String(attachUrl || '').trim();
+    if (!raw) return;
+    if (!/^https?:\/\//i.test(raw)) {
+      setError('첨부 링크는 http(s) 주소여야 합니다.');
+      return;
     }
+    try {
+      const u = new URL(raw);
+      const h = String(u.hostname || '').toLowerCase();
+      const allowed = h === 'cams2002-my.sharepoint.com' || h.endsWith('.cams2002-my.sharepoint.com');
+      if (!allowed) {
+        window.alert('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.\n허용 도메인: cams2002-my.sharepoint.com');
+        setError('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.');
+        return;
+      }
+    } catch {
+      setError('첨부 링크 형식이 올바르지 않습니다.');
+      return;
+    }
+    setAttachments((prev) => [...prev, { url: raw, name: raw }]);
+    setAttachUrl('');
   }
 
   function removeAttachment(idx: number) {
@@ -351,40 +360,16 @@ export function CoopsRequest() {
             <div ref={editorEl} style={{ minHeight: 240, width: '100%' }} />
           </div>
           <label>첨부 파일</label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              ref={attachInputRef}
-              type="file"
-              multiple
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                addAttachmentFiles(e.currentTarget.files);
-                e.currentTarget.value = '';
-              }}
-            />
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => {
-                if (!attachOneDriveOk) {
-                  const ok = window.confirm('원드라이브(회사)에서 받은 파일만 업로드하세요. 계속할까요?');
-                  if (!ok) return;
-                  setAttachOneDriveOk(true);
-                }
-                attachInputRef.current?.click();
-              }}
-            >파일 선택</button>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
-            >OneDrive 열기</button>
+          <div style={{ fontSize: 12, color: '#6b7280' }}>회사 원드라이브(SharePoint) 공유 링크만 첨부할 수 있습니다. (허용 도메인: cams2002-my.sharepoint.com)</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input value={attachUrl} onChange={(e) => setAttachUrl(e.target.value)} placeholder="SharePoint 공유 링크를 붙여넣으세요" style={{ ...input, flex: 1, minWidth: 240 }} />
+            <button type="button" className="btn btn-outline" onClick={addAttachmentLink} disabled={!String(attachUrl || '').trim()}>
+              링크 추가
+            </button>
+            <button type="button" className="btn btn-outline" onClick={() => window.open('https://cams2002-my.sharepoint.com/', '_blank', 'noopener,noreferrer')}>
+              OneDrive 열기
+            </button>
           </div>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
-            <input type="checkbox" checked={attachOneDriveOk} onChange={(e) => setAttachOneDriveOk(e.target.checked)} />
-            원드라이브 파일만 업로드합니다
-          </label>
-          <div style={{ fontSize: 12, color: '#64748b' }}>원드라이브 파일만 올려주세요. (브라우저 제한으로 원드라이브 폴더를 자동으로 열 수는 없습니다)</div>
           {attachments.length > 0 && (
             <div className="attachments">
               {attachments.map((f, i) => (

@@ -22,6 +22,9 @@ export function WorklogNew() {
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
   const [krAchieved, setKrAchieved] = useState<boolean>(false);
   const [urgent, setUrgent] = useState<boolean>(false);
+  const [attachments, setAttachments] = useState<Array<{ url: string; name?: string }>>([]);
+  const [attachUrl, setAttachUrl] = useState<string>('');
+  const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
 
   // follow-up actions
   const [approverId, setApproverId] = useState('');
@@ -101,6 +104,7 @@ export function WorklogNew() {
         blockerCode: blockerCode || undefined,
         note: note || undefined,
         urgent: urgent || undefined,
+        attachments: attachments.length ? { files: attachments } : undefined,
       };
       if (pidForPayload && tidForPayload) {
         payload.processInstanceId = pidForPayload;
@@ -211,6 +215,12 @@ export function WorklogNew() {
         </label>
       </div>
 
+      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+        긴급 보고: 품질/설비/납기 등 즉시 공유가 필요한 이슈일 때 체크합니다.
+        <br />
+        과제 완료: 이번 업무일지로 해당 과제가 완료되었을 때 체크합니다. (과제 완료로 기록됩니다)
+      </div>
+
       <div className="resp-2">
         <label>
           결재자 User ID(선택)
@@ -282,6 +292,7 @@ export function WorklogNew() {
       <label>
         Initiative ID
         <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} required={false} disabled={!!paramInitiativeId} />
+        <div style={{ fontSize: 12, color: '#6b7280' }}>과제(initiative)는 목표관리(OKR/KPI)와 연동되는 업무 과제입니다. OKR/KPI에 등록된 과제를 연결할 때 사용합니다.</div>
         {!!paramInitiativeId && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스에서 전달된 과제로 고정되었습니다.</div>}
       </label>
       <label>
@@ -320,9 +331,13 @@ export function WorklogNew() {
       <label>
         노트(optional)
         <textarea value={note} onChange={(e) => setNote(e.target.value)} />
+        <div style={{ fontSize: 12, color: '#6b7280' }}>사진 입력은 빠른 작성(리치 모드)에서 편집기 이미지 버튼을 사용해 본문에 삽입해 주세요.</div>
       </label>
 
       <h3>성과 입력(선택)</h3>
+      <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
+        목표 달성(달성값) 입력: 선택한 OKR/KPI 지표(KR)의 실적을 기록할 때 사용합니다. 숫자를 입력하거나, “목표 달성”을 체크하면 목표값이 자동으로 기록됩니다.
+      </div>
       <div className="resp-2">
         <label>
           KR ID(optional)
@@ -338,6 +353,71 @@ export function WorklogNew() {
           <input type="checkbox" checked={krAchieved} onChange={(e) => setKrAchieved(e.target.checked)} /> 목표 달성으로 기록(목표값 자동 입력)
         </label>
       </div>
+
+      <h3>첨부(링크)</h3>
+      <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
+        파일 첨부: Teams/OneDrive에 있는 파일은 업로드하지 않고, 공유 링크를 붙여넣어 첨부합니다.
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          value={attachUrl}
+          onChange={(e) => setAttachUrl(e.target.value)}
+          placeholder="Teams/OneDrive 공유 링크를 붙여넣으세요"
+          style={{ flex: 1, minWidth: 240 }}
+        />
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            const raw = String(attachUrl || '').trim();
+            if (!raw) return;
+            if (!/^https?:\/\//i.test(raw)) {
+              setError('첨부 링크는 http(s) 주소여야 합니다.');
+              return;
+            }
+
+            try {
+              const u = new URL(raw);
+              const h = String(u.hostname || '').toLowerCase();
+              const allowed = h === 'cams2002-my.sharepoint.com' || h.endsWith('.cams2002-my.sharepoint.com');
+              if (!allowed) {
+                window.alert('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.\n허용 도메인: cams2002-my.sharepoint.com');
+                setError('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.');
+                return;
+              }
+            } catch {
+              setError('첨부 링크 형식이 올바르지 않습니다.');
+              return;
+            }
+
+            if (!attachOneDriveOk) {
+              const ok = window.confirm('Teams/OneDrive(회사) 공유 링크만 첨부하세요. 계속할까요?');
+              if (!ok) return;
+              setAttachOneDriveOk(true);
+            }
+            setAttachments((prev) => [...prev, { url: raw, name: raw }]);
+            setAttachUrl('');
+          }}
+          disabled={!String(attachUrl || '').trim()}
+        >
+          링크 추가
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}>OneDrive 열기</button>
+      </div>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
+        <input type="checkbox" checked={attachOneDriveOk} onChange={(e) => setAttachOneDriveOk(e.target.checked)} />
+        원드라이브/Teams 링크만 첨부합니다
+      </label>
+      {attachments.length > 0 && (
+        <div style={{ display: 'grid', gap: 6 }}>
+          {attachments.map((a, i) => (
+            <div key={`${a.url}-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <a href={a.url} target="_blank" rel="noreferrer">{a.name || a.url}</a>
+              <button type="button" className="btn btn-danger" onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}>삭제</button>
+            </div>
+          ))}
+        </div>
+      )}
 
       
 
