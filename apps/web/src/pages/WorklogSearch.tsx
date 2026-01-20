@@ -394,9 +394,11 @@ export function WorklogSearch() {
                   </div>
                 )}
                 <div className="feed-caption">
-                  {it.userName || ''}
-                  {createdAt ? ` · ${formatKstDatetime(createdAt)}` : ''}
-                  {timeSpentMinutes ? ` · ${formatMinutesAsHmKo(timeSpentMinutes)}` : ''}
+                  <div className="feed-caption-user">{it.userName || ''}</div>
+                  <div className="feed-caption-meta">
+                    {createdAt ? formatKstDatetime(createdAt) : ''}
+                    {timeSpentMinutes ? ` · ${formatMinutesAsHmKo(timeSpentMinutes)}` : ''}
+                  </div>
                 </div>
               </div>
             );

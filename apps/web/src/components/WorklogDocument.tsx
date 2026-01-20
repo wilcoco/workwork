@@ -107,18 +107,18 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {showHeader && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 13, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 14, flexWrap: 'wrap' }}>
           <div style={{ width: 22, height: 22, borderRadius: 999, background: '#E2E8F0', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{String(who || '?').slice(0, 1)}</div>
-          <div>{who}</div>
+          <div style={{ fontWeight: 800, color: '#0f172a' }}>{who}</div>
           {team ? (
             <>
               <div>·</div>
-              <div>{team}</div>
+              <div style={{ color: '#334155', fontWeight: 700 }}>{team}</div>
             </>
           ) : null}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {createdAt ? (
-              <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>작성 {formatKstDatetime(createdAt)}</div>
+              <div style={{ background: '#0F3D73', color: '#FFFFFF', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 800 }}>작성 {formatKstDatetime(createdAt)}</div>
             ) : null}
             {workDate ? (
               <div style={{ background: '#F8FAFC', color: '#334155', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600, border: '1px solid #E2E8F0' }}>업무일 {formatKstYmd(workDate)}</div>
@@ -131,7 +131,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
       )}
 
       {showTitle && (
-        <div style={{ fontWeight: 800, fontSize: variant === 'compact' ? 16 : 18, color: '#0f172a' }}>{title || '(제목 없음)'}</div>
+        <div style={{ fontWeight: 900, fontSize: variant === 'compact' ? 17 : 20, color: '#0f172a', lineHeight: 1.25 }}>{title || '(제목 없음)'}</div>
       )}
 
       {showContext && (objectiveTitle || keyResultTitle || initiativeTitle || processTitle || processTaskName) ? (
