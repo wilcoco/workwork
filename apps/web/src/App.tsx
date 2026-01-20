@@ -111,10 +111,92 @@ export function App() {
   );
 }
 
+function getPageGuide(path: string, SHOW_APPROVALS: boolean, SHOW_COOPS: boolean): { title: string; items: string[] } | null {
+  if (path === '/' || path.startsWith('/login') || path.startsWith('/signup') || path.startsWith('/auth/')) return null;
+  if (path === '/quick' || path.startsWith('/search') || path.startsWith('/worklogs')) return null;
+
+  if (path.startsWith('/okr') || path === '/me/goals' || path === '/okr-map') {
+    return {
+      title: '목표관리',
+      items: [
+        'OKR 입력에서 개인/팀 OKR을 등록합니다. 저장 후 목록/트리에서 바로 확인됩니다.',
+        'OKR 조회(트리)에서 상위 목표–KR–세부 과제 흐름을 확인하고, 필요한 항목을 클릭해 상세로 이동합니다.',
+        '팀 KPI 입력에서 팀 KPI를 등록하고(평가 주기/기준값 포함), 운영 방식에 맞게 지표를 관리합니다.',
+        '팀 KPI 조회에서 KPI 현황을 한눈에 확인합니다.',
+      ],
+    };
+  }
+  if (SHOW_APPROVALS && path.startsWith('/approvals')) {
+    return {
+      title: '결재',
+      items: [
+        '결재올리기에서 결재 문서를 작성하고 결재자를 지정해 제출합니다.',
+        '결재하기에서 내게 올라온 결재를 확인하고 승인/반려 처리합니다.',
+        '올린 결재에서 내가 올린 결재의 진행 상태를 추적합니다.',
+        '결제 통계에서 처리 리드타임 등 통계를 확인합니다.',
+      ],
+    };
+  }
+  if (SHOW_COOPS && path.startsWith('/coops')) {
+    return {
+      title: '업무 요청',
+      items: [
+        '요청 하기에서 특정 팀/개인에게 협조 요청을 보냅니다.',
+        '받은 업무 요청에서 수락/거절 후 진행/완료 처리를 합니다.',
+        '보낸 업무 요청에서 상대의 처리 상태를 추적합니다.',
+        '업무 요청 통계에서 수락/완료 리드타임 등 현황을 확인합니다.',
+      ],
+    };
+  }
+  if (path.startsWith('/dispatch') || path.startsWith('/attendance')) {
+    return {
+      title: '신청',
+      items: [
+        '법인차량 신청에서 일정/목적을 입력해 신청하고 승인 상태를 확인합니다.',
+        '근태 신청에서 OT/휴가/조기퇴근 등 신청을 등록합니다.',
+        '근태 리포트에서 기간별 신청/처리 현황을 확인합니다.',
+      ],
+    };
+  }
+  if (path.startsWith('/process')) {
+    return {
+      title: '프로세스 관리',
+      items: [
+        '프로세스 템플릿에서 업무 흐름(템플릿)을 만들고 수정합니다.',
+        '새 프로세스 시작에서 템플릿을 선택해 실제 프로세스를 시작합니다.',
+        '참여 프로세스에서 내가 참여 중인 프로세스 목록/상태를 확인합니다.',
+        '프로세스 대시보드에서 전체 진행 현황을 한눈에 확인합니다.',
+      ],
+    };
+  }
+  if (path.startsWith('/admin')) {
+    return {
+      title: '관리',
+      items: [
+        '조직관리에서 조직/팀 구조를 관리합니다.',
+        '구성원에서 계정/권한/소속을 관리합니다.',
+        '휴일 캘린더에서 공휴일/휴무일을 관리합니다.',
+        '기준정보 관리에서 품목/금형 등 기준 데이터를 관리합니다.',
+        '시스템 도구에서 유지보수/진단 기능을 사용합니다.',
+      ],
+    };
+  }
+  if (path.startsWith('/inbox')) {
+    return {
+      title: '알림함',
+      items: [
+        '내게 온 알림을 확인하고, 항목을 클릭해 해당 화면으로 이동합니다.',
+      ],
+    };
+  }
+  return null;
+}
+
 function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const isEmbed = params.get('embed') === '1' || params.get('embed') === 'true';
+  const guide = getPageGuide(location.pathname || '/', SHOW_APPROVALS, SHOW_COOPS);
 
   return (
     <>
@@ -123,6 +205,22 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
       {!isEmbed && (
         <div className="container">
           <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
+        </div>
+      )}
+      {!isEmbed && guide && (
+        <div className="container" style={{ marginTop: 10 }}>
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 12, boxShadow: '0 2px 10px rgba(16,24,40,0.04)' }}>
+            <details open>
+              <summary style={{ cursor: 'pointer', fontWeight: 900, color: '#0f172a' }}>{guide.title} 사용 안내</summary>
+              <div style={{ marginTop: 8, color: '#334155', display: 'grid', gap: 6 }}>
+                <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6 }}>
+                  {guide.items.map((t, i) => (
+                    <li key={i} style={{ lineHeight: 1.45 }}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            </details>
+          </div>
         </div>
       )}
       <div
