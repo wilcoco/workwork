@@ -1,7 +1,7 @@
 import { useMemo, useState, type MouseEvent } from 'react';
 import { apiUrl } from '../lib/api';
 import { toSafeHtml } from '../lib/richText';
-import { formatKstDatetime, formatMinutesAsHmKo } from '../lib/time';
+import { formatKstDatetime, formatKstYmd, formatMinutesAsHmKo } from '../lib/time';
 
 export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 'full' | 'compact' | 'content' }) {
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
@@ -34,7 +34,8 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
     return [];
   }, [worklog]);
 
-  const when = worklog?.date || worklog?.createdAt;
+  const createdAt = worklog?.createdAt;
+  const workDate = worklog?.date;
   const who = worklog?.createdBy?.name || worklog?.userName || worklog?.createdById || '';
   const team = worklog?.createdBy?.orgUnit?.name || worklog?.teamName || '';
 
@@ -116,8 +117,11 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
             </>
           ) : null}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {when ? (
-              <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{formatKstDatetime(when)}</div>
+            {createdAt ? (
+              <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>작성 {formatKstDatetime(createdAt)}</div>
+            ) : null}
+            {workDate ? (
+              <div style={{ background: '#F8FAFC', color: '#334155', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600, border: '1px solid #E2E8F0' }}>업무일 {formatKstYmd(workDate)}</div>
             ) : null}
             {timeSpentMinutes ? (
               <div style={{ background: '#F8FAFC', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, border: '1px solid #CBD5E1' }}>{formatMinutesAsHmKo(timeSpentMinutes)}</div>

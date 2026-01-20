@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { apiJson, apiUrl } from '../lib/api';
-import { formatKstDatetime } from '../lib/time';
+import { formatKstDatetime, formatMinutesAsHmKo } from '../lib/time';
 import { WorklogDocument } from '../components/WorklogDocument';
 
 type Item = {
   id: string;
   date: string;
+  createdAt?: string;
+  timeSpentMinutes?: number;
   title: string;
   excerpt: string;
   userName?: string;
@@ -14,6 +16,7 @@ type Item = {
   taskName?: string;
   attachments?: any;
   note?: string;
+  urgent?: boolean;
 };
 
 function CommentsBox({ worklogId }: { worklogId: string }) {
@@ -371,6 +374,8 @@ export function WorklogSearch() {
         <div className="feed-grid">
           {items.map((it) => {
             const imgUrl = firstImageUrl(it);
+            const createdAt = (it as any)?.createdAt || (it as any)?.date;
+            const timeSpentMinutes = Number((it as any)?.timeSpentMinutes) || 0;
             return (
               <div
                 key={it.id}
@@ -388,7 +393,11 @@ export function WorklogSearch() {
                     <div className="feed-title">{it.title}</div>
                   </div>
                 )}
-                <div className="feed-caption">{it.userName || ''}</div>
+                <div className="feed-caption">
+                  {it.userName || ''}
+                  {createdAt ? ` · ${formatKstDatetime(createdAt)}` : ''}
+                  {timeSpentMinutes ? ` · ${formatMinutesAsHmKo(timeSpentMinutes)}` : ''}
+                </div>
               </div>
             );
           })}

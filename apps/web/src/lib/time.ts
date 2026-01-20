@@ -25,6 +25,16 @@ export function todayKstYmd(): string {
   }).format(now);
 }
 
+export function formatKstYmd(input: string | number | Date): string {
+  const d = new Date(input);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: KST_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+
 export function formatMinutesAsHmKo(totalMinutes: number): string {
   const m0 = Number(totalMinutes) || 0;
   const sign = m0 < 0 ? '-' : '';

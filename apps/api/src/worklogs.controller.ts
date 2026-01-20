@@ -649,6 +649,8 @@ export class WorklogsController {
       return {
         id: it.id,
         date: it.date,
+        createdAt: it.createdAt,
+        timeSpentMinutes: it.timeSpentMinutes,
         title,
         excerpt,
         userName: it.createdBy?.name,
