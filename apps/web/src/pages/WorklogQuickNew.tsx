@@ -286,11 +286,11 @@ export function WorklogQuickNew() {
     try {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
-      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:'))) throw new Error('대상을 선택하세요');
+      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:') || selection.startsWith('new:'))) throw new Error('대상을 선택하세요');
       if (Number(timeSpentHours) < 0) throw new Error('업무 소요 시간(시간)은 0 이상이어야 합니다');
       if (![0, 10, 20, 30, 40, 50].includes(Number(timeSpentMinutes10))) throw new Error('업무 소요 시간(분)은 10분 단위로 선택해 주세요');
       const computedMinutes = (Number(timeSpentHours) || 0) * 60 + (Number(timeSpentMinutes10) || 0);
-      const wl = await apiJson<{ id: string }>(
+      const wl = await apiJson<{ id: string; initiativeId?: string }>(
         '/api/worklogs/simple',
         {
           method: 'POST',
@@ -302,7 +302,13 @@ export function WorklogQuickNew() {
             keyResultId: selection.startsWith('kr:') ? selection.substring(3) : undefined,
             // help: 선택 시에는 별도 링크 없이 일반 업무일지로만 기록
             // proc: 선택 시에는 내부적으로 OKR 스캐폴딩 하여 initiative 자동 생성 필요 → taskName을 제공
-            taskName: selection.startsWith('kr:') ? (title || 'KPI 보고') : (selection.startsWith('proc:') ? (title || '프로세스 업무') : undefined),
+            taskName: selection.startsWith('kr:')
+              ? (title || 'KPI 보고')
+              : (selection.startsWith('proc:')
+                ? (title || '프로세스 업무')
+                : (selection.startsWith('new:')
+                  ? (title || '신규 과제')
+                  : undefined)),
             title,
             content: plainMode ? contentPlain : stripHtml(contentHtml),
             contentHtml: plainMode ? undefined : (contentHtml || undefined),
@@ -318,20 +324,33 @@ export function WorklogQuickNew() {
       const isInit = selection.startsWith('init:');
       const isHelp = selection.startsWith('help:');
       const isProc = selection.startsWith('proc:');
-      const selectedId = isKR ? selection.substring(3) : isInit ? selection.substring(5) : selection.substring(5);
+      const isNew = selection.startsWith('new:');
+      const createdInitId = String((wl as any)?.initiativeId || '');
+      const selectedId = isKR
+        ? selection.substring(3)
+        : (isInit
+          ? selection.substring(5)
+          : (isHelp
+            ? selection.substring(5)
+            : (isProc
+              ? selection.substring(5)
+              : '')));
       const selected = isInit ? [...teamTasks, ...myTasks].find((x) => x.id === selectedId) : undefined;
       // Progress: initiative done (help 선택 시에는 제외)
-      if (isInit && initiativeDone) {
-        const mine = myTasks.some((x) => x.id === selectedId);
-        const team = teamTasks.some((x) => x.id === selectedId);
-        const canUpdateInit = mine ? true : (team ? myRole === 'MANAGER' : false);
-        if (canUpdateInit) {
-          try {
-            await apiJson('/api/progress', {
-              method: 'POST',
-              body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: selectedId, actorId: userId, worklogId: wl.id, initiativeDone: true, note: title || undefined, at: date }),
-            });
-          } catch {}
+      if ((isInit || isNew) && initiativeDone) {
+        const initIdForProgress = isNew ? createdInitId : selectedId;
+        if (initIdForProgress) {
+          const mine = myTasks.some((x) => x.id === selectedId);
+          const team = teamTasks.some((x) => x.id === selectedId);
+          const canUpdateInit = isNew ? true : (mine ? true : (team ? myRole === 'MANAGER' : false));
+          if (canUpdateInit) {
+            try {
+              await apiJson('/api/progress', {
+                method: 'POST',
+                body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: initIdForProgress, actorId: userId, worklogId: wl.id, initiativeDone: true, note: title || undefined, at: date }),
+              });
+            } catch {}
+          }
         }
       }
       // Progress: KR value (explicit or achieved) — help 선택 시에는 KR가 없으므로 그대로 조건 유지
@@ -504,7 +523,7 @@ export function WorklogQuickNew() {
             <div />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제 / 업무 요청 추가</label>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제 / 업무 요청 / 신규 과제</label>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
@@ -514,6 +533,9 @@ export function WorklogQuickNew() {
               // Keep current date as-is (default is today in KST)
             }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="" disabled>대상을 선택하세요</option>
+              <optgroup label="신규 과제">
+                <option value="new:1">신규 과제</option>
+              </optgroup>
               {myProcTasks.length > 0 && (
                 <optgroup label="프로세스 과제">
                   {myProcTasks.map((t) => (

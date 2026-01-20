@@ -9,6 +9,7 @@ export function WorklogNew() {
   const taskInstanceId = params?.get('taskInstanceId') || '';
   const paramInitiativeId = params?.get('initiativeId') || '';
   const [initiativeId, setInitiativeId] = useState(paramInitiativeId);
+  const [taskName, setTaskName] = useState('');
   const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [createdById, setCreatedById] = useState('');
   const [progressPct, setProgressPct] = useState<number>(0);
@@ -87,8 +88,13 @@ export function WorklogNew() {
       const computedMinutes = (Number(timeSpentHours) || 0) * 60 + (Number(timeSpentMinutes10) || 0);
       const pidForPayload = (selectedProcInstId || processInstanceId);
       const tidForPayload = (selectedProcTaskId || taskInstanceId);
+      const hasProcess = !!(pidForPayload && tidForPayload);
+      const hasInit = !!String(initiativeId || '').trim();
+      const hasTaskName = !!String(taskName || '').trim();
+      if (!hasInit && !hasProcess && !hasTaskName) throw new Error('대상(initiativeId) 또는 신규 과제 제목 또는 프로세스 과제를 선택해 주세요');
       const payload: any = {
-        initiativeId,
+        initiativeId: hasInit ? String(initiativeId).trim() : undefined,
+        taskName: !hasInit && !hasProcess && hasTaskName ? String(taskName).trim() : undefined,
         createdById,
         progressPct: Number(progressPct) || 0,
         timeSpentMinutes: computedMinutes,
@@ -143,6 +149,7 @@ export function WorklogNew() {
       if (!res.ok) throw new Error(`Failed: ${res.status}`);
       const data = await res.json();
       const worklogId = data?.worklog?.id || data?.id;
+      const createdInitiativeId = data?.worklog?.initiativeId || initiativeId;
       // If invoked from a process task or selected from dropdown, mark task as completed with linkage
       const pidAfter = (selectedProcInstId || processInstanceId);
       const tidAfter = (selectedProcTaskId || taskInstanceId);
@@ -156,11 +163,11 @@ export function WorklogNew() {
         } catch {}
       }
       // Optional: record progress entries
-      if (initiativeDone) {
+      if (initiativeDone && createdInitiativeId) {
         await apiFetch('/api/progress', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: initiativeId, actorId: createdById, worklogId, initiativeDone: true, note }),
+          body: JSON.stringify({ subjectType: 'INITIATIVE', subjectId: createdInitiativeId, actorId: createdById, worklogId, initiativeDone: true, note }),
         });
       }
       if (krId && (krValue !== '' || krAchieved)) {
@@ -274,8 +281,13 @@ export function WorklogNew() {
 
       <label>
         Initiative ID
-        <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} required={!(selectedProcInstId && selectedProcTaskId)} disabled={!!paramInitiativeId} />
+        <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} required={false} disabled={!!paramInitiativeId} />
         {!!paramInitiativeId && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스에서 전달된 과제로 고정되었습니다.</div>}
+      </label>
+      <label>
+        신규 과제 제목(initiativeId 없이 작성)
+        <input value={taskName} onChange={(e) => setTaskName(e.target.value)} disabled={!!paramInitiativeId || !!(selectedProcInstId && selectedProcTaskId)} />
+        {!!(selectedProcInstId && selectedProcTaskId) && <div style={{ fontSize: 12, color: '#6b7280' }}>프로세스 과제를 선택한 경우 신규 과제는 자동으로 연결됩니다.</div>}
       </label>
       <label>
         작성자 User ID

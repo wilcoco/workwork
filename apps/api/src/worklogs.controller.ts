@@ -72,6 +72,10 @@ class CreateWorklogDto {
   @IsString()
   initiativeId?: string;
 
+  @IsOptional()
+  @IsString()
+  taskName?: string;
+
   @IsString()
   @IsNotEmpty()
   createdById!: string;
@@ -202,8 +206,50 @@ export class WorklogsController {
       }
     }
 
+    if (!initiativeIdFinal && !dto.processInstanceId && !dto.taskInstanceId && dto.taskName) {
+      const user = await this.prisma.user.findUnique({ where: { id: dto.createdById } });
+      if (!user) throw new BadRequestException('createdBy user not found');
+
+      let orgUnitId = user.orgUnitId;
+      let orgUnitName = '';
+      if (orgUnitId) {
+        const ou = await this.prisma.orgUnit.findUnique({ where: { id: orgUnitId } });
+        orgUnitName = String(ou?.name || '');
+      }
+      if (!orgUnitId) {
+        const team = await this.prisma.orgUnit.create({ data: { name: `Auto Team - ${user.name}`, type: 'TEAM' } });
+        await this.prisma.user.update({ where: { id: user.id }, data: { orgUnitId: team.id } });
+        orgUnitId = team.id;
+        orgUnitName = team.name;
+      }
+
+      const now = new Date();
+      const end = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+      const objTitle = `Auto Objective - ${orgUnitName || String(orgUnitId)}`;
+      let objective = await this.prisma.objective.findFirst({ where: { title: objTitle, orgUnitId } });
+      if (!objective) {
+        objective = await this.prisma.objective.create({
+          data: { title: objTitle, orgUnitId, ownerId: user.id, periodStart: now, periodEnd: end, status: 'ACTIVE' as any },
+        });
+      }
+      let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Auto KR', objectiveId: objective.id } });
+      if (!kr) {
+        kr = await this.prisma.keyResult.create({
+          data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
+        });
+      }
+
+      const taskName = String(dto.taskName || '').trim();
+      if (!taskName) throw new BadRequestException('taskName required');
+      let initiative = await this.prisma.initiative.findFirst({ where: { title: taskName, keyResultId: kr.id, ownerId: user.id } });
+      if (!initiative) {
+        initiative = await this.prisma.initiative.create({ data: { title: taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+      }
+      initiativeIdFinal = initiative.id;
+    }
+
     if (!initiativeIdFinal) {
-      throw new BadRequestException('initiativeId or processInstanceId/taskInstanceId required');
+      throw new BadRequestException('initiativeId or taskName or processInstanceId/taskInstanceId required');
     }
 
     // Resolve KST date (YYYY-MM-DD -> KST midnight; default: today @ KST midnight)
@@ -467,12 +513,11 @@ export class WorklogsController {
           }
           initiativeId = initiative.id;
         } else {
-          if (!dto.taskName) {
-            throw new BadRequestException('taskName required when initiativeId/userGoalId is not provided');
-          }
-          let initiative = await this.prisma.initiative.findFirst({ where: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id } });
+          const taskName = String(dto.taskName || dto.title || '').trim();
+          if (!taskName) throw new BadRequestException('taskName required when initiativeId/userGoalId is not provided');
+          let initiative = await this.prisma.initiative.findFirst({ where: { title: taskName, keyResultId: kr.id, ownerId: user.id } });
           if (!initiative) {
-            initiative = await this.prisma.initiative.create({ data: { title: dto.taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+            initiative = await this.prisma.initiative.create({ data: { title: taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
           }
           initiativeId = initiative.id;
         }
@@ -523,7 +568,7 @@ export class WorklogsController {
       },
     });
     await this.prisma.event.create({ data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { simple: true } } });
-    return { id: wl.id };
+    return { id: wl.id, initiativeId };
   }
 
   @Get('search')
