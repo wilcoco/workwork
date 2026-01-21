@@ -8,6 +8,7 @@ type Item = {
   id: string;
   date: string;
   createdAt?: string;
+  visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY';
   timeSpentMinutes?: number;
   title: string;
   excerpt: string;
@@ -18,6 +19,18 @@ type Item = {
   note?: string;
   urgent?: boolean;
 };
+
+const VISIBILITY_LABEL: Record<string, string> = {
+  ALL: '전체',
+  MANAGER_PLUS: '팀장이상',
+  EXEC_PLUS: '임원이상',
+  CEO_ONLY: '대표이사',
+};
+
+function visibilityKo(v: any): string {
+  const key = String(v || 'ALL');
+  return VISIBILITY_LABEL[key] || key;
+}
 
 function CommentsBox({ worklogId }: { worklogId: string }) {
   const [items, setItems] = useState<Array<{ id: string; authorName?: string; content: string; createdAt: string }>>([]);
@@ -376,6 +389,7 @@ export function WorklogSearch() {
             const imgUrl = firstImageUrl(it);
             const createdAt = (it as any)?.createdAt || (it as any)?.date;
             const timeSpentMinutes = Number((it as any)?.timeSpentMinutes) || 0;
+            const visibility = (it as any)?.visibility;
             return (
               <div
                 key={it.id}
@@ -398,6 +412,7 @@ export function WorklogSearch() {
                   <div className="feed-caption-meta">
                     {createdAt ? formatKstDatetime(createdAt) : ''}
                     {timeSpentMinutes ? ` · ${formatMinutesAsHmKo(timeSpentMinutes)}` : ''}
+                    {visibility ? ` · 조회권한 ${visibilityKo(visibility)}` : ''}
                   </div>
                 </div>
               </div>

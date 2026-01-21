@@ -650,6 +650,7 @@ export class WorklogsController {
         id: it.id,
         date: it.date,
         createdAt: it.createdAt,
+        visibility: it.visibility,
         timeSpentMinutes: it.timeSpentMinutes,
         title,
         excerpt,

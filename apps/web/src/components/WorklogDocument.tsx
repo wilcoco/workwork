@@ -3,6 +3,18 @@ import { apiUrl } from '../lib/api';
 import { toSafeHtml } from '../lib/richText';
 import { formatKstDatetime, formatKstYmd, formatMinutesAsHmKo } from '../lib/time';
 
+const VISIBILITY_LABEL: Record<string, string> = {
+  ALL: '전체',
+  MANAGER_PLUS: '팀장이상',
+  EXEC_PLUS: '임원이상',
+  CEO_ONLY: '대표이사',
+};
+
+function visibilityKo(v: any): string {
+  const key = String(v || 'ALL');
+  return VISIBILITY_LABEL[key] || key;
+}
+
 export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 'full' | 'compact' | 'content' }) {
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
 
@@ -115,6 +127,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
   const progressPct = typeof worklog?.progressPct === 'number' ? worklog.progressPct : (worklog?.progressPct != null ? Number(worklog.progressPct) : null);
   const blockerCode = String(worklog?.blockerCode || '').trim();
   const urgent = !!worklog?.urgent;
+  const visibility = worklog?.visibility;
 
   const showHeader = variant !== 'content';
   const showTitle = variant !== 'content';
@@ -145,6 +158,9 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
             ) : null}
             {timeSpentMinutes ? (
               <div style={{ background: '#F8FAFC', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, border: '1px solid #CBD5E1' }}>{formatMinutesAsHmKo(timeSpentMinutes)}</div>
+            ) : null}
+            {visibility ? (
+              <div style={{ background: '#F8FAFC', color: '#334155', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600, border: '1px solid #E2E8F0' }}>조회권한 {visibilityKo(visibility)}</div>
             ) : null}
           </div>
         </div>

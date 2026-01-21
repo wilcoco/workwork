@@ -1,10 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
-import { formatKstDatetime } from '../lib/time';
+import { formatKstDatetime, formatKstYmd } from '../lib/time';
 import { WorklogDocument } from '../components/WorklogDocument';
 
-type WL = { id: string; title: string; excerpt: string; userName?: string; teamName?: string; date: string };
+type WL = { id: string; title: string; excerpt: string; userName?: string; teamName?: string; date: string; createdAt?: string; visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY' };
 type FB = { id: string; subjectId: string; authorName?: string; content: string; createdAt: string };
+
+const VISIBILITY_LABEL: Record<string, string> = {
+  ALL: '전체',
+  MANAGER_PLUS: '팀장이상',
+  EXEC_PLUS: '임원이상',
+  CEO_ONLY: '대표이사',
+};
+
+function visibilityKo(v: any): string {
+  const key = String(v || 'ALL');
+  return VISIBILITY_LABEL[key] || key;
+}
 
 export function Home() {
   const [worklogs, setWorklogs] = useState<WL[]>([]);
@@ -19,6 +31,8 @@ export function Home() {
   const [filterName, setFilterName] = useState('');
   const [viewMode, setViewMode] = useState<'summary'|'full'>('summary');
   const [isMobile, setIsMobile] = useState(false);
+  const [worklogDays, setWorklogDays] = useState(3);
+  const WORKLOG_DAYS_STEP = 3;
   const teamOptions = useMemo(() => {
     const s = new Set<string>();
     worklogs.forEach(w => { if (w.teamName) s.add(w.teamName); });
@@ -38,6 +52,28 @@ export function Home() {
     });
     return Array.from(map.values()).sort((a,b) => b.t - a.t).map(x => x.c);
   }, [comments]);
+
+  const filteredWorklogs = useMemo(() => {
+    const windowMs = worklogDays * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const ts = (w: any) => new Date(w?.createdAt || w?.date).getTime();
+    return (worklogs || [])
+      .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
+      .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
+      .filter((w) => (now - ts(w)) <= windowMs)
+      .slice()
+      .sort((a, b) => ts(b) - ts(a));
+  }, [filterName, filterTeam, worklogDays, worklogs]);
+
+  const canShowMoreWorklogs = useMemo(() => {
+    const windowMs = worklogDays * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const ts = (w: any) => new Date(w?.createdAt || w?.date).getTime();
+    return (worklogs || [])
+      .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
+      .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
+      .some((w) => (now - ts(w)) > windowMs);
+  }, [filterName, filterTeam, worklogDays, worklogs]);
 
   useEffect(() => {
     const update = () => {
@@ -60,10 +96,13 @@ export function Home() {
       setLoading(true);
       setError(null);
       try {
-        const wl = await apiJson<{ items: WL[] }>(`/api/worklogs/search?limit=40`);
+        const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+        const wlQs = viewerId ? `limit=200&viewerId=${encodeURIComponent(viewerId)}` : 'limit=200';
+        const wl = await apiJson<{ items: WL[] }>(`/api/worklogs/search?${wlQs}`);
         setWorklogs(wl.items || []);
         try {
-          const uw = await apiJson<{ items: WL[] }>(`/api/worklogs/search?limit=20&urgent=true`);
+          const uwQs = viewerId ? `limit=20&urgent=true&viewerId=${encodeURIComponent(viewerId)}` : 'limit=20&urgent=true';
+          const uw = await apiJson<{ items: WL[] }>(`/api/worklogs/search?${uwQs}`);
           setUrgentWls(uw.items || []);
         } catch {}
       } catch (e: any) {
@@ -113,10 +152,11 @@ export function Home() {
                 <div style={{ display: 'grid', gap: 8 }}>
                   {urgentWls
                     .filter((w) => {
-                      const d = new Date(w.date).getTime();
+                      const d = new Date((w as any).createdAt || w.date).getTime();
                       const threeDays = 3 * 24 * 60 * 60 * 1000;
                       return Date.now() - d <= threeDays;
                     })
+                    .sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime())
                     .map((w) => {
                       const anyW: any = w as any;
                       const attachments = anyW.attachments || {};
@@ -147,7 +187,7 @@ export function Home() {
                             <div style={{ display: 'grid', gap: 4, flex: 1 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                                 <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
-                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               <div style={{ color: '#334155' }}>{snippet}</div>
                             </div>
@@ -155,7 +195,7 @@ export function Home() {
                         </div>
                       );
                     })}
-                  {urgentWls.filter((w) => (Date.now() - new Date(w.date).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
+                  {urgentWls.filter((w) => (Date.now() - new Date((w as any).createdAt || w.date).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
                     <div style={{ color: '#94a3b8' }}>최근 3일간 긴급보고 없음</div>
                   )}
                 </div>
@@ -184,14 +224,7 @@ export function Home() {
               <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
               {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
                 <div style={{ display: 'grid', gap: 8 }}>
-                  {worklogs
-                    .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
-                    .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
-                    .filter((w) => {
-                      const t = new Date(w.date).getTime();
-                      return (Date.now() - t) <= 3 * 24 * 60 * 60 * 1000;
-                    })
-                    .map((w) => {
+                  {filteredWorklogs.map((w) => {
                       const anyW: any = w as any;
                       const attachments = anyW.attachments || {};
                       const files = attachments.files || [];
@@ -222,7 +255,7 @@ export function Home() {
                             <div style={{ display: 'grid', gap: 4, flex: 1 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                                 <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
-                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
                                 <div style={{ color: '#334155' }}>{snippet}</div>
@@ -237,7 +270,12 @@ export function Home() {
                         </div>
                       );
                     })}
-                  {!worklogs.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                  {filteredWorklogs.length === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                  {canShowMoreWorklogs && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                      <button className="btn" onClick={() => setWorklogDays((d) => d + WORKLOG_DAYS_STEP)}>더보기</button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -249,14 +287,7 @@ export function Home() {
               <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
               {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
                 <div style={{ display: 'grid', gap: 8 }}>
-                  {worklogs
-                    .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
-                    .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
-                    .filter((w) => {
-                      const t = new Date(w.date).getTime();
-                      return (Date.now() - t) <= 3 * 24 * 60 * 60 * 1000;
-                    })
-                    .map((w) => {
+                  {filteredWorklogs.map((w) => {
                       const anyW: any = w as any;
                       const attachments = anyW.attachments || {};
                       const files = attachments.files || [];
@@ -287,7 +318,7 @@ export function Home() {
                             <div style={{ display: 'grid', gap: 4, flex: 1 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                                 <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
-                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
                                 <div style={{ color: '#334155' }}>{snippet}</div>
@@ -302,7 +333,12 @@ export function Home() {
                         </div>
                       );
                     })}
-                  {!worklogs.length && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                  {filteredWorklogs.length === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                  {canShowMoreWorklogs && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                      <button className="btn" onClick={() => setWorklogDays((d) => d + WORKLOG_DAYS_STEP)}>더보기</button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -312,10 +348,11 @@ export function Home() {
                 <div style={{ display: 'grid', gap: 8 }}>
                   {urgentWls
                     .filter((w) => {
-                      const d = new Date(w.date).getTime();
+                      const d = new Date((w as any).createdAt || w.date).getTime();
                       const threeDays = 3 * 24 * 60 * 60 * 1000;
                       return Date.now() - d <= threeDays;
                     })
+                    .sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime())
                     .map((w) => {
                       const anyW: any = w as any;
                       const attachments = anyW.attachments || {};
@@ -346,7 +383,7 @@ export function Home() {
                             <div style={{ display: 'grid', gap: 4, flex: 1 }}>
                               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                                 <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
-                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               <div style={{ color: '#334155' }}>{snippet}</div>
                             </div>
@@ -354,7 +391,7 @@ export function Home() {
                         </div>
                       );
                     })}
-                  {urgentWls.filter((w) => (Date.now() - new Date(w.date).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
+                  {urgentWls.filter((w) => (Date.now() - new Date((w as any).createdAt || w.date).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
                     <div style={{ color: '#94a3b8' }}>최근 3일간 긴급보고 없음</div>
                   )}
                 </div>
@@ -414,7 +451,7 @@ export function Home() {
         <div className="image-overlay" onClick={() => setUrgentOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 1000, width: '96%', maxHeight: '85vh', overflowY: 'auto', display: 'grid', gap: 10 }}>
             <div style={{ fontWeight: 800, fontSize: 18 }}>긴급 보고 전체</div>
-            {urgentWls.map((w) => {
+            {[...urgentWls].sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime()).map((w) => {
               const anyW: any = w as any;
               const attachments = anyW.attachments || {};
               const files = attachments.files || [];
@@ -444,7 +481,7 @@ export function Home() {
                     <div style={{ display: 'grid', gap: 4, flex: 1 }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                         <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
-                        <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstDatetime(w.date)}</div>
+                        <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                       </div>
                       <div style={{ color: '#334155' }}>{snippet}</div>
                     </div>
@@ -528,7 +565,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
         <div style={{ display: 'grid', gap: 4, flex: 1 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
             <div style={{ fontWeight: 700 }}>{title || '(제목 없음)'}</div>
-            <div style={{ fontSize: 12, color: '#475569' }}>· {(wl?.userName || '')}{wl?.teamName ? ` · ${wl.teamName}` : ''} · {formatKstDatetime((wl?.date || wl?.createdAt || c.createdAt) as any)}</div>
+            <div style={{ fontSize: 12, color: '#475569' }}>· {(wl?.userName || '')}{wl?.teamName ? ` · ${wl.teamName}` : ''} · {formatKstYmd(c.createdAt)}</div>
           </div>
         </div>
       </div>
@@ -538,12 +575,12 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
       <div style={{ display: 'grid', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
         {prev.map((p) => (
           <div key={p.id}>
-            <div style={{ fontSize: 12, color: '#475569' }}>{p.authorName || '익명'} · {formatKstDatetime(p.createdAt)}</div>
+            <div style={{ fontSize: 12, color: '#475569' }}>{p.authorName || '익명'} · {formatKstYmd(p.createdAt)}</div>
             <div style={{ whiteSpace: 'pre-wrap' }}>{p.content}</div>
           </div>
         ))}
         <div>
-          <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstDatetime(c.createdAt)}</div>
+          <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstYmd(c.createdAt)}</div>
           <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
         </div>
       </div>
@@ -596,7 +633,7 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
           <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
             {items.map((c) => (
               <div key={c.id} style={{ display: 'grid', gap: 2 }}>
-                <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstDatetime(c.createdAt)}</div>
+                <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstYmd(c.createdAt)}</div>
                 <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
               </div>
             ))}
