@@ -46,6 +46,7 @@ import { ProcessDashboard } from './pages/ProcessDashboard';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
 import { AuthPending } from './pages/AuthPending';
+import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -265,6 +266,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
           <Route path="/worklogs/stats" element={<WorklogStatsDaily />} />
+          <Route path="/worklogs/eval-monthly" element={<WorklogEvalMonthly />} />
           <Route path="/worklogs/ai" element={<WorklogAi />} />
           <Route path="/me/goals" element={<MeGoals />} />
           <Route path="/okr/input" element={<OkrInput />} />
@@ -396,6 +398,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo }: { SHOW_APPROVALS: bool
           <Link to="/quick">작성</Link>
           <Link to="/search">조회</Link>
           <Link to="/worklogs/stats">업무 현황</Link>
+          <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>
           <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
         <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr')}>
@@ -568,6 +571,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo }: { SHOW_APPROVALS: boolean
         { to: '/quick', label: '작성' },
         { to: '/search', label: '조회' },
         { to: '/worklogs/stats', label: '업무 현황' },
+        { to: '/worklogs/eval-monthly', label: '업무 평가 리포트' },
         { to: '/worklogs/ai', label: 'AI 분석' },
       ];
     }

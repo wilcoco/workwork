@@ -1,7 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 
+type Me = {
+  id: string;
+  name: string;
+  role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
+  orgUnitId: string;
+  teamName: string;
+};
+
+type OrgUnitItem = { id: string; name: string };
+
+type UserItem = {
+  id: string;
+  name: string;
+  orgUnitId: string;
+  orgName: string;
+};
+
 export function WorklogAi() {
+  const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -12,12 +30,16 @@ export function WorklogAi() {
   const [options, setOptions] = useState<{ teams: string[]; users: string[] }>({ teams: [], users: [] });
   const [isMobile, setIsMobile] = useState(false);
 
+  const [me, setMe] = useState<Me | null>(null);
+  const [teams, setTeams] = useState<OrgUnitItem[]>([]);
+  const [managedTeams, setManagedTeams] = useState<OrgUnitItem[]>([]);
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+      const viewerId = myUserId;
       params.set('days', String(days));
       if (team) params.set('team', team);
       if (user) params.set('user', user);
@@ -32,23 +54,104 @@ export function WorklogAi() {
     }
   }
 
-  // Load filter options (teams/users) from weekly stats; do not auto-run AI summary.
+  useEffect(() => {
+    (async () => {
+      if (!myUserId) return;
+      try {
+        const m = await apiJson<Me>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
+        setMe(m);
+      } catch {
+        setMe(null);
+      }
+    })();
+  }, [myUserId]);
+
   useEffect(() => {
     (async () => {
       try {
-        const r = await apiJson<{ teams: Array<{ teamName: string; members: Array<{ userName: string; count: number }> }> }>(`/api/worklogs/stats/weekly?days=${encodeURIComponent(String(days))}`);
-        const teamSet = new Set<string>();
-        const userSet = new Set<string>();
-        for (const t of r.teams || []) {
-          teamSet.add(t.teamName);
-          if (!team || t.teamName === team) {
-            for (const m of t.members || []) userSet.add(m.userName);
-          }
-        }
-        setOptions({ teams: Array.from(teamSet), users: Array.from(userSet) });
-      } catch {}
+        const r = await apiJson<{ items: OrgUnitItem[] }>(`/api/orgs`);
+        setTeams(Array.isArray(r?.items) ? r.items : []);
+      } catch {
+        setTeams([]);
+      }
     })();
-  }, [days, team]);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      if (!myUserId) return;
+      try {
+        const r = await apiJson<{ items: OrgUnitItem[] }>(`/api/orgs/managed?userId=${encodeURIComponent(myUserId)}`);
+        setManagedTeams(Array.isArray(r?.items) ? r.items : []);
+      } catch {
+        setManagedTeams([]);
+      }
+    })();
+  }, [myUserId]);
+
+  const scopeTeamItems = useMemo(() => {
+    const role = me?.role;
+    if (role === 'CEO') return teams;
+    if (role === 'EXEC') return managedTeams;
+    if (role === 'MANAGER') {
+      if ((managedTeams || []).length > 0) return managedTeams;
+      if (me?.orgUnitId) {
+        const found = (teams || []).find((t) => String(t.id) === String(me.orgUnitId));
+        return found ? [found] : [];
+      }
+      return [];
+    }
+    return [];
+  }, [managedTeams, me?.orgUnitId, me?.role, teams]);
+
+  const scopeTeamNameOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of scopeTeamItems || []) {
+      const name = String((t as any).name || '').trim();
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [scopeTeamItems]);
+
+  useEffect(() => {
+    setOptions((prev) => ({ ...prev, teams: scopeTeamNameOptions }));
+  }, [scopeTeamNameOptions]);
+
+  useEffect(() => {
+    (async () => {
+      if (!myUserId) return;
+      if (!me) return;
+
+      try {
+        const scopeIds = (scopeTeamItems || []).map((t) => String(t.id)).filter(Boolean);
+        if (scopeIds.length === 0) {
+          setOptions((prev) => ({ ...prev, users: [] }));
+          return;
+        }
+
+        if (team) {
+          const teamItem = (scopeTeamItems || []).find((t) => String(t.name) === String(team));
+          const orgUnitId = teamItem ? String(teamItem.id) : '';
+          if (!orgUnitId) {
+            setOptions((prev) => ({ ...prev, users: [] }));
+            return;
+          }
+          const r = await apiJson<{ items: UserItem[] }>(`/api/users?orgUnitId=${encodeURIComponent(orgUnitId)}`);
+          const names = (r?.items || []).map((u) => String(u.name || '')).filter(Boolean);
+          const uniq = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+          setOptions((prev) => ({ ...prev, users: uniq }));
+          return;
+        }
+
+        const r = await apiJson<{ items: UserItem[] }>(`/api/users?orgUnitIds=${encodeURIComponent(scopeIds.join(','))}`);
+        const names = (r?.items || []).map((u) => String(u.name || '')).filter(Boolean);
+        const uniq = Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+        setOptions((prev) => ({ ...prev, users: uniq }));
+      } catch {
+        setOptions((prev) => ({ ...prev, users: [] }));
+      }
+    })();
+  }, [me, myUserId, scopeTeamItems, team]);
 
   useEffect(() => {
     const update = () => {

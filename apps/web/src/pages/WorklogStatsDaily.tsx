@@ -49,16 +49,17 @@ type UserItem = {
   orgName: string;
 };
 
-type FeedbackItem = {
+type EvalStatus = 'BLUE' | 'GREEN' | 'YELLOW' | 'RED';
+
+type TeamDailyEvalItem = {
   id: string;
-  subjectType: string;
-  subjectId: string;
-  authorId: string;
-  authorName?: string;
-  content: string;
-  rating?: number | null;
-  actionRequired?: boolean;
+  ymd: string;
+  orgUnitId: string;
+  orgUnitName: string;
+  evaluatorId: string;
+  status: EvalStatus;
   createdAt: string;
+  updatedAt: string;
 };
 
 export function WorklogStatsDaily() {
@@ -84,28 +85,26 @@ export function WorklogStatsDaily() {
 
   const [evalOpen, setEvalOpen] = useState(false);
   const [evalYmd, setEvalYmd] = useState<string>('');
-  const [evalTargetUserId, setEvalTargetUserId] = useState<string>('');
-  const [evalTargetUserName, setEvalTargetUserName] = useState<string>('');
   const [evalLoading, setEvalLoading] = useState(false);
   const [evalError, setEvalError] = useState<string | null>(null);
-  const [evalItems, setEvalItems] = useState<FeedbackItem[]>([]);
-  const [evalText, setEvalText] = useState('');
-  const [evalRating, setEvalRating] = useState<string>('');
+  const [evalTeamStatus, setEvalTeamStatus] = useState<Record<string, EvalStatus>>({});
 
   const scopeOrgUnitIds = useMemo(() => {
     const role = me?.role;
     const ids = new Set<string>();
-    if (role === 'MANAGER') {
+    if (role === 'CEO') {
+      (teams || []).forEach((t) => ids.add(String(t.id)));
+    } else if (role === 'EXEC') {
+      (managedTeams || []).forEach((t) => ids.add(String(t.id)));
+    } else if (role === 'MANAGER') {
       if ((managedTeams || []).length > 0) {
         (managedTeams || []).forEach((t) => ids.add(String(t.id)));
       } else if (me?.orgUnitId) {
         ids.add(String(me.orgUnitId));
       }
-    } else if (role === 'EXEC' || role === 'CEO') {
-      (managedTeams || []).forEach((t) => ids.add(String(t.id)));
     }
     return ids;
-  }, [managedTeams, me?.orgUnitId, me?.role]);
+  }, [managedTeams, me?.orgUnitId, me?.role, teams]);
 
   const canSearch = useMemo(() => {
     if (teamId === '__managed__') return managedTeams.length > 0;
@@ -125,32 +124,35 @@ export function WorklogStatsDaily() {
     return [...(users || [])].sort((a, b) => String(a.name).localeCompare(String(b.name)));
   }, [users]);
 
-  const evalTargetsForDay = useMemo(() => {
-    if (!canEvaluate) return [] as Array<{ id: string; name: string }>;
+  const evalTeamsForDay = useMemo(() => {
+    if (!canEvaluate) return [] as Array<{ id: string; name: string; count: number; minutes: number }>;
     if (scopeOrgUnitIds.size === 0) return [];
     const g = (result?.groups || []).find((x) => x.ymd === evalYmd);
     if (!g) return [];
-    const map = new Map<string, string>();
+    const map = new Map<string, { id: string; name: string; count: number; minutes: number }>();
     for (const it of g.items || []) {
-      if (!it.createdById) continue;
-      if (String(it.createdById) === String(myUserId)) continue;
       const ou = String(it.orgUnitId || '');
-      if (ou && !scopeOrgUnitIds.has(ou)) continue;
-      map.set(String(it.createdById), String(it.userName || ''));
+      if (!ou) continue;
+      if (!scopeOrgUnitIds.has(ou)) continue;
+      if (!map.has(ou)) {
+        map.set(ou, { id: ou, name: String(it.teamName || ''), count: 0, minutes: 0 });
+      }
+      const cur = map.get(ou)!;
+      cur.count += 1;
+      cur.minutes += Number(it.timeSpentMinutes || 0);
     }
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [canEvaluate, evalYmd, myUserId, result?.groups, scopeOrgUnitIds]);
+    return Array.from(map.values()).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  }, [canEvaluate, evalYmd, result?.groups, scopeOrgUnitIds]);
 
   const canEvalGroup = (g: DailyGroup) => {
     if (!canEvaluate) return false;
     if (scopeOrgUnitIds.size === 0) return false;
     const seen = new Set<string>();
     for (const it of g.items || []) {
-      if (!it.createdById) continue;
-      if (String(it.createdById) === String(myUserId)) continue;
       const ou = String(it.orgUnitId || '');
-      if (ou && !scopeOrgUnitIds.has(ou)) continue;
-      seen.add(String(it.createdById));
+      if (!ou) continue;
+      if (!scopeOrgUnitIds.has(ou)) continue;
+      seen.add(ou);
     }
     return seen.size > 0;
   };
@@ -240,90 +242,68 @@ export function WorklogStatsDaily() {
     };
   }, [detailOpen, evalOpen]);
 
-  async function loadFeedbacks(targetUserId: string, ymd: string) {
-    if (!targetUserId || !ymd) return;
-    setEvalLoading(true);
-    setEvalError(null);
-    try {
-      const subjectType = 'WorklogDay';
-      const subjectId = `${targetUserId}|${ymd}`;
-      const r = await apiJson<{ items: FeedbackItem[] }>(`/api/feedbacks?subjectType=${encodeURIComponent(subjectType)}&subjectId=${encodeURIComponent(subjectId)}&limit=50`);
-      setEvalItems(Array.isArray(r?.items) ? r.items : []);
-    } catch (e: any) {
-      setEvalError(e?.message || '평가 조회 실패');
-      setEvalItems([]);
-    } finally {
-      setEvalLoading(false);
-    }
-  }
-
   async function openEval(ymd: string) {
     if (!canEvaluate) return;
+    if (!myUserId) return;
     setEvalOpen(true);
     setEvalYmd(ymd);
     setEvalError(null);
-    setEvalItems([]);
-    setEvalText('');
-    setEvalRating('');
+
+    setEvalTeamStatus({});
+
+    if (scopeOrgUnitIds.size === 0) {
+      setEvalError('평가 권한이 없습니다.');
+      return;
+    }
 
     const g = (result?.groups || []).find((x) => x.ymd === ymd);
-    const map = new Map<string, string>();
-    for (const it of g?.items || []) {
-      if (!it.createdById) continue;
-      if (String(it.createdById) === String(myUserId)) continue;
-      const ou = String(it.orgUnitId || '');
-      if (scopeOrgUnitIds.size === 0) continue;
-      if (ou && !scopeOrgUnitIds.has(ou)) continue;
-      map.set(String(it.createdById), String(it.userName || ''));
+    const ids = Array.from(
+      new Set(
+        (g?.items || [])
+          .map((it) => String(it.orgUnitId || ''))
+          .filter(Boolean)
+          .filter((id) => scopeOrgUnitIds.has(String(id)))
+      )
+    );
+    if (ids.length === 0) {
+      setEvalError('평가할 팀이 없습니다.');
+      return;
     }
-    const targets = Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 
-    if (targets.length === 1) {
-      setEvalTargetUserId(targets[0].id);
-      setEvalTargetUserName(targets[0].name);
-      await loadFeedbacks(targets[0].id, ymd);
-    } else {
-      setEvalTargetUserId('');
-      setEvalTargetUserName('');
-      if (targets.length === 0) {
-        setEvalError('평가할 대상이 없습니다.');
+    setEvalLoading(true);
+    try {
+      const r = await apiJson<{ items: TeamDailyEvalItem[] }>(
+        `/api/worklog-evals/team-daily?userId=${encodeURIComponent(myUserId)}&ymd=${encodeURIComponent(ymd)}&orgUnitIds=${encodeURIComponent(ids.join(','))}`
+      );
+      const map: Record<string, EvalStatus> = {};
+      for (const it of r?.items || []) {
+        map[String(it.orgUnitId)] = String(it.status) as EvalStatus;
       }
+      setEvalTeamStatus(map);
+    } catch (e: any) {
+      setEvalError(e?.message || '평가 조회 실패');
+    } finally {
+      setEvalLoading(false);
     }
   }
 
   function closeEval() {
     setEvalOpen(false);
     setEvalYmd('');
-    setEvalTargetUserId('');
-    setEvalTargetUserName('');
     setEvalLoading(false);
     setEvalError(null);
-    setEvalItems([]);
-    setEvalText('');
-    setEvalRating('');
+    setEvalTeamStatus({});
   }
 
-  async function submitEval() {
+  async function setTeamStatus(orgUnitId: string, status: EvalStatus) {
     if (!myUserId) return;
-    if (!evalTargetUserId || !evalYmd) return;
-    const content = String(evalText || '').trim();
-    if (!content) return;
+    if (!evalYmd) return;
     setEvalLoading(true);
     setEvalError(null);
     try {
-      const ratingNum = parseInt(String(evalRating || ''), 10);
-      const payload: any = {
-        subjectType: 'WorklogDay',
-        subjectId: `${evalTargetUserId}|${evalYmd}`,
-        authorId: myUserId,
-        content,
-        targetUserId: evalTargetUserId,
-      };
-      if (!isNaN(ratingNum) && ratingNum >= 1 && ratingNum <= 5) payload.rating = ratingNum;
-      await apiJson(`/api/feedbacks`, { method: 'POST', body: JSON.stringify(payload) });
-      setEvalText('');
-      setEvalRating('');
-      await loadFeedbacks(evalTargetUserId, evalYmd);
+      const payload = { ymd: evalYmd, orgUnitId, status };
+      await apiJson(`/api/worklog-evals/team-daily?userId=${encodeURIComponent(myUserId)}`, { method: 'POST', body: JSON.stringify(payload) });
+      setEvalTeamStatus((prev) => ({ ...prev, [String(orgUnitId)]: status }));
     } catch (e: any) {
       setEvalError(e?.message || '평가 저장 실패');
     } finally {
@@ -430,7 +410,7 @@ export function WorklogStatsDaily() {
                       onClick={() => openEval(g.ymd)}
                       disabled={!canEvalGroup(g)}
                     >
-                      일 단위 평가
+                      팀 일 단위 평가
                     </button>
                   ) : null}
                 </div>
@@ -501,75 +481,43 @@ export function WorklogStatsDaily() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }}>
-              <div style={{ fontWeight: 800 }}>일 단위 평가 · {evalYmd}</div>
+              <div style={{ fontWeight: 800 }}>팀 일 단위 평가 · {evalYmd}</div>
               <button className="btn" style={{ marginLeft: 'auto' }} onClick={closeEval}>닫기</button>
             </div>
             <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 10 }}>
               {evalError && <div style={{ color: 'red' }}>{evalError}</div>}
 
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>대상 구성원</div>
-                <select
-                  value={evalTargetUserId}
-                  onChange={async (e) => {
-                    const id = e.target.value;
-                    setEvalTargetUserId(id);
-                    const name = evalTargetsForDay.find((t) => t.id === id)?.name || '';
-                    setEvalTargetUserName(name);
-                    if (id) await loadFeedbacks(id, evalYmd);
-                    else setEvalItems([]);
-                  }}
-                  style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any, width: '100%' }}
-                >
-                  <option value="">선택</option>
-                  {evalTargetsForDay.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>평가 입력{evalTargetUserName ? ` (${evalTargetUserName})` : ''}</div>
-                <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : '120px 1fr auto', alignItems: 'center' }}>
-                  <select
-                    value={evalRating}
-                    onChange={(e) => setEvalRating(e.target.value)}
-                    style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any, width: '100%' }}
-                    disabled={!evalTargetUserId || evalLoading}
-                  >
-                    <option value="">평점(선택)</option>
-                    <option value="5">5</option>
-                    <option value="4">4</option>
-                    <option value="3">3</option>
-                    <option value="2">2</option>
-                    <option value="1">1</option>
-                  </select>
-                  <input
-                    value={evalText}
-                    onChange={(e) => setEvalText(e.target.value)}
-                    placeholder="코멘트를 입력하세요"
-                    style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', width: '100%' }}
-                    disabled={!evalTargetUserId || evalLoading}
-                  />
-                  <button className="btn" onClick={submitEval} disabled={!evalTargetUserId || evalLoading || !String(evalText || '').trim()}>
-                    {evalLoading ? '저장…' : '저장'}
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 10, display: 'grid', gap: 8 }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>기존 평가</div>
-                {(evalItems || []).map((it) => (
-                  <div key={it.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, background: '#fff', display: 'grid', gap: 4 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                      <div style={{ fontWeight: 800, color: '#0f172a' }}>{it.authorName || ''}</div>
-                      {typeof it.rating === 'number' ? <div style={{ fontSize: 12, color: '#0f172a', fontWeight: 700 }}>· {it.rating}점</div> : null}
-                      <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{formatKstDatetime(it.createdAt)}</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>팀별 상태 선택</div>
+                {(evalTeamsForDay || []).map((t) => {
+                  const cur = evalTeamStatus[String(t.id)];
+                  const btnStyle = (bg: string, active: boolean) => ({
+                    border: active ? '2px solid #0f172a' : '1px solid #e5e7eb',
+                    borderRadius: 10,
+                    padding: '8px 10px',
+                    background: bg,
+                    color: '#0f172a',
+                    fontWeight: active ? 900 : 700,
+                    cursor: evalLoading ? 'not-allowed' : 'pointer',
+                    opacity: evalLoading ? 0.7 : 1,
+                  } as const);
+                  return (
+                    <div key={t.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 10, background: '#fff', display: 'grid', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ fontWeight: 900, color: '#0f172a' }}>{t.name || t.id}</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>· {t.count}건 · {formatMinutesAsHmKo(t.minutes)}</div>
+                        {cur ? <div style={{ marginLeft: 'auto', fontSize: 12, color: '#0f172a', fontWeight: 800 }}>{cur}</div> : <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>미평가</div>}
+                      </div>
+                      <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)' }}>
+                        <button type="button" onClick={() => setTeamStatus(String(t.id), 'BLUE')} disabled={evalLoading} style={btnStyle('#93c5fd', cur === 'BLUE')}>파랑(우수)</button>
+                        <button type="button" onClick={() => setTeamStatus(String(t.id), 'GREEN')} disabled={evalLoading} style={btnStyle('#86efac', cur === 'GREEN')}>초록(정상)</button>
+                        <button type="button" onClick={() => setTeamStatus(String(t.id), 'YELLOW')} disabled={evalLoading} style={btnStyle('#fde68a', cur === 'YELLOW')}>노랑(주의)</button>
+                        <button type="button" onClick={() => setTeamStatus(String(t.id), 'RED')} disabled={evalLoading} style={btnStyle('#fca5a5', cur === 'RED')}>빨강(지원)</button>
+                      </div>
                     </div>
-                    <div style={{ color: '#334155', lineHeight: 1.45 }}>{it.content}</div>
-                  </div>
-                ))}
-                {(evalItems || []).length === 0 && <div style={{ color: '#94a3b8' }}>평가가 없습니다.</div>}
+                  );
+                })}
+                {(evalTeamsForDay || []).length === 0 && <div style={{ color: '#94a3b8' }}>평가할 팀이 없습니다.</div>}
               </div>
             </div>
           </div>

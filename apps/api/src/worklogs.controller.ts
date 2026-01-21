@@ -1067,9 +1067,34 @@ export class WorklogsController {
     const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
-    const where: any = { date: { gte: from, lte: now } };
-    if (teamName) where.createdBy = { orgUnit: { name: teamName } };
-    if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+    const baseWhere: any = { date: { gte: from, lte: now } };
+    if (teamName) baseWhere.createdBy = { orgUnit: { name: teamName } };
+    if (userName) baseWhere.createdBy = { ...(baseWhere.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+
+    // Visibility filter (same rules as stats endpoints)
+    let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
+    if (viewerId) {
+      const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
+      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
+      else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
+      else visibilityIn = ['ALL'];
+    }
+
+    const where = viewerId
+      ? {
+          AND: [
+            baseWhere,
+            {
+              OR: [
+                { createdById: viewerId },
+                { visibility: { in: visibilityIn as any } },
+              ],
+            },
+          ],
+        }
+      : { ...baseWhere, visibility: { in: visibilityIn as any } };
     const items = await (this.prisma as any).worklog.findMany({
       where,
       include: { createdBy: { include: { orgUnit: true } } },

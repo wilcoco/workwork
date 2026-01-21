@@ -27,6 +27,7 @@ import { HolidaysController } from './holidays.controller';
 import { ProcessTemplatesController } from './process-templates.controller';
 import { ProcessesController } from './processes.controller';
 import { MastersController } from './masters.controller';
+import { WorklogEvalsController } from './worklog-evals.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -57,6 +58,7 @@ import { MastersController } from './masters.controller';
     ProcessTemplatesController,
     ProcessesController,
     MastersController,
+    WorklogEvalsController,
   ],
   providers: [PrismaService],
 })

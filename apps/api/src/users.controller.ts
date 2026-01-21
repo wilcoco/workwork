@@ -24,11 +24,20 @@ export class UsersController {
   @Get()
   async list(
     @Query('orgUnitId') orgUnitId?: string,
+    @Query('orgUnitIds') orgUnitIdsCsv?: string,
     @Query('includePending') includePending?: string,
     @Query('userId') userId?: string,
   ) {
     const where: any = {};
-    if (orgUnitId) where.orgUnitId = orgUnitId;
+    if (orgUnitId) {
+      where.orgUnitId = orgUnitId;
+    } else if (orgUnitIdsCsv) {
+      const ids = String(orgUnitIdsCsv)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (ids.length) where.orgUnitId = { in: ids };
+    }
     const wantsPending = includePending === '1' || includePending === 'true';
     if (wantsPending) {
       if (!userId) throw new BadRequestException('userId required');

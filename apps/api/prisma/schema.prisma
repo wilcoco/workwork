@@ -97,6 +97,7 @@ model OrgUnit {
   users     User[]
   objectives Objective[]
   processTemplates ProcessTemplate[]
+  worklogTeamDailyEvals WorklogTeamDailyEval[]
 }
 
 model User {
@@ -121,6 +122,7 @@ model User {
   approvalStepsToApprove ApprovalStep[] @relation("ApprovalStepApprover")
   shares Share[]
   feedbacksAuthored Feedback[]
+  worklogTeamDailyEvals WorklogTeamDailyEval[]
   helpTicketsRequested HelpTicket[] @relation("HelpRequester")
   helpTicketsAssigned HelpTicket[] @relation("HelpAssignee")
   delegationsMade Delegation[] @relation("Delegator")
@@ -318,6 +320,13 @@ enum WorklogVisibility {
   CEO_ONLY
 }
 
+enum WorklogEvalStatus {
+  BLUE
+  GREEN
+  YELLOW
+  RED
+}
+
 enum GoalKind {
   QUALITATIVE
   QUANTITATIVE
@@ -418,6 +427,23 @@ model Feedback {
   rating      Int?
   actionRequired Boolean    @default(false)
   createdAt   DateTime      @default(now())
+}
+
+model WorklogTeamDailyEval {
+  id          String           @id @default(cuid())
+  ymd         String
+  orgUnitId   String
+  orgUnit     OrgUnit          @relation(fields: [orgUnitId], references: [id])
+  evaluatorId String
+  evaluator   User             @relation(fields: [evaluatorId], references: [id])
+  status      WorklogEvalStatus
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([ymd, orgUnitId, evaluatorId])
+  @@index([ymd])
+  @@index([orgUnitId, ymd])
+  @@index([evaluatorId, ymd])
 }
 
 model HelpTicket {
