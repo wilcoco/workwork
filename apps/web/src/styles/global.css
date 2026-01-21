@@ -68,7 +68,8 @@ textarea { resize: vertical; }
 .btn-danger { background: var(--accent); color: #fff; border: none; }
 .btn-sm { border-radius: 8px; padding: 4px 8px; font-size: 12px; }
 
-.rich-content img, .rich-content video, .rich-content iframe { max-width: 100%; height: auto; display: block; border-radius: 8px; }
+.rich-content { overflow-x: auto; }
+.rich-content img, .rich-content video, .rich-content iframe { max-width: 100% !important; height: auto !important; display: block; border-radius: 8px; }
 .ql-editor img { max-width: 100%; height: auto; }
 .attachments { display: grid; gap: 8px; }
 .attachment-item { display: grid; gap: 6px; }

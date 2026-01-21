@@ -31,6 +31,7 @@ export function Home() {
   const [filterName, setFilterName] = useState('');
   const [viewMode, setViewMode] = useState<'summary'|'full'>('summary');
   const [isMobile, setIsMobile] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('urgent');
   const [worklogDays, setWorklogDays] = useState(3);
   const WORKLOG_DAYS_STEP = 3;
   const teamOptions = useMemo(() => {
@@ -146,7 +147,14 @@ export function Home() {
         {isMobile ? (
           <>
             {/* 모바일: 긴급 보고 / 최근 댓글 먼저, 그 다음 최근 업무일지 */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className={mobileTab==='urgent' ? 'btn btn-primary' : 'btn'} onClick={() => setMobileTab('urgent')} style={{ flex: 1, height: 34, padding: '0 10px', whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}>긴급 보고</button>
+              <button className={mobileTab==='worklogs' ? 'btn btn-primary' : 'btn'} onClick={() => setMobileTab('worklogs')} style={{ flex: 1, height: 34, padding: '0 10px', whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}>최근 업무일지</button>
+              <button className={mobileTab==='comments' ? 'btn btn-primary' : 'btn'} onClick={() => setMobileTab('comments')} style={{ flex: 1, height: 34, padding: '0 10px', whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}>최근 댓글</button>
+            </div>
+            {mobileTab !== 'worklogs' && (
             <div style={{ display: 'grid', gap: 12, alignContent: 'start', alignItems: 'start', alignSelf: 'start' }}>
+              {mobileTab === 'urgent' && (
               <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
                 <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -185,9 +193,9 @@ export function Home() {
                               <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-                              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                              <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
-                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               <div style={{ color: '#334155' }}>{snippet}</div>
                             </div>
@@ -203,6 +211,8 @@ export function Home() {
                   <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
                 </div>
               </div>
+              )}
+              {mobileTab === 'comments' && (
               <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
                 <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -219,7 +229,10 @@ export function Home() {
                   <button className="btn" onClick={() => setCommentsOpen(true)}>더보기</button>
                 </div>
               </div>
+              )}
             </div>
+            )}
+            {mobileTab === 'worklogs' && (
             <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
               <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
               {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
@@ -253,9 +266,9 @@ export function Home() {
                               <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-                              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                              <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
-                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
                                 <div style={{ color: '#334155' }}>{snippet}</div>
@@ -279,6 +292,7 @@ export function Home() {
                 </div>
               )}
             </div>
+            )}
           </>
         ) : (
           <>
@@ -316,9 +330,9 @@ export function Home() {
                               <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-                              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                              <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
-                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
                                 <div style={{ color: '#334155' }}>{snippet}</div>
@@ -381,9 +395,9 @@ export function Home() {
                               <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-                              <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                              <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
-                                <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               <div style={{ color: '#334155' }}>{snippet}</div>
                             </div>
@@ -479,9 +493,9 @@ export function Home() {
                       <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                     )}
                     <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'grid', gap: 2 }}>
                         <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
-                        <div style={{ fontSize: 12, color: '#475569' }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                        <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                       </div>
                       <div style={{ color: '#334155' }}>{snippet}</div>
                     </div>
@@ -563,9 +577,9 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
           <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
         )}
         <div style={{ display: 'grid', gap: 4, flex: 1 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+          <div style={{ display: 'grid', gap: 2 }}>
             <div style={{ fontWeight: 700 }}>{title || '(제목 없음)'}</div>
-            <div style={{ fontSize: 12, color: '#475569' }}>· {(wl?.userName || '')}{wl?.teamName ? ` · ${wl.teamName}` : ''} · {formatKstYmd(c.createdAt)}</div>
+            <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {(wl?.userName || '')}{wl?.teamName ? ` · ${wl.teamName}` : ''} · {formatKstYmd(c.createdAt)}{(wl as any)?.visibility ? ` · 조회권한 ${visibilityKo((wl as any).visibility)}` : ''}</div>
           </div>
         </div>
       </div>
