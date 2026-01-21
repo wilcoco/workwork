@@ -1071,7 +1071,6 @@ export class WorklogsController {
     if (teamName) baseWhere.createdBy = { orgUnit: { name: teamName } };
     if (userName) baseWhere.createdBy = { ...(baseWhere.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
 
-    // Visibility filter (same rules as stats endpoints)
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
     if (viewerId) {
       const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });

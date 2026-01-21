@@ -17,6 +17,35 @@ type MonthlyResponse = {
   totals: { BLUE: number; GREEN: number; YELLOW: number; RED: number; score: number };
 };
 
+type DrilldownDailyItem = {
+  id: string;
+  createdAt: string;
+  date: string;
+  timeSpentMinutes: number;
+  title: string;
+  excerpt: string;
+  createdById: string;
+  userName: string;
+  orgUnitId: string;
+  teamName: string;
+  urgent?: boolean;
+};
+
+type DrilldownGroup = {
+  ymd: string;
+  count: number;
+  minutes: number;
+  items: DrilldownDailyItem[];
+};
+
+type DrilldownResponse = {
+  month: string;
+  orgUnitId: string;
+  status: 'BLUE' | 'GREEN' | 'YELLOW' | 'RED';
+  ymds: string[];
+  groups: DrilldownGroup[];
+};
+
 export function WorklogEvalMonthly() {
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
 
@@ -28,6 +57,12 @@ export function WorklogEvalMonthly() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  const [drillOpen, setDrillOpen] = useState(false);
+  const [drillLoading, setDrillLoading] = useState(false);
+  const [drillError, setDrillError] = useState<string | null>(null);
+  const [drillTitle, setDrillTitle] = useState<string>('');
+  const [drillData, setDrillData] = useState<DrilldownResponse | null>(null);
 
   useEffect(() => {
     const update = () => {
@@ -44,6 +79,34 @@ export function WorklogEvalMonthly() {
       }
     };
   }, []);
+
+  async function openDrilldown(orgUnitId: string, orgUnitName: string, status: 'BLUE' | 'GREEN' | 'YELLOW' | 'RED') {
+    if (!myUserId) return;
+    if (!orgUnitId) return;
+    setDrillOpen(true);
+    setDrillLoading(true);
+    setDrillError(null);
+    setDrillData(null);
+    setDrillTitle(`${orgUnitName || orgUnitId} · ${status}`);
+    try {
+      const r = await apiJson<DrilldownResponse>(
+        `/api/worklog-evals/team-monthly-drilldown?userId=${encodeURIComponent(myUserId)}&month=${encodeURIComponent(month)}&orgUnitId=${encodeURIComponent(orgUnitId)}&status=${encodeURIComponent(status)}`
+      );
+      setDrillData(r);
+    } catch (e: any) {
+      setDrillError(e?.message || '상세 조회 실패');
+    } finally {
+      setDrillLoading(false);
+    }
+  }
+
+  function closeDrilldown() {
+    setDrillOpen(false);
+    setDrillLoading(false);
+    setDrillError(null);
+    setDrillTitle('');
+    setDrillData(null);
+  }
 
   useEffect(() => {
     void load();
@@ -72,6 +135,7 @@ export function WorklogEvalMonthly() {
   const headerCell: CSSProperties = { borderBottom: '1px solid #e5e7eb', textAlign: 'left', padding: 6, whiteSpace: 'nowrap' };
   const numCell: CSSProperties = { borderBottom: '1px solid #f1f5f9', padding: 6, textAlign: 'right', whiteSpace: 'nowrap' };
   const leftCell: CSSProperties = { borderBottom: '1px solid #f1f5f9', padding: 6, textAlign: 'left' };
+  const linkBtn: CSSProperties = { background: 'transparent', border: 0, padding: 0, margin: 0, color: '#2563eb', cursor: 'pointer', fontWeight: 900 };
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -108,10 +172,34 @@ export function WorklogEvalMonthly() {
                 {rows.map((it) => (
                   <tr key={it.orgUnitId}>
                     <td style={leftCell}>{it.orgUnitName || it.orgUnitId}</td>
-                    <td style={numCell}>{it.BLUE}</td>
-                    <td style={numCell}>{it.GREEN}</td>
-                    <td style={numCell}>{it.YELLOW}</td>
-                    <td style={numCell}>{it.RED}</td>
+                    <td style={numCell}>
+                      {it.BLUE > 0 ? (
+                        <button type="button" style={linkBtn} onClick={() => openDrilldown(it.orgUnitId, it.orgUnitName, 'BLUE')}>{it.BLUE}</button>
+                      ) : (
+                        <span>{it.BLUE}</span>
+                      )}
+                    </td>
+                    <td style={numCell}>
+                      {it.GREEN > 0 ? (
+                        <button type="button" style={linkBtn} onClick={() => openDrilldown(it.orgUnitId, it.orgUnitName, 'GREEN')}>{it.GREEN}</button>
+                      ) : (
+                        <span>{it.GREEN}</span>
+                      )}
+                    </td>
+                    <td style={numCell}>
+                      {it.YELLOW > 0 ? (
+                        <button type="button" style={linkBtn} onClick={() => openDrilldown(it.orgUnitId, it.orgUnitName, 'YELLOW')}>{it.YELLOW}</button>
+                      ) : (
+                        <span>{it.YELLOW}</span>
+                      )}
+                    </td>
+                    <td style={numCell}>
+                      {it.RED > 0 ? (
+                        <button type="button" style={linkBtn} onClick={() => openDrilldown(it.orgUnitId, it.orgUnitName, 'RED')}>{it.RED}</button>
+                      ) : (
+                        <span>{it.RED}</span>
+                      )}
+                    </td>
                     <td style={{ ...numCell, fontWeight: 900, color: it.score >= 0 ? '#0f172a' : '#991b1b' }}>{it.score}</td>
                   </tr>
                 ))}
@@ -124,6 +212,57 @@ export function WorklogEvalMonthly() {
             </table>
           </div>
         </>
+      )}
+
+      {drillOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: 16, boxSizing: 'border-box' }}
+          onClick={closeDrilldown}
+        >
+          <div
+            style={{ background: '#fff', borderRadius: 12, padding: 0, width: 'min(980px, 96vw)', height: 'min(80vh, 920px)', maxHeight: 'calc(100vh - 32px)', display: 'grid', gridTemplateRows: '44px 1fr', overflow: 'hidden' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }}>
+              <div style={{ fontWeight: 900 }}>{drillTitle}</div>
+              <button className="btn" style={{ marginLeft: 'auto' }} onClick={closeDrilldown}>닫기</button>
+            </div>
+            <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 10 }}>
+              {drillError && <div style={{ color: 'red' }}>{drillError}</div>}
+              {drillLoading ? (
+                <div>조회중…</div>
+              ) : (
+                <>
+                  {(drillData?.groups || []).map((g) => (
+                    <div key={g.ymd} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 10, background: '#fff', display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                        <div style={{ fontWeight: 900, color: '#0f172a' }}>{g.ymd}</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>· {g.count}건 · {Math.floor((g.minutes || 0) / 60)}시간 {Number(g.minutes || 0) % 60}분</div>
+                      </div>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {(g.items || []).map((it) => (
+                          <a
+                            key={it.id}
+                            href={`/worklogs/${it.id}`}
+                            style={{ textDecoration: 'none', color: 'inherit', border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, background: '#fff', display: 'grid', gap: 4 }}
+                          >
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                              <div style={{ fontWeight: 900, color: '#0f172a' }}>{it.title || '(제목 없음)'}</div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>· {it.teamName || ''} · {it.userName || ''}</div>
+                              <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</div>
+                            </div>
+                            {it.excerpt ? <div style={{ color: '#334155', lineHeight: 1.45 }}>{it.excerpt}</div> : null}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {(drillData?.groups || []).length === 0 && <div style={{ color: '#94a3b8' }}>데이터가 없습니다.</div>}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
