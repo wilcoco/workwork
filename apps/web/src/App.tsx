@@ -6,7 +6,6 @@ import { Home } from './pages/Home';
 import { WorklogNew } from './pages/WorklogNew';
 import { WorklogDetail } from './pages/WorklogDetail';
 import { Inbox } from './pages/Inbox';
-import { Signup } from './pages/Signup';
 import { Login } from './pages/Login';
 import { WorklogQuickNew } from './pages/WorklogQuickNew';
 import { WorklogSearch } from './pages/WorklogSearch';
@@ -268,7 +267,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/worklogs/new" element={<WorklogNew />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
           <Route path="/inbox" element={<Inbox />} />
-          <Route path="/signup" element={<Signup />} />
+          <Route path="/signup" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
@@ -460,7 +459,6 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
           ) : (
             <>
               <Link to="/login">로그인</Link>
-              <Link to="/signup">회원가입</Link>
             </>
           )}
         </span>
