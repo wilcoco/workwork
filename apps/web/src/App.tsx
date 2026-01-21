@@ -203,11 +203,18 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
   const [me, setMe] = useState<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' } | null | undefined>(undefined);
   const isCeo = me?.role === 'CEO';
+  const canEvaluate = me?.role === 'CEO' || me?.role === 'EXEC' || me?.role === 'MANAGER';
 
   const adminGuard = (child: any) => {
     if (!token) return <Navigate to="/login" replace />;
     if (me === undefined) return <div style={{ color: '#64748b' }}>권한 확인중...</div>;
     return isCeo ? child : <Navigate to="/" replace />;
+  };
+
+  const evalGuard = (child: any) => {
+    if (!token) return <Navigate to="/login" replace />;
+    if (me === undefined) return <div style={{ color: '#64748b' }}>권한 확인중...</div>;
+    return canEvaluate ? child : <Navigate to="/worklogs/stats" replace />;
   };
 
   useEffect(() => {
@@ -228,10 +235,10 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   return (
     <>
       {!isEmbed && <DeployBanner />}
-      {!isEmbed && <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} />}
+      {!isEmbed && <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} canEvaluate={!!canEvaluate} />}
       {!isEmbed && (
         <div className="container">
-          <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} />
+          <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} canEvaluate={!!canEvaluate} />
         </div>
       )}
       {!isEmbed && guide && (
@@ -266,7 +273,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
           <Route path="/worklogs/stats" element={<WorklogStatsDaily />} />
-          <Route path="/worklogs/eval-monthly" element={<WorklogEvalMonthly />} />
+          <Route path="/worklogs/eval-monthly" element={evalGuard(<WorklogEvalMonthly />)} />
           <Route path="/worklogs/ai" element={<WorklogAi />} />
           <Route path="/me/goals" element={<MeGoals />} />
           <Route path="/okr/input" element={<OkrInput />} />
@@ -331,7 +338,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   );
 }
 
-function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean }) {
+function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean; canEvaluate: boolean }) {
   const nav = useNavigate();
   const location = useLocation();
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -398,7 +405,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo }: { SHOW_APPROVALS: bool
           <Link to="/quick">작성</Link>
           <Link to="/search">조회</Link>
           <Link to="/worklogs/stats">업무 현황</Link>
-          <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>
+          {canEvaluate && <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>}
           <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
         <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr')}>
@@ -560,20 +567,22 @@ function NavDropdown({ label, children, active }: { label: string; children: any
   );
 }
 
-function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean }) {
+function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean; canEvaluate: boolean }) {
   const location = useLocation();
   const path = location.pathname || '/';
   if (path === '/') return null;
   if (path.startsWith('/admin') && !isCeo) return null;
   const items: Array<{ to: string; label: string }> = (() => {
     if (path === '/quick' || path.startsWith('/search') || path.startsWith('/worklogs')) {
-      return [
+      const base = [
         { to: '/quick', label: '작성' },
         { to: '/search', label: '조회' },
         { to: '/worklogs/stats', label: '업무 현황' },
-        { to: '/worklogs/eval-monthly', label: '업무 평가 리포트' },
         { to: '/worklogs/ai', label: 'AI 분석' },
       ];
+      return canEvaluate
+        ? [...base.slice(0, 3), { to: '/worklogs/eval-monthly', label: '업무 평가 리포트' }, ...base.slice(3)]
+        : base;
     }
     if (path.startsWith('/okr')) {
       return [
