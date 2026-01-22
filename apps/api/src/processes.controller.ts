@@ -490,9 +490,27 @@ export class ProcessesController {
         assigneeId: true,
       },
     });
-    const worklogIds = Array.from(new Set(tasks.map((t: any) => t.worklogId).filter(Boolean)));
-    const coopIds = Array.from(new Set(tasks.map((t: any) => t.cooperationId).filter(Boolean)));
-    const apprIds = Array.from(new Set(tasks.map((t: any) => t.approvalRequestId).filter(Boolean)));
+    const worklogIds: string[] = Array.from(
+      new Set(
+        tasks
+          .map((t: any) => t.worklogId)
+          .filter((v: any): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    );
+    const coopIds: string[] = Array.from(
+      new Set(
+        tasks
+          .map((t: any) => t.cooperationId)
+          .filter((v: any): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    );
+    const apprIds: string[] = Array.from(
+      new Set(
+        tasks
+          .map((t: any) => t.approvalRequestId)
+          .filter((v: any): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    );
 
     const worklogs = worklogIds.length
       ? await (this.prisma as any).worklog.findMany({
@@ -529,8 +547,9 @@ export class ProcessesController {
         const wlId = (ev?.attrs as any)?.worklogId as string | undefined;
         if (!wlId) continue;
         wlIds.add(wlId);
-        if (ev.activity === 'HelpRequested') reqByTicket[ev.subjectId] = wlId;
-        if (ev.activity === 'HelpResolved') resByTicket[ev.subjectId] = wlId;
+        const sid = String(ev.subjectId);
+        if (ev.activity === 'HelpRequested') reqByTicket[sid] = wlId;
+        if (ev.activity === 'HelpResolved') resByTicket[sid] = wlId;
       }
       const wls = wlIds.size
         ? await (this.prisma as any).worklog.findMany({
