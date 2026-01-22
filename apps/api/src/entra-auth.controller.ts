@@ -220,7 +220,8 @@ export class EntraAuthController {
           role: 'INDIVIDUAL',
           entraTenantId: entraTid || tenantId,
           entraOid,
-          status: 'PENDING',
+          status: 'ACTIVE',
+          activatedAt: new Date(),
         },
       });
     } else {
@@ -231,15 +232,13 @@ export class EntraAuthController {
             teamsUpn: user.teamsUpn || preferred,
             entraTenantId: user.entraTenantId || (entraTid || tenantId),
             entraOid: user.entraOid || entraOid,
+            ...(String(user?.status || 'ACTIVE') === 'ACTIVE' ? {} : { status: 'ACTIVE', activatedAt: new Date() }),
           },
         });
       } catch {}
     }
 
-    const status = String(user?.status || 'ACTIVE');
-    if (status !== 'ACTIVE') {
-      return res.redirect(`${webBase}/auth/pending`);
-    }
+    // Entra SSO users are considered verified; no manual approval gating.
 
     const team = user?.orgUnitId
       ? await (this.prisma as any).orgUnit.findUnique({ where: { id: user.orgUnitId } }).catch(() => null)

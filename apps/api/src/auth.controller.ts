@@ -79,7 +79,8 @@ export class AuthController {
         teamsUpn,
         name: dto.name,
         role: (dto.role as any) || ('INDIVIDUAL' as any),
-        status: 'PENDING',
+        status: 'ACTIVE',
+        activatedAt: new Date(),
         orgUnitId: orgUnitId,
         passwordHash,
       },
@@ -91,10 +92,6 @@ export class AuthController {
 
     // Resolve org name for response (teamName key kept for compatibility)
     const org = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;
-    const status = String((user as any).status || 'ACTIVE');
-    if (status !== 'ACTIVE') {
-      return { pending: true, user: { id: user.id, name: user.name, teamName: org?.name || '' } };
-    }
     const token = this.signToken(user.id);
     return { token, user: { id: user.id, name: user.name, teamName: org?.name || '' } };
   }
@@ -103,9 +100,14 @@ export class AuthController {
   async login(@Body() dto: LoginDto) {
     const user = await this.prisma.user.findUnique({ where: { email: dto.username } });
     if (!user || !user.passwordHash) throw new BadRequestException('invalid credentials');
-    if (String((user as any).status || 'ACTIVE') !== 'ACTIVE') throw new BadRequestException('승인 대기 상태입니다');
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new BadRequestException('invalid credentials');
+    try {
+      const status = String((user as any).status || 'ACTIVE');
+      if (status !== 'ACTIVE') {
+        await (this.prisma as any).user.update({ where: { id: user.id }, data: { status: 'ACTIVE', activatedAt: new Date() } });
+      }
+    } catch {}
     const team = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;
     const token = this.signToken(user.id);
     return { token, user: { id: user.id, name: user.name, teamName: team?.name || '' } };

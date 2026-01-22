@@ -126,6 +126,8 @@ export class ProcessTemplatesController {
       include: {
         tasks: { orderBy: { orderHint: 'asc' } },
         owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+        createdBy: { select: { id: true, name: true } },
+        updatedBy: { select: { id: true, name: true } },
         orgUnit: { select: { id: true, name: true } },
       },
     });
@@ -135,7 +137,13 @@ export class ProcessTemplatesController {
   async getOne(@Param('id') id: string) {
     return this.prisma.processTemplate.findUnique({
       where: { id },
-      include: { tasks: { orderBy: { orderHint: 'asc' } } },
+      include: {
+        tasks: { orderBy: { orderHint: 'asc' } },
+        owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+        createdBy: { select: { id: true, name: true } },
+        updatedBy: { select: { id: true, name: true } },
+        orgUnit: { select: { id: true, name: true } },
+      },
     });
   }
 
@@ -146,6 +154,7 @@ export class ProcessTemplatesController {
       description,
       type,
       ownerId,
+      actorId,
       visibility,
       orgUnitId,
       recurrenceType,
@@ -167,6 +176,9 @@ export class ProcessTemplatesController {
       throw new BadRequestException('invalid ownerId');
     }
 
+    const actor = actorId ? await this.prisma.user.findUnique({ where: { id: String(actorId) } }) : null;
+    const createdById = actor ? String(actor.id) : String(ownerId);
+
     const compiled = this.compileBpmn(bpmnJson);
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -176,6 +188,8 @@ export class ProcessTemplatesController {
             description,
             type,
             ownerId,
+            createdById,
+            updatedById: createdById,
             visibility,
             orgUnitId: orgUnitId ?? owner.orgUnitId ?? undefined,
             recurrenceType,
@@ -263,7 +277,13 @@ export class ProcessTemplatesController {
         }
         return tx.processTemplate.findUnique({
           where: { id: tmpl.id },
-          include: { tasks: { orderBy: { orderHint: 'asc' } } },
+          include: {
+            tasks: { orderBy: { orderHint: 'asc' } },
+            owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+            createdBy: { select: { id: true, name: true } },
+            updatedBy: { select: { id: true, name: true } },
+            orgUnit: { select: { id: true, name: true } },
+          },
         });
       });
     } catch (e: any) {
@@ -278,6 +298,7 @@ export class ProcessTemplatesController {
       description,
       type,
       ownerId,
+      actorId,
       visibility,
       orgUnitId,
       recurrenceType,
@@ -296,6 +317,12 @@ export class ProcessTemplatesController {
       if (!owner) throw new BadRequestException('invalid ownerId');
     }
 
+    const effectiveActorId = actorId ? String(actorId) : (ownerId ? String(ownerId) : '');
+    if (effectiveActorId) {
+      const actor = await this.prisma.user.findUnique({ where: { id: effectiveActorId } });
+      if (!actor) throw new BadRequestException('invalid actorId');
+    }
+
     try {
     return await this.prisma.$transaction(async (tx) => {
       const updated = await tx.processTemplate.update({
@@ -305,6 +332,7 @@ export class ProcessTemplatesController {
           description,
           type,
           ownerId,
+          ...(effectiveActorId ? { updatedById: effectiveActorId } : {}),
           visibility,
           orgUnitId,
           recurrenceType,
@@ -412,7 +440,13 @@ export class ProcessTemplatesController {
 
       return tx.processTemplate.findUnique({
         where: { id },
-        include: { tasks: { orderBy: { orderHint: 'asc' } } },
+        include: {
+          tasks: { orderBy: { orderHint: 'asc' } },
+          owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+          createdBy: { select: { id: true, name: true } },
+          updatedBy: { select: { id: true, name: true } },
+          orgUnit: { select: { id: true, name: true } },
+        },
       });
     });
     } catch (e: any) {

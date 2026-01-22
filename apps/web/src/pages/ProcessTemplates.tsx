@@ -42,7 +42,10 @@ interface ProcessTemplateDto {
   official?: boolean;
   tasks: ProcessTaskTemplateDto[];
   createdAt?: string;
+  updatedAt?: string;
   owner?: { id: string; name: string; orgUnit?: { id: string; name: string } };
+  createdBy?: { id: string; name: string };
+  updatedBy?: { id: string; name: string };
   orgUnit?: { id: string; name: string };
 }
 
@@ -65,6 +68,7 @@ export function ProcessTemplates() {
   const [loading, setLoading] = useState(false);
   const [listCollapsed, setListCollapsed] = useState(false);
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string }>>([]);
   const [itemsMaster, setItemsMaster] = useState<Array<{ code: string; name: string }>>([]);
@@ -353,6 +357,21 @@ export function ProcessTemplates() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    (async () => {
+      if (!userId) {
+        setMyRole('');
+        return;
+      }
+      try {
+        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        setMyRole((me?.role as any) || '');
+      } catch {
+        setMyRole('');
+      }
+    })();
+  }, [userId]);
   
 
   function newTemplate() {
@@ -386,6 +405,10 @@ export function ProcessTemplates() {
     if (!editing?.id) return;
     if (!userId) {
       alert('로그인이 필요합니다.');
+      return;
+    }
+    if (!(myRole === 'CEO' || myRole === 'EXEC')) {
+      alert('공식 템플릿 지정 권한이 없습니다.');
       return;
     }
     try {
@@ -482,6 +505,7 @@ export function ProcessTemplates() {
       ...editingWithDesc,
       bpmnJson: bpmnObj,
       tasks: editing.tasks,
+      actorId: userId,
     };
     if (editing.id) {
       // If template is in use, enforce clone-as-new with new title
@@ -599,7 +623,10 @@ export function ProcessTemplates() {
                 유형: {it.type === 'RECURRING' ? '반복' : '프로젝트'} · 공개: {it.visibility}
               </div>
               <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                작성자: {it.owner?.name || '-'} · 소속: {it.orgUnit?.name || it.owner?.orgUnit?.name || '-'} · 작성일: {fmt(it.createdAt)}
+                최초 작성: {it.createdBy?.name || it.owner?.name || '-'} · {fmt(it.createdAt)}
+              </div>
+              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                최종 수정: {it.updatedBy?.name || it.createdBy?.name || it.owner?.name || '-'} · {fmt(it.updatedAt)}
               </div>
             </div>
           ))}
@@ -630,7 +657,7 @@ export function ProcessTemplates() {
                 {editing?.official ? (
                   <span style={{ fontSize: 12, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '2px 6px', borderRadius: 6 }}>★ 공식 템플릿</span>
                 ) : (
-                  <button className="btn btn-warning" onClick={promote} disabled={!editing?.id}>공식 지정</button>
+                  (myRole === 'CEO' || myRole === 'EXEC') ? <button className="btn btn-warning" onClick={promote} disabled={!editing?.id}>공식 지정</button> : null
                 )}
               </div>
               {editing?.id ? (
@@ -638,11 +665,12 @@ export function ProcessTemplates() {
                   기존 인스턴스: {inUseCount}건 {inUseCount > 0 ? '· 구조 변경은 복제로 저장됩니다' : ''}
                 </span>
               ) : null}
-              {editing?.owner?.name && (
-                <span style={{ fontSize: 12, color: '#64748b' }}>
-                  📝 작성자: {editing.owner.name}{editing.owner.orgUnit?.name ? ` · ${editing.owner.orgUnit.name}` : ''}{editing.createdAt ? ` · ${fmt(editing.createdAt)}` : ''}
-                </span>
-              )}
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                📝 최초 작성: {(editing.createdBy?.name || editing.owner?.name || '-')}{editing.createdAt ? ` · ${fmt(editing.createdAt)}` : ''}
+              </span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>
+                ✏️ 최종 수정: {(editing.updatedBy?.name || editing.createdBy?.name || editing.owner?.name || '-')}{editing.updatedAt ? ` · ${fmt(editing.updatedAt)}` : ''}
+              </span>
             </div>
             <div>
               <label>업무프로세스 제목</label>
@@ -895,7 +923,7 @@ export function ProcessTemplates() {
                   if (!cloneTitle.trim()) { alert('제목을 입력하세요.'); return; }
                   let bpmnObj: any = undefined;
                   try { bpmnObj = bpmnJsonText?.trim() ? JSON.parse(bpmnJsonText) : undefined; } catch {}
-                  const body = { ...editing, id: undefined, title: cloneTitle.trim(), description: descHtml || editing.description || '', bpmnJson: bpmnObj } as any;
+                  const body = { ...editing, id: undefined, ownerId: userId, title: cloneTitle.trim(), description: descHtml || editing.description || '', bpmnJson: bpmnObj, actorId: userId } as any;
                   const created = await apiJson<ProcessTemplateDto>(`/api/process-templates`, { method: 'POST', body: JSON.stringify(body) });
                   setShowCloneModal(false);
                   await loadList();

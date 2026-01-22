@@ -136,7 +136,9 @@ model User {
   carDispatchRequestsRequested CarDispatchRequest[] @relation("CarDispatchRequester")
   carDispatchRequestsToApprove CarDispatchRequest[] @relation("CarDispatchApprover")
   attendanceRequests AttendanceRequest[]
-  processTemplatesOwned ProcessTemplate[]
+  processTemplatesOwned ProcessTemplate[] @relation("ProcessTemplateOwner")
+  processTemplatesCreated ProcessTemplate[] @relation("ProcessTemplateCreatedBy")
+  processTemplatesUpdated ProcessTemplate[] @relation("ProcessTemplateUpdatedBy")
   processInstancesStarted ProcessInstance[] @relation("ProcessInstanceStartedBy")
   processInstancesModified ProcessInstance[] @relation("ProcessInstanceModifiedBy")
   processStopEvents ProcessStopEvent[] @relation("ProcessStop_on_User")
@@ -592,7 +594,11 @@ model ProcessTemplate {
   description                String?
   type                       ProcessType        @default(PROJECT)
   ownerId                    String
-  owner                      User               @relation(fields: [ownerId], references: [id])
+  owner                      User               @relation("ProcessTemplateOwner", fields: [ownerId], references: [id])
+  createdById                String
+  createdBy                  User               @relation("ProcessTemplateCreatedBy", fields: [createdById], references: [id])
+  updatedById                String
+  updatedBy                  User               @relation("ProcessTemplateUpdatedBy", fields: [updatedById], references: [id])
   visibility                 ProcessVisibility  @default(PUBLIC)
   orgUnitId                  String?
   orgUnit                    OrgUnit?           @relation(fields: [orgUnitId], references: [id])

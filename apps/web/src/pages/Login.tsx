@@ -1,40 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { apiJson, apiUrl } from '../lib/api';
+import { useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import { apiUrl } from '../lib/api';
 
 export function Login() {
-  const nav = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [brandName, setBrandName] = useState<string>('');
-
-  const rawCompanyName = (import.meta as any)?.env?.VITE_COMPANY_NAME ?? '';
-  const companyName = String(rawCompanyName).trim().replace(/^['"]+|['"]+$/g, '');
-  const norm = companyName.toLowerCase();
-  const host = (typeof window !== 'undefined' ? window.location?.hostname : '') || '';
-  const hostNorm = String(host || '').toLowerCase();
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const b = await apiJson<{ name: string; logoPath: string }>(`/api/brand`);
-        setBrandName(String(b?.name || ''));
-      } catch {
-        // ignore
-      }
-    })();
-  }, []);
-
-  const isCams = useMemo(() => {
-    const byBrand = String(brandName || '').toLowerCase();
-    if (byBrand.includes('캠스') || byBrand.includes('cams')) return true;
-    // fallback to build-time env
-    if (norm.includes('캠스') || norm.includes('cams')) return true;
-    // final fallback: production domain (CAMS)
-    return hostNorm.endsWith('icams.co.kr') || hostNorm.includes('icams');
-  }, [brandName, norm, hostNorm]);
 
   const qsError = useMemo(() => {
     try {
@@ -72,14 +43,9 @@ export function Login() {
           <button type="button" className="btn" onClick={onMicrosoftLogin} disabled={loading}>
             Microsoft로 로그인
           </button>
-          {!isCams && (
-            <button type="button" className="btn btn-ghost" onClick={() => nav('/auth/pending')} disabled={loading}>
-              로그인 승인 안내
-            </button>
-          )}
         </div>
         <div style={{ marginTop: 10, color: '#6b7280', fontSize: 13 }}>
-          회사 계정(Entra ID)으로 로그인합니다. 최초 로그인은 관리자/대표 승인 후 활성화됩니다.
+          회사 계정(Entra ID)으로 로그인합니다.
         </div>
       </div>
     </div>

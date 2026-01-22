@@ -43,7 +43,7 @@ export function Signup() {
           </button>
         </div>
         <div style={{ marginTop: 10, color: '#6b7280', fontSize: 13 }}>
-          최초 로그인은 관리자/대표 승인 후 활성화됩니다.
+          회사 계정(Entra ID)으로 로그인합니다.
         </div>
       </div>
     </div>
