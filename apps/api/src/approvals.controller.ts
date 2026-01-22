@@ -66,7 +66,7 @@ class ListApprovalsQueryDto {
   approverId?: string;
 
   @IsOptional() @IsString()
-  subjectType?: string;
+  query?: string;
 
   @IsOptional() @IsDateString()
   from?: string;
@@ -91,7 +91,16 @@ export class ApprovalsController {
     if (q.status) where.status = q.status;
     if (q.requestedById) where.requestedById = q.requestedById;
     if (q.approverId) where.approverId = q.approverId;
-    if (q.subjectType) where.subjectType = q.subjectType;
+    const term = String(q.query || '').trim();
+    if (term) {
+      where.OR = [
+        { subjectType: { contains: term, mode: 'insensitive' as any } },
+        { subjectId: { contains: term, mode: 'insensitive' as any } },
+        { requestedBy: { name: { contains: term, mode: 'insensitive' as any } } },
+        { approver: { name: { contains: term, mode: 'insensitive' as any } } },
+        { steps: { some: { comment: { contains: term, mode: 'insensitive' as any } } } },
+      ];
+    }
     if (q.from || q.to) {
       where.createdAt = {};
       if (q.from) (where.createdAt as any).gte = new Date(q.from);
@@ -144,7 +153,16 @@ export class ApprovalsController {
     const where: any = {};
     if (q.requestedById) where.requestedById = q.requestedById;
     if (q.approverId) where.approverId = q.approverId;
-    if (q.subjectType) where.subjectType = q.subjectType;
+    const term = String(q.query || '').trim();
+    if (term) {
+      where.OR = [
+        { subjectType: { contains: term, mode: 'insensitive' as any } },
+        { subjectId: { contains: term, mode: 'insensitive' as any } },
+        { requestedBy: { name: { contains: term, mode: 'insensitive' as any } } },
+        { approver: { name: { contains: term, mode: 'insensitive' as any } } },
+        { steps: { some: { comment: { contains: term, mode: 'insensitive' as any } } } },
+      ];
+    }
     if (q.from || q.to) {
       where.createdAt = {};
       if (q.from) (where.createdAt as any).gte = new Date(q.from);
