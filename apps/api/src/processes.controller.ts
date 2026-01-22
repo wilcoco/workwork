@@ -512,6 +512,58 @@ export class ProcessesController {
     const coopMap = new Map<string, any>();
     for (const c of coops) coopMap.set(c.id, c);
 
+    const coopMetaMap = new Map<string, any>();
+    if (coopIds.length) {
+      const evs = await this.prisma.event.findMany({
+        where: {
+          subjectType: 'HelpTicket',
+          subjectId: { in: coopIds },
+          activity: { in: ['HelpRequested', 'HelpResolved'] } as any,
+        },
+        orderBy: { ts: 'desc' },
+      });
+      const reqByTicket: Record<string, string | undefined> = {};
+      const resByTicket: Record<string, string | undefined> = {};
+      const wlIds = new Set<string>();
+      for (const ev of evs as any[]) {
+        const wlId = (ev?.attrs as any)?.worklogId as string | undefined;
+        if (!wlId) continue;
+        wlIds.add(wlId);
+        if (ev.activity === 'HelpRequested') reqByTicket[ev.subjectId] = wlId;
+        if (ev.activity === 'HelpResolved') resByTicket[ev.subjectId] = wlId;
+      }
+      const wls = wlIds.size
+        ? await (this.prisma as any).worklog.findMany({
+            where: { id: { in: Array.from(wlIds) } },
+            select: { id: true, title: true, note: true },
+          })
+        : [];
+      const titleByWl = new Map<string, string>();
+      for (const w of wls as any[]) {
+        const t = String(w?.title || '').trim();
+        if (t) {
+          titleByWl.set(w.id, t);
+          continue;
+        }
+        const raw = String(w?.note || '').trim();
+        const first = raw.split('\n')[0] || raw;
+        titleByWl.set(w.id, String(first || '').trim());
+      }
+      for (const cid of coopIds) {
+        const reqId = reqByTicket[cid] || null;
+        const resId = resByTicket[cid] || null;
+        const reqTitle = reqId ? (titleByWl.get(reqId) || null) : null;
+        const resTitle = resId ? (titleByWl.get(resId) || null) : null;
+        coopMetaMap.set(cid, {
+          requestWorklogId: reqId,
+          requestWorklogTitle: reqTitle,
+          responseWorklogId: resId,
+          responseWorklogTitle: resTitle,
+          helpTitle: reqTitle,
+        });
+      }
+    }
+
     // For cooperation, also pull linked worklogs if present
     const coopWlIds = Array.from(
       new Set(coops.map((c: any) => c.worklogId).filter(Boolean))
@@ -537,6 +589,7 @@ export class ProcessesController {
     const result = tasks.map((t: any) => {
       const wl = t.worklogId ? wlMap.get(t.worklogId) : null;
       const coop = t.cooperationId ? coopMap.get(t.cooperationId) : null;
+      const coopMeta = t.cooperationId ? (coopMetaMap.get(String(t.cooperationId)) || {}) : {};
       const coopWl = coop?.worklogId ? coopWlMap.get(coop.worklogId) : null;
       const appr = t.approvalRequestId ? apprMap.get(t.approvalRequestId) : null;
       return {
@@ -563,6 +616,11 @@ export class ProcessesController {
               status: coop.status,
               assignee: coop.assignee ? { id: coop.assignee.id, name: coop.assignee.name } : null,
               dueAt: coop.dueAt,
+              helpTitle: coopMeta.helpTitle || null,
+              requestWorklogId: coopMeta.requestWorklogId || null,
+              requestWorklogTitle: coopMeta.requestWorklogTitle || null,
+              responseWorklogId: coopMeta.responseWorklogId || null,
+              responseWorklogTitle: coopMeta.responseWorklogTitle || null,
               worklog: coopWl
                 ? {
                     id: coopWl.id,

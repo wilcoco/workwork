@@ -508,7 +508,7 @@ export function ProcessDashboard() {
                                               style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 11, color: '#0f172a', textDecoration: 'underline' }}
                                               onClick={(e) => { e.stopPropagation(); openCoop(String(tl.cooperation.id)); }}
                                             >
-                                              업무요청: {String(tl.cooperation.category || '').trim() || '업무 요청'}
+                                              업무요청: {String(tl.cooperation.helpTitle || tl.cooperation.category || '').trim() || '업무 요청'}
                                             </button>
                                           ) : null}
                                           {tl?.approval?.id ? (
