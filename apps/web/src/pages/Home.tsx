@@ -143,7 +143,7 @@ export function Home() {
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : '1.8fr 1fr', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.8fr) minmax(0, 1fr)', alignItems: 'start' }}>
         {isMobile ? (
           <>
             {/* 모바일: 긴급 보고 / 최근 댓글 먼저, 그 다음 최근 업무일지 */}
@@ -192,12 +192,12 @@ export function Home() {
                             ) : (
                               <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
-                            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                            <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
-                              <div style={{ color: '#334155' }}>{snippet}</div>
+                              <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
                             </div>
                           </div>
                         </div>
@@ -265,13 +265,13 @@ export function Home() {
                             ) : (
                               <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
-                            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                            <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
-                                <div style={{ color: '#334155' }}>{snippet}</div>
+                                <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
                               )}
                             </div>
                           </div>
@@ -329,13 +329,13 @@ export function Home() {
                             ) : (
                               <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
-                            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                            <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
-                                <div style={{ color: '#334155' }}>{snippet}</div>
+                                <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
                               )}
                             </div>
                           </div>
@@ -356,7 +356,7 @@ export function Home() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'grid', gap: 12, alignContent: 'start', alignItems: 'start', alignSelf: 'start' }}>
+            <div style={{ display: 'grid', gap: 12, alignContent: 'start', alignItems: 'start', alignSelf: 'start', minWidth: 0 }}>
               <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
                 <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -394,12 +394,12 @@ export function Home() {
                             ) : (
                               <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
-                            <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                            <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
-                              <div style={{ color: '#334155' }}>{snippet}</div>
+                              <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
                             </div>
                           </div>
                         </div>
@@ -492,12 +492,12 @@ export function Home() {
                     ) : (
                       <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                     )}
-                    <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+                    <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'grid', gap: 2 }}>
                         <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
                         <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                       </div>
-                      <div style={{ color: '#334155' }}>{snippet}</div>
+                      <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
                     </div>
                   </div>
                 </div>
@@ -576,7 +576,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
         ) : (
           <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
         )}
-        <div style={{ display: 'grid', gap: 4, flex: 1 }}>
+        <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
           <div style={{ display: 'grid', gap: 2 }}>
             <div style={{ fontWeight: 700 }}>{title || '(제목 없음)'}</div>
             <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {(wl?.userName || '')}{wl?.teamName ? ` · ${wl.teamName}` : ''} · {formatKstYmd(c.createdAt)}{(wl as any)?.visibility ? ` · 조회권한 ${visibilityKo((wl as any).visibility)}` : ''}</div>
@@ -590,12 +590,12 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
         {prev.map((p) => (
           <div key={p.id}>
             <div style={{ fontSize: 12, color: '#475569' }}>{p.authorName || '익명'} · {formatKstYmd(p.createdAt)}</div>
-            <div style={{ whiteSpace: 'pre-wrap' }}>{p.content}</div>
+            <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{p.content}</div>
           </div>
         ))}
         <div>
           <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstYmd(c.createdAt)}</div>
-          <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
+          <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</div>
         </div>
       </div>
     </div>
@@ -648,7 +648,7 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
             {items.map((c) => (
               <div key={c.id} style={{ display: 'grid', gap: 2 }}>
                 <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstYmd(c.createdAt)}</div>
-                <div style={{ whiteSpace: 'pre-wrap' }}>{c.content}</div>
+                <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</div>
               </div>
             ))}
           </div>
