@@ -4,6 +4,8 @@ import { apiJson } from '../lib/api';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { CoopDocument } from '../components/CoopDocument';
+import { WorklogDocument } from '../components/WorklogDocument';
+import { ProcessDocument } from '../components/ProcessDocument';
 
 interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'; }
 
@@ -61,7 +63,8 @@ export function ProcessDashboard() {
   const [docModal, setDocModal] = useState<
     | null
     | { kind: 'COOP'; ticket: any; requestWl: any | null; responseWl: any | null }
-    | { kind: 'APPROVAL'; approval: any }
+    | { kind: 'WORKLOG'; worklog: any }
+    | { kind: 'APPROVAL'; approval: any; subjectTypeNorm: string; subjectDoc: any | null }
   >(null);
   const [docModalLoading, setDocModalLoading] = useState(false);
 
@@ -148,9 +151,18 @@ export function ProcessDashboard() {
     }
   }
 
-  const openWorklog = (worklogId: string) => {
+  const openWorklog = async (worklogId: string) => {
     if (!worklogId) return;
-    nav(`/worklogs/${encodeURIComponent(worklogId)}`);
+    setDocModalLoading(true);
+    try {
+      const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(worklogId)}`);
+      setDocModal({ kind: 'WORKLOG', worklog: wl });
+    } catch (e) {
+      console.error('openWorklog error:', e);
+      nav(`/worklogs/${encodeURIComponent(worklogId)}`);
+    } finally {
+      setDocModalLoading(false);
+    }
   };
 
   const openCoop = async (ticketId: string) => {
@@ -176,9 +188,31 @@ export function ProcessDashboard() {
     }
   };
 
-  const openApprovalModal = (approval: any) => {
-    if (!approval) return;
-    setDocModal({ kind: 'APPROVAL', approval });
+  const openApproval = async (approvalId: string) => {
+    if (!approvalId) return;
+    setDocModalLoading(true);
+    try {
+      const a = await apiJson<any>(`/api/approvals/${encodeURIComponent(approvalId)}`);
+      const st = String(a?.subjectType || '').toUpperCase();
+      const sid = String(a?.subjectId || '');
+      let subjectDoc: any | null = null;
+      if ((st === 'WORKLOG' || st === 'WORKLOGS') && sid) {
+        try {
+          subjectDoc = await apiJson<any>(`/api/worklogs/${encodeURIComponent(sid)}`);
+        } catch {}
+      } else if (st === 'PROCESS' && sid) {
+        try {
+          const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}`);
+          const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}/approval-summary`);
+          subjectDoc = { process: inst, summaryTasks: sum?.tasks || [], pendingTask: sum?.pendingTask || null };
+        } catch {}
+      }
+      setDocModal({ kind: 'APPROVAL', approval: a, subjectTypeNorm: st, subjectDoc });
+    } catch (e) {
+      console.error('openApproval error:', e);
+    } finally {
+      setDocModalLoading(false);
+    }
   };
 
   const parsePreds = (s?: string | null): string[] => {
@@ -496,7 +530,7 @@ export function ProcessDashboard() {
                                               type="button"
                                               className="btn btn-ghost"
                                               style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 11, color: '#0f172a', textDecoration: 'underline' }}
-                                              onClick={(e) => { e.stopPropagation(); openWorklog(String(tl.worklog.id)); }}
+                                              onClick={(e) => { e.stopPropagation(); void openWorklog(String(tl.worklog.id)); }}
                                             >
                                               업무일지: {String(tl.worklog.title || '').trim() || '(제목 없음)'}
                                             </button>
@@ -516,9 +550,9 @@ export function ProcessDashboard() {
                                               type="button"
                                               className="btn btn-ghost"
                                               style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 11, color: '#0f172a', textDecoration: 'underline' }}
-                                              onClick={(e) => { e.stopPropagation(); openApprovalModal(tl.approval); }}
+                                              onClick={(e) => { e.stopPropagation(); void openApproval(String(tl.approval.id)); }}
                                             >
-                                              결재: {String(tl.approval.status || '').trim() || '결재'}
+                                              결재: {String(tl.approval.subjectTitle || '').trim() || String(tl.approval.status || '').trim() || '결재'}
                                             </button>
                                           ) : null}
                                         </span>
@@ -559,8 +593,11 @@ export function ProcessDashboard() {
             {!docModalLoading && docModal.kind === 'COOP' && (
               <CoopDocument ticket={docModal.ticket} requestWorklog={docModal.requestWl} responseWorklog={docModal.responseWl} variant="full" />
             )}
+            {!docModalLoading && docModal.kind === 'WORKLOG' && (
+              <WorklogDocument worklog={docModal.worklog} variant="full" />
+            )}
             {!docModalLoading && docModal.kind === 'APPROVAL' && (
-              <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: 'grid', gap: 12 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700, border: '1px solid #E2E8F0' }}>
                     상태: {String(docModal.approval?.status || '-')}
@@ -568,15 +605,39 @@ export function ProcessDashboard() {
                   {docModal.approval?.requestedBy?.name ? (
                     <span style={{ fontSize: 12, color: '#475569' }}>요청자: {String(docModal.approval.requestedBy.name)}</span>
                   ) : null}
+                  {docModal.approval?.currentApprover?.name ? (
+                    <span style={{ fontSize: 12, color: '#475569' }}>현재 결재자: {String(docModal.approval.currentApprover.name)}</span>
+                  ) : null}
                   {docModal.approval?.dueAt ? (
                     <span style={{ fontSize: 12, color: '#475569' }}>기한: {new Date(docModal.approval.dueAt).toLocaleString()}</span>
                   ) : null}
                 </div>
+
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 12, padding: 10, background: '#FFFFFF' }}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>결재 대상</div>
+                  {docModal.subjectTypeNorm === 'PROCESS' && docModal.subjectDoc ? (
+                    <ProcessDocument
+                      processDoc={docModal.subjectDoc}
+                      variant="full"
+                      onOpenWorklog={(wl) => {
+                        if (wl?.id) void openWorklog(String(wl.id));
+                      }}
+                    />
+                  ) : null}
+                  {(docModal.subjectTypeNorm === 'WORKLOG' || docModal.subjectTypeNorm === 'WORKLOGS') && docModal.subjectDoc ? (
+                    <WorklogDocument worklog={docModal.subjectDoc} variant="full" />
+                  ) : null}
+                  {!docModal.subjectDoc ? (
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>결재 대상 문서 내용을 불러올 수 없습니다. ({String(docModal.approval?.subjectType || '-')}/{String(docModal.approval?.subjectId || '-')})</div>
+                  ) : null}
+                </div>
+
                 {(docModal.approval?.steps || []).length ? (
                   <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ fontWeight: 800 }}>결재 단계</div>
                     {(docModal.approval.steps || []).map((s: any, idx: number) => (
                       <div key={idx} style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 10px', fontSize: 12, color: '#0f172a' }}>
-                        <div style={{ fontWeight: 800 }}>#{s.stepNo} {String(s.approverId || '')}</div>
+                        <div style={{ fontWeight: 800 }}>#{s.stepNo} {String(s.approver?.name || s.approverId || '')}</div>
                         <div style={{ color: '#64748b' }}>{String(s.status || '')}{s.actedAt ? ` · ${new Date(s.actedAt).toLocaleString()}` : ''}{s.comment ? ` · ${String(s.comment)}` : ''}</div>
                       </div>
                     ))}

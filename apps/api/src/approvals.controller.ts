@@ -216,6 +216,42 @@ export class ApprovalsController {
     return req;
   }
 
+  @Get(':id')
+  async get(@Param('id') id: string) {
+    const a = await this.prisma.approvalRequest.findUnique({
+      where: { id },
+      include: {
+        requestedBy: true,
+        approver: true,
+        steps: {
+          orderBy: { stepNo: 'asc' },
+          include: { approver: true },
+        },
+      },
+    });
+    if (!a) throw new BadRequestException('request not found');
+    return {
+      id: a.id,
+      subjectType: a.subjectType,
+      subjectId: a.subjectId,
+      status: a.status,
+      requestedBy: a.requestedBy ? { id: a.requestedBy.id, name: a.requestedBy.name } : null,
+      currentApprover: a.approver ? { id: a.approver.id, name: a.approver.name } : null,
+      dueAt: a.dueAt || null,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      steps: (a.steps || []).map((s: any) => ({
+        id: s.id,
+        stepNo: s.stepNo,
+        approverId: s.approverId,
+        approver: s.approver ? { id: s.approver.id, name: s.approver.name } : null,
+        status: s.status,
+        actedAt: s.actedAt || null,
+        comment: s.comment || null,
+      })),
+    };
+  }
+
   @Post(':id/approve')
   async approve(@Param('id') id: string, @Body() dto: ActApprovalDto) {
     const req = await this.prisma.approvalRequest.findUnique({ where: { id }, include: { steps: { orderBy: { stepNo: 'asc' } } } });
