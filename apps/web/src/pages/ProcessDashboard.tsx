@@ -596,26 +596,27 @@ export function ProcessDashboard() {
       </div>
       {docModal && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 4000, padding: 'calc(16px + env(safe-area-inset-top)) 16px 16px 16px' }}
           onClick={() => setDocModal(null)}
         >
           <div
-            style={{ background: '#FFFFFF', borderRadius: 12, maxWidth: 980, width: '100%', maxHeight: '85vh', padding: 16, overflow: 'auto', boxShadow: '0 20px 40px rgba(15, 23, 42, 0.3)' }}
+            style={{ background: '#FFFFFF', borderRadius: 12, maxWidth: 980, width: '100%', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 40px rgba(15, 23, 42, 0.3)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ position: 'sticky', top: 0, zIndex: 2, display: 'flex', gap: 8, alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid #E2E8F0', background: '#FFFFFF' }}>
               <div style={{ fontWeight: 900 }}>{docModal.kind === 'COOP' ? '업무 요청' : (docModal.kind === 'WORKLOG' ? '업무일지' : '결재')}</div>
               <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setDocModal(null)}>닫기</button>
             </div>
-            {docModalLoading && <div style={{ fontSize: 12, color: '#64748b' }}>불러오는 중…</div>}
-            {!docModalLoading && docModal.kind === 'COOP' && (
-              <CoopDocument ticket={docModal.ticket} requestWorklog={docModal.requestWl} responseWorklog={docModal.responseWl} variant="full" />
-            )}
-            {!docModalLoading && docModal.kind === 'WORKLOG' && (
-              <WorklogDocument worklog={docModal.worklog} variant="full" />
-            )}
-            {!docModalLoading && docModal.kind === 'APPROVAL' && (
-              <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ padding: 16 }}>
+              {docModalLoading && <div style={{ fontSize: 12, color: '#64748b' }}>불러오는 중…</div>}
+              {!docModalLoading && docModal.kind === 'COOP' && (
+                <CoopDocument ticket={docModal.ticket} requestWorklog={docModal.requestWl} responseWorklog={docModal.responseWl} variant="full" />
+              )}
+              {!docModalLoading && docModal.kind === 'WORKLOG' && (
+                <WorklogDocument worklog={docModal.worklog} variant="full" />
+              )}
+              {!docModalLoading && docModal.kind === 'APPROVAL' && (
+                <div style={{ display: 'grid', gap: 12 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700, border: '1px solid #E2E8F0' }}>
                     상태: {String(docModal.approval?.status || '-')}
@@ -663,8 +664,9 @@ export function ProcessDashboard() {
                 ) : (
                   <div style={{ fontSize: 12, color: '#94a3b8' }}>결재 단계 정보가 없습니다.</div>
                 )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
