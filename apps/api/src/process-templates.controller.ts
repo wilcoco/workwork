@@ -177,6 +177,9 @@ export class ProcessTemplatesController {
     }
 
     const actor = actorId ? await this.prisma.user.findUnique({ where: { id: String(actorId) } }) : null;
+    if (actorId && !actor) {
+      throw new BadRequestException('invalid actorId');
+    }
     const createdById = actor ? String(actor.id) : String(ownerId);
 
     const compiled = this.compileBpmn(bpmnJson);

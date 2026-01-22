@@ -9,9 +9,21 @@ class UpdateRoleDto {
   role!: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
 }
 
+class UpdateOrgUnitDto {
+  @IsString()
+  orgUnitId!: string; // empty string => clear
+}
+
 @Controller('users')
 export class UsersController {
   constructor(private prisma: PrismaService) {}
+
+  private async requireCeo(actorId?: string) {
+    if (!actorId) throw new BadRequestException('actorId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: actorId } });
+    if (!actor || (actor.role as any) !== 'CEO') throw new BadRequestException('only CEO can perform this action');
+    return actor;
+  }
 
   @Get('me')
   async me(@Query('userId') userId: string) {
@@ -63,13 +75,24 @@ export class UsersController {
   }
 
   @Put(':id/role')
-  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
+  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto, @Query('actorId') actorId?: string) {
+    await this.requireCeo(actorId);
     const user = await this.prisma.user.update({ where: { id }, data: { role: dto.role as any } });
     return { id: user.id, role: user.role };
   }
 
+  @Put(':id/orgUnit')
+  async updateOrgUnit(@Param('id') id: string, @Body() dto: UpdateOrgUnitDto, @Query('actorId') actorId?: string) {
+    await this.requireCeo(actorId);
+    const nextOrgUnitId = String(dto?.orgUnitId || '').trim();
+    const user = await this.prisma.user.update({ where: { id }, data: { orgUnitId: nextOrgUnitId ? nextOrgUnitId : null } });
+    const org = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;
+    return { id: user.id, orgUnitId: user.orgUnitId || '', orgName: org?.name || '' };
+  }
+
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    await this.requireCeo(actorId);
     try {
       await this.prisma.user.delete({ where: { id } });
       return { ok: true };

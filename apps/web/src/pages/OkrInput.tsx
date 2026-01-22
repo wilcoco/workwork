@@ -216,16 +216,7 @@ export function OkrInput() {
         <h3 style={{ margin: 0 }}>상위 선택</h3>
         <div style={card}>
           <div className="stack-1-2">
-            <select value={myRole} onChange={async (e) => {
-              const role = e.target.value as any;
-              setMyRole(role);
-              if (!userId) return;
-              try {
-                await apiJson(`/api/users/${encodeURIComponent(userId)}/role`, { method: 'PUT', body: JSON.stringify({ role }) });
-                const p = await apiJson<{ items: any[] }>(`/api/okrs/parent-krs?userId=${encodeURIComponent(userId)}`);
-                setParentKrs(p.items || []);
-              } catch {}
-            }} style={{ ...input, appearance: 'auto' as any }}>
+            <select value={myRole} disabled style={{ ...input, appearance: 'auto' as any, opacity: 0.85 }}>
               <option value="">역할 선택</option>
               <option value="CEO">대표</option>
               <option value="EXEC">임원</option>
@@ -240,6 +231,9 @@ export function OkrInput() {
                 ))}
               </select>
             )}
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>
+            역할/조직 변경은 관리자(대표)가 구성원 관리에서 설정합니다.
           </div>
         </div>
       </section>

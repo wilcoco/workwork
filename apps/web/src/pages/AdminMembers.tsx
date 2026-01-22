@@ -13,13 +13,20 @@ type UserLite = {
   orgName: string;
 };
 
+type OrgLite = {
+  id: string;
+  name: string;
+};
+
 export function AdminMembers() {
   const [items, setItems] = useState<UserLite[]>([]);
+  const [orgs, setOrgs] = useState<OrgLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [myUserId, setMyUserId] = useState('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [drafts, setDrafts] = useState<Record<string, { role: UserLite['role']; orgUnitId: string }>>({});
 
   async function load() {
     setLoading(true);
@@ -34,6 +41,15 @@ export function AdminMembers() {
       setError(e?.message || '불러오기 실패');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadOrgs() {
+    try {
+      const res = await apiJson<{ items: OrgLite[] }>(`/api/orgs`);
+      setOrgs(res.items || []);
+    } catch {
+      setOrgs([]);
     }
   }
 
@@ -55,31 +71,61 @@ export function AdminMembers() {
   }, []);
 
   useEffect(() => {
+    loadOrgs();
+  }, []);
+
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myRole, myUserId]);
 
-  async function onActivate(id: string) {
-    if (myRole !== 'CEO' || !myUserId) return;
-    if (!confirm('해당 사용자를 승인(활성화)할까요?')) return;
-    try {
-      await apiJson(`/api/admin/users/${encodeURIComponent(id)}/activate?userId=${encodeURIComponent(myUserId)}`, {
-        method: 'POST',
-        body: JSON.stringify({ confirm: 'YES' }),
-      });
-      setItems((prev) => prev.map((u) => (u.id === id ? { ...u, status: 'ACTIVE', activatedAt: new Date().toISOString() } : u)));
-    } catch (e: any) {
-      alert(e?.message || '승인할 수 없습니다.');
+  useEffect(() => {
+    const next: Record<string, { role: UserLite['role']; orgUnitId: string }> = {};
+    for (const u of items) {
+      next[u.id] = { role: u.role, orgUnitId: u.orgUnitId || '' };
     }
-  }
+    setDrafts(next);
+  }, [items]);
 
   async function onDelete(id: string) {
+    if (myRole !== 'CEO' || !myUserId) return;
     if (!confirm('해당 구성원을 삭제할까요?')) return;
     try {
-      await apiJson(`/api/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await apiJson(`/api/users/${encodeURIComponent(id)}?actorId=${encodeURIComponent(myUserId)}`, { method: 'DELETE' });
       setItems((prev) => prev.filter((u) => u.id !== id));
     } catch (e: any) {
       alert(e?.message || '삭제할 수 없습니다.');
+    }
+  }
+
+  async function onSave(id: string) {
+    if (myRole !== 'CEO' || !myUserId) return;
+    const u = items.find((x) => x.id === id);
+    const d = drafts[id];
+    if (!u || !d) return;
+    const nextRole = d.role;
+    const nextOrgUnitId = d.orgUnitId || '';
+    const changedRole = nextRole !== u.role;
+    const changedOrg = (nextOrgUnitId || '') !== (u.orgUnitId || '');
+    if (!changedRole && !changedOrg) return;
+    try {
+      if (changedRole) {
+        await apiJson(`/api/users/${encodeURIComponent(id)}/role?actorId=${encodeURIComponent(myUserId)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ role: nextRole }),
+        });
+      }
+      let orgName = u.orgName;
+      if (changedOrg) {
+        const res = await apiJson<{ orgUnitId: string; orgName: string }>(`/api/users/${encodeURIComponent(id)}/orgUnit?actorId=${encodeURIComponent(myUserId)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ orgUnitId: nextOrgUnitId }),
+        });
+        orgName = res?.orgName || '';
+      }
+      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, role: nextRole, orgUnitId: nextOrgUnitId, orgName } : x)));
+    } catch (e: any) {
+      alert(e?.message || '저장할 수 없습니다.');
     }
   }
 
@@ -139,14 +185,44 @@ export function AdminMembers() {
                 <tr key={u.id}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
-                  <td>{roleLabel(u.role)}</td>
-                  <td>{(u as any).status === 'PENDING' ? '승인대기' : '활성'}</td>
-                  <td>{u.orgName || '-'}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    {myRole === 'CEO' && (u as any).status === 'PENDING' && (
-                      <button className="btn btn-sm" style={{ marginRight: 8 }} onClick={() => onActivate(u.id)}>승인</button>
+                  <td>
+                    {myRole === 'CEO' ? (
+                      <select
+                        value={(drafts[u.id]?.role || u.role) as any}
+                        onChange={(e) => setDrafts((prev) => ({ ...prev, [u.id]: { role: e.target.value as any, orgUnitId: prev[u.id]?.orgUnitId ?? (u.orgUnitId || '') } }))}
+                      >
+                        <option value="INDIVIDUAL">팀원</option>
+                        <option value="MANAGER">팀장</option>
+                        <option value="EXEC">임원</option>
+                        <option value="CEO">대표</option>
+                      </select>
+                    ) : (
+                      roleLabel(u.role)
                     )}
-                    <button className="btn btn-sm btn-danger" onClick={() => onDelete(u.id)}>삭제</button>
+                  </td>
+                  <td>{(u as any).status === 'PENDING' ? '대기' : '활성'}</td>
+                  <td>
+                    {myRole === 'CEO' ? (
+                      <select
+                        value={(drafts[u.id]?.orgUnitId ?? (u.orgUnitId || ''))}
+                        onChange={(e) => setDrafts((prev) => ({ ...prev, [u.id]: { role: prev[u.id]?.role ?? u.role, orgUnitId: e.target.value } }))}
+                      >
+                        <option value="">-</option>
+                        {orgs.map((o) => (
+                          <option key={o.id} value={o.id}>{o.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      (u.orgName || '-')
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {myRole === 'CEO' ? (
+                      <>
+                        <button className="btn btn-sm" style={{ marginRight: 8 }} onClick={() => onSave(u.id)}>저장</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => onDelete(u.id)}>삭제</button>
+                      </>
+                    ) : null}
                   </td>
                 </tr>
               ))}
