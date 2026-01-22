@@ -58,6 +58,7 @@ type TeamDailyEvalItem = {
   orgUnitName: string;
   evaluatorId: string;
   status: EvalStatus;
+  comment?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -88,6 +89,7 @@ export function WorklogStatsDaily() {
   const [evalLoading, setEvalLoading] = useState(false);
   const [evalError, setEvalError] = useState<string | null>(null);
   const [evalTeamStatus, setEvalTeamStatus] = useState<Record<string, EvalStatus>>({});
+  const [evalTeamComment, setEvalTeamComment] = useState<Record<string, string>>({});
 
   const scopeOrgUnitIds = useMemo(() => {
     const role = me?.role;
@@ -250,6 +252,7 @@ export function WorklogStatsDaily() {
     setEvalError(null);
 
     setEvalTeamStatus({});
+    setEvalTeamComment({});
 
     if (scopeOrgUnitIds.size === 0) {
       setEvalError('평가 권한이 없습니다.');
@@ -276,10 +279,13 @@ export function WorklogStatsDaily() {
         `/api/worklog-evals/team-daily?userId=${encodeURIComponent(myUserId)}&ymd=${encodeURIComponent(ymd)}&orgUnitIds=${encodeURIComponent(ids.join(','))}`
       );
       const map: Record<string, EvalStatus> = {};
+      const cm: Record<string, string> = {};
       for (const it of r?.items || []) {
         map[String(it.orgUnitId)] = String(it.status) as EvalStatus;
+        cm[String(it.orgUnitId)] = it.comment != null ? String(it.comment) : '';
       }
       setEvalTeamStatus(map);
+      setEvalTeamComment(cm);
     } catch (e: any) {
       setEvalError(e?.message || '평가 조회 실패');
     } finally {
@@ -293,17 +299,20 @@ export function WorklogStatsDaily() {
     setEvalLoading(false);
     setEvalError(null);
     setEvalTeamStatus({});
+    setEvalTeamComment({});
   }
 
-  async function setTeamStatus(orgUnitId: string, status: EvalStatus) {
+  async function saveTeamEval(orgUnitId: string, status: EvalStatus, comment?: string) {
     if (!myUserId) return;
     if (!evalYmd) return;
     setEvalLoading(true);
     setEvalError(null);
     try {
-      const payload = { ymd: evalYmd, orgUnitId, status };
+      const payload: any = { ymd: evalYmd, orgUnitId, status };
+      if (comment !== undefined) payload.comment = comment;
       await apiJson(`/api/worklog-evals/team-daily?userId=${encodeURIComponent(myUserId)}`, { method: 'POST', body: JSON.stringify(payload) });
       setEvalTeamStatus((prev) => ({ ...prev, [String(orgUnitId)]: status }));
+      if (comment !== undefined) setEvalTeamComment((prev) => ({ ...prev, [String(orgUnitId)]: String(comment || '') }));
     } catch (e: any) {
       setEvalError(e?.message || '평가 저장 실패');
     } finally {
@@ -477,20 +486,21 @@ export function WorklogStatsDaily() {
           onClick={closeEval}
         >
           <div
-            style={{ background: '#fff', borderRadius: 12, padding: 0, width: 'min(820px, 96vw)', height: 'min(80vh, 820px)', maxHeight: 'calc(100vh - 32px)', display: 'grid', gridTemplateRows: '44px 1fr', overflow: 'hidden' }}
+            style={{ background: '#fff', borderRadius: 12, padding: 0, width: 'min(820px, 96vw)', maxHeight: 'calc(100vh - 32px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderBottom: '1px solid #e5e7eb' }}>
               <div style={{ fontWeight: 800 }}>팀 일 단위 평가 · {evalYmd}</div>
               <button className="btn" style={{ marginLeft: 'auto' }} onClick={closeEval}>닫기</button>
             </div>
-            <div style={{ overflow: 'auto', padding: 12, display: 'grid', gap: 10 }}>
+            <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12, display: 'grid', gap: 10 }}>
               {evalError && <div style={{ color: 'red' }}>{evalError}</div>}
 
               <div style={{ display: 'grid', gap: 8 }}>
                 <div style={{ fontSize: 12, color: '#64748b' }}>팀별 상태 선택</div>
                 {(evalTeamsForDay || []).map((t) => {
                   const cur = evalTeamStatus[String(t.id)];
+                  const cmt = evalTeamComment[String(t.id)] ?? '';
                   const btnStyle = (bg: string, active: boolean) => ({
                     border: active ? '2px solid #0f172a' : '1px solid #e5e7eb',
                     borderRadius: 10,
@@ -509,10 +519,40 @@ export function WorklogStatsDaily() {
                         {cur ? <div style={{ marginLeft: 'auto', fontSize: 12, color: '#0f172a', fontWeight: 800 }}>{cur}</div> : <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>미평가</div>}
                       </div>
                       <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)' }}>
-                        <button type="button" onClick={() => setTeamStatus(String(t.id), 'BLUE')} disabled={evalLoading} style={btnStyle('#93c5fd', cur === 'BLUE')}>파랑(우수)</button>
-                        <button type="button" onClick={() => setTeamStatus(String(t.id), 'GREEN')} disabled={evalLoading} style={btnStyle('#86efac', cur === 'GREEN')}>초록(정상)</button>
-                        <button type="button" onClick={() => setTeamStatus(String(t.id), 'YELLOW')} disabled={evalLoading} style={btnStyle('#fde68a', cur === 'YELLOW')}>노랑(주의)</button>
-                        <button type="button" onClick={() => setTeamStatus(String(t.id), 'RED')} disabled={evalLoading} style={btnStyle('#fca5a5', cur === 'RED')}>빨강(지원)</button>
+                        <button type="button" onClick={() => saveTeamEval(String(t.id), 'BLUE', cmt)} disabled={evalLoading} style={btnStyle('#93c5fd', cur === 'BLUE')}>파랑(우수)</button>
+                        <button type="button" onClick={() => saveTeamEval(String(t.id), 'GREEN', cmt)} disabled={evalLoading} style={btnStyle('#86efac', cur === 'GREEN')}>초록(정상)</button>
+                        <button type="button" onClick={() => saveTeamEval(String(t.id), 'YELLOW', cmt)} disabled={evalLoading} style={btnStyle('#fde68a', cur === 'YELLOW')}>노랑(주의)</button>
+                        <button type="button" onClick={() => saveTeamEval(String(t.id), 'RED', cmt)} disabled={evalLoading} style={btnStyle('#fca5a5', cur === 'RED')}>빨강(지원)</button>
+                      </div>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>코멘트</div>
+                        <textarea
+                          value={cmt}
+                          placeholder="평가 코멘트를 남겨주세요"
+                          rows={isMobile ? 3 : 2}
+                          style={{ width: '100%', border: '1px solid #CBD5E1', borderRadius: 10, padding: 10, resize: 'vertical' as any }}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setEvalTeamComment((prev) => ({ ...prev, [String(t.id)]: v }));
+                          }}
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={evalLoading}
+                            onClick={() => {
+                              const curStatus = evalTeamStatus[String(t.id)];
+                              if (!curStatus) {
+                                setEvalError('상태를 먼저 선택해 주세요.');
+                                return;
+                              }
+                              void saveTeamEval(String(t.id), curStatus, cmt);
+                            }}
+                          >
+                            코멘트 저장
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );

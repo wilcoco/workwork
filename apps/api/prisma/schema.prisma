@@ -437,6 +437,7 @@ model WorklogTeamDailyEval {
   evaluatorId String
   evaluator   User             @relation(fields: [evaluatorId], references: [id])
   status      WorklogEvalStatus
+  comment     String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 

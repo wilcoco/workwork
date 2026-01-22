@@ -15,6 +15,10 @@ class UpsertTeamDailyEvalDto {
   @IsString()
   @IsIn(['BLUE', 'GREEN', 'YELLOW', 'RED'])
   status!: 'BLUE' | 'GREEN' | 'YELLOW' | 'RED';
+
+  @IsOptional()
+  @IsString()
+  comment?: string;
 }
 
 @Controller('worklog-evals')
@@ -132,6 +136,7 @@ export class WorklogEvalsController {
         orgUnitName: String(r.orgUnit?.name || ''),
         evaluatorId: String(r.evaluatorId),
         status: String(r.status),
+        comment: r.comment != null ? String(r.comment) : null,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
       })),
@@ -147,10 +152,19 @@ export class WorklogEvalsController {
     const scopeIds = await this.getScopeOrgUnitIds(String(userId));
     if (!scopeIds.has(String(dto.orgUnitId))) throw new ForbiddenException('out of scope');
 
+    let comment: string | null | undefined = dto.comment != null ? String(dto.comment).trim() : undefined;
+    if (comment !== undefined && comment.length === 0) comment = null;
+
+    const update: any = { status: dto.status };
+    if (comment !== undefined) update.comment = comment;
+
+    const create: any = { ymd: dto.ymd, orgUnitId: dto.orgUnitId, evaluatorId: String(userId), status: dto.status };
+    if (comment !== undefined) create.comment = comment;
+
     const rec = await (this.prisma as any).worklogTeamDailyEval.upsert({
       where: { ymd_orgUnitId_evaluatorId: { ymd: dto.ymd, orgUnitId: dto.orgUnitId, evaluatorId: String(userId) } },
-      create: { ymd: dto.ymd, orgUnitId: dto.orgUnitId, evaluatorId: String(userId), status: dto.status },
-      update: { status: dto.status },
+      create,
+      update,
       include: { orgUnit: true },
     });
 
@@ -161,6 +175,7 @@ export class WorklogEvalsController {
       orgUnitName: String(rec.orgUnit?.name || ''),
       evaluatorId: String(rec.evaluatorId),
       status: String(rec.status),
+      comment: rec.comment != null ? String(rec.comment) : null,
       createdAt: rec.createdAt,
       updatedAt: rec.updatedAt,
     };
