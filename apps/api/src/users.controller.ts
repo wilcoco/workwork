@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Put, Query, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Get, Param, Put, Query, BadRequestException, NotFoundException, Post, Res } from '@nestjs/common';
 import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import { Delete } from '@nestjs/common';
+import type { Response } from 'express';
 
 class UpdateRoleDto {
   @IsString() @IsNotEmpty()
@@ -17,6 +18,71 @@ class UpdateOrgUnitDto {
 @Controller('users')
 export class UsersController {
   constructor(private prisma: PrismaService) {}
+
+  private graphTokenCache: { token: string; expMs: number } | null = null;
+
+  private getGraphConfig() {
+    const tenantId = String(process.env.MS_GRAPH_TENANT_ID || process.env.ENTRA_TENANT_ID || '').trim();
+    const clientId = String(process.env.MS_GRAPH_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '').trim();
+    const clientSecret = String(process.env.MS_GRAPH_CLIENT_SECRET || process.env.ENTRA_CLIENT_SECRET || '').trim();
+    if (!tenantId) throw new BadRequestException('MS_GRAPH_TENANT_ID (or ENTRA_TENANT_ID) required');
+    if (!clientId) throw new BadRequestException('MS_GRAPH_CLIENT_ID (or ENTRA_CLIENT_ID) required');
+    if (!clientSecret) throw new BadRequestException('MS_GRAPH_CLIENT_SECRET (or ENTRA_CLIENT_SECRET) required');
+    return { tenantId, clientId, clientSecret };
+  }
+
+  private async getGraphToken(): Promise<string> {
+    const now = Date.now();
+    if (this.graphTokenCache && this.graphTokenCache.expMs > (now + 30_000)) {
+      return this.graphTokenCache.token;
+    }
+    const { tenantId, clientId, clientSecret } = this.getGraphConfig();
+    const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
+    const form = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'client_credentials',
+      scope: 'https://graph.microsoft.com/.default',
+    });
+    const res = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new BadRequestException(String(json?.error_description || json?.error || `graph token failed (${res.status})`));
+    }
+    const token = String(json?.access_token || '').trim();
+    const expiresInSec = Number(json?.expires_in || 0) || 0;
+    if (!token) throw new BadRequestException('graph token missing access_token');
+    this.graphTokenCache = { token, expMs: now + (expiresInSec * 1000) };
+    return token;
+  }
+
+  private async fetchUserPhotoByUpn(upn: string): Promise<{ bytes: Buffer; contentType: string } | null> {
+    const token = await this.getGraphToken();
+    const enc = encodeURIComponent(String(upn || '').trim());
+    if (!enc) return null;
+
+    const urls = [
+      `https://graph.microsoft.com/v1.0/users/${enc}/photos/240x240/$value`,
+      `https://graph.microsoft.com/v1.0/users/${enc}/photo/$value`,
+    ];
+    for (const url of urls) {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.status === 404) continue;
+      if (!res.ok) {
+        throw new BadRequestException(`graph photo fetch failed (${res.status})`);
+      }
+      const ab = await res.arrayBuffer();
+      const bytes = Buffer.from(ab);
+      if (!bytes.length) return null;
+      const contentType = String(res.headers.get('content-type') || 'image/jpeg');
+      return { bytes, contentType };
+    }
+    return null;
+  }
 
   private async requireCeo(actorId?: string) {
     if (!actorId) throw new BadRequestException('actorId required');
@@ -86,6 +152,82 @@ export class UsersController {
         orgName: u.orgUnit?.name || '',
       })),
     };
+  }
+
+  @Get(':id/photo')
+  async photo(@Param('id') id: string, @Res() res: Response) {
+    const user = await (this.prisma as any).user.findUnique({ where: { id: String(id) } });
+    if (!user) throw new NotFoundException('user not found');
+    const bytes: Buffer | null = (user as any).teamsPhotoBytes || null;
+    const ct = String((user as any).teamsPhotoContentType || 'image/jpeg');
+    const updatedAt = (user as any).teamsPhotoUpdatedAt ? new Date((user as any).teamsPhotoUpdatedAt) : null;
+    if (!bytes || !bytes.length) throw new NotFoundException('photo not found');
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    if (updatedAt) res.setHeader('Last-Modified', updatedAt.toUTCString());
+    res.status(200);
+    res.end(bytes);
+  }
+
+  @Post(':id/sync-teams-photo')
+  async syncTeamsPhoto(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    await this.requireCeo(actorId);
+    const user = await (this.prisma as any).user.findUnique({ where: { id: String(id) } });
+    if (!user) throw new NotFoundException('user not found');
+    const upn = String((user as any).teamsUpn || user.email || '').trim();
+    if (!upn) throw new BadRequestException('teamsUpn/email required');
+    const photo = await this.fetchUserPhotoByUpn(upn);
+    if (!photo) {
+      await (this.prisma as any).user.update({
+        where: { id: String(id) },
+        data: { teamsPhotoBytes: null, teamsPhotoContentType: null, teamsPhotoUpdatedAt: new Date() },
+      });
+      return { ok: true, id: String(id), updated: false, reason: 'no photo' };
+    }
+    await (this.prisma as any).user.update({
+      where: { id: String(id) },
+      data: { teamsPhotoBytes: photo.bytes, teamsPhotoContentType: photo.contentType, teamsPhotoUpdatedAt: new Date() },
+    });
+    return { ok: true, id: String(id), updated: true };
+  }
+
+  @Post('sync-teams-photos')
+  async syncTeamsPhotos(@Query('actorId') actorId?: string, @Query('limit') limit?: string) {
+    await this.requireCeo(actorId);
+    const take = Math.max(1, Math.min(500, parseInt(String(limit || '50'), 10) || 50));
+    const users = await (this.prisma as any).user.findMany({
+      where: { status: 'ACTIVE', teamsUpn: { not: null } },
+      select: { id: true, email: true, teamsUpn: true },
+      orderBy: { name: 'asc' },
+      take,
+    });
+
+    let updated = 0;
+    let skipped = 0;
+    const failed: Array<{ id: string; error: string }> = [];
+
+    for (const u of users || []) {
+      const upn = String(u.teamsUpn || u.email || '').trim();
+      if (!upn) {
+        skipped++;
+        continue;
+      }
+      try {
+        const photo = await this.fetchUserPhotoByUpn(upn);
+        if (!photo) {
+          skipped++;
+          continue;
+        }
+        await (this.prisma as any).user.update({
+          where: { id: String(u.id) },
+          data: { teamsPhotoBytes: photo.bytes, teamsPhotoContentType: photo.contentType, teamsPhotoUpdatedAt: new Date() },
+        });
+        updated++;
+      } catch (e: any) {
+        failed.push({ id: String(u.id), error: String(e?.message || 'failed') });
+      }
+    }
+    return { ok: true, take, updated, skipped, failed };
   }
 
   @Put(':id/role')

@@ -143,6 +143,10 @@ model User {
   processInstancesStarted ProcessInstance[] @relation("ProcessInstanceStartedBy")
   processInstancesModified ProcessInstance[] @relation("ProcessInstanceModifiedBy")
   processStopEvents ProcessStopEvent[] @relation("ProcessStop_on_User")
+
+  teamsPhotoBytes Bytes?
+  teamsPhotoContentType String?
+  teamsPhotoUpdatedAt DateTime?
 }
 
 model Objective {
