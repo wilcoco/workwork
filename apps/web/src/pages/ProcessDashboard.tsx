@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
+import { CoopDocument } from '../components/CoopDocument';
 
 interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'; }
 
@@ -44,6 +46,7 @@ interface ProcInstLite {
 }
 
 export function ProcessDashboard() {
+  const nav = useNavigate();
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [me, setMe] = useState<UserMe | null>(null);
   const [status, setStatus] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED' | 'ABORTED' | 'COMPLETED'>('ACTIVE');
@@ -55,6 +58,12 @@ export function ProcessDashboard() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [detailMap, setDetailMap] = useState<Record<string, any>>({});
   const [detailLoading, setDetailLoading] = useState<Record<string, boolean>>({});
+  const [docModal, setDocModal] = useState<
+    | null
+    | { kind: 'COOP'; ticket: any; requestWl: any | null; responseWl: any | null }
+    | { kind: 'APPROVAL'; approval: any }
+  >(null);
+  const [docModalLoading, setDocModalLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -125,9 +134,12 @@ export function ProcessDashboard() {
     if (detailMap[id] || detailLoading[id]) return;
     setDetailLoading((prev) => ({ ...prev, [id]: true }));
     try {
-      const d = await apiJson<any>(`/api/processes/${encodeURIComponent(id)}`);
+      const [d, tl] = await Promise.all([
+        apiJson<any>(`/api/processes/${encodeURIComponent(id)}`),
+        apiJson<{ tasks: any[] }>(`/api/processes/${encodeURIComponent(id)}/timeline`).catch(() => ({ tasks: [] } as any)),
+      ]);
       console.log('ensureDetail response:', id, d);
-      setDetailMap((prev) => ({ ...prev, [id]: d }));
+      setDetailMap((prev) => ({ ...prev, [id]: { ...d, _timeline: Array.isArray((tl as any)?.tasks) ? (tl as any).tasks : [] } }));
     } catch (err) {
       console.error('ensureDetail error:', id, err);
     }
@@ -135,6 +147,39 @@ export function ProcessDashboard() {
       setDetailLoading((prev) => ({ ...prev, [id]: false }));
     }
   }
+
+  const openWorklog = (worklogId: string) => {
+    if (!worklogId) return;
+    nav(`/worklogs/${encodeURIComponent(worklogId)}`);
+  };
+
+  const openCoop = async (ticketId: string) => {
+    if (!ticketId) return;
+    setDocModalLoading(true);
+    try {
+      const ticket = await apiJson<any>(`/api/help-tickets/${encodeURIComponent(ticketId)}`);
+      const reqId = ticket?.requestWorklogId;
+      const resId = ticket?.responseWorklogId;
+      let requestWl: any | null = null;
+      let responseWl: any | null = null;
+      try {
+        if (reqId) requestWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(reqId)}`);
+      } catch {}
+      try {
+        if (resId) responseWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(resId)}`);
+      } catch {}
+      setDocModal({ kind: 'COOP', ticket, requestWl, responseWl });
+    } catch (e) {
+      console.error('openCoop error:', e);
+    } finally {
+      setDocModalLoading(false);
+    }
+  };
+
+  const openApprovalModal = (approval: any) => {
+    if (!approval) return;
+    setDocModal({ kind: 'APPROVAL', approval });
+  };
 
   const parsePreds = (s?: string | null): string[] => {
     if (!s) return [];
@@ -365,6 +410,9 @@ export function ProcessDashboard() {
                   {!detailLoading[it.id] && (() => {
                     const d = detailMap[it.id];
                     if (!d) return <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>상세 정보가 없습니다.</div>;
+                    const tlArr = (d?._timeline || []) as any[];
+                    const tlMap = new Map<string, any>();
+                    for (const t of tlArr || []) tlMap.set(String(t.id), t);
                     const tmplTasks = ((d.template?.tasks || []) as any[]).slice().sort((a, b) => (Number(a.orderHint || 0) - Number(b.orderHint || 0)));
                     if (!tmplTasks.length) return <div style={{ padding: 10, fontSize: 12, color: '#9ca3af' }}>템플릿 태스크가 없습니다.</div>;
                     const seqMap = new Map<string, number>();
@@ -431,6 +479,8 @@ export function ProcessDashboard() {
                                   const st = statusBadge(ins.status);
                                   const a = (it.assignees || []).find(x => x.id === ins.assigneeId);
                                   const isMe = me && a?.id === me.id;
+                                  const tl = tlMap.get(String(ins.id));
+                                  const hasDoc = !!(tl?.worklog?.id || tl?.cooperation?.id || tl?.approval?.id);
                                   return (
                                     <div key={ins.id} style={{ display: 'flex', gap: 8, alignItems: 'center', background: st.bg, color: st.fg, borderRadius: 6, padding: '4px 8px', border: (st as any).border ? `1px solid ${(st as any).border}` : '1px solid transparent' }}>
                                       <span style={{ width: 6, height: 6, borderRadius: 999, background: st.fg, display: 'inline-block' }} />
@@ -439,6 +489,40 @@ export function ProcessDashboard() {
                                       {ins.actualEndAt && <span style={{ color: '#059669', fontSize: 11 }}>완료: {fmtDate(ins.actualEndAt)}</span>}
                                       <span style={{ opacity: 0.8 }}>{String(ins.status)}</span>
                                       {isMe ? <span style={{ background: '#0EA5E9', color: 'white', borderRadius: 6, padding: '0 4px', fontSize: 10 }}>ME</span> : null}
+                                      {hasDoc ? (
+                                        <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                                          {tl?.worklog?.id ? (
+                                            <button
+                                              type="button"
+                                              className="btn btn-ghost"
+                                              style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 11, color: '#0f172a', textDecoration: 'underline' }}
+                                              onClick={(e) => { e.stopPropagation(); openWorklog(String(tl.worklog.id)); }}
+                                            >
+                                              업무일지: {String(tl.worklog.title || '').trim() || '(제목 없음)'}
+                                            </button>
+                                          ) : null}
+                                          {tl?.cooperation?.id ? (
+                                            <button
+                                              type="button"
+                                              className="btn btn-ghost"
+                                              style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 11, color: '#0f172a', textDecoration: 'underline' }}
+                                              onClick={(e) => { e.stopPropagation(); openCoop(String(tl.cooperation.id)); }}
+                                            >
+                                              업무요청: {String(tl.cooperation.category || '').trim() || '업무 요청'}
+                                            </button>
+                                          ) : null}
+                                          {tl?.approval?.id ? (
+                                            <button
+                                              type="button"
+                                              className="btn btn-ghost"
+                                              style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 11, color: '#0f172a', textDecoration: 'underline' }}
+                                              onClick={(e) => { e.stopPropagation(); openApprovalModal(tl.approval); }}
+                                            >
+                                              결재: {String(tl.approval.status || '').trim() || '결재'}
+                                            </button>
+                                          ) : null}
+                                        </span>
+                                      ) : null}
                                     </div>
                                   );
                                 }) : <span style={{ fontSize: 12, color: '#94a3b8' }}>체인 없음</span>}
@@ -458,6 +542,53 @@ export function ProcessDashboard() {
           <div style={{ padding: 12, fontSize: 12, color: '#9ca3af' }}>표시할 데이터가 없습니다.</div>
         )}
       </div>
+      {docModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
+          onClick={() => setDocModal(null)}
+        >
+          <div
+            style={{ background: '#FFFFFF', borderRadius: 12, maxWidth: 980, width: '100%', maxHeight: '85vh', padding: 16, overflow: 'auto', boxShadow: '0 20px 40px rgba(15, 23, 42, 0.3)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontWeight: 900 }}>{docModal.kind === 'COOP' ? '업무 요청' : '결재'}</div>
+              <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setDocModal(null)}>닫기</button>
+            </div>
+            {docModalLoading && <div style={{ fontSize: 12, color: '#64748b' }}>불러오는 중…</div>}
+            {!docModalLoading && docModal.kind === 'COOP' && (
+              <CoopDocument ticket={docModal.ticket} requestWorklog={docModal.requestWl} responseWorklog={docModal.responseWl} variant="full" />
+            )}
+            {!docModalLoading && docModal.kind === 'APPROVAL' && (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '2px 8px', fontSize: 12, fontWeight: 700, border: '1px solid #E2E8F0' }}>
+                    상태: {String(docModal.approval?.status || '-')}
+                  </span>
+                  {docModal.approval?.requestedBy?.name ? (
+                    <span style={{ fontSize: 12, color: '#475569' }}>요청자: {String(docModal.approval.requestedBy.name)}</span>
+                  ) : null}
+                  {docModal.approval?.dueAt ? (
+                    <span style={{ fontSize: 12, color: '#475569' }}>기한: {new Date(docModal.approval.dueAt).toLocaleString()}</span>
+                  ) : null}
+                </div>
+                {(docModal.approval?.steps || []).length ? (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {(docModal.approval.steps || []).map((s: any, idx: number) => (
+                      <div key={idx} style={{ border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px 10px', fontSize: 12, color: '#0f172a' }}>
+                        <div style={{ fontWeight: 800 }}>#{s.stepNo} {String(s.approverId || '')}</div>
+                        <div style={{ color: '#64748b' }}>{String(s.status || '')}{s.actedAt ? ` · ${new Date(s.actedAt).toLocaleString()}` : ''}{s.comment ? ` · ${String(s.comment)}` : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>결재 단계 정보가 없습니다.</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
