@@ -607,8 +607,8 @@ export class WorklogsController {
     let viewer: any = null;
     if (viewerId) {
       viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
-      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
-      if (role === 'CEO') {
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
+      if (role === 'CEO' || role === 'EXTERNAL') {
         visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
       } else if (role === 'EXEC') {
         visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
@@ -712,8 +712,8 @@ export class WorklogsController {
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
     if (viewerId) {
       const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
-      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
-      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
+      if (role === 'CEO' || role === 'EXTERNAL') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
       else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
       else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
       else visibilityIn = ['ALL'];
@@ -834,8 +834,8 @@ export class WorklogsController {
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
     if (viewerId) {
       const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
-      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
-      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
+      if (role === 'CEO' || role === 'EXTERNAL') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
       else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
       else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
       else visibilityIn = ['ALL'];
@@ -958,8 +958,8 @@ export class WorklogsController {
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
     if (viewerId) {
       const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
-      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
-      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
+      if (role === 'CEO' || role === 'EXTERNAL') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
       else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
       else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
       else visibilityIn = ['ALL'];
@@ -1074,8 +1074,8 @@ export class WorklogsController {
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
     if (viewerId) {
       const viewer = await this.prisma.user.findUnique({ where: { id: viewerId } });
-      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
-      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
+      if (role === 'CEO' || role === 'EXTERNAL') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
       else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
       else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
       else visibilityIn = ['ALL'];

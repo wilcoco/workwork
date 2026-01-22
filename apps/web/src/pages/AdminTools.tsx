@@ -3,7 +3,7 @@ import { apiJson } from '../lib/api';
 
 export function AdminTools() {
   const [userId, setUserId] = useState('');
-  const [role, setRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [role, setRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [confirmText, setConfirmText] = useState('');
   const [loading, setLoading] = useState(false);
   const [confirmYesProc, setConfirmYesProc] = useState('');
@@ -36,7 +36,7 @@ export function AdminTools() {
     if (!uid) return;
     (async () => {
       try {
-        const me = await apiJson<{ id: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
+        const me = await apiJson<{ id: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
         setRole((me as any).role || '');
       } catch {}
     })();

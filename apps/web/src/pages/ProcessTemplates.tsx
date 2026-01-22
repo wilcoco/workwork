@@ -68,7 +68,7 @@ export function ProcessTemplates() {
   const [loading, setLoading] = useState(false);
   const [listCollapsed, setListCollapsed] = useState(false);
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string }>>([]);
   const [itemsMaster, setItemsMaster] = useState<Array<{ code: string; name: string }>>([]);
@@ -365,7 +365,7 @@ export function ProcessTemplates() {
         return;
       }
       try {
-        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
         setMyRole((me?.role as any) || '');
       } catch {
         setMyRole('');

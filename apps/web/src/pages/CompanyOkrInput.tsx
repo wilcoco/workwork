@@ -8,7 +8,7 @@ export function CompanyOkrInput() {
   const [orgUnitId, setOrgUnitId] = useState('');
   const [objectives, setObjectives] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [userId, setUserId] = useState<string>('');
 
   const [oTitle, setOTitle] = useState('');
@@ -45,7 +45,7 @@ export function CompanyOkrInput() {
     if (!uid) return;
     (async () => {
       try {
-        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
+        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
         setMyRole((me as any).role || '');
       } catch {}
     })();

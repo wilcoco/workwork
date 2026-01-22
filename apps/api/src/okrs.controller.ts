@@ -132,7 +132,7 @@ export class OkrsController {
     if (!user) throw new NotFoundException('user not found');
 
     // Return KRs from ALL higher roles (ignoring org hierarchy)
-    const role = (user.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
+    const role = (user.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL';
     let roles: Array<'CEO' | 'EXEC' | 'MANAGER'> = [];
     if (role === 'CEO') {
       roles = [];

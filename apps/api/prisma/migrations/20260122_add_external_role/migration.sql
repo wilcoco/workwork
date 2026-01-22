@@ -1,0 +1,5 @@
+-- Add EXTERNAL role (조직외)
+
+DO $$ BEGIN
+  ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'EXTERNAL';
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

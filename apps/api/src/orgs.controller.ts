@@ -278,7 +278,7 @@ export class OrgsController {
 
   @Get(':id/members')
   async members(@Param('id') id: string) {
-    const users = await this.prisma.user.findMany({ where: { orgUnitId: id }, orderBy: { name: 'asc' } });
+    const users = await this.prisma.user.findMany({ where: { orgUnitId: id, role: { not: 'EXTERNAL' } as any }, orderBy: { name: 'asc' } });
     return { items: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role })) };
   }
 
@@ -305,6 +305,7 @@ export class OrgsController {
     if (dto.userId) user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user && dto.username) user = await this.prisma.user.findUnique({ where: { email: dto.username } });
     if (!user) throw new BadRequestException('user not found');
+    if ((user.role as any) === 'EXTERNAL') throw new BadRequestException('external user cannot belong to an org');
     await this.prisma.user.update({ where: { id: user.id }, data: { orgUnitId: id } });
     return { ok: true };
   }

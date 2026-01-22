@@ -33,10 +33,10 @@ export class WorklogEvalsController {
     const actor = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!actor) throw new BadRequestException('user not found');
 
-    const role = (actor.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
+    const role = (actor.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
     const ids = new Set<string>();
 
-    if (role === 'CEO') {
+    if (role === 'CEO' || role === 'EXTERNAL') {
       const all = await this.prisma.orgUnit.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
       for (const u of all || []) {
         if (/^personal\s*-/i.test(String((u as any).name || ''))) continue;
@@ -90,10 +90,17 @@ export class WorklogEvalsController {
     return ids;
   }
 
+  private async assertCanView(userId: string): Promise<void> {
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor) throw new BadRequestException('user not found');
+    const role = (actor.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
+    if (!(role === 'CEO' || role === 'EXEC' || role === 'MANAGER' || role === 'EXTERNAL')) throw new ForbiddenException('no permission');
+  }
+
   private async assertCanEvaluate(userId: string): Promise<void> {
     const actor = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!actor) throw new BadRequestException('user not found');
-    const role = (actor.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
+    const role = (actor.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
     if (!(role === 'CEO' || role === 'EXEC' || role === 'MANAGER')) throw new ForbiddenException('no permission');
   }
 
@@ -105,7 +112,7 @@ export class WorklogEvalsController {
   ) {
     if (!userId) throw new BadRequestException('userId required');
     if (!ymd) throw new BadRequestException('ymd required');
-    await this.assertCanEvaluate(String(userId));
+    await this.assertCanView(String(userId));
 
     const scopeIds = await this.getScopeOrgUnitIds(String(userId));
     if (scopeIds.size === 0) return { items: [] };
@@ -186,7 +193,7 @@ export class WorklogEvalsController {
     if (!userId) throw new BadRequestException('userId required');
     if (!month) throw new BadRequestException('month required');
     if (!/^\d{4}-\d{2}$/.test(String(month))) throw new BadRequestException('invalid month');
-    await this.assertCanEvaluate(String(userId));
+    await this.assertCanView(String(userId));
 
     const scopeIds = await this.getScopeOrgUnitIds(String(userId));
     if (scopeIds.size === 0) return { month: String(month), items: [], totals: { BLUE: 0, GREEN: 0, YELLOW: 0, RED: 0, score: 0 } };
@@ -251,7 +258,7 @@ export class WorklogEvalsController {
     if (!orgUnitId) throw new BadRequestException('orgUnitId required');
     if (!status) throw new BadRequestException('status required');
     if (!['BLUE', 'GREEN', 'YELLOW', 'RED'].includes(String(status))) throw new BadRequestException('invalid status');
-    await this.assertCanEvaluate(String(userId));
+    await this.assertCanView(String(userId));
 
     const scopeIds = await this.getScopeOrgUnitIds(String(userId));
     if (!scopeIds.has(String(orgUnitId))) throw new ForbiddenException('out of scope');
@@ -278,8 +285,8 @@ export class WorklogEvalsController {
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
     if (userId) {
       const viewer = await this.prisma.user.findUnique({ where: { id: String(userId) } });
-      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | undefined;
-      if (role === 'CEO') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
+      const role = (viewer?.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
+      if (role === 'CEO' || role === 'EXTERNAL') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS', 'CEO_ONLY'];
       else if (role === 'EXEC') visibilityIn = ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'];
       else if (role === 'MANAGER') visibilityIn = ['ALL', 'MANAGER_PLUS'];
       else visibilityIn = ['ALL'];

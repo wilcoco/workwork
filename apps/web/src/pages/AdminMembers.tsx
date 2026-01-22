@@ -6,7 +6,7 @@ type UserLite = {
   id: string;
   email: string;
   name: string;
-  role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
+  role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL';
   status?: 'PENDING' | 'ACTIVE' | string;
   activatedAt?: string | null;
   orgUnitId: string;
@@ -25,7 +25,7 @@ export function AdminMembers() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [myUserId, setMyUserId] = useState('');
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [drafts, setDrafts] = useState<Record<string, { role: UserLite['role']; orgUnitId: string }>>({});
 
   async function load() {
@@ -33,7 +33,7 @@ export function AdminMembers() {
     setError(null);
     try {
       const url = myRole === 'CEO' && myUserId
-        ? `/api/users?includePending=1&userId=${encodeURIComponent(myUserId)}`
+        ? `/api/users?includePending=1&includeExternal=1&userId=${encodeURIComponent(myUserId)}`
         : '/api/users';
       const res = await apiJson<{ items: UserLite[] }>(url);
       setItems(res.items || []);
@@ -62,7 +62,7 @@ export function AdminMembers() {
     }
     (async () => {
       try {
-        const me = await apiJson<{ id: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
+        const me = await apiJson<{ id: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
         setMyRole((me as any).role || '');
       } catch {
         setMyRole('');
@@ -116,14 +116,14 @@ export function AdminMembers() {
         });
       }
       let orgName = u.orgName;
-      if (changedOrg) {
+      if (changedOrg && nextRole !== 'EXTERNAL') {
         const res = await apiJson<{ orgUnitId: string; orgName: string }>(`/api/users/${encodeURIComponent(id)}/orgUnit?actorId=${encodeURIComponent(myUserId)}`, {
           method: 'PUT',
           body: JSON.stringify({ orgUnitId: nextOrgUnitId }),
         });
         orgName = res?.orgName || '';
       }
-      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, role: nextRole, orgUnitId: nextOrgUnitId, orgName } : x)));
+      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, role: nextRole, orgUnitId: nextRole === 'EXTERNAL' ? '' : nextOrgUnitId, orgName: nextRole === 'EXTERNAL' ? '' : orgName } : x)));
     } catch (e: any) {
       alert(e?.message || '저장할 수 없습니다.');
     }
@@ -145,6 +145,7 @@ export function AdminMembers() {
     if (r === 'EXEC') return '임원';
     if (r === 'MANAGER') return '팀장';
     if (r === 'INDIVIDUAL') return '팀원';
+    if (r === 'EXTERNAL') return '조직외';
     return r || '';
   }
 
@@ -189,12 +190,22 @@ export function AdminMembers() {
                     {myRole === 'CEO' ? (
                       <select
                         value={(drafts[u.id]?.role || u.role) as any}
-                        onChange={(e) => setDrafts((prev) => ({ ...prev, [u.id]: { role: e.target.value as any, orgUnitId: prev[u.id]?.orgUnitId ?? (u.orgUnitId || '') } }))}
+                        onChange={(e) => {
+                          const nextRole = e.target.value as any;
+                          setDrafts((prev) => ({
+                            ...prev,
+                            [u.id]: {
+                              role: nextRole,
+                              orgUnitId: nextRole === 'EXTERNAL' ? '' : (prev[u.id]?.orgUnitId ?? (u.orgUnitId || '')),
+                            },
+                          }));
+                        }}
                       >
                         <option value="INDIVIDUAL">팀원</option>
                         <option value="MANAGER">팀장</option>
                         <option value="EXEC">임원</option>
                         <option value="CEO">대표</option>
+                        <option value="EXTERNAL">조직외</option>
                       </select>
                     ) : (
                       roleLabel(u.role)
@@ -205,6 +216,7 @@ export function AdminMembers() {
                     {myRole === 'CEO' ? (
                       <select
                         value={(drafts[u.id]?.orgUnitId ?? (u.orgUnitId || ''))}
+                        disabled={(drafts[u.id]?.role ?? u.role) === 'EXTERNAL'}
                         onChange={(e) => setDrafts((prev) => ({ ...prev, [u.id]: { role: prev[u.id]?.role ?? u.role, orgUnitId: e.target.value } }))}
                       >
                         <option value="">-</option>

@@ -18,7 +18,7 @@ export function TeamKpiInput() {
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; name: string }>>([]);
 
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [myOrgUnitId, setMyOrgUnitId] = useState<string>('');
 
   // Create Objective (team OKR O)
@@ -62,7 +62,7 @@ export function TeamKpiInput() {
     (async () => {
       try {
         if (!userId) return;
-        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'; orgUnitId?: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL'; orgUnitId?: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
         setMyRole((me as any).role || '');
         const orgId = (me as any).orgUnitId || '';
         setMyOrgUnitId(orgId);

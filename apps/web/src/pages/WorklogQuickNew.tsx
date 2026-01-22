@@ -22,7 +22,7 @@ export function WorklogQuickNew() {
   const [timeSpentHours, setTimeSpentHours] = useState<number>(0);
   const [timeSpentMinutes10, setTimeSpentMinutes10] = useState<number>(0);
   const [orgUnitId, setOrgUnitId] = useState<string>('');
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [teamTasks, setTeamTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [teamKpis, setTeamKpis] = useState<Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [helpTickets, setHelpTickets] = useState<Array<{ id: string; label: string }>>([]);
@@ -63,7 +63,7 @@ export function WorklogQuickNew() {
     if (!uid) return;
     (async () => {
       try {
-        const me = await apiJson<{ id: string; orgUnitId: string; role?: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
+        const me = await apiJson<{ id: string; orgUnitId: string; role?: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(uid)}`);
         const ou = me.orgUnitId || '';
         setOrgUnitId(ou);
         setMyRole((me as any)?.role || '');

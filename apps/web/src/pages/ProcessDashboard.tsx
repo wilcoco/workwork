@@ -7,7 +7,7 @@ import { CoopDocument } from '../components/CoopDocument';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { ProcessDocument } from '../components/ProcessDocument';
 
-interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL'; }
+interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL'; }
 
 interface ProcTaskLite {
   id: string;

@@ -81,7 +81,7 @@ export function AdminOrgs(): JSX.Element {
   const [type, setType] = useState('TEAM');
   const [parentId, setParentId] = useState('');
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
 
   async function load() {
     setLoading(true);
@@ -113,7 +113,7 @@ export function AdminOrgs(): JSX.Element {
     (async () => {
       try {
         if (!userId) return;
-        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
         setMyRole((me as any).role || '');
       } catch {}
     })();

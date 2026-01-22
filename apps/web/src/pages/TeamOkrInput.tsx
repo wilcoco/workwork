@@ -17,7 +17,7 @@ export function TeamOkrInput() {
   const [error, setError] = useState<string | null>(null);
 
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
 
   const [oTitle, setOTitle] = useState('');
   const [oDesc, setODesc] = useState('');
@@ -57,7 +57,7 @@ export function TeamOkrInput() {
     (async () => {
       try {
         if (!userId) return;
-        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        const me = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
         setMyRole((me as any).role || '');
       } catch {}
     })();

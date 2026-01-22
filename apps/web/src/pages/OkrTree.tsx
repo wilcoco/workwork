@@ -9,7 +9,7 @@ export function OkrTree() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // KR.id -> expanded
   const defaultExpandDepth = 99; // 기본으로 대부분의 하위 트리를 펼침
   const [userId, setUserId] = useState<string>('');
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [krProg, setKrProg] = useState<Record<string, { latestValue: number | null; latestPeriodEnd: string | null; latestCreatedAt: string | null; warn: boolean; history: Array<{ label: string; value: number | null; createdAt?: string | null }>; stalenessDays: number | null; status: 'On Track' | 'At Risk' | 'Off Track' | '-' }>>({});
   const [orgs, setOrgs] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -23,6 +23,7 @@ export function OkrTree() {
     if (r === 'EXEC') return '임원';
     if (r === 'MANAGER') return '팀장';
     if (r === 'INDIVIDUAL') return '팀원';
+    if (r === 'EXTERNAL') return '조직외';
     return r || '';
   }
 

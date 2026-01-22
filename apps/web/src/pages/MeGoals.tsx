@@ -8,7 +8,7 @@ export function MeGoals() {
   const [goals, setGoals] = useState<any[]>([]); // user goals
   const [myOkrs, setMyOkrs] = useState<any[]>([]);
   const [parentKrs, setParentKrs] = useState<any[]>([]);
-  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | ''>('');
+  const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [myName, setMyName] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

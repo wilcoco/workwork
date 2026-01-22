@@ -199,9 +199,9 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
 
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
-  const [me, setMe] = useState<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' } | null | undefined>(undefined);
+  const [me, setMe] = useState<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' } | null | undefined>(undefined);
   const isCeo = me?.role === 'CEO';
-  const canEvaluate = me?.role === 'CEO' || me?.role === 'EXEC' || me?.role === 'MANAGER';
+  const canEvaluate = me?.role === 'CEO' || me?.role === 'EXEC' || me?.role === 'MANAGER' || me?.role === 'EXTERNAL';
 
   const adminGuard = (child: any) => {
     if (!token) return <Navigate to="/login" replace />;
@@ -222,7 +222,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
         return;
       }
       try {
-        const m = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' }>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
+        const m = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
         setMe(m);
       } catch {
         setMe(null);

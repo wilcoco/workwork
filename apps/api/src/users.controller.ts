@@ -5,8 +5,8 @@ import { Delete } from '@nestjs/common';
 
 class UpdateRoleDto {
   @IsString() @IsNotEmpty()
-  @IsEnum({ CEO: 'CEO', EXEC: 'EXEC', MANAGER: 'MANAGER', INDIVIDUAL: 'INDIVIDUAL' } as any)
-  role!: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
+  @IsEnum({ CEO: 'CEO', EXEC: 'EXEC', MANAGER: 'MANAGER', INDIVIDUAL: 'INDIVIDUAL', EXTERNAL: 'EXTERNAL' } as any)
+  role!: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL';
 }
 
 class UpdateOrgUnitDto {
@@ -38,6 +38,7 @@ export class UsersController {
     @Query('orgUnitId') orgUnitId?: string,
     @Query('orgUnitIds') orgUnitIdsCsv?: string,
     @Query('includePending') includePending?: string,
+    @Query('includeExternal') includeExternal?: string,
     @Query('userId') userId?: string,
   ) {
     const where: any = {};
@@ -51,12 +52,25 @@ export class UsersController {
       if (ids.length) where.orgUnitId = { in: ids };
     }
     const wantsPending = includePending === '1' || includePending === 'true';
+    const wantsExternal = includeExternal === '1' || includeExternal === 'true';
     if (wantsPending) {
       if (!userId) throw new BadRequestException('userId required');
       const actor = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (!actor || (actor.role as any) !== 'CEO') throw new BadRequestException('only CEO can include pending users');
+      if (!actor || ((actor.role as any) !== 'CEO' && (actor.role as any) !== 'EXTERNAL')) {
+        throw new BadRequestException('only CEO can include pending users');
+      }
     } else {
       where.status = 'ACTIVE';
+    }
+
+    if (!wantsExternal) {
+      where.role = { not: 'EXTERNAL' } as any;
+    } else {
+      if (!userId) throw new BadRequestException('userId required');
+      const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!actor || ((actor.role as any) !== 'CEO' && (actor.role as any) !== 'EXTERNAL')) {
+        throw new BadRequestException('only CEO can include external users');
+      }
     }
     const users = await (this.prisma as any).user.findMany({ where, include: { orgUnit: true }, orderBy: { name: 'asc' } });
     return {
@@ -77,13 +91,19 @@ export class UsersController {
   @Put(':id/role')
   async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto, @Query('actorId') actorId?: string) {
     await this.requireCeo(actorId);
-    const user = await this.prisma.user.update({ where: { id }, data: { role: dto.role as any } });
+    const nextRole = dto.role as any;
+    const user = await this.prisma.user.update({ where: { id }, data: { role: nextRole, ...(nextRole === 'EXTERNAL' ? { orgUnitId: null } : {}) } });
     return { id: user.id, role: user.role };
   }
 
   @Put(':id/orgUnit')
   async updateOrgUnit(@Param('id') id: string, @Body() dto: UpdateOrgUnitDto, @Query('actorId') actorId?: string) {
     await this.requireCeo(actorId);
+    const existing = await this.prisma.user.findUnique({ where: { id } });
+    if (!existing) throw new BadRequestException('user not found');
+    if ((existing.role as any) === 'EXTERNAL') {
+      throw new BadRequestException('cannot assign orgUnit to external user');
+    }
     const nextOrgUnitId = String(dto?.orgUnitId || '').trim();
     const user = await this.prisma.user.update({ where: { id }, data: { orgUnitId: nextOrgUnitId ? nextOrgUnitId : null } });
     const org = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;

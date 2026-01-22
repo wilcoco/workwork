@@ -31,6 +31,7 @@ enum Role {
   EXEC
   MANAGER
   INDIVIDUAL
+  EXTERNAL
 }
 
 enum UserStatus {

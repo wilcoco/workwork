@@ -4,7 +4,7 @@ import { apiJson } from '../lib/api';
 type Me = {
   id: string;
   name: string;
-  role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
+  role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL';
   orgUnitId: string;
   teamName: string;
 };
