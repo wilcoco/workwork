@@ -515,6 +515,8 @@ export function ProcessDashboard() {
                                   const isMe = me && a?.id === me.id;
                                   const tl = tlMap.get(String(ins.id));
                                   const hasDoc = !!(tl?.worklog?.id || tl?.cooperation?.id || tl?.approval?.id);
+                                  const taskWls = Array.isArray(tl?.taskWorklogs) ? tl.taskWorklogs : [];
+                                  const hasTaskWls = taskWls.length > 0;
                                   return (
                                     <div key={ins.id} style={{ display: 'flex', gap: 8, alignItems: 'center', background: st.bg, color: st.fg, borderRadius: 6, padding: '4px 8px', border: (st as any).border ? `1px solid ${(st as any).border}` : '1px solid transparent' }}>
                                       <span style={{ width: 6, height: 6, borderRadius: 999, background: st.fg, display: 'inline-block' }} />
@@ -523,7 +525,7 @@ export function ProcessDashboard() {
                                       {ins.actualEndAt && <span style={{ color: '#059669', fontSize: 11 }}>완료: {fmtDate(ins.actualEndAt)}</span>}
                                       <span style={{ opacity: 0.8 }}>{String(ins.status)}</span>
                                       {isMe ? <span style={{ background: '#0EA5E9', color: 'white', borderRadius: 6, padding: '0 4px', fontSize: 10 }}>ME</span> : null}
-                                      {hasDoc ? (
+                                      {hasDoc || hasTaskWls ? (
                                         <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
                                           {tl?.worklog?.id ? (
                                             <button
@@ -535,6 +537,22 @@ export function ProcessDashboard() {
                                               업무일지: {String(tl.worklog.title || '').trim() || '(제목 없음)'}
                                             </button>
                                           ) : null}
+                                          {taskWls.map((w: any) => {
+                                            const wid = String(w?.id || '');
+                                            if (!wid) return null;
+                                            const t = String(w?.title || '').trim() || '(제목 없음)';
+                                            return (
+                                              <button
+                                                key={wid}
+                                                type="button"
+                                                className="btn btn-ghost"
+                                                style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 11, color: '#0f172a', textDecoration: 'underline' }}
+                                                onClick={(e) => { e.stopPropagation(); void openWorklog(wid); }}
+                                              >
+                                                관련 업무일지: {t}
+                                              </button>
+                                            );
+                                          })}
                                           {tl?.cooperation?.id ? (
                                             <button
                                               type="button"
@@ -586,7 +604,7 @@ export function ProcessDashboard() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontWeight: 900 }}>{docModal.kind === 'COOP' ? '업무 요청' : '결재'}</div>
+              <div style={{ fontWeight: 900 }}>{docModal.kind === 'COOP' ? '업무 요청' : (docModal.kind === 'WORKLOG' ? '업무일지' : '결재')}</div>
               <button className="btn btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setDocModal(null)}>닫기</button>
             </div>
             {docModalLoading && <div style={{ fontSize: 12, color: '#64748b' }}>불러오는 중…</div>}

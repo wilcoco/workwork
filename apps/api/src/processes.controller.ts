@@ -490,6 +490,13 @@ export class ProcessesController {
         assigneeId: true,
       },
     });
+    const taskIds: string[] = Array.from(
+      new Set(
+        tasks
+          .map((t: any) => t.id)
+          .filter((v: any): v is string => typeof v === 'string' && v.length > 0),
+      ),
+    );
     const worklogIds: string[] = Array.from(
       new Set(
         tasks
@@ -520,6 +527,22 @@ export class ProcessesController {
       : [];
     const wlMap = new Map<string, any>();
     for (const w of worklogs) wlMap.set(w.id, w);
+
+    const linkedTaskWorklogs = taskIds.length
+      ? await (this.prisma as any).worklog.findMany({
+          where: { processTaskInstanceId: { in: taskIds } },
+          include: { createdBy: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' as any },
+        })
+      : [];
+    const taskWlMap = new Map<string, any[]>();
+    for (const w of linkedTaskWorklogs as any[]) {
+      const tid = String((w as any).processTaskInstanceId || '');
+      if (!tid) continue;
+      const arr = taskWlMap.get(tid) || [];
+      arr.push(w);
+      taskWlMap.set(tid, arr);
+    }
 
     const coops = coopIds.length
       ? await (this.prisma as any).helpTicket.findMany({
@@ -554,16 +577,11 @@ export class ProcessesController {
       const wls = wlIds.size
         ? await (this.prisma as any).worklog.findMany({
             where: { id: { in: Array.from(wlIds) } },
-            select: { id: true, title: true, note: true },
+            select: { id: true, note: true },
           })
         : [];
       const titleByWl = new Map<string, string>();
       for (const w of wls as any[]) {
-        const t = String(w?.title || '').trim();
-        if (t) {
-          titleByWl.set(w.id, t);
-          continue;
-        }
         const raw = String(w?.note || '').trim();
         const first = raw.split('\n')[0] || raw;
         titleByWl.set(w.id, String(first || '').trim());
@@ -606,7 +624,21 @@ export class ProcessesController {
     for (const a of approvals) apprMap.set(a.id, a);
 
     const result = tasks.map((t: any) => {
+      const wlTitle = (x: any) => {
+        const raw = String(x?.note || '').trim();
+        const first = raw.split(/\n+/)[0] || raw;
+        return String(first || '').trim();
+      };
       const wl = t.worklogId ? wlMap.get(t.worklogId) : null;
+      const linked = (taskWlMap.get(String(t.id)) || []).filter(
+        (w: any) => String(w?.id || '') && String(w.id) !== String(t.worklogId || ''),
+      );
+      const taskWorklogs = linked.map((w: any) => ({
+        id: w.id,
+        title: wlTitle(w),
+        createdAt: w.createdAt,
+        createdBy: w.createdBy ? { id: w.createdBy.id, name: w.createdBy.name } : null,
+      }));
       const coop = t.cooperationId ? coopMap.get(t.cooperationId) : null;
       const coopMeta = t.cooperationId ? (coopMetaMap.get(String(t.cooperationId)) || {}) : {};
       const coopWl = coop?.worklogId ? coopWlMap.get(coop.worklogId) : null;
@@ -619,10 +651,11 @@ export class ProcessesController {
         status: t.status,
         actualStartAt: t.actualStartAt,
         actualEndAt: t.actualEndAt,
+        taskWorklogs,
         worklog: wl
           ? {
               id: wl.id,
-              title: wl.title || wl.note || '',
+              title: wlTitle(wl),
               createdAt: wl.createdAt,
               createdBy: wl.createdBy ? { id: wl.createdBy.id, name: wl.createdBy.name } : null,
               contentHtml: (wl.attachments as any)?.contentHtml || wl.contentHtml || null,
@@ -643,7 +676,7 @@ export class ProcessesController {
               worklog: coopWl
                 ? {
                     id: coopWl.id,
-                    title: coopWl.title || coopWl.note || '',
+                    title: wlTitle(coopWl),
                     createdAt: coopWl.createdAt,
                     createdBy: coopWl.createdBy ? { id: coopWl.createdBy.id, name: coopWl.createdBy.name } : null,
                     contentHtml: (coopWl.attachments as any)?.contentHtml || coopWl.contentHtml || null,
