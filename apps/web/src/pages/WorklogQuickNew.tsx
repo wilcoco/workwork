@@ -35,6 +35,7 @@ export function WorklogQuickNew() {
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
   const [attachments, setAttachments] = useState<Array<{ url: string; name?: string; filename?: string }>>([]);
+  const [photos, setPhotos] = useState<Array<{ url: string; name?: string; filename?: string; type?: string }>>([]);
   const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
   const [attachUrl, setAttachUrl] = useState<string>('');
   const quillRef = useRef<Quill | null>(null);
@@ -54,6 +55,34 @@ export function WorklogQuickNew() {
     if (!t) return false;
     if (t.isKpi) return myRole === 'MANAGER';
     return !!(t.krOwnerId && t.krOwnerId === myUserId);
+  }
+
+  async function addPhoto() {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      input.onchange = async () => {
+        try {
+          const list = input.files ? Array.from(input.files) : [];
+          if (!list.length) return;
+          for (const file of list) {
+            const up = await uploadFile(file);
+            setPhotos((prev) => [...prev, { url: up.url, name: up.name, filename: up.filename, type: up.type }]);
+          }
+        } catch (e: any) {
+          setError(e?.message || '사진 업로드 실패');
+        }
+      };
+      input.click();
+    } catch (e: any) {
+      setError(e?.message || '사진 업로드 실패');
+    }
+  }
+
+  function removePhoto(idx: number) {
+    setPhotos((prev) => prev.filter((_, i) => i !== idx));
   }
 
   useEffect(() => {
@@ -327,7 +356,7 @@ export function WorklogQuickNew() {
             title,
             content: plainMode ? contentPlain : stripHtml(contentHtml),
             contentHtml: plainMode ? undefined : (contentHtml || undefined),
-            attachments: { files: attachments },
+            attachments: { files: attachments, photos },
             date,
             urgent,
             visibility,
@@ -745,6 +774,33 @@ export function WorklogQuickNew() {
           </div>
           
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>사진 추가</label>
+            <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
+              사진은 본문 아래에 별도로 표시됩니다. (업로드 후 저장하면 모든 사용자가 볼 수 있습니다)
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-sm" onClick={addPhoto}>
+                사진 추가
+              </button>
+            </div>
+            {photos.length > 0 && (
+              <div className="attachments">
+                {photos.map((p, i) => (
+                  <div key={`${p.url}-${i}`} className="attachment-item" style={{ display: 'grid', gap: 8 }}>
+                    <img src={p.url} alt={p.name || p.filename || 'photo'} style={{ maxWidth: '100%', height: 'auto', borderRadius: 12 }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 12, color: '#64748b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.name || p.filename || p.url}
+                      </div>
+                      <button type="button" className="btn btn-sm btn-danger" onClick={() => removePhoto(i)}>삭제</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
             <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
               파일 첨부: Teams/OneDrive에 있는 파일은 업로드하지 않고, 공유 링크를 붙여넣어 첨부합니다.
@@ -783,7 +839,7 @@ export function WorklogQuickNew() {
           </div>
           <DocumentTags value={tags} onChange={setTags} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); setTags({}); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
+            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); setPhotos([]); setTags({}); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
               초기화
             </button>
             <button className="btn btn-primary" disabled={loading}>

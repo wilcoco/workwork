@@ -46,6 +46,11 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
     return [];
   }, [worklog]);
 
+  const photos = useMemo(() => {
+    if (Array.isArray(worklog?.attachments?.photos)) return worklog.attachments.photos;
+    return [];
+  }, [worklog]);
+
   const createdAt = worklog?.createdAt;
   const workDate = worklog?.date;
   const who = worklog?.createdBy?.name || worklog?.userName || worklog?.createdById || '';
@@ -224,6 +229,29 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
               {bodyText || '-'}
             </div>
           )}
+        </div>
+      )}
+
+      {showBody && Array.isArray(photos) && photos.length > 0 && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#334155' }}>사진</div>
+          <div className="attachments" style={{ display: 'grid', gap: 8 }}>
+            {photos.map((p: any, i: number) => {
+              const raw = pickFileUrl(p);
+              const url = absLink(raw);
+              const name = pickFileName(p, url);
+              return (
+                <div className="attachment-item" key={(p?.filename || p?.url || raw || '') + i}>
+                  <img
+                    src={url}
+                    alt={name}
+                    style={{ maxWidth: '100%', height: 'auto', borderRadius: 12, cursor: 'zoom-in' }}
+                    onClick={(e) => { e.stopPropagation(); setZoomSrc(url); }}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

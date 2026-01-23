@@ -531,8 +531,17 @@ export class WorklogsController {
       : '';
     const contentPlain = dto.content || plainFromHtml || '';
     const note = `${dto.title}\n\n${contentPlain}`;
-    const attachmentsJson = dto.contentHtml || (dto as any).attachments
-      ? { contentHtml: dto.contentHtml, files: (dto as any).attachments?.files ?? (dto as any).attachments ?? [] }
+    const rawAttachments: any = (dto as any).attachments;
+    const files = Array.isArray(rawAttachments?.files)
+      ? rawAttachments.files
+      : (Array.isArray(rawAttachments) ? rawAttachments : []);
+    const photos = Array.isArray(rawAttachments?.photos) ? rawAttachments.photos : [];
+    const attachmentsJson = dto.contentHtml || rawAttachments
+      ? {
+          contentHtml: dto.contentHtml,
+          files,
+          ...(photos.length ? { photos } : {}),
+        }
       : undefined;
     if (!initiativeId) {
       throw new BadRequestException('initiativeId or taskName required');
