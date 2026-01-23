@@ -23,14 +23,19 @@ export function AdminMembers() {
   const [orgs, setOrgs] = useState<OrgLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [myUserId, setMyUserId] = useState('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
   const [drafts, setDrafts] = useState<Record<string, { role: UserLite['role']; orgUnitId: string }>>({});
+  const [syncing, setSyncing] = useState<Record<string, boolean>>({});
+  const [bulkLimit, setBulkLimit] = useState<string>('50');
+  const [bulkSyncing, setBulkSyncing] = useState(false);
 
   async function load() {
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       const url = myRole === 'CEO' && myUserId
         ? `/api/users?includePending=1&includeExternal=1&userId=${encodeURIComponent(myUserId)}`
@@ -41,6 +46,50 @@ export function AdminMembers() {
       setError(e?.message || '불러오기 실패');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function syncOnePhoto(id: string) {
+    if (myRole !== 'CEO' || !myUserId) return;
+    if (syncing[id]) return;
+    setError(null);
+    setNotice(null);
+    setSyncing((prev) => ({ ...prev, [id]: true }));
+    try {
+      const r = await apiJson<{ ok: boolean; updated?: boolean; reason?: string }>(
+        `/api/users/${encodeURIComponent(id)}/sync-teams-photo?actorId=${encodeURIComponent(myUserId)}`,
+        { method: 'POST' }
+      );
+      if (r?.updated) setNotice('Teams 사진 동기화 완료');
+      else setNotice(`Teams 사진 없음 (${r?.reason || 'no photo'})`);
+    } catch (e: any) {
+      setError(e?.message || 'Teams 사진 동기화 실패');
+    } finally {
+      setSyncing((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
+  async function syncBulkPhotos() {
+    if (myRole !== 'CEO' || !myUserId) return;
+    if (bulkSyncing) return;
+    const n = Math.max(1, Math.min(500, parseInt(String(bulkLimit || '50'), 10) || 50));
+    if (!confirm(`Teams 사진을 일괄 동기화할까요? (최대 ${n}명)`)) return;
+    setError(null);
+    setNotice(null);
+    setBulkSyncing(true);
+    try {
+      const r = await apiJson<any>(
+        `/api/users/sync-teams-photos?actorId=${encodeURIComponent(myUserId)}&limit=${encodeURIComponent(String(n))}`,
+        { method: 'POST' }
+      );
+      const updated = Number(r?.updated || 0);
+      const skipped = Number(r?.skipped || 0);
+      const failed = Array.isArray(r?.failed) ? r.failed.length : 0;
+      setNotice(`Teams 사진 일괄 동기화 완료: updated=${updated}, skipped=${skipped}, failed=${failed}`);
+    } catch (e: any) {
+      setError(e?.message || 'Teams 사진 일괄 동기화 실패');
+    } finally {
+      setBulkSyncing(false);
     }
   }
 
@@ -166,9 +215,25 @@ export function AdminMembers() {
             onChange={(e) => setQ(e.target.value)}
             style={input}
           />
-          <button className="btn btn-ghost" onClick={load} disabled={loading}>{loading ? '새로고침…' : '새로고침'}</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {myRole === 'CEO' && (
+              <>
+                <input
+                  value={bulkLimit}
+                  onChange={(e) => setBulkLimit(e.target.value)}
+                  style={{ ...input, width: 92, padding: '8px 10px' }}
+                  placeholder="50"
+                />
+                <button className="btn btn-sm" onClick={syncBulkPhotos} disabled={bulkSyncing}>
+                  {bulkSyncing ? '동기화…' : 'Teams 사진 일괄 동기화'}
+                </button>
+              </>
+            )}
+            <button className="btn btn-ghost" onClick={load} disabled={loading}>{loading ? '새로고침…' : '새로고침'}</button>
+          </div>
         </div>
         {error && <div style={{ color: 'red' }}>{error}</div>}
+        {notice && <div style={{ color: '#0f172a' }}>{notice}</div>}
         <div style={{ overflowX: 'auto' }}>
           <table className="table" style={{ width: '100%', minWidth: 720 }}>
             <thead>
@@ -231,6 +296,14 @@ export function AdminMembers() {
                   <td style={{ textAlign: 'right' }}>
                     {myRole === 'CEO' ? (
                       <>
+                        <button
+                          className="btn btn-sm"
+                          style={{ marginRight: 8 }}
+                          onClick={() => syncOnePhoto(u.id)}
+                          disabled={!!syncing[u.id]}
+                        >
+                          {syncing[u.id] ? '동기화…' : '사진 동기화'}
+                        </button>
                         <button className="btn btn-sm" style={{ marginRight: 8 }} onClick={() => onSave(u.id)}>저장</button>
                         <button className="btn btn-sm btn-danger" onClick={() => onDelete(u.id)}>삭제</button>
                       </>
