@@ -99,8 +99,9 @@ export class UsersController {
   }
 
   private async fetchUserPhotoByUpn(upn: string): Promise<{ bytes: Buffer; contentType: string } | null> {
-    const token = await this.getGraphToken();
-    const jwtHint = this.getJwtHint(token);
+    let token = await this.getGraphToken();
+    let jwtHint = this.getJwtHint(token);
+    let refreshed = false;
     const enc = encodeURIComponent(String(upn || '').trim());
     if (!enc) return null;
 
@@ -109,42 +110,51 @@ export class UsersController {
       `https://graph.microsoft.com/v1.0/users/${enc}/photo/$value`,
     ];
     for (const url of urls) {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.status === 404) continue;
-      if (!res.ok) {
-        const ct = String(res.headers.get('content-type') || '');
-        const www = String(res.headers.get('www-authenticate') || '').trim();
-        const reqId = String(res.headers.get('request-id') || res.headers.get('x-ms-request-id') || '').trim();
-        const diag = String(res.headers.get('x-ms-ags-diagnostic') || '').trim();
-        const detailParts: string[] = [];
-        try {
-          const text = await res.text();
-          if (ct.includes('application/json')) {
-            const j: any = text ? JSON.parse(text) : null;
-            const code = String(j?.error?.code || '').trim();
-            const msg = String(j?.error?.message || '').trim();
-            const parts = [code, msg].filter(Boolean);
-            if (parts.length) detailParts.push(parts.join(' - '));
-          } else {
-            const snippet = String(text || '').trim().replace(/\s+/g, ' ').slice(0, 200);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.status === 401 && !refreshed && attempt === 0) {
+          this.graphTokenCache = null;
+          token = await this.getGraphToken();
+          jwtHint = this.getJwtHint(token);
+          refreshed = true;
+          continue;
+        }
+        if (res.status === 404) break;
+        if (!res.ok) {
+          const ct = String(res.headers.get('content-type') || '');
+          const www = String(res.headers.get('www-authenticate') || '').trim();
+          const reqId = String(res.headers.get('request-id') || res.headers.get('x-ms-request-id') || '').trim();
+          const diag = String(res.headers.get('x-ms-ags-diagnostic') || '').trim();
+          const detailParts: string[] = [];
+          try {
+            const text = await res.text();
+            if (ct.includes('application/json')) {
+              const j: any = text ? JSON.parse(text) : null;
+              const code = String(j?.error?.code || '').trim();
+              const msg = String(j?.error?.message || '').trim();
+              const parts = [code, msg].filter(Boolean);
+              if (parts.length) detailParts.push(parts.join(' - '));
+            } else {
+              const snippet = String(text || '').trim().replace(/\s+/g, ' ').slice(0, 200);
+              if (snippet) detailParts.push(snippet);
+            }
+          } catch {}
+          if (jwtHint) detailParts.push(jwtHint);
+          if (reqId) detailParts.push(`request-id=${reqId}`);
+          if (diag) detailParts.push(`diag=${diag.replace(/\s+/g, ' ').slice(0, 200)}`);
+          if (www) {
+            const snippet = www.replace(/\s+/g, ' ').slice(0, 200);
             if (snippet) detailParts.push(snippet);
           }
-        } catch {}
-        if (jwtHint) detailParts.push(jwtHint);
-        if (reqId) detailParts.push(`request-id=${reqId}`);
-        if (diag) detailParts.push(`diag=${diag.replace(/\s+/g, ' ').slice(0, 200)}`);
-        if (www) {
-          const snippet = www.replace(/\s+/g, ' ').slice(0, 200);
-          if (snippet) detailParts.push(snippet);
+          const detail = detailParts.length ? `: ${detailParts.join(' | ')}` : '';
+          throw new BadRequestException(`graph photo fetch failed (${res.status})${detail}`);
         }
-        const detail = detailParts.length ? `: ${detailParts.join(' | ')}` : '';
-        throw new BadRequestException(`graph photo fetch failed (${res.status})${detail}`);
+        const ab = await res.arrayBuffer();
+        const bytes = Buffer.from(ab);
+        if (!bytes.length) return null;
+        const contentType = String(res.headers.get('content-type') || 'image/jpeg');
+        return { bytes, contentType };
       }
-      const ab = await res.arrayBuffer();
-      const bytes = Buffer.from(ab);
-      if (!bytes.length) return null;
-      const contentType = String(res.headers.get('content-type') || 'image/jpeg');
-      return { bytes, contentType };
     }
     return null;
   }
