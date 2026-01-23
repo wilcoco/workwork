@@ -31,6 +31,8 @@ export function AdminMembers() {
   const [syncing, setSyncing] = useState<Record<string, boolean>>({});
   const [bulkLimit, setBulkLimit] = useState<string>('50');
   const [bulkSyncing, setBulkSyncing] = useState(false);
+  const [photoNonce, setPhotoNonce] = useState<number>(0);
+  const [photoFailed, setPhotoFailed] = useState<Record<string, boolean>>({});
 
   async function load() {
     setLoading(true);
@@ -62,6 +64,8 @@ export function AdminMembers() {
       );
       if (r?.updated) setNotice('Teams 사진 동기화 완료');
       else setNotice(`Teams 사진 없음 (${r?.reason || 'no photo'})`);
+      setPhotoFailed((prev) => ({ ...prev, [id]: false }));
+      setPhotoNonce(Date.now());
     } catch (e: any) {
       setError(e?.message || 'Teams 사진 동기화 실패');
     } finally {
@@ -86,6 +90,8 @@ export function AdminMembers() {
       const skipped = Number(r?.skipped || 0);
       const failed = Array.isArray(r?.failed) ? r.failed.length : 0;
       setNotice(`Teams 사진 일괄 동기화 완료: updated=${updated}, skipped=${skipped}, failed=${failed}`);
+      setPhotoFailed({});
+      setPhotoNonce(Date.now());
     } catch (e: any) {
       setError(e?.message || 'Teams 사진 일괄 동기화 실패');
     } finally {
@@ -198,6 +204,12 @@ export function AdminMembers() {
     return r || '';
   }
 
+  function initialLabel(name: string) {
+    const t = String(name || '').trim();
+    if (!t) return '?';
+    return t.slice(0, 1).toUpperCase();
+  }
+
   return (
     <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 980, margin: '24px auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -238,6 +250,7 @@ export function AdminMembers() {
           <table className="table" style={{ width: '100%', minWidth: 720 }}>
             <thead>
               <tr>
+                <th style={{ textAlign: 'left' }}>사진</th>
                 <th style={{ textAlign: 'left' }}>이름</th>
                 <th style={{ textAlign: 'left' }}>이메일</th>
                 <th style={{ textAlign: 'left' }}>역할</th>
@@ -249,6 +262,20 @@ export function AdminMembers() {
             <tbody>
               {filtered.map((u) => (
                 <tr key={u.id}>
+                  <td>
+                    <div style={{ width: 28, height: 28, borderRadius: 999, overflow: 'hidden', background: '#E2E8F0', display: 'grid', placeItems: 'center', fontWeight: 800, color: '#0f172a' }}>
+                      {!photoFailed[u.id] ? (
+                        <img
+                          src={`/api/users/${encodeURIComponent(u.id)}/photo?ts=${encodeURIComponent(String(photoNonce || 0))}`}
+                          alt={u.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          onError={() => setPhotoFailed((prev) => ({ ...prev, [u.id]: true }))}
+                        />
+                      ) : (
+                        <span style={{ fontSize: 12 }}>{initialLabel(u.name)}</span>
+                      )}
+                    </div>
+                  </td>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
                   <td>
@@ -313,7 +340,7 @@ export function AdminMembers() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', color: '#6b7280' }}>구성원이 없습니다</td>
+                  <td colSpan={7} style={{ textAlign: 'center', color: '#6b7280' }}>구성원이 없습니다</td>
                 </tr>
               )}
             </tbody>
