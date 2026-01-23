@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiJson } from '../lib/api';
+import { apiJson, apiUrl } from '../lib/api';
 import { Link } from 'react-router-dom';
 
 type UserLite = {
@@ -44,6 +44,8 @@ export function AdminMembers() {
         : '/api/users';
       const res = await apiJson<{ items: UserLite[] }>(url);
       setItems(res.items || []);
+      setPhotoFailed({});
+      setPhotoNonce(Date.now());
     } catch (e: any) {
       setError(e?.message || '불러오기 실패');
     } finally {
@@ -266,7 +268,7 @@ export function AdminMembers() {
                     <div style={{ width: 28, height: 28, borderRadius: 999, overflow: 'hidden', background: '#E2E8F0', display: 'grid', placeItems: 'center', fontWeight: 800, color: '#0f172a' }}>
                       {!photoFailed[u.id] ? (
                         <img
-                          src={`/api/users/${encodeURIComponent(u.id)}/photo?ts=${encodeURIComponent(String(photoNonce || 0))}`}
+                          src={apiUrl(`/api/users/${encodeURIComponent(u.id)}/photo?ts=${encodeURIComponent(String(photoNonce || 0))}`)}
                           alt={u.name}
                           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                           onError={() => setPhotoFailed((prev) => ({ ...prev, [u.id]: true }))}
