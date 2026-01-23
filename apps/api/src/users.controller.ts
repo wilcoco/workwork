@@ -20,6 +20,14 @@ export class UsersController {
   constructor(private prisma: PrismaService) {}
 
   private graphTokenCache: { token: string; expMs: number } | null = null;
+  private teamsPhotoSyncInFlight = new Set<string>();
+
+  private hasGraphConfig(): boolean {
+    const tenantId = String(process.env.MS_GRAPH_TENANT_ID || process.env.ENTRA_TENANT_ID || '').trim();
+    const clientId = String(process.env.MS_GRAPH_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '').trim();
+    const clientSecret = String(process.env.MS_GRAPH_CLIENT_SECRET || process.env.ENTRA_CLIENT_SECRET || '').trim();
+    return !!(tenantId && clientId && clientSecret);
+  }
 
   private getGraphConfig() {
     const tenantId = String(process.env.MS_GRAPH_TENANT_ID || process.env.ENTRA_TENANT_ID || '').trim();
@@ -84,6 +92,60 @@ export class UsersController {
     return null;
   }
 
+  private getTeamsPhotoTtlMs(): number {
+    const hours = Number(process.env.TEAMS_PHOTO_TTL_HOURS || '168');
+    const safeHours = Number.isFinite(hours) ? Math.max(1, Math.min(hours, 24 * 365)) : 168;
+    return safeHours * 60 * 60 * 1000;
+  }
+
+  private shouldAutoSyncTeamsPhoto(user: any): boolean {
+    const enabled = String(process.env.TEAMS_PHOTO_AUTOSYNC || '1').toLowerCase();
+    if (enabled === '0' || enabled === 'false') return false;
+    if (!this.hasGraphConfig()) return false;
+    if (!user) return false;
+    if ((user as any).status && String((user as any).status) !== 'ACTIVE') return false;
+    if (String((user as any).role || '').toUpperCase() === 'EXTERNAL') return false;
+    const upn = String((user as any).teamsUpn || user.email || '').trim();
+    if (!upn) return false;
+    const updatedAtRaw = (user as any).teamsPhotoUpdatedAt || null;
+    if (!updatedAtRaw) return true;
+    const updatedAt = new Date(updatedAtRaw);
+    const ageMs = Date.now() - updatedAt.getTime();
+    return ageMs > this.getTeamsPhotoTtlMs();
+  }
+
+  private async autoSyncTeamsPhoto(user: any): Promise<void> {
+    try {
+      if (!this.shouldAutoSyncTeamsPhoto(user)) return;
+      const id = String(user.id || '').trim();
+      if (!id) return;
+      if (this.teamsPhotoSyncInFlight.has(id)) return;
+      this.teamsPhotoSyncInFlight.add(id);
+      try {
+        const upn = String((user as any).teamsUpn || user.email || '').trim();
+        if (!upn) return;
+        const photo = await this.fetchUserPhotoByUpn(upn);
+        if (!photo) {
+          await (this.prisma as any).user.update({
+            where: { id },
+            data: { teamsPhotoBytes: null, teamsPhotoContentType: null, teamsPhotoUpdatedAt: new Date() },
+          });
+          return;
+        }
+        await (this.prisma as any).user.update({
+          where: { id },
+          data: { teamsPhotoBytes: photo.bytes, teamsPhotoContentType: photo.contentType, teamsPhotoUpdatedAt: new Date() },
+        });
+      } finally {
+        this.teamsPhotoSyncInFlight.delete(String(user.id || '').trim());
+      }
+    } catch {
+      try {
+        this.teamsPhotoSyncInFlight.delete(String(user?.id || '').trim());
+      } catch {}
+    }
+  }
+
   private async requireCeo(actorId?: string) {
     if (!actorId) throw new BadRequestException('actorId required');
     const actor = await this.prisma.user.findUnique({ where: { id: actorId } });
@@ -96,6 +158,7 @@ export class UsersController {
     if (!userId) throw new BadRequestException('userId required');
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { orgUnit: true } });
     if (!user) throw new NotFoundException('user not found');
+    void this.autoSyncTeamsPhoto(user as any);
     return { id: user.id, email: user.email, teamsUpn: (user as any).teamsUpn || '', name: user.name, role: user.role, status: (user as any).status || 'ACTIVE', activatedAt: (user as any).activatedAt || null, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '' };
   }
 
