@@ -83,7 +83,7 @@ export class UsersController {
       if (!res.ok) {
         const ct = String(res.headers.get('content-type') || '');
         const www = String(res.headers.get('www-authenticate') || '').trim();
-        let detail = '';
+        const detailParts: string[] = [];
         try {
           const text = await res.text();
           if (ct.includes('application/json')) {
@@ -91,16 +91,17 @@ export class UsersController {
             const code = String(j?.error?.code || '').trim();
             const msg = String(j?.error?.message || '').trim();
             const parts = [code, msg].filter(Boolean);
-            if (parts.length) detail = `: ${parts.join(' - ')}`;
+            if (parts.length) detailParts.push(parts.join(' - '));
           } else {
             const snippet = String(text || '').trim().replace(/\s+/g, ' ').slice(0, 200);
-            if (snippet) detail = `: ${snippet}`;
+            if (snippet) detailParts.push(snippet);
           }
         } catch {}
-        if (!detail && www) {
+        if (www) {
           const snippet = www.replace(/\s+/g, ' ').slice(0, 200);
-          if (snippet) detail = `: ${snippet}`;
+          if (snippet) detailParts.push(snippet);
         }
+        const detail = detailParts.length ? `: ${detailParts.join(' | ')}` : '';
         throw new BadRequestException(`graph photo fetch failed (${res.status})${detail}`);
       }
       const ab = await res.arrayBuffer();
