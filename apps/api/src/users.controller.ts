@@ -68,8 +68,39 @@ export class UsersController {
     return token;
   }
 
+  private getJwtHint(token: string): string {
+    try {
+      const parts = String(token || '').split('.');
+      if (parts.length < 2) return '';
+      let b64 = String(parts[1] || '').replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4;
+      if (pad) b64 = b64 + '='.repeat(4 - pad);
+      const raw = Buffer.from(b64, 'base64').toString('utf8');
+      const j: any = raw ? JSON.parse(raw) : null;
+      if (!j) return '';
+
+      const out: string[] = [];
+      const aud = String(j?.aud || '').trim();
+      const tid = String(j?.tid || '').trim();
+      const scp = String(j?.scp || '').trim();
+      const rolesArr = Array.isArray(j?.roles) ? j.roles : [];
+      const roles = (rolesArr || []).map((r: any) => String(r || '').trim()).filter(Boolean).join(',');
+
+      if (aud) out.push(`aud=${aud}`);
+      if (tid) out.push(`tid=${tid}`);
+      if (roles) out.push(`roles=${roles}`);
+      if (scp) out.push(`scp=${scp}`);
+      if (!roles && !scp) out.push('roles/scp=empty');
+
+      return out.length ? out.join(' ') : '';
+    } catch {
+      return '';
+    }
+  }
+
   private async fetchUserPhotoByUpn(upn: string): Promise<{ bytes: Buffer; contentType: string } | null> {
     const token = await this.getGraphToken();
+    const jwtHint = this.getJwtHint(token);
     const enc = encodeURIComponent(String(upn || '').trim());
     if (!enc) return null;
 
@@ -83,6 +114,8 @@ export class UsersController {
       if (!res.ok) {
         const ct = String(res.headers.get('content-type') || '');
         const www = String(res.headers.get('www-authenticate') || '').trim();
+        const reqId = String(res.headers.get('request-id') || res.headers.get('x-ms-request-id') || '').trim();
+        const diag = String(res.headers.get('x-ms-ags-diagnostic') || '').trim();
         const detailParts: string[] = [];
         try {
           const text = await res.text();
@@ -97,6 +130,9 @@ export class UsersController {
             if (snippet) detailParts.push(snippet);
           }
         } catch {}
+        if (jwtHint) detailParts.push(jwtHint);
+        if (reqId) detailParts.push(`request-id=${reqId}`);
+        if (diag) detailParts.push(`diag=${diag.replace(/\s+/g, ' ').slice(0, 200)}`);
         if (www) {
           const snippet = www.replace(/\s+/g, ' ').slice(0, 200);
           if (snippet) detailParts.push(snippet);
