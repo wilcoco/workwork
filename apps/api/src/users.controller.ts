@@ -81,7 +81,27 @@ export class UsersController {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (res.status === 404) continue;
       if (!res.ok) {
-        throw new BadRequestException(`graph photo fetch failed (${res.status})`);
+        const ct = String(res.headers.get('content-type') || '');
+        const www = String(res.headers.get('www-authenticate') || '').trim();
+        let detail = '';
+        try {
+          const text = await res.text();
+          if (ct.includes('application/json')) {
+            const j: any = text ? JSON.parse(text) : null;
+            const code = String(j?.error?.code || '').trim();
+            const msg = String(j?.error?.message || '').trim();
+            const parts = [code, msg].filter(Boolean);
+            if (parts.length) detail = `: ${parts.join(' - ')}`;
+          } else {
+            const snippet = String(text || '').trim().replace(/\s+/g, ' ').slice(0, 200);
+            if (snippet) detail = `: ${snippet}`;
+          }
+        } catch {}
+        if (!detail && www) {
+          const snippet = www.replace(/\s+/g, ' ').slice(0, 200);
+          if (snippet) detail = `: ${snippet}`;
+        }
+        throw new BadRequestException(`graph photo fetch failed (${res.status})${detail}`);
       }
       const ab = await res.arrayBuffer();
       const bytes = Buffer.from(ab);
