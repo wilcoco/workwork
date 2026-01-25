@@ -54,7 +54,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
 
   const createdAt = worklog?.createdAt;
   const workDate = worklog?.date;
-  const whoId = worklog?.createdById || worklog?.createdBy?.id || '';
+  const whoId = worklog?.createdById || worklog?.createdBy?.id || worklog?.userId || '';
   const whoName = worklog?.createdBy?.name || worklog?.userName || '';
   const who = whoName || whoId || '';
   const team = worklog?.createdBy?.orgUnit?.name || worklog?.teamName || '';

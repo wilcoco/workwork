@@ -118,7 +118,7 @@ export function ProcessDocument({ processDoc, variant, onOpenWorklog }: { proces
                                 {wl?.createdAt ? <span style={{ fontSize: 12, color: '#64748b' }}>{formatKstDatetime(wl.createdAt)}</span> : null}
                                 {wl?.createdBy?.name ? (
                                   <span style={{ fontSize: 12, color: '#64748b' }}>
-                                    · {wl.createdBy.name} <UserAvatar userId={String(wl?.createdById || wl?.createdBy?.id || '')} name={String(wl.createdBy.name || '')} size={14} style={{ marginLeft: 4 }} />
+                                    · {wl.createdBy.name} <UserAvatar userId={String(wl?.createdById || wl?.createdBy?.id || wl?.userId || '')} name={String(wl.createdBy.name || '')} size={14} style={{ marginLeft: 4 }} />
                                   </span>
                                 ) : null}
                               </div>

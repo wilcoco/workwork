@@ -4,6 +4,7 @@ import { apiJson } from '../lib/api';
 import { toSafeHtml } from '../lib/richText';
 import { UserPicker, type PickedUser } from '../components/UserPicker';
 import { WorklogDocument } from '../components/WorklogDocument';
+import { UserAvatar } from '../components/UserAvatar';
 
 interface ProcTask {
   id: string;
@@ -515,7 +516,19 @@ export function ProcessInstanceDetail() {
               {it.worklog && (
                 <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8 }}>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>업무일지: {it.worklog.title}</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>{it.worklog.createdAt ? new Date(it.worklog.createdAt).toLocaleString() : ''}{it.worklog.createdBy ? ` · ${it.worklog.createdBy.name}` : ''}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span>{it.worklog.createdAt ? new Date(it.worklog.createdAt).toLocaleString() : ''}</span>
+                    {it.worklog.createdBy ? (
+                      <>
+                        <span>· {it.worklog.createdBy.name}</span>
+                        <UserAvatar
+                          userId={String((it.worklog as any).createdById || it.worklog.createdBy?.id || (it.worklog as any).userId || '')}
+                          name={String(it.worklog.createdBy.name || (it.worklog as any).userName || '')}
+                          size={14}
+                        />
+                      </>
+                    ) : null}
+                  </div>
                   {(it.worklog.contentHtml || it.worklog.note) ? (
                     <div style={{ marginTop: 6 }}>
                       <WorklogDocument worklog={it.worklog} variant="content" />

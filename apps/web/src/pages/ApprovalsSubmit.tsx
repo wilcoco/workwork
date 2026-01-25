@@ -552,7 +552,10 @@ export function ApprovalsSubmit() {
                                             <div key={wl.id} style={{ fontSize: 12, padding: 6, background: '#fff', borderRadius: 4, border: '1px solid #e5e7eb' }}>
                                               <div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
                                                 <span style={{ color: '#6b7280' }}>{new Date(wl.createdAt).toLocaleString()}</span>
-                                                <span style={{ fontWeight: 500 }}>{wl.createdBy?.name || '-'}</span>
+                                                <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                                  {wl.createdBy?.name || '-'}
+                                                  {wl.createdBy?.id && wl.createdBy?.name ? <UserAvatar userId={String(wl.createdBy.id)} name={String(wl.createdBy.name)} size={14} /> : null}
+                                                </span>
                                               </div>
                                               <div style={{ marginTop: 4 }}>
                                                 <WorklogDocument

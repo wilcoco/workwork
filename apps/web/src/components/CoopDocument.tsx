@@ -36,7 +36,7 @@ export function CoopDocument({ ticket, requestWorklog, responseWorklog, variant 
   };
 
   const wlMeta = (wl: any) => {
-    const whoId = wl?.createdById || wl?.createdBy?.id || '';
+    const whoId = wl?.createdById || wl?.createdBy?.id || wl?.userId || '';
     const who = wl?.createdBy?.name || wl?.userName || '';
     const team = wl?.createdBy?.orgUnit?.name || wl?.teamName || '';
     const whenWl = wl?.date || wl?.createdAt || '';
