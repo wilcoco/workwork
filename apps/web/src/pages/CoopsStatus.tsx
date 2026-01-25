@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { UserAvatar } from '../components/UserAvatar';
 
 export function CoopsStatus() {
   const [filters, setFilters] = useState<{ requesterId?: string; assigneeId?: string; from?: string; to?: string }>({});
@@ -125,8 +126,14 @@ export function CoopsStatus() {
                   <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
                 </div>
                 <div style={{ fontSize: 13, color: '#334155', marginTop: 4, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                  <span>📤 요청자: <b>{it.requester?.name || '-'}</b></span>
-                  <span>📥 담당자: <b>{it.assignee?.name || '미지정'}</b></span>
+                  <span>
+                    📤 요청자: <b>{it.requester?.name || '-'}</b>
+                    <UserAvatar userId={String(it.requester?.id || '')} name={String(it.requester?.name || '')} size={14} style={{ marginLeft: 4 }} />
+                  </span>
+                  <span>
+                    📥 담당자: <b>{it.assignee?.name || '미지정'}</b>
+                    <UserAvatar userId={String(it.assignee?.id || '')} name={String(it.assignee?.name || '')} size={14} style={{ marginLeft: 4 }} />
+                  </span>
                   {it.resolvedAt && <span>✅ 완료: {new Date(it.resolvedAt).toLocaleString()}</span>}
                 </div>
                 {it.resolvedAt && it.createdAt && (

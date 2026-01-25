@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { UserAvatar } from '../components/UserAvatar';
 
 export function ApprovalsStatus() {
   const [filters, setFilters] = useState<{ requestedById?: string; approverId?: string; query?: string; from?: string; to?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' }>({});
@@ -170,7 +171,8 @@ export function ApprovalsStatus() {
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
               </div>
               <div style={{ fontSize: 12, color: '#334155' }}>
-                요청자: {it.requestedBy?.name || '-'} ({it.requestedBy?.id || '-'}) · 현재 결재자: {it.currentApprover?.name || '-'} ({it.currentApprover?.id || '-'})
+                요청자: {it.requestedBy?.name || '-'} <UserAvatar userId={String(it.requestedBy?.id || '')} name={String(it.requestedBy?.name || '')} size={14} style={{ marginLeft: 4 }} /> ({it.requestedBy?.id || '-'})
+                {' '}· 현재 결재자: {it.currentApprover?.name || '-'} <UserAvatar userId={String(it.currentApprover?.id || '')} name={String(it.currentApprover?.name || '')} size={14} style={{ marginLeft: 4 }} /> ({it.currentApprover?.id || '-'})
               </div>
               {it.steps?.length ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>

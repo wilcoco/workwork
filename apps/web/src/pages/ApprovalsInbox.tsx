@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { ProcessDocument } from '../components/ProcessDocument';
+import { UserAvatar } from '../components/UserAvatar';
 
 export function ApprovalsInbox() {
   const [userId, setUserId] = useState<string>('');
@@ -133,7 +134,14 @@ export function ApprovalsInbox() {
             title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
             const who = wl?.createdBy?.name || wl.userName || '';
             const team = wl?.createdBy?.orgUnit?.name || wl.teamName || '';
-            meta = `${who}${team ? ` · ${team}` : ''}`;
+            const whoId = wl?.createdById || wl?.createdBy?.id || '';
+            meta = (
+              <span>
+                {who}
+                <UserAvatar userId={String(whoId || '')} name={String(who || '')} size={14} style={{ marginLeft: 4 }} />
+                {team ? ` · ${team}` : ''}
+              </span>
+            ) as any;
             when = wl?.date || wl?.createdAt || when;
           } else if (stNorm === 'PROCESS' && doc) {
             const inst = doc.process;
@@ -143,7 +151,18 @@ export function ApprovalsInbox() {
               inst?.startAt ? `시작: ${new Date(inst.startAt).toLocaleString()}` : '',
               inst?.status ? `상태: ${inst.status}` : '',
             ].filter(Boolean);
-            meta = parts.join(' · ');
+            const startedById = inst?.startedBy?.id || '';
+            meta = (
+              <span>
+                {inst?.startedBy?.name ? (
+                  <>
+                    시작자: {inst.startedBy.name} <UserAvatar userId={String(startedById || '')} name={String(inst.startedBy.name || '')} size={14} style={{ marginLeft: 4 }} />
+                  </>
+                ) : null}
+                {inst?.startAt ? ` · 시작: ${new Date(inst.startAt).toLocaleString()}` : ''}
+                {inst?.status ? ` · 상태: ${inst.status}` : ''}
+              </span>
+            ) as any;
             when = inst?.createdAt || when;
           }
           return (
@@ -153,7 +172,7 @@ export function ApprovalsInbox() {
                 <span style={chip}>{statusLabel(a.status)}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
               </div>
-              <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
+              <div style={{ fontSize: 12, color: '#334155' }}>{meta as any}</div>
               {stNorm === 'WORKLOG' && doc && (
                 <div style={{ marginTop: 6 }}>
                   <WorklogDocument worklog={doc} variant="compact" />

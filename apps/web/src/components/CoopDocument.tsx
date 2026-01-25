@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { formatKstDatetime } from '../lib/time';
 import { WorklogDocument } from './WorklogDocument';
+import { UserAvatar } from './UserAvatar';
 
 type Variant = 'full' | 'compact' | 'content';
 
@@ -16,7 +17,9 @@ export function CoopDocument({ ticket, requestWorklog, responseWorklog, variant 
   }, [ticket]);
 
   const requesterName = ticket?.requester?.name || ticket?.requesterName || '';
+  const requesterId = ticket?.requester?.id || ticket?.requesterId || '';
   const assigneeName = ticket?.assignee?.name || ticket?.assigneeName || '';
+  const assigneeId = ticket?.assignee?.id || ticket?.assigneeId || '';
   const statusLabel = ticket?.statusLabel || ticket?.status || '';
   const dueAt = ticket?.dueAt || null;
   const createdAt = ticket?.createdAt || null;
@@ -33,11 +36,23 @@ export function CoopDocument({ ticket, requestWorklog, responseWorklog, variant 
   };
 
   const wlMeta = (wl: any) => {
+    const whoId = wl?.createdById || wl?.createdBy?.id || '';
     const who = wl?.createdBy?.name || wl?.userName || '';
     const team = wl?.createdBy?.orgUnit?.name || wl?.teamName || '';
     const whenWl = wl?.date || wl?.createdAt || '';
-    const parts = [who && `작성자: ${who}`, team && `팀: ${team}`, whenWl && `작성: ${formatKstDatetime(whenWl)}`].filter(Boolean);
-    return parts.join(' · ');
+    const parts = [who, team, whenWl].filter(Boolean);
+    if (!parts.length) return '';
+    return (
+      <>
+        {who ? (
+          <>
+            작성자: {who} <UserAvatar userId={String(whoId || '')} name={String(who || '')} size={14} style={{ marginLeft: 4 }} />
+          </>
+        ) : null}
+        {team ? <> · 팀: {team}</> : null}
+        {whenWl ? <> · 작성: {formatKstDatetime(whenWl)}</> : null}
+      </>
+    );
   };
 
   const requestTitleText = requestWorklog
@@ -54,8 +69,16 @@ export function CoopDocument({ ticket, requestWorklog, responseWorklog, variant 
           <div style={{ fontWeight: 800, fontSize: v === 'compact' ? 16 : 18, color: '#0f172a' }}>{title}</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', color: '#475569', fontSize: 12 }}>
             {statusLabel ? <span style={{ background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: 999, fontWeight: 700, border: '1px solid #CBD5E1' }}>상태: {statusLabel}</span> : null}
-            {requesterName ? <span style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>요청자: {requesterName}</span> : null}
-            {assigneeName ? <span style={{ background: '#F8FAFC', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontWeight: 600, border: '1px solid #E2E8F0' }}>담당자: {assigneeName}</span> : null}
+            {requesterName ? (
+              <span style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>
+                요청자: {requesterName} <UserAvatar userId={String(requesterId || '')} name={String(requesterName || '')} size={14} style={{ marginLeft: 4 }} />
+              </span>
+            ) : null}
+            {assigneeName ? (
+              <span style={{ background: '#F8FAFC', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontWeight: 600, border: '1px solid #E2E8F0' }}>
+                담당자: {assigneeName} <UserAvatar userId={String(assigneeId || '')} name={String(assigneeName || '')} size={14} style={{ marginLeft: 4 }} />
+              </span>
+            ) : null}
             {dueAt ? <span style={{ background: '#FEF3C7', color: '#92400E', padding: '2px 8px', borderRadius: 999, fontWeight: 700, border: '1px solid #FDE68A' }}>기한: {formatKstDatetime(dueAt)}</span> : null}
             {createdAt ? <span style={{ marginLeft: 'auto', color: '#64748b' }}>{formatKstDatetime(createdAt)}</span> : null}
           </div>

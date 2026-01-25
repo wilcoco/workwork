@@ -6,6 +6,7 @@ import { toSafeHtml } from '../lib/richText';
 import { CoopDocument } from '../components/CoopDocument';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { ProcessDocument } from '../components/ProcessDocument';
+import { UserAvatar } from '../components/UserAvatar';
 
 interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL'; }
 
@@ -312,7 +313,10 @@ export function ProcessDashboard() {
               {it.initiative?.title && <div style={{ fontSize: 12, color: '#6b7280' }}>과제: {it.initiative.title}</div>}
             </div>
             <div>{it.template?.title || ''}</div>
-            <div>{it.startedBy?.name || ''}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>{it.startedBy?.name || ''}</span>
+              {it.startedBy?.id && it.startedBy?.name ? <UserAvatar userId={String(it.startedBy.id)} name={String(it.startedBy.name)} size={14} /> : null}
+            </div>
             <div>{fmt(it.startAt)}</div>
             <div>{fmt(it.expectedEndAt)}</div>
             <div>{it.delayed ? '🔴' : ''}</div>
@@ -324,7 +328,10 @@ export function ProcessDashboard() {
                   <div key={t.id} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
                     <span style={{ fontWeight: 600 }}>{t.name || t.stageLabel || '-'}</span>
                     <span style={{ color: '#6b7280' }}>·</span>
-                    <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '0 6px' }}>{t.assignee?.name || '담당 미지정'}</span>
+                    <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '0 6px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {t.assignee?.name || '담당 미지정'}
+                      {t.assignee?.id && t.assignee?.name ? <UserAvatar userId={String(t.assignee.id)} name={String(t.assignee.name)} size={14} /> : null}
+                    </span>
                   </div>
                 ));
               })()}
@@ -356,6 +363,7 @@ export function ProcessDashboard() {
                           <div key={a.id} style={{ display: 'grid', gap: 4 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#334155' }}>
                               <b>{a.name}</b>
+                              <UserAvatar userId={String(a.id || '')} name={String(a.name || '')} size={14} />
                               <span style={{ background: '#DCFCE7', color: '#166534', borderRadius: 999, padding: '0 6px' }}>완료 {done}/{total}</span>
                               {prog ? <span style={{ background: '#DBEAFE', color: '#1E3A8A', borderRadius: 999, padding: '0 6px' }}>진행 {prog}</span> : null}
                               {ready ? <span style={{ background: '#F1F5F9', color: '#334155', borderRadius: 999, padding: '0 6px' }}>대기 {ready}</span> : null}

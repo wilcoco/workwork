@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime, formatKstYmd } from '../lib/time';
 import { WorklogDocument } from '../components/WorklogDocument';
+import { UserAvatar } from '../components/UserAvatar';
 
-type WL = { id: string; title: string; excerpt: string; userName?: string; teamName?: string; date: string; createdAt?: string; visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY' };
-type FB = { id: string; subjectId: string; authorName?: string; content: string; createdAt: string };
+type WL = { id: string; userId?: string; title: string; excerpt: string; userName?: string; teamName?: string; date: string; createdAt?: string; visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY' };
+type FB = { id: string; subjectId: string; authorId?: string; authorName?: string; content: string; createdAt: string };
 
 const VISIBILITY_LABEL: Record<string, string> = {
   ALL: '전체',
@@ -119,7 +120,7 @@ export function Home() {
     (async () => {
       try {
         const fb = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&limit=60`);
-        setComments((fb.items || []).map((x: any) => ({ id: x.id, subjectId: x.subjectId, authorName: x.authorName, content: x.content, createdAt: x.createdAt })));
+        setComments((fb.items || []).map((x: any) => ({ id: x.id, subjectId: x.subjectId, authorId: x.authorId, authorName: x.authorName, content: x.content, createdAt: x.createdAt })));
       } catch {
         // ignore
       }
@@ -167,6 +168,8 @@ export function Home() {
                     .sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime())
                     .map((w) => {
                       const anyW: any = w as any;
+                      const authorId = String(anyW.userId || anyW.createdById || '').trim();
+                      const authorName = String(w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
                       const files = attachments.files || [];
                       const firstImg = (() => {
@@ -187,14 +190,21 @@ export function Home() {
                       return (
                         <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {firstImg ? (
+                            {viewMode === 'full' ? (
+                              <UserAvatar userId={authorId} name={authorName || w.title} size={84} style={{ borderRadius: 8 }} />
+                            ) : firstImg ? (
                               <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                             ) : (
                               <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
-                                <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                                  {viewMode === 'summary' ? (
+                                    <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
+                                  ) : null}
+                                </div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
@@ -239,6 +249,8 @@ export function Home() {
                 <div style={{ display: 'grid', gap: 8 }}>
                   {filteredWorklogs.map((w) => {
                       const anyW: any = w as any;
+                      const authorId = String(anyW.userId || anyW.createdById || '').trim();
+                      const authorName = String(w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
                       const files = attachments.files || [];
                       const firstImg = (() => {
@@ -260,14 +272,21 @@ export function Home() {
                       return (
                         <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {firstImg ? (
+                            {viewMode === 'full' ? (
+                              <UserAvatar userId={authorId} name={authorName || w.title} size={thumbSize} style={{ borderRadius: 8 }} />
+                            ) : firstImg ? (
                               <img src={firstImg} alt="thumb" style={{ width: thumbSize, height: thumbSize, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                             ) : (
                               <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
-                                <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                                  {viewMode === 'summary' ? (
+                                    <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
+                                  ) : null}
+                                </div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
@@ -303,6 +322,8 @@ export function Home() {
                 <div style={{ display: 'grid', gap: 8 }}>
                   {filteredWorklogs.map((w) => {
                       const anyW: any = w as any;
+                      const authorId = String(anyW.userId || anyW.createdById || '').trim();
+                      const authorName = String(w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
                       const files = attachments.files || [];
                       const firstImg = (() => {
@@ -324,14 +345,21 @@ export function Home() {
                       return (
                         <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {firstImg ? (
+                            {viewMode === 'full' ? (
+                              <UserAvatar userId={authorId} name={authorName || w.title} size={thumbSize} style={{ borderRadius: 8 }} />
+                            ) : firstImg ? (
                               <img src={firstImg} alt="thumb" style={{ width: thumbSize, height: thumbSize, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                             ) : (
                               <div style={{ width: thumbSize, height: thumbSize, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
-                                <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                                  {viewMode === 'summary' ? (
+                                    <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
+                                  ) : null}
+                                </div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
@@ -369,6 +397,8 @@ export function Home() {
                     .sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime())
                     .map((w) => {
                       const anyW: any = w as any;
+                      const authorId = String(anyW.userId || anyW.createdById || '').trim();
+                      const authorName = String(w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
                       const files = attachments.files || [];
                       const firstImg = (() => {
@@ -389,14 +419,21 @@ export function Home() {
                       return (
                         <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {firstImg ? (
+                            {viewMode === 'full' ? (
+                              <UserAvatar userId={authorId} name={authorName || w.title} size={84} style={{ borderRadius: 8 }} />
+                            ) : firstImg ? (
                               <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                             ) : (
                               <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
-                                <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                                  {viewMode === 'summary' ? (
+                                    <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
+                                  ) : null}
+                                </div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
@@ -467,6 +504,8 @@ export function Home() {
             <div style={{ fontWeight: 800, fontSize: 18 }}>긴급 보고 전체</div>
             {[...urgentWls].sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime()).map((w) => {
               const anyW: any = w as any;
+              const authorId = String(anyW.userId || anyW.createdById || '').trim();
+              const authorName = String(w.userName || anyW.userName || '').trim();
               const attachments = anyW.attachments || {};
               const files = attachments.files || [];
               const firstImg = (() => {
@@ -487,14 +526,21 @@ export function Home() {
               return (
                 <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {firstImg ? (
+                    {viewMode === 'full' ? (
+                      <UserAvatar userId={authorId} name={authorName || w.title} size={84} style={{ borderRadius: 8 }} />
+                    ) : firstImg ? (
                       <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                     ) : (
                       <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                     )}
                     <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'grid', gap: 2 }}>
-                        <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                          {viewMode === 'summary' ? (
+                            <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
+                          ) : null}
+                        </div>
                         <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                       </div>
                       <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
@@ -537,7 +583,7 @@ function htmlToText(html: string): string {
 
 function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; filterTeam?: string; filterName?: string; viewMode?: 'summary' | 'full' }) {
   const [wl, setWl] = useState<any | null>(null);
-  const [prev, setPrev] = useState<Array<{ id: string; authorName?: string; content: string; createdAt: string }>>([]);
+  const [prev, setPrev] = useState<Array<{ id: string; authorId?: string; authorName?: string; content: string; createdAt: string }>>([]);
   useEffect(() => {
     (async () => {
       try {
@@ -546,7 +592,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
       } catch {}
       try {
         const fbr = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&subjectId=${encodeURIComponent(c.subjectId)}&limit=20`);
-        const items = (fbr.items || []).map((x: any) => ({ id: x.id, authorName: x.authorName, content: x.content, createdAt: x.createdAt }));
+        const items = (fbr.items || []).map((x: any) => ({ id: x.id, authorId: x.authorId, authorName: x.authorName, content: x.content, createdAt: x.createdAt }));
         const before = items.filter((x) => x.id !== c.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         setPrev(before);
       } catch {}
@@ -589,12 +635,20 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
       <div style={{ display: 'grid', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
         {prev.map((p) => (
           <div key={p.id}>
-            <div style={{ fontSize: 12, color: '#475569' }}>{p.authorName || '익명'} · {formatKstYmd(p.createdAt)}</div>
+            <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>{p.authorName || '익명'}</span>
+              <UserAvatar userId={String(p.authorId || '')} name={String(p.authorName || '익명')} size={14} />
+              <span>· {formatKstYmd(p.createdAt)}</span>
+            </div>
             <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{p.content}</div>
           </div>
         ))}
         <div>
-          <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstYmd(c.createdAt)}</div>
+          <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>{c.authorName || '익명'}</span>
+            <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={14} />
+            <span>· {formatKstYmd(c.createdAt)}</span>
+          </div>
           <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</div>
         </div>
       </div>
@@ -603,7 +657,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
 }
 
 function CommentsBox({ worklogId }: { worklogId: string }) {
-  const [items, setItems] = useState<Array<{ id: string; authorName?: string; content: string; createdAt: string }>>([]);
+  const [items, setItems] = useState<Array<{ id: string; authorId?: string; authorName?: string; content: string; createdAt: string }>>([]);
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -613,7 +667,7 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
     setError(null);
     try {
       const r = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=${encodeURIComponent('Worklog')}&subjectId=${encodeURIComponent(worklogId)}&limit=100`);
-      setItems((r.items || []).map((x: any) => ({ id: x.id, authorName: x.authorName, content: x.content, createdAt: x.createdAt })));
+      setItems((r.items || []).map((x: any) => ({ id: x.id, authorId: x.authorId, authorName: x.authorName, content: x.content, createdAt: x.createdAt })));
     } catch (e) {
       setError('댓글 조회 실패');
     } finally {
@@ -647,7 +701,11 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
           <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
             {items.map((c) => (
               <div key={c.id} style={{ display: 'grid', gap: 2 }}>
-                <div style={{ fontSize: 12, color: '#475569' }}>{c.authorName || '익명'} · {formatKstYmd(c.createdAt)}</div>
+                <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>{c.authorName || '익명'}</span>
+                  <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={14} />
+                  <span>· {formatKstYmd(c.createdAt)}</span>
+                </div>
                 <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</div>
               </div>
             ))}

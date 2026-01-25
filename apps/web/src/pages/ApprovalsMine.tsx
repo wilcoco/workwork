@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { ProcessDocument } from '../components/ProcessDocument';
+import { UserAvatar } from '../components/UserAvatar';
 
 export function ApprovalsMine() {
   const [userId, setUserId] = useState<string>('');
@@ -68,7 +69,20 @@ export function ApprovalsMine() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((it) => {
-          const meta = `작성자: ${it.requestedBy?.name || '-'}${it.currentApprover?.name ? ` · 현재 결재자: ${it.currentApprover.name}` : ''}`;
+          const requestedByName = String(it.requestedBy?.name || '-');
+          const requestedById = String(it.requestedBy?.id || '');
+          const currentApproverName = String(it.currentApprover?.name || '');
+          const currentApproverId = String(it.currentApprover?.id || '');
+          const meta = (
+            <span>
+              작성자: {requestedByName} <UserAvatar userId={requestedById} name={requestedByName} size={14} style={{ marginLeft: 4 }} />
+              {currentApproverName ? (
+                <>
+                  {' '}· 현재 결재자: {currentApproverName} <UserAvatar userId={currentApproverId} name={currentApproverName} size={14} style={{ marginLeft: 4 }} />
+                </>
+              ) : null}
+            </span>
+          );
           const steps: any[] = Array.isArray(it.steps) ? it.steps : [];
           const stepSummary = (() => {
             if (!steps.length) return '';
@@ -116,7 +130,15 @@ export function ApprovalsMine() {
               const wl = it._doc as any | null;
               const title = it.docTitle || (wl?.title || '문서 정보 없음');
               const when = it.docDate || it.createdAt;
-              const meta = `작성자: ${it.requestedBy?.name || '-'}${wl?.teamName ? ` · ${wl.teamName}` : ''}`;
+              const requestedByName = String(it.requestedBy?.name || '-');
+              const requestedById = String(it.requestedBy?.id || '');
+              const teamName = String(wl?.teamName || '');
+              const meta = (
+                <span>
+                  작성자: {requestedByName} <UserAvatar userId={requestedById} name={requestedByName} size={14} style={{ marginLeft: 4 }} />
+                  {teamName ? ` · ${teamName}` : ''}
+                </span>
+              );
               return (
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

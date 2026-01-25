@@ -2,6 +2,7 @@ import { useMemo, useState, type MouseEvent } from 'react';
 import { apiUrl } from '../lib/api';
 import { toSafeHtml } from '../lib/richText';
 import { formatKstDatetime, formatKstYmd, formatMinutesAsHmKo } from '../lib/time';
+import { UserAvatar } from './UserAvatar';
 
 const VISIBILITY_LABEL: Record<string, string> = {
   ALL: '전체',
@@ -53,7 +54,9 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
 
   const createdAt = worklog?.createdAt;
   const workDate = worklog?.date;
-  const who = worklog?.createdBy?.name || worklog?.userName || worklog?.createdById || '';
+  const whoId = worklog?.createdById || worklog?.createdBy?.id || '';
+  const whoName = worklog?.createdBy?.name || worklog?.userName || '';
+  const who = whoName || whoId || '';
   const team = worklog?.createdBy?.orgUnit?.name || worklog?.teamName || '';
 
   const objectiveTitle = worklog?.initiative?.keyResult?.objective?.title || '';
@@ -146,7 +149,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
     <div style={{ display: 'grid', gap: 12 }}>
       {showHeader && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#475569', fontSize: 14, flexWrap: 'wrap' }}>
-          <div style={{ width: 22, height: 22, borderRadius: 999, background: '#E2E8F0', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>{String(who || '?').slice(0, 1)}</div>
+          <UserAvatar userId={String(whoId || '')} name={whoName || who} size={22} />
           <div style={{ fontWeight: 800, color: '#0f172a' }}>{who}</div>
           {team ? (
             <>

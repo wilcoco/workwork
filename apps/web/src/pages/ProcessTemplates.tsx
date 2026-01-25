@@ -6,6 +6,7 @@ import { BpmnFormEditor } from '../components/BpmnFormEditor';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
+import { UserAvatar } from '../components/UserAvatar';
 import '../styles/editor.css';
 
 interface ProcessTaskTemplateDto {
@@ -623,10 +624,32 @@ export function ProcessTemplates() {
                 유형: {it.type === 'RECURRING' ? '반복' : '프로젝트'} · 공개: {it.visibility}
               </div>
               <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                최초 작성: {it.createdBy?.name || it.owner?.name || '-'} · {fmt(it.createdAt)}
+                {(() => {
+                  const u = it.createdBy || it.owner;
+                  const name = u?.name || '-';
+                  const id = u?.id || '';
+                  return (
+                    <>
+                      최초 작성: {name}
+                      {id && name ? <UserAvatar userId={String(id)} name={String(name)} size={14} style={{ marginLeft: 4 }} /> : null}
+                      {' '}· {fmt(it.createdAt)}
+                    </>
+                  );
+                })()}
               </div>
               <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                최종 수정: {it.updatedBy?.name || it.createdBy?.name || it.owner?.name || '-'} · {fmt(it.updatedAt)}
+                {(() => {
+                  const u = it.updatedBy || it.createdBy || it.owner;
+                  const name = u?.name || '-';
+                  const id = u?.id || '';
+                  return (
+                    <>
+                      최종 수정: {name}
+                      {id && name ? <UserAvatar userId={String(id)} name={String(name)} size={14} style={{ marginLeft: 4 }} /> : null}
+                      {' '}· {fmt(it.updatedAt)}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           ))}
@@ -666,10 +689,32 @@ export function ProcessTemplates() {
                 </span>
               ) : null}
               <span style={{ fontSize: 12, color: '#64748b' }}>
-                📝 최초 작성: {(editing.createdBy?.name || editing.owner?.name || '-')}{editing.createdAt ? ` · ${fmt(editing.createdAt)}` : ''}
+                {(() => {
+                  const u = editing.createdBy || editing.owner;
+                  const name = u?.name || '-';
+                  const id = u?.id || '';
+                  return (
+                    <>
+                      📝 최초 작성: {name}
+                      {id && name ? <UserAvatar userId={String(id)} name={String(name)} size={14} style={{ marginLeft: 4 }} /> : null}
+                      {editing.createdAt ? ` · ${fmt(editing.createdAt)}` : ''}
+                    </>
+                  );
+                })()}
               </span>
               <span style={{ fontSize: 12, color: '#64748b' }}>
-                ✏️ 최종 수정: {(editing.updatedBy?.name || editing.createdBy?.name || editing.owner?.name || '-')}{editing.updatedAt ? ` · ${fmt(editing.updatedAt)}` : ''}
+                {(() => {
+                  const u = editing.updatedBy || editing.createdBy || editing.owner;
+                  const name = u?.name || '-';
+                  const id = u?.id || '';
+                  return (
+                    <>
+                      ✏️ 최종 수정: {name}
+                      {id && name ? <UserAvatar userId={String(id)} name={String(name)} size={14} style={{ marginLeft: 4 }} /> : null}
+                      {editing.updatedAt ? ` · ${fmt(editing.updatedAt)}` : ''}
+                    </>
+                  );
+                })()}
               </span>
             </div>
             <div>

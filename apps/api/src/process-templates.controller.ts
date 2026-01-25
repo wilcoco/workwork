@@ -120,30 +120,32 @@ export class ProcessTemplatesController {
     if (ownerId) {
       where.ownerId = ownerId;
     }
+    const include: any = {
+      tasks: { orderBy: { orderHint: 'asc' } },
+      owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+      createdBy: { select: { id: true, name: true } },
+      updatedBy: { select: { id: true, name: true } },
+      orgUnit: { select: { id: true, name: true } },
+    };
     return this.prisma.processTemplate.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: {
-        tasks: { orderBy: { orderHint: 'asc' } },
-        owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
-        createdBy: { select: { id: true, name: true } },
-        updatedBy: { select: { id: true, name: true } },
-        orgUnit: { select: { id: true, name: true } },
-      },
+      include,
     });
   }
 
   @Get(':id')
   async getOne(@Param('id') id: string) {
+    const include: any = {
+      tasks: { orderBy: { orderHint: 'asc' } },
+      owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+      createdBy: { select: { id: true, name: true } },
+      updatedBy: { select: { id: true, name: true } },
+      orgUnit: { select: { id: true, name: true } },
+    };
     return this.prisma.processTemplate.findUnique({
       where: { id },
-      include: {
-        tasks: { orderBy: { orderHint: 'asc' } },
-        owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
-        createdBy: { select: { id: true, name: true } },
-        updatedBy: { select: { id: true, name: true } },
-        orgUnit: { select: { id: true, name: true } },
-      },
+      include,
     });
   }
 
@@ -443,13 +445,13 @@ export class ProcessTemplatesController {
 
       return tx.processTemplate.findUnique({
         where: { id },
-        include: {
+        include: ({
           tasks: { orderBy: { orderHint: 'asc' } },
           owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
           createdBy: { select: { id: true, name: true } },
           updatedBy: { select: { id: true, name: true } },
           orgUnit: { select: { id: true, name: true } },
-        },
+        } as any),
       });
     });
     } catch (e: any) {

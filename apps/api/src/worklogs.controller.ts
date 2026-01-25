@@ -657,6 +657,7 @@ export class WorklogsController {
       const excerpt = lines.slice(1).join(' ').trim().slice(0, 200);
       return {
         id: it.id,
+        userId: it.createdById,
         date: it.date,
         createdAt: it.createdAt,
         visibility: it.visibility,

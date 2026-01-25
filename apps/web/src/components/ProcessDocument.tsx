@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { toSafeHtml } from '../lib/richText';
 import { formatKstDatetime } from '../lib/time';
 import { WorklogDocument } from './WorklogDocument';
+import { UserAvatar } from './UserAvatar';
 
 type Variant = 'full' | 'compact' | 'content';
 
@@ -15,6 +16,7 @@ export function ProcessDocument({ processDoc, variant, onOpenWorklog }: { proces
 
   const title = String(inst?.title || '').trim() || '프로세스 결재';
   const startedBy = inst?.startedBy?.name || '';
+  const startedById = inst?.startedBy?.id || '';
   const status = inst?.status || '';
   const when = inst?.startAt || inst?.createdAt || '';
 
@@ -47,7 +49,11 @@ export function ProcessDocument({ processDoc, variant, onOpenWorklog }: { proces
         <div style={{ display: 'grid', gap: 6 }}>
           <div style={{ fontWeight: 800, fontSize: v === 'compact' ? 16 : 18, color: '#0f172a' }}>{title}</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', color: '#475569', fontSize: 12 }}>
-            {startedBy ? <span style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>시작자: {startedBy}</span> : null}
+            {startedBy ? (
+              <span style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontWeight: 600 }}>
+                시작자: {startedBy} <UserAvatar userId={String(startedById || '')} name={String(startedBy || '')} size={14} style={{ marginLeft: 4 }} />
+              </span>
+            ) : null}
             {status ? <span style={{ background: '#F1F5F9', color: '#334155', padding: '2px 8px', borderRadius: 999, fontWeight: 700, border: '1px solid #CBD5E1' }}>상태: {status}</span> : null}
             {when ? <span style={{ background: '#F8FAFC', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontWeight: 600, border: '1px solid #E2E8F0' }}>시작: {formatKstDatetime(when)}</span> : null}
           </div>
@@ -110,7 +116,11 @@ export function ProcessDocument({ processDoc, variant, onOpenWorklog }: { proces
                                   {wlTitle}
                                 </button>
                                 {wl?.createdAt ? <span style={{ fontSize: 12, color: '#64748b' }}>{formatKstDatetime(wl.createdAt)}</span> : null}
-                                {wl?.createdBy?.name ? <span style={{ fontSize: 12, color: '#64748b' }}>· {wl.createdBy.name}</span> : null}
+                                {wl?.createdBy?.name ? (
+                                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                                    · {wl.createdBy.name} <UserAvatar userId={String(wl?.createdById || wl?.createdBy?.id || '')} name={String(wl.createdBy.name || '')} size={14} style={{ marginLeft: 4 }} />
+                                  </span>
+                                ) : null}
                               </div>
                               {showWorklogPreview ? (
                                 <WorklogDocument worklog={wl} variant="content" />

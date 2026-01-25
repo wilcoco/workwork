@@ -3,6 +3,7 @@ import { apiJson } from '../lib/api';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { WorklogDocument } from '../components/WorklogDocument';
+import { UserAvatar } from '../components/UserAvatar';
 
 interface MyProcess {
   id: string;
@@ -134,7 +135,12 @@ export function ProcessMy() {
               }}>{p.status}</span>
             </div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>
-              {p.template?.title || ''}{p.startedBy ? ` · 시작: ${p.startedBy.name}` : ''}
+              {p.template?.title || ''}
+              {p.startedBy ? (
+                <>
+                  {' '}· 시작: {p.startedBy.name} <UserAvatar userId={String(p.startedBy.id || '')} name={String(p.startedBy.name || '')} size={14} style={{ marginLeft: 4 }} />
+                </>
+              ) : null}
             </div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>
               {fmt(p.startAt)} ~ {p.endAt ? fmt(p.endAt) : '진행중'}
@@ -231,7 +237,10 @@ export function ProcessMy() {
                               {instanceTasks.map((t) => (
                                 <div key={t.id} style={{ border: '1px solid #e5e7eb', borderRadius: 6, padding: 10, background: '#fff' }}>
                                   <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 12, marginBottom: 6 }}>
-                                    <span style={{ fontWeight: 600, minWidth: 80 }}>{t.assignee?.name || '담당 미지정'}</span>
+                                    <span style={{ fontWeight: 600, minWidth: 80, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                      {t.assignee?.name || '담당 미지정'}
+                                      {t.assignee?.id && t.assignee?.name ? <UserAvatar userId={String(t.assignee.id)} name={String(t.assignee.name)} size={14} /> : null}
+                                    </span>
                                     <span style={{ color: '#6b7280' }}>계획: {fmt(t.plannedStartAt)} ~ {fmt(t.plannedEndAt)}</span>
                                     {t.actualEndAt && <span style={{ color: '#059669' }}>완료: {fmt(t.actualEndAt)}</span>}
                                     <span style={{
@@ -249,7 +258,10 @@ export function ProcessMy() {
                                         {(t.worklogs || []).map((wl) => (
                                           <div key={wl.id} style={{ fontSize: 12, padding: '4px 8px', background: '#f9fafb', borderRadius: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
                                             <span style={{ color: '#6b7280' }}>{new Date(wl.createdAt).toLocaleDateString()}</span>
-                                            <span style={{ fontWeight: 500 }}>{wl.createdBy?.name || '-'}</span>
+                                            <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                              {wl.createdBy?.name || '-'}
+                                              {wl.createdBy?.id && wl.createdBy?.name ? <UserAvatar userId={String(wl.createdBy.id)} name={String(wl.createdBy.name)} size={14} /> : null}
+                                            </span>
                                             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#475569' }}>{wl.note?.replace(/<[^>]*>/g, '').substring(0, 50) || '(내용 없음)'}</span>
                                             <button className="btn btn-ghost" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => setWorklogPopup(wl)}>보기</button>
                                           </div>
@@ -289,7 +301,11 @@ export function ProcessMy() {
               <button className="btn" onClick={() => setWorklogPopup(null)}>닫기</button>
             </div>
             <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
-              작성자: {worklogPopup.createdBy?.name || '-'} · {new Date(worklogPopup.createdAt).toLocaleString()}
+              작성자: {worklogPopup.createdBy?.name || '-'}
+              {worklogPopup.createdBy?.id && worklogPopup.createdBy?.name ? (
+                <UserAvatar userId={String(worklogPopup.createdBy.id)} name={String(worklogPopup.createdBy.name)} size={14} style={{ marginLeft: 4 }} />
+              ) : null}
+              {' '}· {new Date(worklogPopup.createdAt).toLocaleString()}
             </div>
             <div style={{ marginBottom: 8, fontWeight: 800, fontSize: 16 }}>
               {String(worklogPopup.note || '').split(/\n+/)[0] || '(제목 없음)'}

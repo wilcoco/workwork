@@ -9,6 +9,7 @@ import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
 import { WorklogDocument } from '../components/WorklogDocument';
+import { UserAvatar } from '../components/UserAvatar';
 
 export function ApprovalsSubmit() {
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -367,6 +368,7 @@ export function ApprovalsSubmit() {
               <div key={`${s.id}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={chip}>{idx + 1}</span>
                 <span style={{ fontWeight: 600 }}>{s.name}</span>
+                <UserAvatar userId={String(s.id || '')} name={String(s.name || '')} size={18} />
                 <span style={{ color: '#64748b' }}>({s.id})</span>
                 <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                   <button type="button" style={ghostBtn} onClick={() => moveStep(idx, -1)}>▲</button>
