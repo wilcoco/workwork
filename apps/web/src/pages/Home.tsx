@@ -513,7 +513,11 @@ function absLink(url: string): string {
 
 function absolutizeUploads(html: string): string {
   if (!html) return html;
-  return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
+  return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => {
+    const path = String(p || '');
+    const fixed = path.startsWith('/files/') ? `/api${path}` : path;
+    return `${attr}="${apiUrl(fixed)}"`;
+  });
 }
 
 function stripImgs(html: string): string {
@@ -532,14 +536,34 @@ function getWorklogAuthorId(w: any): string {
 
 function getWorklogFirstImage(w: any): string {
   const attachments = w?.attachments || {};
-  const files = ([] as any[]).concat(attachments?.files || [], attachments?.photos || []);
+  const files = ([] as any[]).concat(attachments?.files || [], attachments?.photos || [], attachments?.images || [], attachments?.image || []);
+  const isImage = (f: any, url: string) => {
+    if (f && typeof f === 'object') {
+      const t = String(f.type || f.mimeType || f.contentType || '').toLowerCase();
+      if (t.startsWith('image/')) return true;
+      const n = String(f.name || f.originalName || f.filename || '').toLowerCase();
+      if (/(png|jpe?g|gif|webp|bmp|svg)$/.test(n)) return true;
+    }
+    return /(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(url || '').split('?')[0]);
+  };
+  const pickUrl = (f: any) => {
+    if (!f) return '';
+    if (typeof f === 'string') return f;
+    return String(f.url || f.path || f.src || f.href || f.downloadUrl || f.download_url || '');
+  };
+  const normalize = (raw: string) => {
+    const u = String(raw || '').trim();
+    if (!u) return '';
+    if (u.startsWith('/files/')) return `/api${u}`;
+    if (u.startsWith('files/')) return `/api/${u}`;
+    return u;
+  };
   const fileImg = files.find((f: any) => {
-    if (!f) return false;
-    const p = typeof f === 'string' ? f : String(f?.url || f?.name || f?.filename || '');
-    return /(png|jpe?g|gif|webp|bmp|svg)$/i.test(p.split('?')[0]);
+    const u = normalize(pickUrl(f));
+    return !!u && isImage(f, u);
   });
   if (fileImg) {
-    const u = typeof fileImg === 'string' ? fileImg : String(fileImg.url || fileImg.name || fileImg.filename || '');
+    const u = normalize(pickUrl(fileImg));
     if (u) return absLink(u);
   }
 
@@ -559,7 +583,7 @@ function getWorklogFirstImage(w: any): string {
     const m2 = note.match(/!\[[^\]]*\]\(([^)]+)\)/);
     if (m2 && m2[1]) {
       const raw = String(m2[1]).trim();
-      const normalized = raw.startsWith('uploads/') || raw.startsWith('files/') ? `/${raw}` : raw;
+      const normalized = raw.startsWith('uploads/') ? `/${raw}` : (raw.startsWith('files/') ? `/api/${raw}` : raw);
       return absLink(normalized);
     }
 
@@ -567,7 +591,11 @@ function getWorklogFirstImage(w: any): string {
     if (m3 && m3[1]) return m3[1];
 
     const m4 = note.match(/(\/(?:uploads|files)\/[^\s)"']+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?[^\s)"']*)?)/i);
-    if (m4 && m4[1]) return absLink(m4[1]);
+    if (m4 && m4[1]) {
+      const p = String(m4[1]);
+      const fixed = p.startsWith('/files/') ? `/api${p}` : p;
+      return absLink(fixed);
+    }
   }
 
   return '';
