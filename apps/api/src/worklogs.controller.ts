@@ -225,6 +225,114 @@ export class WorklogsController {
     return ids;
   }
 
+  private async getOverdueContextForUser(userId: string): Promise<string> {
+    if (!userId) return '';
+    const now = new Date();
+    const dueMs = (d: any) => {
+      try {
+        const dt = new Date(d);
+        const t = dt.getTime();
+        return Number.isFinite(t) ? t : NaN;
+      } catch {
+        return NaN;
+      }
+    };
+
+    const [procTasksRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
+      (this.prisma as any).processTaskInstance.findMany({
+        where: {
+          assigneeId: String(userId),
+          status: { notIn: ['COMPLETED', 'SKIPPED'] as any },
+          OR: [
+            { plannedEndAt: { lt: now } },
+            { deadlineAt: { lt: now } },
+          ],
+        },
+        include: { instance: { select: { id: true, title: true } } },
+        orderBy: [{ plannedEndAt: 'asc' }, { deadlineAt: 'asc' }, { createdAt: 'asc' }],
+        take: 50,
+      }),
+      this.prisma.approvalRequest.findMany({
+        where: { approverId: String(userId), status: 'PENDING' as any, dueAt: { lt: now } },
+        select: { id: true, subjectType: true, subjectId: true, dueAt: true },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 50,
+      }),
+      this.prisma.helpTicket.findMany({
+        where: { assigneeId: String(userId), status: { notIn: ['DONE', 'CANCELLED'] as any }, dueAt: { lt: now } },
+        select: { id: true, category: true, status: true, dueAt: true },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 50,
+      }),
+      this.prisma.delegation.findMany({
+        where: { delegateeId: String(userId), status: { notIn: ['DONE', 'REJECTED'] as any }, dueAt: { lt: now } },
+        include: { childInitiative: { select: { id: true, title: true } }, delegator: { select: { name: true } } },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 50,
+      }),
+      this.prisma.initiative.findMany({
+        where: { ownerId: String(userId), state: { notIn: ['DONE', 'CANCELLED'] as any }, dueAt: { lt: now } },
+        select: { id: true, title: true, dueAt: true },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 50,
+      }),
+    ]);
+
+    const lines: string[] = [];
+    const push = (s: string) => {
+      const v = String(s || '').trim();
+      if (!v) return;
+      if (lines.length >= 30) return;
+      lines.push(v);
+    };
+
+    for (const t of (procTasksRaw || [])) {
+      const dueAt = (t as any).deadlineAt || (t as any).plannedEndAt || null;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      const procTitle = String((t as any)?.instance?.title || '');
+      const taskTitle = String((t as any)?.name || '');
+      push(`- [프로세스] ${procTitle} / ${taskTitle} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+    }
+    for (const a of (approvalsRaw || [])) {
+      const dueAt = (a as any).dueAt;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      const st = String((a as any).subjectType || '').toUpperCase();
+      push(`- [결재] ${st || 'APPROVAL'} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+    }
+    for (const h of (helpRaw || [])) {
+      const dueAt = (h as any).dueAt;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      const cat = String((h as any).category || '');
+      push(`- [업무요청] ${cat || 'HELP'} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+    }
+    for (const d of (delRaw || [])) {
+      const dueAt = (d as any).dueAt;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      const title = String((d as any)?.childInitiative?.title || '위임');
+      const from = String((d as any)?.delegator?.name || '').trim();
+      push(`- [위임] ${title}${from ? ` (from=${from})` : ''} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+    }
+    for (const it of (initRaw || [])) {
+      const dueAt = (it as any).dueAt;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      const title = String((it as any).title || '');
+      push(`- [내 과제] ${title} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+    }
+
+    if (!lines.length) return '없음';
+    return lines.join('\n');
+  }
+
   @Post()
   async create(@Body() dto: CreateWorklogDto) {
     // Determine initiative: use provided, or (if process context provided) auto-create under user's OKR scaffold
@@ -1212,8 +1320,9 @@ export class WorklogsController {
       }
     }
     const context = parts.join('\n');
-    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요.';
-    const user = `최근 ${days}일 업무일지 요약을 작성해 주세요. 팀별로 먼저 요약 후, 개인별 한줄 요약을 제시하고 마지막에 전체 하이라이트 3개와 리스크 3개, 다음 액션 3개를 제안해 주세요.\n\n데이터:\n${context}`;
+    const overdueContext = await this.getOverdueContextForUser(String(viewerId));
+    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요. 반드시 출력에 "마감 초과(Overdue)" 섹션을 포함하고, 오버듀 여부는 주어진 오버듀 리스트만을 근거로 작성하세요.';
+    const user = `최근 ${days}일 업무일지 요약을 작성해 주세요. 팀별로 먼저 요약 후, 개인별 한줄 요약을 제시하고 마지막에 전체 하이라이트 3개와 리스크 3개, 다음 액션 3개를 제안해 주세요.\n\n추가 요구: 아래 [오버듀(마감 초과) 리스트]를 기반으로, 내게 할당된 마감 초과 항목이 있는지/어떤 과제(특히 프로세스)에 속해있는지 반드시 요약에 포함해 주세요.\n\n[오버듀(마감 초과) 리스트]\n${overdueContext}\n\n[업무일지 데이터]\n${context}`;
     // Call OpenAI
     const f: any = (globalThis as any).fetch;
     if (!f) {

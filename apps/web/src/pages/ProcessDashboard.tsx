@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { formatKstYmd } from '../lib/time';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { CoopDocument } from '../components/CoopDocument';
@@ -52,6 +53,8 @@ export function ProcessDashboard() {
   const nav = useNavigate();
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [me, setMe] = useState<UserMe | null>(null);
+  const [overdue, setOverdue] = useState<any | null>(null);
+  const [overdueError, setOverdueError] = useState<string | null>(null);
   const [status, setStatus] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED' | 'ABORTED' | 'COMPLETED'>('ACTIVE');
   const [delayedOnly, setDelayedOnly] = useState(false);
   const [items, setItems] = useState<ProcInstLite[]>([]);
@@ -77,6 +80,20 @@ export function ProcessDashboard() {
           setMe(mine);
         }
       } catch {}
+    })();
+  }, [userId]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!userId) return;
+        setOverdueError(null);
+        const r = await apiJson<any>(`/api/users/overdue?userId=${encodeURIComponent(userId)}`);
+        setOverdue(r || null);
+      } catch (e: any) {
+        setOverdue(null);
+        setOverdueError(e?.message || '오버듀 로드 실패');
+      }
     })();
   }, [userId]);
 
@@ -257,6 +274,64 @@ export function ProcessDashboard() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <h2>프로세스 진행 대시보드</h2>
+      {overdueError && <div style={{ color: 'red' }}>{overdueError}</div>}
+      {(() => {
+        if (!overdue) return null;
+        const total = Number(overdue?.counts?.total || 0);
+        const items = Array.isArray(overdue?.items) ? overdue.items : [];
+        const label = (k: any) => {
+          const key = String(k || '').toUpperCase();
+          if (key === 'PROCESS_TASK') return '프로세스';
+          if (key === 'APPROVAL') return '결재';
+          if (key === 'HELP_TICKET') return '업무요청';
+          if (key === 'DELEGATION') return '위임';
+          if (key === 'INITIATIVE') return '과제';
+          return key || '기타';
+        };
+        return (
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontWeight: 900, color: '#0f172a' }}>마감 초과</div>
+              <div style={{ marginLeft: 'auto', fontSize: 12, color: total ? '#b91c1c' : '#64748b', fontWeight: 800 }}>
+                {total ? `총 ${total}건` : '없음'}
+              </div>
+            </div>
+            {total ? (
+              <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
+                {items.slice(0, 5).map((it: any) => {
+                  const key = `${String(it?.kind || '')}-${String(it?.id || '')}`;
+                  const due = it?.dueAt ? formatKstYmd(it.dueAt) : '';
+                  const href = String(it?.link || '').trim();
+                  const title = String(it?.title || '').trim() || '(제목 없음)';
+                  return (
+                    <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#991b1b', minWidth: 64 }}>{label(it?.kind)}</div>
+                      {href ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 13, color: '#0f172a', textDecoration: 'underline', textAlign: 'left' as any }}
+                          onClick={() => nav(href)}
+                        >
+                          {title}
+                        </button>
+                      ) : (
+                        <div style={{ fontSize: 13, color: '#0f172a' }}>{title}</div>
+                      )}
+                      <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{due}</div>
+                    </div>
+                  );
+                })}
+                {total > 5 ? (
+                  <div style={{ fontSize: 12, color: '#64748b' }}>외 {total - 5}건</div>
+                ) : null}
+              </div>
+            ) : (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>마감 초과 항목 없음</div>
+            )}
+          </div>
+        );
+      })()}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <label>
           상태

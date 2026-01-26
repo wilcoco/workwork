@@ -284,6 +284,262 @@ export class UsersController {
     };
   }
 
+  @Get('overdue')
+  async overdue(@Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const now = new Date();
+    const limit = 50;
+
+    const [procTasksRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
+      (this.prisma as any).processTaskInstance.findMany({
+        where: {
+          assigneeId: String(userId),
+          status: { notIn: ['COMPLETED', 'SKIPPED'] as any },
+          OR: [
+            { plannedEndAt: { lt: now } },
+            { deadlineAt: { lt: now } },
+          ],
+        },
+        include: {
+          instance: { select: { id: true, title: true, status: true } },
+          initiative: { select: { id: true, title: true } },
+        },
+        orderBy: [{ plannedEndAt: 'asc' }, { deadlineAt: 'asc' }, { createdAt: 'asc' }],
+        take: 200,
+      }),
+      this.prisma.approvalRequest.findMany({
+        where: {
+          approverId: String(userId),
+          status: 'PENDING' as any,
+          dueAt: { lt: now },
+        },
+        select: { id: true, subjectType: true, subjectId: true, dueAt: true, createdAt: true },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 200,
+      }),
+      this.prisma.helpTicket.findMany({
+        where: {
+          assigneeId: String(userId),
+          status: { notIn: ['DONE', 'CANCELLED'] as any },
+          dueAt: { lt: now },
+        },
+        select: { id: true, category: true, queue: true, status: true, dueAt: true, createdAt: true },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 200,
+      }),
+      this.prisma.delegation.findMany({
+        where: {
+          delegateeId: String(userId),
+          status: { notIn: ['DONE', 'REJECTED'] as any },
+          dueAt: { lt: now },
+        },
+        include: {
+          childInitiative: { select: { id: true, title: true } },
+          delegator: { select: { id: true, name: true } },
+        },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 200,
+      }),
+      this.prisma.initiative.findMany({
+        where: {
+          ownerId: String(userId),
+          state: { notIn: ['DONE', 'CANCELLED'] as any },
+          dueAt: { lt: now },
+        },
+        include: {
+          keyResult: { include: { objective: true } },
+        },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 200,
+      }),
+    ]);
+
+    const dueMs = (d: any) => {
+      try {
+        const dt = new Date(d);
+        const t = dt.getTime();
+        return Number.isFinite(t) ? t : NaN;
+      } catch {
+        return NaN;
+      }
+    };
+
+    const items: any[] = [];
+
+    for (const t of (procTasksRaw || [])) {
+      const dueAt = (t as any).deadlineAt || (t as any).plannedEndAt || null;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms)) continue;
+      if (ms >= now.getTime()) continue;
+      items.push({
+        kind: 'PROCESS_TASK',
+        id: String((t as any).id),
+        dueAt: new Date(ms).toISOString(),
+        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        title: String((t as any).name || ''),
+        processInstanceId: String((t as any).instanceId || (t as any).instance?.id || ''),
+        processTitle: String((t as any).instance?.title || ''),
+        taskStatus: String((t as any).status || ''),
+        initiativeId: String((t as any).initiative?.id || (t as any).initiativeId || ''),
+        initiativeTitle: String((t as any).initiative?.title || ''),
+        link: (t as any).instanceId ? `/process/instances/${encodeURIComponent(String((t as any).instanceId))}` : '',
+      });
+    }
+
+    const approvalIdsWorklog: string[] = [];
+    const approvalIdsProcess: string[] = [];
+    for (const a of (approvalsRaw || [])) {
+      const st = String((a as any).subjectType || '').toUpperCase();
+      const sid = String((a as any).subjectId || '');
+      if ((st === 'WORKLOG' || st === 'WORKLOGS') && sid) approvalIdsWorklog.push(sid);
+      if (st === 'PROCESS' && sid) approvalIdsProcess.push(sid);
+    }
+    const [worklogs, procs] = await Promise.all([
+      approvalIdsWorklog.length
+        ? this.prisma.worklog.findMany({ where: { id: { in: approvalIdsWorklog } }, select: { id: true, note: true } })
+        : Promise.resolve([] as any[]),
+      approvalIdsProcess.length
+        ? (this.prisma as any).processInstance.findMany({ where: { id: { in: approvalIdsProcess } }, select: { id: true, title: true } })
+        : Promise.resolve([] as any[]),
+    ]);
+    const wlTitleMap = new Map<string, string>();
+    for (const w of (worklogs || [])) {
+      const raw = String((w as any).note || '').trim();
+      const title = raw.split('\n')[0] || raw || '';
+      wlTitleMap.set(String((w as any).id), title);
+    }
+    const procTitleMap = new Map<string, string>();
+    for (const p of (procs || [])) {
+      procTitleMap.set(String((p as any).id), String((p as any).title || ''));
+    }
+
+    for (const a of (approvalsRaw || [])) {
+      const dueAt = (a as any).dueAt;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms)) continue;
+      if (ms >= now.getTime()) continue;
+      const subjectType = String((a as any).subjectType || '');
+      const subjectId = String((a as any).subjectId || '');
+      const st = subjectType.toUpperCase();
+      const title = (st === 'PROCESS')
+        ? (procTitleMap.get(subjectId) || '프로세스 결재')
+        : (st === 'WORKLOG' || st === 'WORKLOGS')
+          ? (wlTitleMap.get(subjectId) || '업무일지 결재')
+          : `${subjectType} 결재`;
+      items.push({
+        kind: 'APPROVAL',
+        id: String((a as any).id),
+        dueAt: new Date(ms).toISOString(),
+        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        title,
+        subjectType,
+        subjectId,
+        link: '/approvals/inbox',
+      });
+    }
+
+    const helpIds = (helpRaw || []).map((t: any) => String(t.id)).filter(Boolean);
+    const helpReqEvents = helpIds.length
+      ? await this.prisma.event.findMany({ where: { subjectType: 'HelpTicket', activity: 'HelpRequested', subjectId: { in: helpIds } } })
+      : [];
+    const helpWorklogIds = new Set<string>();
+    const helpIdToWlId: Record<string, string> = {};
+    for (const ev of (helpReqEvents || [])) {
+      const wlId = String(((ev as any).attrs as any)?.worklogId || '').trim();
+      if (!wlId) continue;
+      helpIdToWlId[String((ev as any).subjectId)] = wlId;
+      helpWorklogIds.add(wlId);
+    }
+    const helpWls = helpWorklogIds.size
+      ? await this.prisma.worklog.findMany({ where: { id: { in: Array.from(helpWorklogIds) } }, select: { id: true, note: true } })
+      : [];
+    const helpWlTitle = new Map<string, string>();
+    for (const w of (helpWls || [])) {
+      const raw = String((w as any).note || '').trim();
+      const title = raw.split('\n')[0] || raw || '';
+      helpWlTitle.set(String((w as any).id), title);
+    }
+
+    for (const t of (helpRaw || [])) {
+      const dueAt = (t as any).dueAt;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms)) continue;
+      if (ms >= now.getTime()) continue;
+      const wlId = helpIdToWlId[String((t as any).id)] || '';
+      const title = wlId ? (helpWlTitle.get(wlId) || '업무 요청') : '업무 요청';
+      items.push({
+        kind: 'HELP_TICKET',
+        id: String((t as any).id),
+        dueAt: new Date(ms).toISOString(),
+        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        title,
+        category: String((t as any).category || ''),
+        status: String((t as any).status || ''),
+        requestWorklogId: wlId || null,
+        link: '/coops/inbox',
+      });
+    }
+
+    for (const d of (delRaw || [])) {
+      const dueAt = (d as any).dueAt;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms)) continue;
+      if (ms >= now.getTime()) continue;
+      items.push({
+        kind: 'DELEGATION',
+        id: String((d as any).id),
+        dueAt: new Date(ms).toISOString(),
+        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        title: String((d as any).childInitiative?.title || '위임된 과제'),
+        childInitiativeId: String((d as any).childInitiativeId || (d as any).childInitiative?.id || ''),
+        delegatorName: String((d as any).delegator?.name || ''),
+      });
+    }
+
+    for (const it of (initRaw || [])) {
+      const dueAt = (it as any).dueAt;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms)) continue;
+      if (ms >= now.getTime()) continue;
+      const obj = (it as any)?.keyResult?.objective;
+      const isKpi = !!(obj && (obj as any).pillar != null);
+      items.push({
+        kind: 'INITIATIVE',
+        id: String((it as any).id),
+        dueAt: new Date(ms).toISOString(),
+        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        title: String((it as any).title || ''),
+        initiativeType: isKpi ? 'KPI' : 'OKR',
+        keyResultTitle: String((it as any)?.keyResult?.title || ''),
+        objectiveTitle: String((it as any)?.keyResult?.objective?.title || ''),
+      });
+    }
+
+    items.sort((a, b) => {
+      const am = dueMs(a.dueAt);
+      const bm = dueMs(b.dueAt);
+      if (Number.isFinite(am) && Number.isFinite(bm) && am !== bm) return am - bm;
+      return (Number(b.overdueDays || 0) - Number(a.overdueDays || 0));
+    });
+
+    const sliced = items.slice(0, limit);
+    const counts = {
+      total: sliced.length,
+      processTasks: sliced.filter((x) => x.kind === 'PROCESS_TASK').length,
+      approvals: sliced.filter((x) => x.kind === 'APPROVAL').length,
+      helpTickets: sliced.filter((x) => x.kind === 'HELP_TICKET').length,
+      delegations: sliced.filter((x) => x.kind === 'DELEGATION').length,
+      initiatives: sliced.filter((x) => x.kind === 'INITIATIVE').length,
+    };
+
+    return { now: now.toISOString(), counts, items: sliced };
+  }
+
   @Get(':id/photo')
   async photo(@Param('id') id: string, @Res() res: Response) {
     const user = await (this.prisma as any).user.findUnique({ where: { id: String(id) } });
