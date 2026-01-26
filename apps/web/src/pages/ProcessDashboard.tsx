@@ -279,9 +279,46 @@ export function ProcessDashboard() {
         if (!overdue) return null;
         const total = Number(overdue?.counts?.total || 0);
         const items = Array.isArray(overdue?.items) ? overdue.items : [];
+        const kindKey = (it: any) => String(it?.kind || '').toUpperCase();
+        const procCount = Number(overdue?.counts?.processInstances || 0) + Number(overdue?.counts?.processTasks || 0);
+        const approvalCount = Number(overdue?.counts?.approvals || 0);
+        const helpCount = Number(overdue?.counts?.helpTickets || 0);
+        const delegationCount = Number(overdue?.counts?.delegations || 0);
+        const initiativeCount = Number(overdue?.counts?.initiatives || 0);
+        const preview = (() => {
+          const byKind = new Map<string, any[]>();
+          for (const it of items) {
+            const k = kindKey(it);
+            const arr = byKind.get(k) || [];
+            arr.push(it);
+            byKind.set(k, arr);
+          }
+          const preferred = ['PROCESS_TASK', 'PROCESS_INSTANCE', 'HELP_TICKET', 'APPROVAL', 'DELEGATION', 'INITIATIVE'];
+          const seen = new Set<string>();
+          const out: any[] = [];
+          for (const k of preferred) {
+            const arr = byKind.get(k) || [];
+            if (!arr.length) continue;
+            const it = arr[0];
+            const key = `${kindKey(it)}-${String(it?.id || '')}`;
+            if (seen.has(key)) continue;
+            out.push(it);
+            seen.add(key);
+            if (out.length >= 5) return out;
+          }
+          for (const it of items) {
+            const key = `${kindKey(it)}-${String(it?.id || '')}`;
+            if (seen.has(key)) continue;
+            out.push(it);
+            seen.add(key);
+            if (out.length >= 5) break;
+          }
+          return out;
+        })();
         const label = (k: any) => {
           const key = String(k || '').toUpperCase();
           if (key === 'PROCESS_TASK') return '프로세스';
+          if (key === 'PROCESS_INSTANCE') return '프로세스';
           if (key === 'APPROVAL') return '결재';
           if (key === 'HELP_TICKET') return '업무요청';
           if (key === 'DELEGATION') return '위임';
@@ -296,9 +333,16 @@ export function ProcessDashboard() {
                 {total ? `총 ${total}건` : '없음'}
               </div>
             </div>
+            <div style={{ marginTop: 6, fontSize: 12, color: '#64748b', fontWeight: 700 }}>
+              {procCount ? `프로세스 ${procCount} · ` : ''}
+              {helpCount ? `업무요청 ${helpCount} · ` : ''}
+              {approvalCount ? `결재 ${approvalCount} · ` : ''}
+              {delegationCount ? `위임 ${delegationCount} · ` : ''}
+              {initiativeCount ? `과제 ${initiativeCount}` : ''}
+            </div>
             {total ? (
               <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
-                {items.slice(0, 5).map((it: any) => {
+                {preview.map((it: any) => {
                   const key = `${String(it?.kind || '')}-${String(it?.id || '')}`;
                   const due = it?.dueAt ? formatKstYmd(it.dueAt) : '';
                   const href = String(it?.link || '').trim();
