@@ -290,7 +290,7 @@ export class UsersController {
     const now = new Date();
     const limit = 50;
 
-    const [procTasksRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
+    const [procTasksRaw, procInstRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
       (this.prisma as any).processTaskInstance.findMany({
         where: {
           assigneeId: String(userId),
@@ -307,6 +307,26 @@ export class UsersController {
         orderBy: [{ plannedEndAt: 'asc' }, { deadlineAt: 'asc' }, { createdAt: 'asc' }],
         take: 200,
       }),
+      this.prisma.processInstance.findMany({
+        where: {
+          status: 'ACTIVE',
+          endAt: null,
+          expectedEndAt: { lt: now },
+          OR: [
+            { startedById: String(userId) },
+            { tasks: { some: { assigneeId: String(userId) } } },
+          ],
+        },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          expectedEndAt: true,
+          initiative: { select: { id: true, title: true } },
+        },
+        orderBy: [{ expectedEndAt: 'asc' }, { startAt: 'asc' }],
+        take: 200,
+      }),
       this.prisma.approvalRequest.findMany({
         where: {
           approverId: String(userId),
@@ -321,10 +341,9 @@ export class UsersController {
         where: {
           assigneeId: String(userId),
           status: { notIn: ['DONE', 'CANCELLED'] as any },
-          dueAt: { lt: now },
         },
-        select: { id: true, category: true, queue: true, status: true, dueAt: true, createdAt: true },
-        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, category: true, queue: true, status: true, dueAt: true, slaMinutes: true, createdAt: true },
+        orderBy: [{ createdAt: 'asc' }],
         take: 200,
       }),
       this.prisma.delegation.findMany({
@@ -366,13 +385,37 @@ export class UsersController {
 
     const items: any[] = [];
 
-    for (const t of (procTasksRaw || [])) {
-      const dueAt = (t as any).deadlineAt || (t as any).plannedEndAt || null;
+    for (const p of (procInstRaw || [])) {
+      const dueAt = (p as any).expectedEndAt || null;
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms)) continue;
       if (ms >= now.getTime()) continue;
       items.push({
+        module: 'PROCESS',
+        kind: 'PROCESS_INSTANCE',
+        id: String((p as any).id),
+        dueAt: new Date(ms).toISOString(),
+        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        title: String((p as any).title || ''),
+        processInstanceId: String((p as any).id),
+        processTitle: String((p as any).title || ''),
+        processStatus: String((p as any).status || ''),
+        initiativeId: String((p as any).initiative?.id || ''),
+        initiativeTitle: String((p as any).initiative?.title || ''),
+        link: `/process/instances/${encodeURIComponent(String((p as any).id))}`,
+        meta: { overdueType: 'EXPECTED_END_AT' },
+      });
+    }
+
+    for (const t of (procTasksRaw || [])) {
+      const dueAt = (t as any).plannedEndAt || (t as any).deadlineAt || null;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms)) continue;
+      if (ms >= now.getTime()) continue;
+      items.push({
+        module: 'PROCESS',
         kind: 'PROCESS_TASK',
         id: String((t as any).id),
         dueAt: new Date(ms).toISOString(),
@@ -384,6 +427,7 @@ export class UsersController {
         initiativeId: String((t as any).initiative?.id || (t as any).initiativeId || ''),
         initiativeTitle: String((t as any).initiative?.title || ''),
         link: (t as any).instanceId ? `/process/instances/${encodeURIComponent(String((t as any).instanceId))}` : '',
+        meta: { overdueType: (t as any).plannedEndAt ? 'PLANNED_END_AT' : ((t as any).deadlineAt ? 'DEADLINE_AT' : 'UNKNOWN') },
       });
     }
 
@@ -429,6 +473,7 @@ export class UsersController {
           ? (wlTitleMap.get(subjectId) || '업무일지 결재')
           : `${subjectType} 결재`;
       items.push({
+        module: 'APPROVALS',
         kind: 'APPROVAL',
         id: String((a as any).id),
         dueAt: new Date(ms).toISOString(),
@@ -437,6 +482,7 @@ export class UsersController {
         subjectType,
         subjectId,
         link: '/approvals/inbox',
+        meta: { subjectType, subjectId },
       });
     }
 
@@ -463,14 +509,24 @@ export class UsersController {
     }
 
     for (const t of (helpRaw || [])) {
-      const dueAt = (t as any).dueAt;
-      if (!dueAt) continue;
-      const ms = dueMs(dueAt);
+      const dueAtRaw = (t as any).dueAt;
+      const createdAtRaw = (t as any).createdAt;
+      const slaMinutes = Number((t as any).slaMinutes || 0) || 0;
+      let ms = dueAtRaw ? dueMs(dueAtRaw) : NaN;
+      let computed = false;
+      if (!Number.isFinite(ms) && slaMinutes > 0 && createdAtRaw) {
+        const cMs = dueMs(createdAtRaw);
+        if (Number.isFinite(cMs)) {
+          ms = cMs + (slaMinutes * 60 * 1000);
+          computed = true;
+        }
+      }
       if (!Number.isFinite(ms)) continue;
       if (ms >= now.getTime()) continue;
       const wlId = helpIdToWlId[String((t as any).id)] || '';
       const title = wlId ? (helpWlTitle.get(wlId) || '업무 요청') : '업무 요청';
       items.push({
+        module: 'COOPS',
         kind: 'HELP_TICKET',
         id: String((t as any).id),
         dueAt: new Date(ms).toISOString(),
@@ -480,6 +536,7 @@ export class UsersController {
         status: String((t as any).status || ''),
         requestWorklogId: wlId || null,
         link: '/coops/inbox',
+        meta: { computedDueAt: computed, slaMinutes: slaMinutes || null },
       });
     }
 
@@ -490,6 +547,7 @@ export class UsersController {
       if (!Number.isFinite(ms)) continue;
       if (ms >= now.getTime()) continue;
       items.push({
+        module: 'DELEGATIONS',
         kind: 'DELEGATION',
         id: String((d as any).id),
         dueAt: new Date(ms).toISOString(),
@@ -497,6 +555,7 @@ export class UsersController {
         title: String((d as any).childInitiative?.title || '위임된 과제'),
         childInitiativeId: String((d as any).childInitiativeId || (d as any).childInitiative?.id || ''),
         delegatorName: String((d as any).delegator?.name || ''),
+        link: '/me/goals',
       });
     }
 
@@ -509,6 +568,7 @@ export class UsersController {
       const obj = (it as any)?.keyResult?.objective;
       const isKpi = !!(obj && (obj as any).pillar != null);
       items.push({
+        module: 'GOALS',
         kind: 'INITIATIVE',
         id: String((it as any).id),
         dueAt: new Date(ms).toISOString(),
@@ -517,6 +577,7 @@ export class UsersController {
         initiativeType: isKpi ? 'KPI' : 'OKR',
         keyResultTitle: String((it as any)?.keyResult?.title || ''),
         objectiveTitle: String((it as any)?.keyResult?.objective?.title || ''),
+        link: '/me/goals',
       });
     }
 
@@ -529,12 +590,13 @@ export class UsersController {
 
     const sliced = items.slice(0, limit);
     const counts = {
-      total: sliced.length,
-      processTasks: sliced.filter((x) => x.kind === 'PROCESS_TASK').length,
-      approvals: sliced.filter((x) => x.kind === 'APPROVAL').length,
-      helpTickets: sliced.filter((x) => x.kind === 'HELP_TICKET').length,
-      delegations: sliced.filter((x) => x.kind === 'DELEGATION').length,
-      initiatives: sliced.filter((x) => x.kind === 'INITIATIVE').length,
+      total: items.length,
+      processInstances: items.filter((x) => x.kind === 'PROCESS_INSTANCE').length,
+      processTasks: items.filter((x) => x.kind === 'PROCESS_TASK').length,
+      approvals: items.filter((x) => x.kind === 'APPROVAL').length,
+      helpTickets: items.filter((x) => x.kind === 'HELP_TICKET').length,
+      delegations: items.filter((x) => x.kind === 'DELEGATION').length,
+      initiatives: items.filter((x) => x.kind === 'INITIATIVE').length,
     };
 
     return { now: now.toISOString(), counts, items: sliced };
