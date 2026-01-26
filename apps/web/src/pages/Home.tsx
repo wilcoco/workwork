@@ -168,22 +168,11 @@ export function Home() {
                     .sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime())
                     .map((w) => {
                       const anyW: any = w as any;
-                      const authorId = String(anyW.userId || anyW.createdById || '').trim();
-                      const authorName = String(w.userName || anyW.userName || '').trim();
+                      const authorId = getWorklogAuthorId(anyW);
+                      const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
-                      const files = attachments.files || [];
-                      const firstImg = (() => {
-                        const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-                        if (fileImg) return absLink(fileImg.url as string);
-                        const html = attachments.contentHtml || '';
-                        if (html) {
-                          const abs = absolutizeUploads(html);
-                          const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-                          if (m && m[1]) return m[1];
-                        }
-                        return '';
-                      })();
-                      const contentHtml = attachments.contentHtml || '';
+                      const firstImg = getWorklogFirstImage(anyW);
+                      const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                       const snippet = (snippetSrc || '').trim();
@@ -249,22 +238,11 @@ export function Home() {
                 <div style={{ display: 'grid', gap: 8 }}>
                   {filteredWorklogs.map((w) => {
                       const anyW: any = w as any;
-                      const authorId = String(anyW.userId || anyW.createdById || '').trim();
-                      const authorName = String(w.userName || anyW.userName || '').trim();
+                      const authorId = getWorklogAuthorId(anyW);
+                      const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
-                      const files = attachments.files || [];
-                      const firstImg = (() => {
-                        const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-                        if (fileImg) return absLink(fileImg.url as string);
-                        const html = attachments.contentHtml || '';
-                        if (html) {
-                          const abs = absolutizeUploads(html);
-                          const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-                          if (m && m[1]) return m[1];
-                        }
-                        return '';
-                      })();
-                      const contentHtml = attachments.contentHtml || '';
+                      const firstImg = getWorklogFirstImage(anyW);
+                      const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                       const thumbSize = viewMode==='summary' ? 120 : 84;
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
@@ -322,22 +300,11 @@ export function Home() {
                 <div style={{ display: 'grid', gap: 8 }}>
                   {filteredWorklogs.map((w) => {
                       const anyW: any = w as any;
-                      const authorId = String(anyW.userId || anyW.createdById || '').trim();
-                      const authorName = String(w.userName || anyW.userName || '').trim();
+                      const authorId = getWorklogAuthorId(anyW);
+                      const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
-                      const files = attachments.files || [];
-                      const firstImg = (() => {
-                        const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-                        if (fileImg) return absLink(fileImg.url as string);
-                        const html = attachments.contentHtml || '';
-                        if (html) {
-                          const abs = absolutizeUploads(html);
-                          const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-                          if (m && m[1]) return m[1];
-                        }
-                        return '';
-                      })();
-                      const contentHtml = attachments.contentHtml || '';
+                      const firstImg = getWorklogFirstImage(anyW);
+                      const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                       const thumbSize = viewMode==='summary' ? 120 : 84;
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
@@ -397,22 +364,11 @@ export function Home() {
                     .sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime())
                     .map((w) => {
                       const anyW: any = w as any;
-                      const authorId = String(anyW.userId || anyW.createdById || '').trim();
-                      const authorName = String(w.userName || anyW.userName || '').trim();
+                      const authorId = getWorklogAuthorId(anyW);
+                      const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
-                      const files = attachments.files || [];
-                      const firstImg = (() => {
-                        const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-                        if (fileImg) return absLink(fileImg.url as string);
-                        const html = attachments.contentHtml || '';
-                        if (html) {
-                          const abs = absolutizeUploads(html);
-                          const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-                          if (m && m[1]) return m[1];
-                        }
-                        return '';
-                      })();
-                      const contentHtml = attachments.contentHtml || '';
+                      const firstImg = getWorklogFirstImage(anyW);
+                      const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                       const snippet = (snippetSrc || '').trim();
@@ -504,22 +460,11 @@ export function Home() {
             <div style={{ fontWeight: 800, fontSize: 18 }}>긴급 보고 전체</div>
             {[...urgentWls].sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime()).map((w) => {
               const anyW: any = w as any;
-              const authorId = String(anyW.userId || anyW.createdById || '').trim();
-              const authorName = String(w.userName || anyW.userName || '').trim();
+              const authorId = getWorklogAuthorId(anyW);
+              const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
               const attachments = anyW.attachments || {};
-              const files = attachments.files || [];
-              const firstImg = (() => {
-                const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-                if (fileImg) return absLink(fileImg.url as string);
-                const html = attachments.contentHtml || '';
-                if (html) {
-                  const abs = absolutizeUploads(html);
-                  const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-                  if (m && m[1]) return m[1];
-                }
-                return '';
-              })();
-              const contentHtml = attachments.contentHtml || '';
+              const firstImg = getWorklogFirstImage(anyW);
+              const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
               const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
               const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
               const snippet = (snippetSrc || '').trim();
@@ -581,6 +526,40 @@ function htmlToText(html: string): string {
   return html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
 }
 
+function getWorklogAuthorId(w: any): string {
+  return String(w?.createdById || w?.createdBy?.id || w?.userId || '').trim();
+}
+
+function getWorklogFirstImage(w: any): string {
+  const attachments = w?.attachments || {};
+  const files = ([] as any[]).concat(attachments?.files || [], attachments?.photos || []);
+  const fileImg = files.find((f: any) => {
+    if (!f) return false;
+    const p = typeof f === 'string' ? f : String(f?.url || f?.name || f?.filename || '');
+    return /(png|jpe?g|gif|webp|bmp|svg)$/i.test(p.split('?')[0]);
+  });
+  if (fileImg) {
+    const u = typeof fileImg === 'string' ? fileImg : String(fileImg.url || fileImg.name || fileImg.filename || '');
+    if (u) return absLink(u);
+  }
+
+  const html = String(w?.contentHtml || attachments?.contentHtml || '').trim();
+  if (html) {
+    const abs = absolutizeUploads(html);
+    const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (m && m[1]) return m[1];
+  }
+
+  const note = String(w?.note || '').trim();
+  if (note && /<img\b/i.test(note)) {
+    const abs = absolutizeUploads(note);
+    const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (m && m[1]) return m[1];
+  }
+
+  return '';
+}
+
 function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; filterTeam?: string; filterName?: string; viewMode?: 'summary' | 'full' }) {
   const [wl, setWl] = useState<any | null>(null);
   const [prev, setPrev] = useState<Array<{ id: string; authorId?: string; authorName?: string; content: string; createdAt: string }>>([]);
@@ -602,18 +581,8 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
   if ((filterTeam || filterName) && !matches) return null;
   const title = (wl?.note || '').split('\n')[0] || '';
   const attachments = wl?.attachments || {};
-  const files = attachments?.files || [];
-  const firstImg = (() => {
-    const fileImg = files.find((f: any) => /(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-    if (fileImg) return absLink(fileImg.url as string);
-    const html = attachments?.contentHtml || '';
-    if (html) {
-      const abs = absolutizeUploads(html);
-      const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-      if (m && m[1]) return m[1];
-    }
-    return '';
-  })();
+  const authorId = getWorklogAuthorId(wl);
+  const firstImg = getWorklogFirstImage(wl);
   return (
     <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -625,7 +594,13 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
         <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
           <div style={{ display: 'grid', gap: 2 }}>
             <div style={{ fontWeight: 700 }}>{title || '(제목 없음)'}</div>
-            <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {(wl?.userName || '')}{wl?.teamName ? ` · ${wl.teamName}` : ''} · {formatKstYmd(c.createdAt)}{(wl as any)?.visibility ? ` · 조회권한 ${visibilityKo((wl as any).visibility)}` : ''}</div>
+            <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span>· {(wl?.userName || '')}</span>
+              {authorId ? <UserAvatar userId={authorId} name={String(wl?.userName || title || '')} size={14} /> : null}
+              {wl?.teamName ? <span>· {wl.teamName}</span> : null}
+              <span>· {formatKstYmd(c.createdAt)}</span>
+              {(wl as any)?.visibility ? <span>· 조회권한 {visibilityKo((wl as any).visibility)}</span> : null}
+            </div>
           </div>
         </div>
       </div>
