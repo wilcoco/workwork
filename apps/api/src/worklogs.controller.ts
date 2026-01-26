@@ -158,6 +158,73 @@ class CreateSimpleWorklogDto {
 export class WorklogsController {
   constructor(private prisma: PrismaService) {}
 
+  private async getScopeOrgUnitIdsForViewer(viewerId: string): Promise<Set<string>> {
+    if (!viewerId) throw new BadRequestException('viewerId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: viewerId } });
+    if (!actor) throw new BadRequestException('viewer not found');
+
+    const role = (actor.role as any) as 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | undefined;
+    const ids = new Set<string>();
+
+    if (role === 'CEO' || role === 'EXTERNAL') {
+      const all = await this.prisma.orgUnit.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
+      for (const u of all || []) {
+        if (/^personal\s*-/i.test(String((u as any).name || ''))) continue;
+        ids.add(String((u as any).id));
+      }
+      return ids;
+    }
+
+    const all = await this.prisma.orgUnit.findMany({
+      select: { id: true, name: true, parentId: true, managerId: true },
+      orderBy: { name: 'asc' },
+    });
+    const units = (all || []).filter((u: any) => !/^personal\s*-/i.test(String(u.name || '')));
+
+    const children = new Map<string | null, Array<{ id: string; name: string }>>();
+    for (const u of units) {
+      const k = (u as any).parentId || null;
+      if (!children.has(k)) children.set(k, []);
+      children.get(k)!.push({ id: String((u as any).id), name: String((u as any).name) });
+    }
+
+    const roots = units
+      .filter((u: any) => String(u.managerId || '') === String(viewerId))
+      .map((u: any) => ({ id: String(u.id), name: String(u.name) }));
+
+    const seen = new Map<string, string>();
+    const stack = [...roots];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      if (seen.has(cur.id)) continue;
+      seen.set(cur.id, cur.name);
+      const kids = children.get(cur.id) || [];
+      for (const k of kids) stack.push(k);
+    }
+    const managedIds = Array.from(seen.keys());
+
+    if (role === 'EXEC') {
+      managedIds.forEach((id) => ids.add(id));
+      return ids;
+    }
+
+    if (role === 'MANAGER') {
+      if (managedIds.length > 0) {
+        managedIds.forEach((id) => ids.add(id));
+      } else if ((actor as any).orgUnitId) {
+        ids.add(String((actor as any).orgUnitId));
+      }
+      return ids;
+    }
+
+    if (role === 'INDIVIDUAL') {
+      if ((actor as any).orgUnitId) ids.add(String((actor as any).orgUnitId));
+      return ids;
+    }
+
+    return ids;
+  }
+
   @Post()
   async create(@Body() dto: CreateWorklogDto) {
     // Determine initiative: use provided, or (if process context provided) auto-create under user's OKR scaffold
@@ -1074,12 +1141,24 @@ export class WorklogsController {
     if (!apiKey) {
       throw new BadRequestException('Missing OPENAI_API_KEY (or *_CAMS / *_IAT). Set it as a Railway env var.');
     }
+    if (!viewerId) throw new BadRequestException('viewerId required');
     const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
     const now = new Date();
     const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
     const baseWhere: any = { date: { gte: from, lte: now } };
-    if (teamName) baseWhere.createdBy = { orgUnit: { name: teamName } };
-    if (userName) baseWhere.createdBy = { ...(baseWhere.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+
+    const scopeOrgUnitIds = await this.getScopeOrgUnitIdsForViewer(String(viewerId));
+    if (scopeOrgUnitIds.size === 0) {
+      return { from: from.toISOString(), to: now.toISOString(), days, summary: '' };
+    }
+
+    const createdByWhere: any = {
+      ...(baseWhere.createdBy || {}),
+      orgUnitId: { in: Array.from(scopeOrgUnitIds) },
+    };
+    if (teamName) createdByWhere.orgUnit = { name: teamName };
+    if (userName) createdByWhere.name = { contains: userName, mode: 'insensitive' as any };
+    baseWhere.createdBy = createdByWhere;
 
     let visibilityIn: Array<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'> = ['ALL'];
     if (viewerId) {
