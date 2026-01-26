@@ -30,7 +30,7 @@ export function Home() {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [filterTeam, setFilterTeam] = useState('');
   const [filterName, setFilterName] = useState('');
-  const [viewMode, setViewMode] = useState<'summary'|'full'>('summary');
+  const [viewMode, setViewMode] = useState<'summary'|'full'>('full');
   const [isMobile, setIsMobile] = useState(false);
   const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('urgent');
   const [worklogDays, setWorklogDays] = useState(3);
@@ -551,10 +551,23 @@ function getWorklogFirstImage(w: any): string {
   }
 
   const note = String(w?.note || '').trim();
-  if (note && /<img\b/i.test(note)) {
-    const abs = absolutizeUploads(note);
-    const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
-    if (m && m[1]) return m[1];
+  if (note) {
+    const absNote = absolutizeUploads(note);
+    const m1 = absNote.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (m1 && m1[1]) return m1[1];
+
+    const m2 = note.match(/!\[[^\]]*\]\(([^)]+)\)/);
+    if (m2 && m2[1]) {
+      const raw = String(m2[1]).trim();
+      const normalized = raw.startsWith('uploads/') || raw.startsWith('files/') ? `/${raw}` : raw;
+      return absLink(normalized);
+    }
+
+    const m3 = note.match(/(https?:\/\/[^\s)"']+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?[^\s)"']*)?)/i);
+    if (m3 && m3[1]) return m3[1];
+
+    const m4 = note.match(/(\/(?:uploads|files)\/[^\s)"']+\.(?:png|jpe?g|gif|webp|bmp|svg)(?:\?[^\s)"']*)?)/i);
+    if (m4 && m4[1]) return absLink(m4[1]);
   }
 
   return '';
