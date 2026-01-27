@@ -1005,11 +1005,125 @@ export class WorklogsController {
       const wl = await (tx as any).worklog.findUnique({ where: { id } });
       if (!wl) return { ok: true, deleted: false };
 
+      const parsePreds = (s: any): string[] =>
+        String(s || '')
+          .split(',')
+          .map((x) => String(x || '').trim())
+          .filter(Boolean);
+
       await (tx as any).progressEntry.deleteMany({ where: { worklogId: id } });
       await (tx as any).feedback.deleteMany({ where: { subjectType: 'Worklog', subjectId: id } });
       await (tx as any).share.deleteMany({ where: { subjectType: 'Worklog', subjectId: id } });
       await (tx as any).notification.deleteMany({ where: { subjectType: 'Worklog', subjectId: id } });
       await (tx as any).event.deleteMany({ where: { subjectType: 'Worklog', subjectId: id } });
+
+      const legacyTask = await (tx as any).processTaskInstance.findFirst({ where: { worklogId: id } });
+      const linkedTask = wl.processTaskInstanceId
+        ? await (tx as any).processTaskInstance.findUnique({ where: { id: String(wl.processTaskInstanceId) } })
+        : null;
+      const completionTask = legacyTask || linkedTask;
+
+      if (completionTask && String(completionTask.instanceId || '') && String(completionTask.taskTemplateId || '')) {
+        const isCompleted = String(completionTask.status || '').toUpperCase() === 'COMPLETED';
+        const directWorklogMatch = String(completionTask.worklogId || '') === String(id);
+        let implicitWorklogMatch = false;
+        if (!completionTask.worklogId && String(wl.processTaskInstanceId || '') === String(completionTask.id)) {
+          const others = await (tx as any).worklog.count({
+            where: { processTaskInstanceId: String(completionTask.id), id: { not: String(id) } },
+          });
+          implicitWorklogMatch = (others || 0) === 0;
+        }
+        const isCompletionWorklog = directWorklogMatch || implicitWorklogMatch;
+
+        if (isCompleted && isCompletionWorklog) {
+          const instanceId = String(completionTask.instanceId);
+          const taskTemplateId = String(completionTask.taskTemplateId);
+
+          const tmpl = await (tx as any).processTaskTemplate.findUnique({ where: { id: taskTemplateId } });
+          const processTemplateId = String((tmpl as any)?.processTemplateId || '');
+          if (processTemplateId) {
+            const all = await (tx as any).processTaskTemplate.findMany({ where: { processTemplateId } });
+            const directDownstream = (all || []).filter((t: any) => parsePreds(t.predecessorIds).includes(taskTemplateId));
+            const downstreamTemplateIds = directDownstream.map((t: any) => String(t.id));
+
+            if (downstreamTemplateIds.length) {
+              const progressed = await (tx as any).processTaskInstance.findFirst({
+                where: {
+                  instanceId,
+                  taskTemplateId: { in: downstreamTemplateIds },
+                  status: { in: ['IN_PROGRESS', 'COMPLETED', 'SKIPPED'] },
+                },
+                select: { id: true },
+              });
+              if (progressed) throw new BadRequestException('하위 단계가 진행되어 삭제할 수 없습니다');
+            }
+
+            const chainProgressed = await (tx as any).processTaskInstance.findFirst({
+              where: {
+                instanceId,
+                taskTemplateId,
+                id: { not: String(completionTask.id) },
+                status: { in: ['IN_PROGRESS', 'COMPLETED'] },
+              },
+              select: { id: true },
+            });
+            if (chainProgressed) throw new BadRequestException('하위 단계가 진행되어 삭제할 수 없습니다');
+
+            await (tx as any).processTaskInstance.update({
+              where: { id: String(completionTask.id) },
+              data: {
+                status: 'NOT_STARTED',
+                actualStartAt: null,
+                actualEndAt: null,
+                worklogId: null,
+                cooperationId: null,
+                approvalRequestId: null,
+                decidedById: String(userId || ''),
+                decisionReason: 'worklog deleted',
+              },
+            });
+
+            const inst = await (tx as any).processInstance.findUnique({ where: { id: instanceId }, select: { status: true } });
+            if (String((inst as any)?.status || '').toUpperCase() === 'COMPLETED') {
+              await (tx as any).processInstance.update({ where: { id: instanceId }, data: { status: 'ACTIVE', endAt: null } });
+            }
+
+            for (const dt of directDownstream) {
+              const preds = parsePreds((dt as any).predecessorIds);
+              if (!preds.length) continue;
+              const predInstances = await (tx as any).processTaskInstance.findMany({
+                where: { instanceId, taskTemplateId: { in: preds } },
+                select: { taskTemplateId: true, status: true },
+              });
+              const mode = String((dt as any).predecessorMode || '').toUpperCase();
+              let ok = true;
+              if (mode === 'ANY') {
+                ok = predInstances.some((pi: any) => String(pi.status).toUpperCase() === 'COMPLETED');
+              } else {
+                if (predInstances.length < preds.length) ok = false;
+                else {
+                  ok = predInstances.every((pi: any) => {
+                    const s = String(pi.status).toUpperCase();
+                    return s === 'COMPLETED' || s === 'SKIPPED';
+                  });
+                }
+              }
+              if (!ok) {
+                await (tx as any).processTaskInstance.updateMany({
+                  where: { instanceId, taskTemplateId: String(dt.id), status: 'READY' },
+                  data: { status: 'NOT_STARTED', actualStartAt: null, actualEndAt: null },
+                });
+              }
+            }
+
+            await (tx as any).processTaskInstance.updateMany({
+              where: { instanceId, taskTemplateId, status: 'READY' },
+              data: { status: 'CHAIN_WAIT', actualStartAt: null, actualEndAt: null },
+            });
+          }
+        }
+      }
+
       await (tx as any).processTaskInstance.updateMany({ where: { worklogId: id }, data: { worklogId: null } });
 
       await (tx as any).worklog.delete({ where: { id } });
