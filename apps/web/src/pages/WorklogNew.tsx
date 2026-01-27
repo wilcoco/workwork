@@ -227,7 +227,14 @@ export function WorklogNew() {
           <div style={{ fontSize: 13, color: '#92400e', fontWeight: 700, lineHeight: 1.45 }}>
             현재 공식 업무일지는 기존 팀즈입니다. 이 업무일지는 현재 테스트 중이므로 일부 기능 사용해보시고 주된 업무 보고는 기존 업무일지를 사용하세요
           </div>
-          <button type="button" className="btn btn-ghost" style={{ marginLeft: 'auto', padding: '0 10px', height: 28 }} onClick={closeNotice}>닫기</button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ marginLeft: 'auto', padding: '0 10px', height: 28, lineHeight: '28px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', fontSize: 12, boxSizing: 'border-box' }}
+            onClick={closeNotice}
+          >
+            닫기
+          </button>
         </div>
       ) : null}
 
