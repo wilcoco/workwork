@@ -1377,6 +1377,7 @@ export class WorklogsController {
     @Query('includeProcess') includeProcess?: string,
     @Query('includeHelp') includeHelp?: string,
     @Query('includeApprovals') includeApprovals?: string,
+    @Query('includeEvaluation') includeEvaluation?: string,
   ) {
     const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
     if (!apiKey) {
@@ -1470,17 +1471,18 @@ export class WorklogsController {
     const wantsProcess = includeProcess === '1' || includeProcess === 'true';
     const wantsHelp = includeHelp === '1' || includeHelp === 'true';
     const wantsApprovals = includeApprovals === '1' || includeApprovals === 'true';
+    const wantsEvaluation = includeEvaluation === '1' || includeEvaluation === 'true';
 
     const targetUserIds = (async () => {
       if (teamName || userName) {
         const createdByWhere2: any = { orgUnitId: { in: Array.from(scopeOrgUnitIds) } };
         if (teamName) createdByWhere2.orgUnit = { name: teamName };
         if (userName) createdByWhere2.name = { contains: userName, mode: 'insensitive' as any };
-        const us = await this.prisma.user.findMany({ where: createdByWhere2, select: { id: true, name: true, orgUnit: { select: { name: true } } }, take: 50 });
-        return (us || []).map((u: any) => ({ id: String(u.id), name: String(u.name || ''), team: String(u.orgUnit?.name || '') }));
+        const us = await this.prisma.user.findMany({ where: createdByWhere2, select: { id: true, name: true, orgUnitId: true, orgUnit: { select: { name: true } } }, take: 50 });
+        return (us || []).map((u: any) => ({ id: String(u.id), name: String(u.name || ''), orgUnitId: String(u.orgUnitId || ''), team: String(u.orgUnit?.name || '') }));
       }
-      const u = await this.prisma.user.findUnique({ where: { id: String(viewerId) }, select: { id: true, name: true, orgUnit: { select: { name: true } } } });
-      return u ? [{ id: String(u.id), name: String((u as any).name || ''), team: String((u as any).orgUnit?.name || '') }] : [];
+      const u = await this.prisma.user.findUnique({ where: { id: String(viewerId) }, select: { id: true, name: true, orgUnitId: true, orgUnit: { select: { name: true } } } });
+      return u ? [{ id: String(u.id), name: String((u as any).name || ''), orgUnitId: String((u as any).orgUnitId || ''), team: String((u as any).orgUnit?.name || '') }] : [];
     })();
 
     const whoList = await targetUserIds;
@@ -1552,9 +1554,131 @@ export class WorklogsController {
     }
 
     const statusContext = statusLines.length ? statusLines.join('\n') : '';
+
+    const evalLines: string[] = [];
+    const epush = (s: string) => {
+      const v = String(s || '').trim();
+      if (!v) return;
+      if (evalLines.length >= 80) return;
+      evalLines.push(v);
+    };
+
+    if (wantsEvaluation) {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const ymds: string[] = [];
+      for (let i = 0; i < days; i += 1) {
+        ymds.push(kstYmd(new Date(from.getTime() + i * dayMs)));
+      }
+
+      const teamIdsSet = new Set<string>();
+      for (const it of items || []) {
+        const ouId = String((it as any)?.createdBy?.orgUnitId || '').trim();
+        if (ouId && scopeOrgUnitIds.has(ouId)) teamIdsSet.add(ouId);
+      }
+      for (const u of whoList || []) {
+        const ouId = String((u as any)?.orgUnitId || '').trim();
+        if (ouId && scopeOrgUnitIds.has(ouId)) teamIdsSet.add(ouId);
+      }
+      let teamIds = Array.from(teamIdsSet);
+      if (!teamIds.length) {
+        teamIds = Array.from(scopeOrgUnitIds).slice(0, 12);
+      }
+
+      const teamEvalRows = teamIds.length
+        ? await (this.prisma as any).worklogTeamDailyEval.findMany({
+            where: {
+              ymd: { in: ymds },
+              orgUnitId: { in: teamIds },
+              evaluator: { role: { in: ['CEO', 'EXEC', 'MANAGER'] as any } },
+            },
+            include: {
+              orgUnit: true,
+              evaluator: { select: { id: true, name: true, role: true } },
+            },
+            orderBy: [{ orgUnit: { name: 'asc' } }, { ymd: 'asc' }, { updatedAt: 'desc' }],
+            take: 2000,
+          })
+        : [];
+
+      const byTeam = new Map<string, { name: string; counts: any; comments: Array<{ ymd: string; evaluatorName: string; evaluatorRole: string; status: string; comment: string }> }>();
+      for (const r of teamEvalRows || []) {
+        const ouId = String((r as any).orgUnitId || '');
+        const ouName = String((r as any)?.orgUnit?.name || ouId);
+        if (!byTeam.has(ouId)) byTeam.set(ouId, { name: ouName, counts: { BLUE: 0, GREEN: 0, YELLOW: 0, RED: 0 }, comments: [] });
+        const cur = byTeam.get(ouId)!;
+        const st = String((r as any).status || '').toUpperCase();
+        if (cur.counts[st] != null) cur.counts[st] += 1;
+        const cmt = String((r as any).comment || '').trim();
+        if (cmt) {
+          cur.comments.push({
+            ymd: String((r as any).ymd || ''),
+            evaluatorName: String((r as any)?.evaluator?.name || ''),
+            evaluatorRole: String((r as any)?.evaluator?.role || ''),
+            status: st,
+            comment: cmt.slice(0, 160),
+          });
+        }
+      }
+
+      if (byTeam.size) {
+        epush('[팀 평가(팀장/임원)]');
+        for (const t of Array.from(byTeam.values())) {
+          const c = t.counts;
+          const base = `- ${t.name} · 파랑 ${c.BLUE || 0} / 초록 ${c.GREEN || 0} / 노랑 ${c.YELLOW || 0} / 빨강 ${c.RED || 0}`;
+          const cmts = (t.comments || []).slice(-3).map((x) => `${x.ymd} ${x.status} · 평가자=${x.evaluatorName}(${x.evaluatorRole}) · ${x.comment}`);
+          epush(cmts.length ? `${base}\n  ${cmts.map((x) => `- ${x}`).join('\n  ')}` : base);
+        }
+      }
+
+      if (whoIds.length) {
+        const fbRows = await this.prisma.feedback.findMany({
+          where: {
+            subjectType: 'User',
+            subjectId: { in: whoIds },
+            createdAt: { gte: from, lte: to },
+            author: { role: { in: ['CEO', 'EXEC', 'MANAGER'] as any } },
+          },
+          include: { author: true },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+        });
+
+        const whoById = new Map<string, any>();
+        for (const u of whoList || []) whoById.set(String((u as any).id), u);
+
+        const byUser = new Map<string, any[]>();
+        for (const f of fbRows || []) {
+          const sid = String((f as any).subjectId || '');
+          if (!sid) continue;
+          if (!byUser.has(sid)) byUser.set(sid, []);
+          byUser.get(sid)!.push(f as any);
+        }
+
+        if (byUser.size) {
+          epush('[개인 평가(팀장/임원)]');
+          for (const [uid, arr] of byUser) {
+            const u = whoById.get(uid);
+            const name = String(u?.name || uid);
+            const team = String(u?.team || '').trim();
+            const header = `- ${team ? `${team} / ` : ''}${name} · ${arr.length}건`;
+            const previews = (arr || []).slice(0, 3).map((x: any) => {
+              const ymd = x.createdAt ? kstYmd(new Date(x.createdAt)) : '';
+              const authorName = String(x?.author?.name || '');
+              const authorRole = String(x?.author?.role || '');
+              const rating = x.rating != null ? ` · 평점=${x.rating}` : '';
+              const content = String(x.content || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+              return `${ymd} · 평가자=${authorName}(${authorRole})${rating} · ${content}`;
+            });
+            epush(previews.length ? `${header}\n  ${previews.map((x: string) => `- ${x}`).join('\n  ')}` : header);
+          }
+        }
+      }
+    }
+
+    const evaluationContext = evalLines.length ? evalLines.join('\n') : '';
     const q = String(question || '').trim();
-    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지와(선택 시) 현재 진행 현황을 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요.';
-    const user = `기간: ${kstYmd(from)} ~ ${kstYmd(to)} (총 ${days}일)\n\n요약을 작성해 주세요.\n- 팀별로 먼저 요약\n- 개인별 한줄 요약\n- 마지막에 전체 하이라이트 3개, 리스크 3개, 다음 액션 3개\n\n${q ? `[추가 문의사항]\n${q}\n\n추가 문의사항이 있으면 별도 섹션에서 답변해 주세요.\n\n` : ''}${statusContext ? `[현재 진행 현황]\n${statusContext}\n\n` : ''}[업무일지 데이터]\n${context}`;
+    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지와(선택 시) 현재 진행 현황/평가 정보를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요.';
+    const user = `기간: ${kstYmd(from)} ~ ${kstYmd(to)} (총 ${days}일)\n\n요약을 작성해 주세요.\n- 팀별로 먼저 요약\n- 개인별 한줄 요약\n- 마지막에 전체 하이라이트 3개, 리스크 3개, 다음 액션 3개\n\n${q ? `[추가 문의사항]\n${q}\n\n추가 문의사항이 있으면 별도 섹션에서 답변해 주세요.\n\n` : ''}${statusContext ? `[현재 진행 현황]\n${statusContext}\n\n` : ''}${evaluationContext ? `[업무 평가(팀장/임원)]\n${evaluationContext}\n\n` : ''}[업무일지 데이터]\n${context}`;
     // Call OpenAI
     const f: any = (globalThis as any).fetch;
     if (!f) {

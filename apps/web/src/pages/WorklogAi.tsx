@@ -49,6 +49,7 @@ export function WorklogAi() {
   const [includeProcess, setIncludeProcess] = useState(true);
   const [includeHelp, setIncludeHelp] = useState(true);
   const [includeApprovals, setIncludeApprovals] = useState(true);
+  const [includeEvaluation, setIncludeEvaluation] = useState(true);
 
   const [me, setMe] = useState<Me | null>(null);
   const [teams, setTeams] = useState<OrgUnitItem[]>([]);
@@ -69,6 +70,7 @@ export function WorklogAi() {
       params.set('includeProcess', includeProcess ? '1' : '0');
       params.set('includeHelp', includeHelp ? '1' : '0');
       params.set('includeApprovals', includeApprovals ? '1' : '0');
+      params.set('includeEvaluation', includeEvaluation ? '1' : '0');
 
       const r = await apiJson<{ from: string; to: string; days: number; summary: string }>(`/api/worklogs/ai/summary?${params.toString()}`);
       setSummary(r.summary || '');
@@ -252,6 +254,10 @@ export function WorklogAi() {
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: '#0f172a' }}>
             <input type="checkbox" checked={includeApprovals} onChange={(e) => setIncludeApprovals(e.target.checked)} />
             결재 대기 포함
+          </label>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: '#0f172a' }}>
+            <input type="checkbox" checked={includeEvaluation} onChange={(e) => setIncludeEvaluation(e.target.checked)} />
+            업무 평가 포함
           </label>
         </div>
       </div>
