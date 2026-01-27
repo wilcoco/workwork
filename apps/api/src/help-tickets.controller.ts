@@ -44,6 +44,10 @@ class ActDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  @IsOptional()
+  @IsString()
+  worklogId?: string;
 }
 
 class ListQueryDto {
@@ -361,6 +365,7 @@ export class HelpTicketsController {
         subjectId: ticket.id,
         activity: 'HelpStarted',
         userId: dto.actorId,
+        attrs: dto.worklogId ? { worklogId: dto.worklogId } : undefined,
       },
     });
     return ticket;
@@ -394,7 +399,7 @@ export class HelpTicketsController {
   }
 
   @Post(':id/resolve')
-  async resolve(@Param('id') id: string, @Body() dto: ActDto & { worklogId?: string }) {
+  async resolve(@Param('id') id: string, @Body() dto: ActDto) {
     const ticket = await this.prisma.helpTicket.update({
       where: { id },
       data: { status: 'DONE', resolvedAt: new Date() },
@@ -405,7 +410,7 @@ export class HelpTicketsController {
         subjectId: ticket.id,
         activity: 'HelpResolved',
         userId: dto.actorId,
-        attrs: { worklogId: dto.worklogId },
+        attrs: dto.worklogId ? { worklogId: dto.worklogId } : undefined,
       },
     });
     await this.prisma.notification.create({

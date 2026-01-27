@@ -424,10 +424,17 @@ export function WorklogQuickNew() {
       // Help: 업무 요청 선택으로 생성된 업무일지인 경우, 해당 HelpTicket을 업무 요청 완료로 표시하고 대응 업무일지 링크를 저장한다.
       if (isHelp) {
         const ticketId = selectedId;
-        await apiJson(`/api/help-tickets/${encodeURIComponent(ticketId)}/resolve`, {
-          method: 'POST',
-          body: JSON.stringify({ actorId: userId, worklogId: wl.id }),
-        });
+        if (initiativeDone) {
+          await apiJson(`/api/help-tickets/${encodeURIComponent(ticketId)}/resolve`, {
+            method: 'POST',
+            body: JSON.stringify({ actorId: userId, worklogId: wl.id }),
+          });
+        } else {
+          await apiJson(`/api/help-tickets/${encodeURIComponent(ticketId)}/start`, {
+            method: 'POST',
+            body: JSON.stringify({ actorId: userId, worklogId: wl.id }),
+          });
+        }
       }
       // If process task selected or coming from process inbox, link worklog to task
       if (isProc || taskInstanceId) {

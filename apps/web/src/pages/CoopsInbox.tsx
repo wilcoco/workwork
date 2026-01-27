@@ -11,7 +11,7 @@ export function CoopsInbox() {
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<{ ticket: any; requestWl: any | null; responseWl: any | null } | null>(null);
   const [docLoading, setDocLoading] = useState(false);
-  const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'ACCEPTED' | 'CANCELLED'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'ACCEPTED' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED'>('ALL');
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -82,7 +82,7 @@ export function CoopsInbox() {
       }
       await apiJson(`/api/help-tickets/${encodeURIComponent(ticketId)}/${kind}`, { method: 'POST', body: JSON.stringify(body) });
       if (kind === 'accept') {
-        window.alert('업무 요청을 수락했습니다.\n\n이 요청은 업무일지에 해당 업무 요청(업무 협조) 과제로 등록됩니다.\n향후 업무 진행 시 업무일지에서 해당 업무 요청을 선택해 처리 결과를 작성하면 요청이 완료됩니다.');
+        window.alert('업무 요청을 수락했습니다.\n\n이 요청은 업무일지에 해당 업무 요청(업무 협조) 과제로 등록됩니다.\n업무일지에서 해당 업무 요청을 선택해 진행 내용을 작성할 수 있으며, "과제 완료"를 체크하면 요청이 완료로 처리됩니다.');
         const go = window.confirm('지금 업무일지(빠른 작성)로 이동할까요?');
         if (go) nav(`/quick?helpTicketId=${encodeURIComponent(ticketId)}`);
       }
@@ -98,7 +98,9 @@ export function CoopsInbox() {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" onClick={() => setFilter('ALL')} style={filter === 'ALL' ? primaryBtn : ghostBtn}>전체</button>
         <button type="button" onClick={() => setFilter('OPEN')} style={filter === 'OPEN' ? primaryBtn : ghostBtn}>미수신</button>
-        <button type="button" onClick={() => setFilter('ACCEPTED')} style={filter === 'ACCEPTED' ? primaryBtn : ghostBtn}>수락/진행/완료</button>
+        <button type="button" onClick={() => setFilter('ACCEPTED')} style={filter === 'ACCEPTED' ? primaryBtn : ghostBtn}>수락</button>
+        <button type="button" onClick={() => setFilter('IN_PROGRESS')} style={filter === 'IN_PROGRESS' ? primaryBtn : ghostBtn}>진행</button>
+        <button type="button" onClick={() => setFilter('DONE')} style={filter === 'DONE' ? primaryBtn : ghostBtn}>완료</button>
         <button type="button" onClick={() => setFilter('CANCELLED')} style={filter === 'CANCELLED' ? primaryBtn : ghostBtn}>거절</button>
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
@@ -107,13 +109,15 @@ export function CoopsInbox() {
             if (filter === 'ALL') return true;
             if (filter === 'OPEN') return t.status === 'OPEN';
             if (filter === 'CANCELLED') return t.status === 'CANCELLED';
-            if (filter === 'ACCEPTED') return t.status !== 'OPEN' && t.status !== 'CANCELLED';
+            if (filter === 'ACCEPTED') return t.status === 'ACCEPTED';
+            if (filter === 'IN_PROGRESS') return t.status === 'IN_PROGRESS' || t.status === 'BLOCKED';
+            if (filter === 'DONE') return t.status === 'DONE';
             return true;
           })
           .map((t) => {
             const isOpen = t.status === 'OPEN';
             const isCancelled = t.status === 'CANCELLED';
-            const canWrite = !isOpen && !isCancelled;
+            const canWrite = t.status === 'ACCEPTED' || t.status === 'IN_PROGRESS' || t.status === 'BLOCKED';
             return (
               <div key={t.id} style={card} onClick={() => openDoc(t)}>
                 <CoopDocument ticket={t} variant="compact" />
@@ -144,6 +148,7 @@ export function CoopsInbox() {
               const responseWl = active.responseWl;
               const isOpen = ticket?.status === 'OPEN';
               const isCancelled = ticket?.status === 'CANCELLED';
+              const canWrite = ticket?.status === 'ACCEPTED' || ticket?.status === 'IN_PROGRESS' || ticket?.status === 'BLOCKED';
               return (
                 <div style={{ display: 'grid', gap: 8 }}>
                   <div style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
@@ -157,7 +162,7 @@ export function CoopsInbox() {
                         <button onClick={() => act('decline', ticket.id)} style={ghostBtn}>거절</button>
                       </>
                     )}
-                    {!isOpen && !isCancelled && (
+                    {canWrite && (
                       <button onClick={() => nav(`/quick?helpTicketId=${encodeURIComponent(ticket.id)}`)} style={primaryBtn}>업무일지 작성</button>
                     )}
                     <button onClick={() => setActive(null)} style={ghostBtn}>닫기</button>
