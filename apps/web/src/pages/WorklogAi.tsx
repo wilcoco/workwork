@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { formatKstYmd } from '../lib/time';
 
 type Me = {
   id: string;
@@ -19,6 +21,7 @@ type UserItem = {
 };
 
 export function WorklogAi() {
+  const nav = useNavigate();
   const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(false);
@@ -29,6 +32,8 @@ export function WorklogAi() {
   const [user, setUser] = useState('');
   const [options, setOptions] = useState<{ teams: string[]; users: string[] }>({ teams: [], users: [] });
   const [isMobile, setIsMobile] = useState(false);
+  const [overdue, setOverdue] = useState<any | null>(null);
+  const [overdueError, setOverdueError] = useState<string | null>(null);
 
   const [me, setMe] = useState<Me | null>(null);
   const [teams, setTeams] = useState<OrgUnitItem[]>([]);
@@ -169,12 +174,133 @@ export function WorklogAi() {
     };
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        if (!myUserId) return;
+        setOverdueError(null);
+        const r = await apiJson<any>(`/api/users/overdue?userId=${encodeURIComponent(myUserId)}`);
+        setOverdue(r || null);
+      } catch (e: any) {
+        setOverdue(null);
+        setOverdueError(e?.message || '오버듀 로드 실패');
+      }
+    })();
+  }, [myUserId]);
+
   const filteredUsers = useMemo(() => {
     return options.users;
   }, [options.users]);
 
   return (
     <div className="content" style={{ display: 'grid', gap: 12 }}>
+      {overdueError && <div style={{ color: 'red' }}>{overdueError}</div>}
+      {(() => {
+        if (!overdue) return null;
+        const total = Number(overdue?.counts?.total || 0);
+        const items = Array.isArray(overdue?.items) ? overdue.items : [];
+        const kindKey = (it: any) => String(it?.kind || '').toUpperCase();
+        const procCount = Number(overdue?.counts?.processInstances || 0) + Number(overdue?.counts?.processTasks || 0);
+        const approvalCount = Number(overdue?.counts?.approvals || 0);
+        const helpCount = Number(overdue?.counts?.helpTickets || 0);
+        const delegationCount = Number(overdue?.counts?.delegations || 0);
+        const initiativeCount = Number(overdue?.counts?.initiatives || 0);
+        const preview = (() => {
+          const byKind = new Map<string, any[]>();
+          for (const it of items) {
+            const k = kindKey(it);
+            const arr = byKind.get(k) || [];
+            arr.push(it);
+            byKind.set(k, arr);
+          }
+          const preferred = ['PROCESS_TASK', 'PROCESS_INSTANCE', 'HELP_TICKET', 'APPROVAL', 'DELEGATION', 'INITIATIVE'];
+          const seen = new Set<string>();
+          const out: any[] = [];
+          for (const k of preferred) {
+            const arr = byKind.get(k) || [];
+            if (!arr.length) continue;
+            const it = arr[0];
+            const key = `${kindKey(it)}-${String(it?.id || '')}`;
+            if (seen.has(key)) continue;
+            out.push(it);
+            seen.add(key);
+            if (out.length >= 7) return out;
+          }
+          for (const it of items) {
+            const key = `${kindKey(it)}-${String(it?.id || '')}`;
+            if (seen.has(key)) continue;
+            out.push(it);
+            seen.add(key);
+            if (out.length >= 7) break;
+          }
+          return out;
+        })();
+        const label = (k: any) => {
+          const key = String(k || '').toUpperCase();
+          if (key === 'PROCESS_TASK' || key === 'PROCESS_INSTANCE') return '프로세스';
+          if (key === 'APPROVAL') return '결재';
+          if (key === 'HELP_TICKET') return '업무요청';
+          if (key === 'DELEGATION') return '위임';
+          if (key === 'INITIATIVE') return '과제';
+          return key || '기타';
+        };
+        return (
+          <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontWeight: 900, color: '#0f172a' }}>마감 초과</div>
+              <div style={{ marginLeft: 'auto', fontSize: 12, color: total ? '#b91c1c' : '#64748b', fontWeight: 800 }}>
+                {total ? `총 ${total}건` : '없음'}
+              </div>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, color: '#64748b', fontWeight: 700 }}>
+              {procCount ? `프로세스 ${procCount} · ` : ''}
+              {helpCount ? `업무요청 ${helpCount} · ` : ''}
+              {approvalCount ? `결재 ${approvalCount} · ` : ''}
+              {delegationCount ? `위임 ${delegationCount} · ` : ''}
+              {initiativeCount ? `과제 ${initiativeCount}` : ''}
+            </div>
+            {total ? (
+              <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
+                {preview.map((it: any) => {
+                  const key = `${String(it?.kind || '')}-${String(it?.id || '')}`;
+                  const due = it?.dueAt ? formatKstYmd(it.dueAt) : '';
+                  const href = String(it?.link || '').trim();
+                  const title = String(it?.title || '').trim() || '(제목 없음)';
+                  const assignee = String(it?.assigneeName || '').trim();
+                  const overdueDays = Number(it?.overdueDays || 0) || 0;
+                  return (
+                    <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: '#991b1b', minWidth: 64 }}>{label(it?.kind)}</div>
+                      {href ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 13, color: '#0f172a', textDecoration: 'underline', textAlign: 'left' as any }}
+                          onClick={() => nav(href)}
+                        >
+                          {title}
+                        </button>
+                      ) : (
+                        <div style={{ fontSize: 13, color: '#0f172a' }}>{title}</div>
+                      )}
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {assignee ? <div style={{ fontSize: 12, color: '#64748b' }}>{assignee}</div> : null}
+                        <div style={{ fontSize: 12, color: '#64748b' }}>{due}</div>
+                        {overdueDays ? <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 800 }}>{`초과 ${overdueDays}일`}</div> : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {total > preview.length ? (
+                  <div style={{ fontSize: 12, color: '#64748b' }}>외 {total - preview.length}건</div>
+                ) : null}
+              </div>
+            ) : (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>마감 초과 항목 없음</div>
+            )}
+          </div>
+        );
+      })()}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
           <select value={team} onChange={(e) => { setTeam(e.target.value); setUser(''); }} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any, width: '100%' }}>

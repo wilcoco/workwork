@@ -290,7 +290,8 @@ export class UsersController {
     const now = new Date();
     const limit = 50;
 
-    const [procTasksRaw, procInstRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
+    const [me, procTasksRaw, procInstRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: String(userId) }, select: { id: true, name: true } }),
       (this.prisma as any).processTaskInstance.findMany({
         where: {
           assigneeId: String(userId),
@@ -384,6 +385,8 @@ export class UsersController {
     };
 
     const items: any[] = [];
+    const assigneeId = String(userId);
+    const assigneeName = String((me as any)?.name || '').trim() || assigneeId;
 
     for (const p of (procInstRaw || [])) {
       const dueAt = (p as any).expectedEndAt || null;
@@ -395,6 +398,8 @@ export class UsersController {
         module: 'PROCESS',
         kind: 'PROCESS_INSTANCE',
         id: String((p as any).id),
+        assigneeId,
+        assigneeName,
         dueAt: new Date(ms).toISOString(),
         overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
         title: String((p as any).title || ''),
@@ -418,6 +423,8 @@ export class UsersController {
         module: 'PROCESS',
         kind: 'PROCESS_TASK',
         id: String((t as any).id),
+        assigneeId,
+        assigneeName,
         dueAt: new Date(ms).toISOString(),
         overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
         title: String((t as any).name || ''),
@@ -476,6 +483,8 @@ export class UsersController {
         module: 'APPROVALS',
         kind: 'APPROVAL',
         id: String((a as any).id),
+        assigneeId,
+        assigneeName,
         dueAt: new Date(ms).toISOString(),
         overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
         title,
@@ -529,6 +538,8 @@ export class UsersController {
         module: 'COOPS',
         kind: 'HELP_TICKET',
         id: String((t as any).id),
+        assigneeId,
+        assigneeName,
         dueAt: new Date(ms).toISOString(),
         overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
         title,
@@ -550,6 +561,8 @@ export class UsersController {
         module: 'DELEGATIONS',
         kind: 'DELEGATION',
         id: String((d as any).id),
+        assigneeId,
+        assigneeName,
         dueAt: new Date(ms).toISOString(),
         overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
         title: String((d as any).childInitiative?.title || '위임된 과제'),
@@ -571,6 +584,8 @@ export class UsersController {
         module: 'GOALS',
         kind: 'INITIATIVE',
         id: String((it as any).id),
+        assigneeId,
+        assigneeName,
         dueAt: new Date(ms).toISOString(),
         overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
         title: String((it as any).title || ''),

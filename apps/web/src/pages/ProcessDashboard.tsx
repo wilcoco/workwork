@@ -347,6 +347,8 @@ export function ProcessDashboard() {
                   const due = it?.dueAt ? formatKstYmd(it.dueAt) : '';
                   const href = String(it?.link || '').trim();
                   const title = String(it?.title || '').trim() || '(제목 없음)';
+                  const assignee = String(it?.assigneeName || '').trim();
+                  const overdueDays = Number(it?.overdueDays || 0) || 0;
                   return (
                     <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <div style={{ fontSize: 12, fontWeight: 800, color: '#991b1b', minWidth: 64 }}>{label(it?.kind)}</div>
@@ -362,7 +364,11 @@ export function ProcessDashboard() {
                       ) : (
                         <div style={{ fontSize: 13, color: '#0f172a' }}>{title}</div>
                       )}
-                      <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{due}</div>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {assignee ? <div style={{ fontSize: 12, color: '#64748b' }}>{assignee}</div> : null}
+                        <div style={{ fontSize: 12, color: '#64748b' }}>{due}</div>
+                        {overdueDays ? <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 800 }}>{`초과 ${overdueDays}일`}</div> : null}
+                      </div>
                     </div>
                   );
                 })}

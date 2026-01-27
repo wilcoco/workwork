@@ -238,7 +238,8 @@ export class WorklogsController {
       }
     };
 
-    const [procTasksRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
+    const [me, procTasksRaw, procInstRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: String(userId) }, select: { id: true, name: true } }),
       (this.prisma as any).processTaskInstance.findMany({
         where: {
           assigneeId: String(userId),
@@ -252,6 +253,20 @@ export class WorklogsController {
         orderBy: [{ plannedEndAt: 'asc' }, { deadlineAt: 'asc' }, { createdAt: 'asc' }],
         take: 50,
       }),
+      this.prisma.processInstance.findMany({
+        where: {
+          status: 'ACTIVE',
+          endAt: null,
+          expectedEndAt: { lt: now },
+          OR: [
+            { startedById: String(userId) },
+            { tasks: { some: { assigneeId: String(userId) } } },
+          ],
+        },
+        select: { id: true, title: true, status: true, expectedEndAt: true },
+        orderBy: [{ expectedEndAt: 'asc' }, { startAt: 'asc' }],
+        take: 50,
+      }),
       this.prisma.approvalRequest.findMany({
         where: { approverId: String(userId), status: 'PENDING' as any, dueAt: { lt: now } },
         select: { id: true, subjectType: true, subjectId: true, dueAt: true },
@@ -259,9 +274,9 @@ export class WorklogsController {
         take: 50,
       }),
       this.prisma.helpTicket.findMany({
-        where: { assigneeId: String(userId), status: { notIn: ['DONE', 'CANCELLED'] as any }, dueAt: { lt: now } },
-        select: { id: true, category: true, status: true, dueAt: true },
-        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        where: { assigneeId: String(userId), status: { notIn: ['DONE', 'CANCELLED'] as any } },
+        select: { id: true, category: true, queue: true, status: true, dueAt: true, slaMinutes: true, createdAt: true },
+        orderBy: [{ createdAt: 'asc' }],
         take: 50,
       }),
       this.prisma.delegation.findMany({
@@ -286,30 +301,111 @@ export class WorklogsController {
       lines.push(v);
     };
 
+    const assigneeName = String((me as any)?.name || '').trim() || String(userId);
+
+    for (const p of (procInstRaw || [])) {
+      const dueAt = (p as any).expectedEndAt || null;
+      if (!dueAt) continue;
+      const ms = dueMs(dueAt);
+      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
+      const procTitle = String((p as any)?.title || '').trim();
+      push(`- [프로세스] ${procTitle || '프로세스'} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
+    }
+
     for (const t of (procTasksRaw || [])) {
-      const dueAt = (t as any).deadlineAt || (t as any).plannedEndAt || null;
+      const dueAt = (t as any).plannedEndAt || (t as any).deadlineAt || null;
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
       const procTitle = String((t as any)?.instance?.title || '');
       const taskTitle = String((t as any)?.name || '');
-      push(`- [프로세스] ${procTitle} / ${taskTitle} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
+      push(`- [프로세스] ${procTitle} / ${taskTitle} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
     }
+
+    const approvalIdsWorklog: string[] = [];
+    const approvalIdsProcess: string[] = [];
+    for (const a of (approvalsRaw || [])) {
+      const st = String((a as any).subjectType || '').toUpperCase();
+      const sid = String((a as any).subjectId || '');
+      if ((st === 'WORKLOG' || st === 'WORKLOGS') && sid) approvalIdsWorklog.push(sid);
+      if (st === 'PROCESS' && sid) approvalIdsProcess.push(sid);
+    }
+    const [worklogs, procs] = await Promise.all([
+      approvalIdsWorklog.length
+        ? this.prisma.worklog.findMany({ where: { id: { in: approvalIdsWorklog } }, select: { id: true, note: true } })
+        : Promise.resolve([] as any[]),
+      approvalIdsProcess.length
+        ? (this.prisma as any).processInstance.findMany({ where: { id: { in: approvalIdsProcess } }, select: { id: true, title: true } })
+        : Promise.resolve([] as any[]),
+    ]);
+    const wlTitleMap = new Map<string, string>();
+    for (const w of (worklogs || [])) {
+      const raw = String((w as any).note || '').trim();
+      const title = raw.split('\n')[0] || raw || '';
+      wlTitleMap.set(String((w as any).id), title);
+    }
+    const procTitleMap = new Map<string, string>();
+    for (const p of (procs || [])) {
+      procTitleMap.set(String((p as any).id), String((p as any).title || ''));
+    }
+
     for (const a of (approvalsRaw || [])) {
       const dueAt = (a as any).dueAt;
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
       const st = String((a as any).subjectType || '').toUpperCase();
-      push(`- [결재] ${st || 'APPROVAL'} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+      const sid = String((a as any).subjectId || '');
+      const title = (st === 'PROCESS')
+        ? (procTitleMap.get(sid) || '프로세스 결재')
+        : (st === 'WORKLOG' || st === 'WORKLOGS')
+          ? (wlTitleMap.get(sid) || '업무일지 결재')
+          : `${st || 'APPROVAL'} 결재`;
+      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
+      push(`- [결재] ${title} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
     }
+
+    const helpIds = (helpRaw || []).map((t: any) => String(t.id)).filter(Boolean);
+    const helpReqEvents = helpIds.length
+      ? await this.prisma.event.findMany({ where: { subjectType: 'HelpTicket', activity: 'HelpRequested', subjectId: { in: helpIds } } })
+      : [];
+    const helpWorklogIds = new Set<string>();
+    const helpIdToWlId: Record<string, string> = {};
+    for (const ev of (helpReqEvents || [])) {
+      const wlId = String(((ev as any).attrs as any)?.worklogId || '').trim();
+      if (!wlId) continue;
+      helpIdToWlId[String((ev as any).subjectId)] = wlId;
+      helpWorklogIds.add(wlId);
+    }
+    const helpWls = helpWorklogIds.size
+      ? await this.prisma.worklog.findMany({ where: { id: { in: Array.from(helpWorklogIds) } }, select: { id: true, note: true } })
+      : [];
+    const helpWlTitle = new Map<string, string>();
+    for (const w of (helpWls || [])) {
+      const raw = String((w as any).note || '').trim();
+      const title = raw.split('\n')[0] || raw || '';
+      helpWlTitle.set(String((w as any).id), title);
+    }
+
     for (const h of (helpRaw || [])) {
-      const dueAt = (h as any).dueAt;
-      if (!dueAt) continue;
-      const ms = dueMs(dueAt);
+      const dueAtRaw = (h as any).dueAt;
+      const createdAtRaw = (h as any).createdAt;
+      const slaMinutes = Number((h as any).slaMinutes || 0) || 0;
+      let ms = dueAtRaw ? dueMs(dueAtRaw) : NaN;
+      if (!Number.isFinite(ms) && slaMinutes > 0 && createdAtRaw) {
+        const cMs = dueMs(createdAtRaw);
+        if (Number.isFinite(cMs)) {
+          ms = cMs + (slaMinutes * 60 * 1000);
+        }
+      }
       if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
-      const cat = String((h as any).category || '');
-      push(`- [업무요청] ${cat || 'HELP'} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
+      const wlId = helpIdToWlId[String((h as any).id)] || '';
+      const cat = String((h as any).category || '').trim();
+      const title = wlId ? (helpWlTitle.get(wlId) || '업무 요청') : (cat || '업무 요청');
+      push(`- [업무요청] ${title} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
     }
     for (const d of (delRaw || [])) {
       const dueAt = (d as any).dueAt;
@@ -318,7 +414,8 @@ export class WorklogsController {
       if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
       const title = String((d as any)?.childInitiative?.title || '위임');
       const from = String((d as any)?.delegator?.name || '').trim();
-      push(`- [위임] ${title}${from ? ` (from=${from})` : ''} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
+      push(`- [위임] ${title}${from ? ` (from=${from})` : ''} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
     }
     for (const it of (initRaw || [])) {
       const dueAt = (it as any).dueAt;
@@ -326,7 +423,8 @@ export class WorklogsController {
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
       const title = String((it as any).title || '');
-      push(`- [내 과제] ${title} (due=${new Date(ms).toISOString().slice(0, 10)})`);
+      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
+      push(`- [내 과제] ${title} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
     }
 
     if (!lines.length) return '없음';
@@ -1321,8 +1419,8 @@ export class WorklogsController {
     }
     const context = parts.join('\n');
     const overdueContext = await this.getOverdueContextForUser(String(viewerId));
-    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요. 반드시 출력에 "마감 초과(Overdue)" 섹션을 포함하고, 오버듀 여부는 주어진 오버듀 리스트만을 근거로 작성하세요.';
-    const user = `최근 ${days}일 업무일지 요약을 작성해 주세요. 팀별로 먼저 요약 후, 개인별 한줄 요약을 제시하고 마지막에 전체 하이라이트 3개와 리스크 3개, 다음 액션 3개를 제안해 주세요.\n\n추가 요구: 아래 [오버듀(마감 초과) 리스트]를 기반으로, 내게 할당된 마감 초과 항목이 있는지/어떤 과제(특히 프로세스)에 속해있는지 반드시 요약에 포함해 주세요.\n\n[오버듀(마감 초과) 리스트]\n${overdueContext}\n\n[업무일지 데이터]\n${context}`;
+    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요. 반드시 출력에 "마감 초과(Overdue)" 섹션을 포함하고, 오버듀 여부는 주어진 오버듀 리스트만을 근거로 작성하세요. "마감 초과(Overdue)" 섹션에서는 각 항목을 한 줄로 나열하며, 반드시 제목/담당자/마감일/마감 초과 일수를 포함해 주세요.';
+    const user = `최근 ${days}일 업무일지 요약을 작성해 주세요. 팀별로 먼저 요약 후, 개인별 한줄 요약을 제시하고 마지막에 전체 하이라이트 3개와 리스크 3개, 다음 액션 3개를 제안해 주세요.\n\n추가 요구: 아래 [오버듀(마감 초과) 리스트]를 기반으로, 내게 할당된 마감 초과 항목이 있는지/어떤 과제(특히 프로세스)에 속해있는지 반드시 요약에 포함해 주세요.\n\n출력 형식 추가 요구(중요):\n- 반드시 "마감 초과(Overdue)" 섹션을 만들고\n- 오버듀 항목이 있으면 아래 포맷으로 항목별로 나열하세요\n  - 예시: "- [모듈] 제목 · 담당자=홍길동 · 마감=YYYY-MM-DD · 초과=N일"\n- 오버듀 항목이 없으면 "없음"만 출력하세요.\n\n[오버듀(마감 초과) 리스트]\n${overdueContext}\n\n[업무일지 데이터]\n${context}`;
     // Call OpenAI
     const f: any = (globalThis as any).fetch;
     if (!f) {
