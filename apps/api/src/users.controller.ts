@@ -288,6 +288,17 @@ export class UsersController {
   async overdue(@Query('userId') userId?: string) {
     if (!userId) throw new BadRequestException('userId required');
     const now = new Date();
+    const kstYmd = (d: any) => new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(d));
+    const kstDayStartMs = (d: any) => {
+      const ymd = kstYmd(d);
+      return new Date(`${ymd}T00:00:00+09:00`).getTime();
+    };
+    const kstTodayStart = new Date(`${kstYmd(now)}T00:00:00+09:00`);
     const limit = 50;
 
     const [me, procTasksRaw, procInstRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
@@ -297,8 +308,8 @@ export class UsersController {
           assigneeId: String(userId),
           status: { notIn: ['COMPLETED', 'SKIPPED'] as any },
           OR: [
-            { plannedEndAt: { lt: now } },
-            { deadlineAt: { lt: now } },
+            { plannedEndAt: { lt: kstTodayStart } },
+            { deadlineAt: { lt: kstTodayStart } },
           ],
         },
         include: {
@@ -312,7 +323,7 @@ export class UsersController {
         where: {
           status: 'ACTIVE',
           endAt: null,
-          expectedEndAt: { lt: now },
+          expectedEndAt: { lt: kstTodayStart },
           OR: [
             { startedById: String(userId) },
             { tasks: { some: { assigneeId: String(userId) } } },
@@ -332,7 +343,7 @@ export class UsersController {
         where: {
           approverId: String(userId),
           status: 'PENDING' as any,
-          dueAt: { lt: now },
+          dueAt: { lt: kstTodayStart },
         },
         select: { id: true, subjectType: true, subjectId: true, dueAt: true, createdAt: true },
         orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
@@ -351,7 +362,7 @@ export class UsersController {
         where: {
           delegateeId: String(userId),
           status: { notIn: ['DONE', 'REJECTED'] as any },
-          dueAt: { lt: now },
+          dueAt: { lt: kstTodayStart },
         },
         include: {
           childInitiative: { select: { id: true, title: true } },
@@ -364,7 +375,7 @@ export class UsersController {
         where: {
           ownerId: String(userId),
           state: { notIn: ['DONE', 'CANCELLED'] as any },
-          dueAt: { lt: now },
+          dueAt: { lt: kstTodayStart },
         },
         include: {
           keyResult: { include: { objective: true } },
@@ -384,6 +395,13 @@ export class UsersController {
       }
     };
 
+    const overdueDaysKst = (dueTimeMs: number) => {
+      const d0 = kstDayStartMs(dueTimeMs);
+      const n0 = kstDayStartMs(now);
+      if (!Number.isFinite(d0) || !Number.isFinite(n0)) return 0;
+      return Math.max(0, Math.floor((n0 - d0) / (24 * 60 * 60 * 1000)));
+    };
+
     const items: any[] = [];
     const assigneeId = String(userId);
     const assigneeName = String((me as any)?.name || '').trim() || assigneeId;
@@ -393,7 +411,8 @@ export class UsersController {
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms)) continue;
-      if (ms >= now.getTime()) continue;
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
       items.push({
         module: 'PROCESS',
         kind: 'PROCESS_INSTANCE',
@@ -401,7 +420,7 @@ export class UsersController {
         assigneeId,
         assigneeName,
         dueAt: new Date(ms).toISOString(),
-        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        overdueDays,
         title: String((p as any).title || ''),
         processInstanceId: String((p as any).id),
         processTitle: String((p as any).title || ''),
@@ -418,7 +437,8 @@ export class UsersController {
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms)) continue;
-      if (ms >= now.getTime()) continue;
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
       items.push({
         module: 'PROCESS',
         kind: 'PROCESS_TASK',
@@ -426,7 +446,7 @@ export class UsersController {
         assigneeId,
         assigneeName,
         dueAt: new Date(ms).toISOString(),
-        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        overdueDays,
         title: String((t as any).name || ''),
         processInstanceId: String((t as any).instanceId || (t as any).instance?.id || ''),
         processTitle: String((t as any).instance?.title || ''),
@@ -470,7 +490,8 @@ export class UsersController {
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms)) continue;
-      if (ms >= now.getTime()) continue;
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
       const subjectType = String((a as any).subjectType || '');
       const subjectId = String((a as any).subjectId || '');
       const st = subjectType.toUpperCase();
@@ -486,7 +507,7 @@ export class UsersController {
         assigneeId,
         assigneeName,
         dueAt: new Date(ms).toISOString(),
-        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        overdueDays,
         title,
         subjectType,
         subjectId,
@@ -531,7 +552,8 @@ export class UsersController {
         }
       }
       if (!Number.isFinite(ms)) continue;
-      if (ms >= now.getTime()) continue;
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
       const wlId = helpIdToWlId[String((t as any).id)] || '';
       const title = wlId ? (helpWlTitle.get(wlId) || '업무 요청') : '업무 요청';
       items.push({
@@ -541,7 +563,7 @@ export class UsersController {
         assigneeId,
         assigneeName,
         dueAt: new Date(ms).toISOString(),
-        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        overdueDays,
         title,
         category: String((t as any).category || ''),
         status: String((t as any).status || ''),
@@ -556,7 +578,8 @@ export class UsersController {
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms)) continue;
-      if (ms >= now.getTime()) continue;
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
       items.push({
         module: 'DELEGATIONS',
         kind: 'DELEGATION',
@@ -564,7 +587,7 @@ export class UsersController {
         assigneeId,
         assigneeName,
         dueAt: new Date(ms).toISOString(),
-        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        overdueDays,
         title: String((d as any).childInitiative?.title || '위임된 과제'),
         childInitiativeId: String((d as any).childInitiativeId || (d as any).childInitiative?.id || ''),
         delegatorName: String((d as any).delegator?.name || ''),
@@ -577,7 +600,8 @@ export class UsersController {
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
       if (!Number.isFinite(ms)) continue;
-      if (ms >= now.getTime()) continue;
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
       const obj = (it as any)?.keyResult?.objective;
       const isKpi = !!(obj && (obj as any).pillar != null);
       items.push({
@@ -587,7 +611,7 @@ export class UsersController {
         assigneeId,
         assigneeName,
         dueAt: new Date(ms).toISOString(),
-        overdueDays: Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000))),
+        overdueDays,
         title: String((it as any).title || ''),
         initiativeType: isKpi ? 'KPI' : 'OKR',
         keyResultTitle: String((it as any)?.keyResult?.title || ''),
@@ -597,8 +621,10 @@ export class UsersController {
     }
 
     items.sort((a, b) => {
-      const am = dueMs(a.dueAt);
-      const bm = dueMs(b.dueAt);
+      const am0 = dueMs(a.dueAt);
+      const bm0 = dueMs(b.dueAt);
+      const am = Number.isFinite(am0) ? kstDayStartMs(am0) : NaN;
+      const bm = Number.isFinite(bm0) ? kstDayStartMs(bm0) : NaN;
       if (Number.isFinite(am) && Number.isFinite(bm) && am !== bm) return am - bm;
       return (Number(b.overdueDays || 0) - Number(a.overdueDays || 0));
     });

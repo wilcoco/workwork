@@ -228,6 +228,17 @@ export class WorklogsController {
   private async getOverdueContextForUser(userId: string): Promise<string> {
     if (!userId) return '';
     const now = new Date();
+    const kstYmd = (d: any) => new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(d));
+    const kstDayStartMs = (d: any) => {
+      const ymd = kstYmd(d);
+      return new Date(`${ymd}T00:00:00+09:00`).getTime();
+    };
+    const kstTodayStart = new Date(`${kstYmd(now)}T00:00:00+09:00`);
     const dueMs = (d: any) => {
       try {
         const dt = new Date(d);
@@ -238,6 +249,13 @@ export class WorklogsController {
       }
     };
 
+    const overdueDaysKst = (dueTimeMs: number) => {
+      const d0 = kstDayStartMs(dueTimeMs);
+      const n0 = kstDayStartMs(now);
+      if (!Number.isFinite(d0) || !Number.isFinite(n0)) return 0;
+      return Math.max(0, Math.floor((n0 - d0) / (24 * 60 * 60 * 1000)));
+    };
+
     const [me, procTasksRaw, procInstRaw, approvalsRaw, helpRaw, delRaw, initRaw] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: String(userId) }, select: { id: true, name: true } }),
       (this.prisma as any).processTaskInstance.findMany({
@@ -245,8 +263,8 @@ export class WorklogsController {
           assigneeId: String(userId),
           status: { notIn: ['COMPLETED', 'SKIPPED'] as any },
           OR: [
-            { plannedEndAt: { lt: now } },
-            { deadlineAt: { lt: now } },
+            { plannedEndAt: { lt: kstTodayStart } },
+            { deadlineAt: { lt: kstTodayStart } },
           ],
         },
         include: { instance: { select: { id: true, title: true } } },
@@ -257,7 +275,7 @@ export class WorklogsController {
         where: {
           status: 'ACTIVE',
           endAt: null,
-          expectedEndAt: { lt: now },
+          expectedEndAt: { lt: kstTodayStart },
           OR: [
             { startedById: String(userId) },
             { tasks: { some: { assigneeId: String(userId) } } },
@@ -268,7 +286,7 @@ export class WorklogsController {
         take: 50,
       }),
       this.prisma.approvalRequest.findMany({
-        where: { approverId: String(userId), status: 'PENDING' as any, dueAt: { lt: now } },
+        where: { approverId: String(userId), status: 'PENDING' as any, dueAt: { lt: kstTodayStart } },
         select: { id: true, subjectType: true, subjectId: true, dueAt: true },
         orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
         take: 50,
@@ -280,13 +298,13 @@ export class WorklogsController {
         take: 50,
       }),
       this.prisma.delegation.findMany({
-        where: { delegateeId: String(userId), status: { notIn: ['DONE', 'REJECTED'] as any }, dueAt: { lt: now } },
+        where: { delegateeId: String(userId), status: { notIn: ['DONE', 'REJECTED'] as any }, dueAt: { lt: kstTodayStart } },
         include: { childInitiative: { select: { id: true, title: true } }, delegator: { select: { name: true } } },
         orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
         take: 50,
       }),
       this.prisma.initiative.findMany({
-        where: { ownerId: String(userId), state: { notIn: ['DONE', 'CANCELLED'] as any }, dueAt: { lt: now } },
+        where: { ownerId: String(userId), state: { notIn: ['DONE', 'CANCELLED'] as any }, dueAt: { lt: kstTodayStart } },
         select: { id: true, title: true, dueAt: true },
         orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
         take: 50,
@@ -307,21 +325,23 @@ export class WorklogsController {
       const dueAt = (p as any).expectedEndAt || null;
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
-      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
-      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
+      if (!Number.isFinite(ms)) continue;
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
       const procTitle = String((p as any)?.title || '').trim();
-      push(`- [프로세스] ${procTitle || '프로세스'} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
+      push(`- [프로세스] ${procTitle || '프로세스'} · 담당자=${assigneeName} · 마감=${kstYmd(ms)} · 초과=${overdueDays}일`);
     }
 
     for (const t of (procTasksRaw || [])) {
       const dueAt = (t as any).plannedEndAt || (t as any).deadlineAt || null;
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
-      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      if (!Number.isFinite(ms)) continue;
       const procTitle = String((t as any)?.instance?.title || '');
       const taskTitle = String((t as any)?.name || '');
-      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
-      push(`- [프로세스] ${procTitle} / ${taskTitle} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
+      push(`- [프로세스] ${procTitle} / ${taskTitle} · 담당자=${assigneeName} · 마감=${kstYmd(ms)} · 초과=${overdueDays}일`);
     }
 
     const approvalIdsWorklog: string[] = [];
@@ -355,7 +375,7 @@ export class WorklogsController {
       const dueAt = (a as any).dueAt;
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
-      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      if (!Number.isFinite(ms)) continue;
       const st = String((a as any).subjectType || '').toUpperCase();
       const sid = String((a as any).subjectId || '');
       const title = (st === 'PROCESS')
@@ -363,8 +383,9 @@ export class WorklogsController {
         : (st === 'WORKLOG' || st === 'WORKLOGS')
           ? (wlTitleMap.get(sid) || '업무일지 결재')
           : `${st || 'APPROVAL'} 결재`;
-      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
-      push(`- [결재] ${title} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
+      push(`- [결재] ${title} · 담당자=${assigneeName} · 마감=${kstYmd(ms)} · 초과=${overdueDays}일`);
     }
 
     const helpIds = (helpRaw || []).map((t: any) => String(t.id)).filter(Boolean);
@@ -400,31 +421,34 @@ export class WorklogsController {
           ms = cMs + (slaMinutes * 60 * 1000);
         }
       }
-      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
-      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
+      if (!Number.isFinite(ms)) continue;
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
       const wlId = helpIdToWlId[String((h as any).id)] || '';
       const cat = String((h as any).category || '').trim();
       const title = wlId ? (helpWlTitle.get(wlId) || '업무 요청') : (cat || '업무 요청');
-      push(`- [업무요청] ${title} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
+      push(`- [업무요청] ${title} · 담당자=${assigneeName} · 마감=${kstYmd(ms)} · 초과=${overdueDays}일`);
     }
     for (const d of (delRaw || [])) {
       const dueAt = (d as any).dueAt;
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
-      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      if (!Number.isFinite(ms)) continue;
       const title = String((d as any)?.childInitiative?.title || '위임');
       const from = String((d as any)?.delegator?.name || '').trim();
-      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
-      push(`- [위임] ${title}${from ? ` (from=${from})` : ''} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
+      push(`- [위임] ${title}${from ? ` (from=${from})` : ''} · 담당자=${assigneeName} · 마감=${kstYmd(ms)} · 초과=${overdueDays}일`);
     }
     for (const it of (initRaw || [])) {
       const dueAt = (it as any).dueAt;
       if (!dueAt) continue;
       const ms = dueMs(dueAt);
-      if (!Number.isFinite(ms) || ms >= now.getTime()) continue;
+      if (!Number.isFinite(ms)) continue;
       const title = String((it as any).title || '');
-      const overdueDays = Math.max(0, Math.floor((now.getTime() - ms) / (24 * 60 * 60 * 1000)));
-      push(`- [내 과제] ${title} · 담당자=${assigneeName} · 마감=${new Date(ms).toISOString().slice(0, 10)} · 초과=${overdueDays}일`);
+      const overdueDays = overdueDaysKst(ms);
+      if (overdueDays <= 0) continue;
+      push(`- [내 과제] ${title} · 담당자=${assigneeName} · 마감=${kstYmd(ms)} · 초과=${overdueDays}일`);
     }
 
     if (!lines.length) return '없음';
