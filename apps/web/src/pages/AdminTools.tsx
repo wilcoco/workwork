@@ -43,14 +43,14 @@ export function AdminTools() {
   }, []);
 
   const canWipe = role === 'CEO' && confirmText === 'ERASE ALL' && !loading;
-  const canWipeProc = role === 'CEO' && confirmYesProc === 'YES' && !loadingProc;
-  const canWipeWl = role === 'CEO' && confirmYesWl === 'YES' && !loadingWl;
-  const canWipeKpi = role === 'CEO' && confirmYesKpi === 'YES' && !loadingKpi;
-  const canWipeOkr = role === 'CEO' && confirmYesOkr === 'YES' && !loadingOkr;
-  const canWipeHelp = role === 'CEO' && confirmYesHelp === 'YES' && !loadingHelp;
-  const canWipeApps = role === 'CEO' && confirmYesApps === 'YES' && !loadingApps;
-  const canWipeAppr = role === 'CEO' && confirmYesAppr === 'YES' && !loadingAppr;
-  const canWipeUserGoals = role === 'CEO' && confirmYesUserGoals === 'YES' && !loadingUserGoals;
+  const canWipeProc = (role === 'CEO' || role === 'EXEC') && confirmYesProc === 'YES' && !loadingProc;
+  const canWipeWl = (role === 'CEO' || role === 'EXEC') && confirmYesWl === 'YES' && !loadingWl;
+  const canWipeKpi = (role === 'CEO' || role === 'EXEC') && confirmYesKpi === 'YES' && !loadingKpi;
+  const canWipeOkr = (role === 'CEO' || role === 'EXEC') && confirmYesOkr === 'YES' && !loadingOkr;
+  const canWipeHelp = (role === 'CEO' || role === 'EXEC') && confirmYesHelp === 'YES' && !loadingHelp;
+  const canWipeApps = (role === 'CEO' || role === 'EXEC') && confirmYesApps === 'YES' && !loadingApps;
+  const canWipeAppr = (role === 'CEO' || role === 'EXEC') && confirmYesAppr === 'YES' && !loadingAppr;
+  const canWipeUserGoals = (role === 'CEO' || role === 'EXEC') && confirmYesUserGoals === 'YES' && !loadingUserGoals;
 
   async function onWipe() {
     if (!canWipe) return;
