@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
-import { formatKstYmd } from '../lib/time';
+import { formatKstYmd, todayKstYmd } from '../lib/time';
 
 type Me = {
   id: string;
@@ -21,9 +20,7 @@ type UserItem = {
 };
 
 export function WorklogAi() {
-  const nav = useNavigate();
   const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
-  const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState('');
@@ -32,8 +29,26 @@ export function WorklogAi() {
   const [user, setUser] = useState('');
   const [options, setOptions] = useState<{ teams: string[]; users: string[] }>({ teams: [], users: [] });
   const [isMobile, setIsMobile] = useState(false);
-  const [overdue, setOverdue] = useState<any | null>(null);
-  const [overdueError, setOverdueError] = useState<string | null>(null);
+
+  const ymdToMs = (ymd: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))) return NaN;
+    return new Date(`${ymd}T00:00:00+09:00`).getTime();
+  };
+  const shiftYmd = (ymd: string, deltaDays: number) => {
+    const ms = ymdToMs(ymd);
+    if (!Number.isFinite(ms)) return '';
+    const d = new Date(ms + deltaDays * 24 * 60 * 60 * 1000);
+    return formatKstYmd(d);
+  };
+  const [fromYmd, setFromYmd] = useState(() => {
+    const t = todayKstYmd();
+    return shiftYmd(t, -2) || t;
+  });
+  const [toYmd, setToYmd] = useState(() => todayKstYmd());
+  const [question, setQuestion] = useState('');
+  const [includeProcess, setIncludeProcess] = useState(true);
+  const [includeHelp, setIncludeHelp] = useState(true);
+  const [includeApprovals, setIncludeApprovals] = useState(true);
 
   const [me, setMe] = useState<Me | null>(null);
   const [teams, setTeams] = useState<OrgUnitItem[]>([]);
@@ -45,10 +60,16 @@ export function WorklogAi() {
     try {
       const params = new URLSearchParams();
       const viewerId = myUserId;
-      params.set('days', String(days));
+      if (fromYmd) params.set('from', fromYmd);
+      if (toYmd) params.set('to', toYmd);
       if (team) params.set('team', team);
       if (user) params.set('user', user);
       if (viewerId) params.set('viewerId', viewerId);
+      if (question.trim()) params.set('question', question.trim());
+      params.set('includeProcess', includeProcess ? '1' : '0');
+      params.set('includeHelp', includeHelp ? '1' : '0');
+      params.set('includeApprovals', includeApprovals ? '1' : '0');
+
       const r = await apiJson<{ from: string; to: string; days: number; summary: string }>(`/api/worklogs/ai/summary?${params.toString()}`);
       setSummary(r.summary || '');
       setRange({ from: r.from, to: r.to });
@@ -174,133 +195,12 @@ export function WorklogAi() {
     };
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        if (!myUserId) return;
-        setOverdueError(null);
-        const r = await apiJson<any>(`/api/users/overdue?userId=${encodeURIComponent(myUserId)}`);
-        setOverdue(r || null);
-      } catch (e: any) {
-        setOverdue(null);
-        setOverdueError(e?.message || '오버듀 로드 실패');
-      }
-    })();
-  }, [myUserId]);
-
   const filteredUsers = useMemo(() => {
     return options.users;
   }, [options.users]);
 
   return (
     <div className="content" style={{ display: 'grid', gap: 12 }}>
-      {overdueError && <div style={{ color: 'red' }}>{overdueError}</div>}
-      {(() => {
-        if (!overdue) return null;
-        const total = Number(overdue?.counts?.total || 0);
-        const items = Array.isArray(overdue?.items) ? overdue.items : [];
-        const kindKey = (it: any) => String(it?.kind || '').toUpperCase();
-        const procCount = Number(overdue?.counts?.processInstances || 0) + Number(overdue?.counts?.processTasks || 0);
-        const approvalCount = Number(overdue?.counts?.approvals || 0);
-        const helpCount = Number(overdue?.counts?.helpTickets || 0);
-        const delegationCount = Number(overdue?.counts?.delegations || 0);
-        const initiativeCount = Number(overdue?.counts?.initiatives || 0);
-        const preview = (() => {
-          const byKind = new Map<string, any[]>();
-          for (const it of items) {
-            const k = kindKey(it);
-            const arr = byKind.get(k) || [];
-            arr.push(it);
-            byKind.set(k, arr);
-          }
-          const preferred = ['PROCESS_TASK', 'PROCESS_INSTANCE', 'HELP_TICKET', 'APPROVAL', 'DELEGATION', 'INITIATIVE'];
-          const seen = new Set<string>();
-          const out: any[] = [];
-          for (const k of preferred) {
-            const arr = byKind.get(k) || [];
-            if (!arr.length) continue;
-            const it = arr[0];
-            const key = `${kindKey(it)}-${String(it?.id || '')}`;
-            if (seen.has(key)) continue;
-            out.push(it);
-            seen.add(key);
-            if (out.length >= 7) return out;
-          }
-          for (const it of items) {
-            const key = `${kindKey(it)}-${String(it?.id || '')}`;
-            if (seen.has(key)) continue;
-            out.push(it);
-            seen.add(key);
-            if (out.length >= 7) break;
-          }
-          return out;
-        })();
-        const label = (k: any) => {
-          const key = String(k || '').toUpperCase();
-          if (key === 'PROCESS_TASK' || key === 'PROCESS_INSTANCE') return '프로세스';
-          if (key === 'APPROVAL') return '결재';
-          if (key === 'HELP_TICKET') return '업무요청';
-          if (key === 'DELEGATION') return '위임';
-          if (key === 'INITIATIVE') return '과제';
-          return key || '기타';
-        };
-        return (
-          <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontWeight: 900, color: '#0f172a' }}>마감 초과</div>
-              <div style={{ marginLeft: 'auto', fontSize: 12, color: total ? '#b91c1c' : '#64748b', fontWeight: 800 }}>
-                {total ? `총 ${total}건` : '없음'}
-              </div>
-            </div>
-            <div style={{ marginTop: 6, fontSize: 12, color: '#64748b', fontWeight: 700 }}>
-              {procCount ? `프로세스 ${procCount} · ` : ''}
-              {helpCount ? `업무요청 ${helpCount} · ` : ''}
-              {approvalCount ? `결재 ${approvalCount} · ` : ''}
-              {delegationCount ? `위임 ${delegationCount} · ` : ''}
-              {initiativeCount ? `과제 ${initiativeCount}` : ''}
-            </div>
-            {total ? (
-              <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
-                {preview.map((it: any) => {
-                  const key = `${String(it?.kind || '')}-${String(it?.id || '')}`;
-                  const due = it?.dueAt ? formatKstYmd(it.dueAt) : '';
-                  const href = String(it?.link || '').trim();
-                  const title = String(it?.title || '').trim() || '(제목 없음)';
-                  const assignee = String(it?.assigneeName || '').trim();
-                  const overdueDays = Number(it?.overdueDays || 0) || 0;
-                  return (
-                    <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#991b1b', minWidth: 64 }}>{label(it?.kind)}</div>
-                      {href ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 13, color: '#0f172a', textDecoration: 'underline', textAlign: 'left' as any }}
-                          onClick={() => nav(href)}
-                        >
-                          {title}
-                        </button>
-                      ) : (
-                        <div style={{ fontSize: 13, color: '#0f172a' }}>{title}</div>
-                      )}
-                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-                        {assignee ? <div style={{ fontSize: 12, color: '#64748b' }}>{assignee}</div> : null}
-                        <div style={{ fontSize: 12, color: '#64748b' }}>{due}</div>
-                        {overdueDays ? <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 800 }}>{`초과 ${overdueDays}일`}</div> : null}
-                      </div>
-                    </div>
-                  );
-                })}
-                {total > preview.length ? (
-                  <div style={{ fontSize: 12, color: '#64748b' }}>외 {total - preview.length}건</div>
-                ) : null}
-              </div>
-            ) : (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>마감 초과 항목 없음</div>
-            )}
-          </div>
-        );
-      })()}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
         <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, minmax(220px, 1fr)) auto', alignItems: 'center', width: '100%' }}>
           <select value={team} onChange={(e) => { setTeam(e.target.value); setUser(''); }} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any, width: '100%' }}>
@@ -315,16 +215,48 @@ export function WorklogAi() {
               <option key={u} value={u}>{u}</option>
             ))}
           </select>
-          <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', appearance: 'auto' as any, width: '100%' }}>
-            <option value={7}>최근 7일</option>
-            <option value={14}>최근 14일</option>
-            <option value={30}>최근 30일</option>
-          </select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+            <input
+              type="date"
+              value={fromYmd}
+              onChange={(e) => setFromYmd(e.target.value)}
+              style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', width: '100%' }}
+            />
+            <div style={{ color: '#64748b', fontSize: 12 }}>~</div>
+            <input
+              type="date"
+              value={toYmd}
+              onChange={(e) => setToYmd(e.target.value)}
+              style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', width: '100%' }}
+            />
+          </div>
           <button className="btn" onClick={load} disabled={loading}>{loading ? '조회중…' : '조회'}</button>
         </div>
       </div>
+      <div style={{ display: 'grid', gap: 8 }}>
+        <textarea
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="추가 문의 사항(선택)"
+          style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', minHeight: 64, resize: 'vertical' as any }}
+        />
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as any, alignItems: 'center' }}>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: '#0f172a' }}>
+            <input type="checkbox" checked={includeProcess} onChange={(e) => setIncludeProcess(e.target.checked)} />
+            진행중 프로세스 포함
+          </label>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: '#0f172a' }}>
+            <input type="checkbox" checked={includeHelp} onChange={(e) => setIncludeHelp(e.target.checked)} />
+            진행중 업무요청 포함
+          </label>
+          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: '#0f172a' }}>
+            <input type="checkbox" checked={includeApprovals} onChange={(e) => setIncludeApprovals(e.target.checked)} />
+            결재 대기 포함
+          </label>
+        </div>
+      </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div style={{ color: '#475569' }}>기간: {range.from ? new Date(range.from).toLocaleString() : '-'} ~ {range.to ? new Date(range.to).toLocaleString() : '-'}</div>
+      <div style={{ color: '#475569' }}>기간: {range.from ? formatKstYmd(range.from) : '-'} ~ {range.to ? formatKstYmd(range.to) : '-'}</div>
       <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, whiteSpace: 'pre-wrap' }}>
         {summary || (loading ? '조회중…' : '요약이 없습니다. 좌측에서 필터를 선택하고 조회를 눌러주세요.')}
       </div>

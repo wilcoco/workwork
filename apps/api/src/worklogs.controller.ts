@@ -1366,20 +1366,44 @@ export class WorklogsController {
   }
 
   @Get('ai/summary')
-  async aiSummary(@Query('days') daysStr?: string, @Query('team') teamName?: string, @Query('user') userName?: string, @Query('viewerId') viewerId?: string) {
+  async aiSummary(
+    @Query('days') daysStr?: string,
+    @Query('team') teamName?: string,
+    @Query('user') userName?: string,
+    @Query('viewerId') viewerId?: string,
+    @Query('from') fromStr?: string,
+    @Query('to') toStr?: string,
+    @Query('question') question?: string,
+    @Query('includeProcess') includeProcess?: string,
+    @Query('includeHelp') includeHelp?: string,
+    @Query('includeApprovals') includeApprovals?: string,
+  ) {
     const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
     if (!apiKey) {
       throw new BadRequestException('Missing OPENAI_API_KEY (or *_CAMS / *_IAT). Set it as a Railway env var.');
     }
     if (!viewerId) throw new BadRequestException('viewerId required');
-    const days = Math.max(1, Math.min(parseInt(daysStr || '7', 10) || 7, 30));
+    const kstYmd = (d: any) => new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(d));
     const now = new Date();
-    const from = new Date(now.getTime() - (days - 1) * 24 * 60 * 60 * 1000);
-    const baseWhere: any = { date: { gte: from, lte: now } };
+    const todayYmd = kstYmd(now);
+    const defaultDays = Math.max(1, Math.min(parseInt(daysStr || '3', 10) || 3, 30));
+    const from = (fromStr && /^\d{4}-\d{2}-\d{2}$/.test(String(fromStr)))
+      ? new Date(`${String(fromStr)}T00:00:00+09:00`)
+      : new Date(new Date(`${todayYmd}T00:00:00+09:00`).getTime() - (defaultDays - 1) * 24 * 60 * 60 * 1000);
+    const to = (toStr && /^\d{4}-\d{2}-\d{2}$/.test(String(toStr)))
+      ? new Date(`${String(toStr)}T23:59:59.999+09:00`)
+      : new Date(`${todayYmd}T23:59:59.999+09:00`);
+    const days = Math.max(1, Math.min(30, Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1));
+    const baseWhere: any = { date: { gte: from, lte: to } };
 
     const scopeOrgUnitIds = await this.getScopeOrgUnitIdsForViewer(String(viewerId));
     if (scopeOrgUnitIds.size === 0) {
-      return { from: from.toISOString(), to: now.toISOString(), days, summary: '' };
+      return { from: from.toISOString(), to: to.toISOString(), days, summary: '' };
     }
 
     const createdByWhere: any = {
@@ -1442,9 +1466,95 @@ export class WorklogsController {
       }
     }
     const context = parts.join('\n');
-    const overdueContext = await this.getOverdueContextForUser(String(viewerId));
-    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요. 반드시 출력에 "마감 초과(Overdue)" 섹션을 포함하고, 오버듀 여부는 주어진 오버듀 리스트만을 근거로 작성하세요. "마감 초과(Overdue)" 섹션에서는 각 항목을 한 줄로 나열하며, 반드시 제목/담당자/마감일/마감 초과 일수를 포함해 주세요.';
-    const user = `최근 ${days}일 업무일지 요약을 작성해 주세요. 팀별로 먼저 요약 후, 개인별 한줄 요약을 제시하고 마지막에 전체 하이라이트 3개와 리스크 3개, 다음 액션 3개를 제안해 주세요.\n\n추가 요구: 아래 [오버듀(마감 초과) 리스트]를 기반으로, 내게 할당된 마감 초과 항목이 있는지/어떤 과제(특히 프로세스)에 속해있는지 반드시 요약에 포함해 주세요.\n\n출력 형식 추가 요구(중요):\n- 반드시 "마감 초과(Overdue)" 섹션을 만들고\n- 오버듀 항목이 있으면 아래 포맷으로 항목별로 나열하세요\n  - 예시: "- [모듈] 제목 · 담당자=홍길동 · 마감=YYYY-MM-DD · 초과=N일"\n- 오버듀 항목이 없으면 "없음"만 출력하세요.\n\n[오버듀(마감 초과) 리스트]\n${overdueContext}\n\n[업무일지 데이터]\n${context}`;
+
+    const wantsProcess = includeProcess === '1' || includeProcess === 'true';
+    const wantsHelp = includeHelp === '1' || includeHelp === 'true';
+    const wantsApprovals = includeApprovals === '1' || includeApprovals === 'true';
+
+    const targetUserIds = (async () => {
+      if (teamName || userName) {
+        const createdByWhere2: any = { orgUnitId: { in: Array.from(scopeOrgUnitIds) } };
+        if (teamName) createdByWhere2.orgUnit = { name: teamName };
+        if (userName) createdByWhere2.name = { contains: userName, mode: 'insensitive' as any };
+        const us = await this.prisma.user.findMany({ where: createdByWhere2, select: { id: true, name: true, orgUnit: { select: { name: true } } }, take: 50 });
+        return (us || []).map((u: any) => ({ id: String(u.id), name: String(u.name || ''), team: String(u.orgUnit?.name || '') }));
+      }
+      const u = await this.prisma.user.findUnique({ where: { id: String(viewerId) }, select: { id: true, name: true, orgUnit: { select: { name: true } } } });
+      return u ? [{ id: String(u.id), name: String((u as any).name || ''), team: String((u as any).orgUnit?.name || '') }] : [];
+    })();
+
+    const whoList = await targetUserIds;
+    const whoIds = whoList.map((x) => x.id).filter(Boolean);
+    const statusLines: string[] = [];
+    const spush = (s: string) => {
+      const v = String(s || '').trim();
+      if (!v) return;
+      if (statusLines.length >= 60) return;
+      statusLines.push(v);
+    };
+    if (wantsProcess && whoIds.length) {
+      const tasks = await (this.prisma as any).processTaskInstance.findMany({
+        where: { assigneeId: { in: whoIds }, status: { notIn: ['COMPLETED', 'SKIPPED'] as any } },
+        include: { instance: { select: { id: true, title: true } } },
+        orderBy: [{ plannedEndAt: 'asc' }, { deadlineAt: 'asc' }, { createdAt: 'asc' }],
+        take: 30,
+      });
+      spush(`[프로세스 진행중] ${Number((tasks || []).length)}건`);
+      for (const t of (tasks || []).slice(0, 12)) {
+        const dueAt = (t as any).plannedEndAt || (t as any).deadlineAt || null;
+        const due = dueAt ? kstYmd(dueAt) : '';
+        const assigneeId = String((t as any).assigneeId || '');
+        const who = whoList.find((x) => x.id === assigneeId);
+        const whoName = String(who?.name || assigneeId);
+        const whoTeam = String(who?.team || '');
+        const procTitle = String((t as any)?.instance?.title || '').trim();
+        const taskTitle = String((t as any)?.name || '').trim();
+        const st = String((t as any)?.status || '').trim();
+        spush(`- ${procTitle}${taskTitle ? ` / ${taskTitle}` : ''} · 담당자=${whoName}${whoTeam ? `(${whoTeam})` : ''} · 상태=${st}${due ? ` · 마감=${due}` : ''}`);
+      }
+    }
+    if (wantsHelp && whoIds.length) {
+      const tickets = await this.prisma.helpTicket.findMany({
+        where: { assigneeId: { in: whoIds }, status: { notIn: ['DONE', 'CANCELLED'] as any } },
+        include: { requester: { select: { name: true } }, assignee: { select: { id: true, name: true, orgUnit: { select: { name: true } } } } },
+        orderBy: [{ createdAt: 'asc' }],
+        take: 30,
+      });
+      spush(`[업무요청 진행중] ${Number((tickets || []).length)}건`);
+      for (const t of (tickets || []).slice(0, 12)) {
+        const dueAt = (t as any).dueAt;
+        const due = dueAt ? kstYmd(dueAt) : '';
+        const whoName = String((t as any)?.assignee?.name || '').trim() || String((t as any).assigneeId || '').trim();
+        const whoTeam = String((t as any)?.assignee?.orgUnit?.name || '').trim();
+        const cat = String((t as any)?.category || '').trim();
+        const st = String((t as any)?.status || '').trim();
+        const req = String((t as any)?.requester?.name || '').trim();
+        spush(`- ${cat || '업무요청'} · 담당자=${whoName}${whoTeam ? `(${whoTeam})` : ''} · 상태=${st}${due ? ` · 마감=${due}` : ''}${req ? ` · 요청자=${req}` : ''}`);
+      }
+    }
+    if (wantsApprovals && whoIds.length) {
+      const approvals = await this.prisma.approvalRequest.findMany({
+        where: { approverId: { in: whoIds }, status: 'PENDING' as any },
+        select: { id: true, approverId: true, subjectType: true, subjectId: true, dueAt: true, createdAt: true },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        take: 30,
+      });
+      spush(`[결재 대기] ${Number((approvals || []).length)}건`);
+      for (const a of (approvals || []).slice(0, 12)) {
+        const dueAt = (a as any).dueAt;
+        const due = dueAt ? kstYmd(dueAt) : '';
+        const who = whoList.find((x) => x.id === String((a as any).approverId || ''));
+        const whoName = String(who?.name || String((a as any).approverId || ''));
+        const whoTeam = String(who?.team || '');
+        const st = String((a as any)?.subjectType || '').trim();
+        spush(`- ${st || '결재'} · 담당자=${whoName}${whoTeam ? `(${whoTeam})` : ''}${due ? ` · 마감=${due}` : ''}`);
+      }
+    }
+
+    const statusContext = statusLines.length ? statusLines.join('\n') : '';
+    const q = String(question || '').trim();
+    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지와(선택 시) 현재 진행 현황을 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요.';
+    const user = `기간: ${kstYmd(from)} ~ ${kstYmd(to)} (총 ${days}일)\n\n요약을 작성해 주세요.\n- 팀별로 먼저 요약\n- 개인별 한줄 요약\n- 마지막에 전체 하이라이트 3개, 리스크 3개, 다음 액션 3개\n\n${q ? `[추가 문의사항]\n${q}\n\n추가 문의사항이 있으면 별도 섹션에서 답변해 주세요.\n\n` : ''}${statusContext ? `[현재 진행 현황]\n${statusContext}\n\n` : ''}[업무일지 데이터]\n${context}`;
     // Call OpenAI
     const f: any = (globalThis as any).fetch;
     if (!f) {
@@ -1471,6 +1581,6 @@ export class WorklogsController {
     }
     const data = await resp.json();
     const summary = String(data?.choices?.[0]?.message?.content || '').trim();
-    return { from: from.toISOString(), to: now.toISOString(), days, summary };
+    return { from: from.toISOString(), to: to.toISOString(), days, summary };
   }
 }
