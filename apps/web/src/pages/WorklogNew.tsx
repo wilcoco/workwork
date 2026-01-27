@@ -8,6 +8,15 @@ export function WorklogNew() {
   const processInstanceId = params?.get('processInstanceId') || '';
   const taskInstanceId = params?.get('taskInstanceId') || '';
   const paramInitiativeId = params?.get('initiativeId') || '';
+  const noticeKey = 'worklog_create_notice_dismissed_v1';
+  const [showNotice, setShowNotice] = useState(() => {
+    try {
+      if (typeof localStorage === 'undefined') return true;
+      return localStorage.getItem(noticeKey) !== '1';
+    } catch {
+      return true;
+    }
+  });
   const [initiativeId, setInitiativeId] = useState(paramInitiativeId);
   const [taskName, setTaskName] = useState('');
   const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -80,6 +89,13 @@ export function WorklogNew() {
       } catch {}
     })();
   }, [myUserId, processInstanceId]);
+
+  function closeNotice() {
+    setShowNotice(false);
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(noticeKey, '1');
+    } catch {}
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -205,6 +221,15 @@ export function WorklogNew() {
 
   return (
     <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
+
+      {showNotice ? (
+        <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ fontSize: 13, color: '#92400e', fontWeight: 700, lineHeight: 1.45 }}>
+            현재 공식 업무일지는 기존 팀즈입니다. 이 업무일지는 현재 테스트 중이므로 일부 기능 사용해보시고 주된 업무 보고는 기존 업무일지를 사용하세요
+          </div>
+          <button type="button" className="btn btn-ghost" style={{ marginLeft: 'auto', padding: '0 10px', height: 28 }} onClick={closeNotice}>닫기</button>
+        </div>
+      ) : null}
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', margin: 0 }}>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: 0 }}>

@@ -18,6 +18,15 @@ export function WorklogQuickNew() {
   const processInstanceId = params?.get('processInstanceId') || '';
   const taskInstanceId = params?.get('taskInstanceId') || '';
   const helpTicketIdParam = params?.get('helpTicketId') || '';
+  const noticeKey = 'worklog_create_notice_dismissed_v1';
+  const [showNotice, setShowNotice] = useState(() => {
+    try {
+      if (typeof localStorage === 'undefined') return true;
+      return localStorage.getItem(noticeKey) !== '1';
+    } catch {
+      return true;
+    }
+  });
   const [date, setDate] = useState<string>(() => todayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [timeSpentHours, setTimeSpentHours] = useState<number>(0);
@@ -552,8 +561,23 @@ export function WorklogQuickNew() {
     setAttachments((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  function closeNotice() {
+    setShowNotice(false);
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(noticeKey, '1');
+    } catch {}
+  }
+
   return (
     <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto' }}>
+      {showNotice ? (
+        <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ fontSize: 13, color: '#92400e', fontWeight: 700, lineHeight: 1.45 }}>
+            현재 공식 업무일지는 기존 팀즈입니다. 이 업무일지는 현재 테스트 중이므로 일부 기능 사용해보시고 주된 업무 보고는 기존 업무일지를 사용하세요
+          </div>
+          <button type="button" className="btn btn-ghost" style={{ marginLeft: 'auto', padding: '0 10px', height: 28 }} onClick={closeNotice}>닫기</button>
+        </div>
+      ) : null}
       <div className="card elevated accent">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, color: '#475569' }}>
           <div style={{ width: 36, height: 36, borderRadius: 999, background: '#f3f4f6', display: 'grid', placeItems: 'center', fontWeight: 700 }}>🙂</div>
