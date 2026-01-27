@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
 import { IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
@@ -157,6 +157,12 @@ class CreateSimpleWorklogDto {
 @Controller('worklogs')
 export class WorklogsController {
   constructor(private prisma: PrismaService) {}
+
+  private async assertCeo(userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: String(userId) } });
+    if (!actor || String((actor as any).role || '') !== 'CEO') throw new ForbiddenException('only CEO can perform this action');
+  }
 
   private async getScopeOrgUnitIdsForViewer(viewerId: string): Promise<Set<string>> {
     if (!viewerId) throw new BadRequestException('viewerId required');
@@ -990,6 +996,25 @@ export class WorklogsController {
         }
       : null;
     return { ...wl, process } as any;
+  }
+
+  @Post(':id/delete')
+  async deleteWorklog(@Param('id') id: string, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
+    return this.prisma.$transaction(async (tx) => {
+      const wl = await (tx as any).worklog.findUnique({ where: { id } });
+      if (!wl) return { ok: true, deleted: false };
+
+      await (tx as any).progressEntry.deleteMany({ where: { worklogId: id } });
+      await (tx as any).feedback.deleteMany({ where: { subjectType: 'Worklog', subjectId: id } });
+      await (tx as any).share.deleteMany({ where: { subjectType: 'Worklog', subjectId: id } });
+      await (tx as any).notification.deleteMany({ where: { subjectType: 'Worklog', subjectId: id } });
+      await (tx as any).event.deleteMany({ where: { subjectType: 'Worklog', subjectId: id } });
+      await (tx as any).processTaskInstance.updateMany({ where: { worklogId: id }, data: { worklogId: null } });
+
+      await (tx as any).worklog.delete({ where: { id } });
+      return { ok: true, deleted: true };
+    });
   }
 
   @Get('stats/weekly')

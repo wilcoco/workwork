@@ -122,6 +122,7 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
 }
 
 export function WorklogSearch() {
+  const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [team, setTeam] = useState(''); // team name for API query
   const [user, setUser] = useState(''); // user name for API query
   const [teamId, setTeamId] = useState('');
@@ -142,6 +143,7 @@ export function WorklogSearch() {
   const [detail, setDetail] = useState<Item | null>(null);
   const [kind, setKind] = useState<'' | 'OKR' | 'KPI'>('');
   const location = useLocation();
+  const [isCeo, setIsCeo] = useState(false);
 
 
   async function search() {
@@ -149,7 +151,7 @@ export function WorklogSearch() {
     setError(null);
     try {
       const params = new URLSearchParams();
-      const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+      const viewerId = myUserId;
       if (team) params.set('team', team);
       if (user) params.set('user', user);
       if (from) params.set('from', from);
@@ -173,7 +175,7 @@ export function WorklogSearch() {
     setLoading(true);
     setError(null);
     try {
-      const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+      const viewerId = myUserId;
       const qs = viewerId ? `limit=60&viewerId=${encodeURIComponent(viewerId)}` : 'limit=60';
       const res = await apiJson<{ items: Item[] }>(`/api/worklogs/search?${qs}`);
       setItems(res.items);
@@ -210,6 +212,16 @@ export function WorklogSearch() {
 
   useEffect(() => {
     (async () => {
+      if (myUserId) {
+        try {
+          const me = await apiJson<{ id: string; role: string }>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
+          setIsCeo(String((me as any)?.role || '') === 'CEO');
+        } catch {
+          setIsCeo(false);
+        }
+      } else {
+        setIsCeo(false);
+      }
       try {
         const orgRes = await apiJson<{ items: any[] }>(`/api/orgs`);
         setTeams((orgRes.items || []).map((o: any) => ({ id: o.id, name: o.name })));
@@ -219,7 +231,20 @@ export function WorklogSearch() {
         setUsers((userRes.items || []).map((u: any) => ({ id: u.id, name: u.name, orgUnitId: (u as any)?.orgUnitId, orgUnitName: (u as any)?.orgUnit?.name })));
       } catch {}
     })();
-  }, []);
+  }, [myUserId]);
+
+  async function onDeleteWorklog(id: string) {
+    if (!isCeo) return;
+    if (!myUserId) { alert('로그인이 필요합니다'); return; }
+    if (!confirm('업무일지를 삭제하시겠습니까?')) return;
+    try {
+      await apiJson(`/api/worklogs/${encodeURIComponent(id)}/delete?userId=${encodeURIComponent(myUserId)}`, { method: 'POST' });
+      setItems((prev) => (prev || []).filter((x) => x.id !== id));
+      if (detail?.id === id) setDetail(null);
+    } catch (e: any) {
+      alert(e?.message || '삭제 실패');
+    }
+  }
 
   // Load KRs when teamId or userId changes
   useEffect(() => {
@@ -423,6 +448,11 @@ export function WorklogSearch() {
         <div style={{ display: 'grid', gap: 12 }}>
         {items.map((it) => (
           <div key={it.id} style={card}>
+            {isCeo ? (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <button className="btn" type="button" onClick={() => onDeleteWorklog(it.id)} style={{ color: '#b91c1c' }}>삭제</button>
+              </div>
+            ) : null}
             <WorklogDocument worklog={it} variant="full" />
             <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
               <CommentsBox worklogId={it.id} />
@@ -434,6 +464,11 @@ export function WorklogSearch() {
       {detail && (
         <div className="image-overlay" onClick={() => setDetail(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 720, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+            {isCeo ? (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <button className="btn" type="button" onClick={() => onDeleteWorklog(detail.id)} style={{ color: '#b91c1c' }}>삭제</button>
+              </div>
+            ) : null}
             <WorklogDocument worklog={detail} variant="full" />
             <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
               <CommentsBox worklogId={detail.id} />
