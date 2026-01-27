@@ -11,13 +11,6 @@ export class AdminController {
     if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can perform this action');
   }
 
-  private async assertExecOrCeo(userId?: string) {
-    if (!userId) throw new BadRequestException('userId required');
-    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
-    const role = String((actor as any)?.role || '').toUpperCase();
-    if (!actor || (role !== 'CEO' && role !== 'EXEC')) throw new ForbiddenException('only CEO/EXEC can perform this action');
-  }
-
   @Post('users/:id/activate')
   async activateUser(
     @Param('id') id: string,
@@ -132,7 +125,7 @@ export class AdminController {
 
   @Post('wipe/processes')
   async wipeProcesses(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
-    await this.assertExecOrCeo(userId);
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -153,7 +146,7 @@ export class AdminController {
 
   @Post('wipe/worklogs')
   async wipeWorklogs(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
-    await this.assertExecOrCeo(userId);
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -174,7 +167,7 @@ export class AdminController {
 
   @Post('wipe/kpis')
   async wipeKpis(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
-    await this.assertExecOrCeo(userId);
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -215,7 +208,7 @@ export class AdminController {
 
   @Post('wipe/okrs')
   async wipeOkrs(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
-    await this.assertExecOrCeo(userId);
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -266,7 +259,7 @@ export class AdminController {
 
   @Post('wipe/help-tickets')
   async wipeHelpTickets(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
-    await this.assertExecOrCeo(userId);
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -285,7 +278,7 @@ export class AdminController {
 
   @Post('wipe/applications')
   async wipeApplications(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
-    await this.assertExecOrCeo(userId);
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -315,7 +308,7 @@ export class AdminController {
 
   @Post('wipe/approvals')
   async wipeApprovals(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
-    await this.assertExecOrCeo(userId);
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
@@ -335,7 +328,7 @@ export class AdminController {
 
   @Post('wipe/user-goals')
   async wipeUserGoals(@Body() body: { confirm?: string }, @Query('userId') userId?: string) {
-    await this.assertExecOrCeo(userId);
+    await this.assertCeo(userId);
     if (!body?.confirm || body.confirm !== 'YES') {
       throw new BadRequestException("confirm must be 'YES'");
     }
