@@ -18,6 +18,10 @@ interface ProcessTemplateDto {
   description?: string;
   type: 'RECURRING' | 'PROJECT';
   bpmnJson?: any;
+  ownerId?: string;
+  visibility?: 'PUBLIC' | 'ORG_UNIT' | 'PRIVATE';
+  orgUnitId?: string;
+  status?: string;
   tasks: ProcessTaskTemplateDto[];
   createdAt?: string;
   owner?: { id: string; name: string; orgUnit?: { id: string; name: string } };
@@ -185,8 +189,12 @@ export function ProcessStart() {
     (async () => {
       setLoading(true);
       try {
-        const res = await apiJson<ProcessTemplateDto[]>(`/api/process-templates`);
-        setTemplates(res || []);
+        const url = userId
+          ? `/api/process-templates?actorId=${encodeURIComponent(userId)}`
+          : `/api/process-templates`;
+        const res = await apiJson<ProcessTemplateDto[]>(url);
+        const active = (res || []).filter((t) => String((t as any)?.status || '').toUpperCase() === 'ACTIVE');
+        setTemplates(active);
         if (initialTemplateId) setTplId(initialTemplateId);
       } finally {
         setLoading(false);
@@ -199,13 +207,16 @@ export function ProcessStart() {
     (async () => {
       if (!tplId) { setSelectedFull(null); return; }
       try {
-        const one = await apiJson<ProcessTemplateDto>(`/api/process-templates/${encodeURIComponent(tplId)}`);
+        const url = userId
+          ? `/api/process-templates/${encodeURIComponent(tplId)}?actorId=${encodeURIComponent(userId)}`
+          : `/api/process-templates/${encodeURIComponent(tplId)}`;
+        const one = await apiJson<ProcessTemplateDto>(url);
         setSelectedFull(one || null);
       } catch {
         setSelectedFull(null);
       }
     })();
-  }, [tplId]);
+  }, [tplId, userId]);
 
   useEffect(() => {
     (async () => {
@@ -298,15 +309,21 @@ export function ProcessStart() {
         description: selectedFull.description || '',
         type: (selectedFull.type as any) || 'PROJECT',
         ownerId: userId,
-        visibility: 'PUBLIC',
+        visibility: 'PRIVATE',
         bpmnJson: bpmn,
+        actorId: userId,
       };
       const created = await apiJson<ProcessTemplateDto>(`/api/process-templates`, { method: 'POST', body: JSON.stringify(body) });
       if (created?.id) {
-        setTemplates((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
-        setTplId(created.id);
-        setSelectedFull(created);
-        setCloneTitle(`${created.title} (사본)`);
+        const published = await apiJson<ProcessTemplateDto>(`/api/process-templates/${encodeURIComponent(created.id)}/publish`, {
+          method: 'POST',
+          body: JSON.stringify({ actorId: userId }),
+        });
+        const finalTmpl = published || created;
+        setTemplates((prev) => [finalTmpl, ...prev.filter((t) => t.id !== finalTmpl.id)]);
+        setTplId(finalTmpl.id || '');
+        setSelectedFull(finalTmpl);
+        setCloneTitle(`${finalTmpl.title} (사본)`);
         alert('사본 템플릿이 생성되었습니다. 이 템플릿으로 시작 정보를 입력하세요.');
       }
     } catch (e: any) {

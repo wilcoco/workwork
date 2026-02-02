@@ -115,10 +115,36 @@ export class ProcessTemplatesController {
   }
 
   @Get()
-  async list(@Query('ownerId') ownerId?: string) {
+  async list(@Query('ownerId') ownerId?: string, @Query('actorId') actorId?: string) {
     const where: any = {};
     if (ownerId) {
       where.ownerId = ownerId;
+    }
+
+    const actor = actorId
+      ? await this.prisma.user.findUnique({ where: { id: String(actorId) } })
+      : null;
+    if (actorId && !actor) {
+      throw new BadRequestException('invalid actorId');
+    }
+
+    if (!actor) {
+      where.status = 'ACTIVE';
+      where.visibility = 'PUBLIC';
+    } else {
+      const actorIdStr = String(actor.id);
+      const actorOrgUnitId = actor.orgUnitId ? String(actor.orgUnitId) : '';
+      const activeOr: any[] = [{ ownerId: actorIdStr }, { visibility: 'PUBLIC' }];
+      if (actorOrgUnitId) {
+        activeOr.push({ visibility: 'ORG_UNIT', orgUnitId: actorOrgUnitId });
+      }
+      where.OR = [
+        { status: 'DRAFT', ownerId: actorIdStr },
+        {
+          status: 'ACTIVE',
+          OR: activeOr,
+        },
+      ];
     }
     const include: any = {
       tasks: { orderBy: { orderHint: 'asc' } },
@@ -135,7 +161,7 @@ export class ProcessTemplatesController {
   }
 
   @Get(':id')
-  async getOne(@Param('id') id: string) {
+  async getOne(@Param('id') id: string, @Query('actorId') actorId?: string) {
     const include: any = {
       tasks: { orderBy: { orderHint: 'asc' } },
       owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
@@ -143,10 +169,36 @@ export class ProcessTemplatesController {
       updatedBy: { select: { id: true, name: true } },
       orgUnit: { select: { id: true, name: true } },
     };
-    return this.prisma.processTemplate.findUnique({
+    const tmpl = await this.prisma.processTemplate.findUnique({
       where: { id },
       include,
     });
+    if (!tmpl) return tmpl;
+
+    const status = String((tmpl as any)?.status || '').toUpperCase();
+    const visibility = String((tmpl as any)?.visibility || '').toUpperCase();
+    const actorIdStr = actorId ? String(actorId) : '';
+
+    if (status === 'DRAFT') {
+      if (!actorIdStr || String(tmpl.ownerId) !== actorIdStr) throw new ForbiddenException('not allowed');
+      return tmpl;
+    }
+
+    if (visibility === 'PUBLIC') return tmpl;
+    if (!actorIdStr) throw new ForbiddenException('not allowed');
+    if (visibility === 'PRIVATE') {
+      if (String(tmpl.ownerId) !== actorIdStr) throw new ForbiddenException('not allowed');
+      return tmpl;
+    }
+    if (visibility === 'ORG_UNIT') {
+      if (String(tmpl.ownerId) === actorIdStr) return tmpl;
+      const actor = await this.prisma.user.findUnique({ where: { id: actorIdStr } });
+      if (!actor) throw new BadRequestException('invalid actorId');
+      if (actor.orgUnitId && tmpl.orgUnitId && String(actor.orgUnitId) === String(tmpl.orgUnitId)) return tmpl;
+      throw new ForbiddenException('not allowed');
+    }
+
+    return tmpl;
   }
 
   @Post()
@@ -204,7 +256,7 @@ export class ProcessTemplatesController {
             expectedDurationDays,
             expectedCompletionCriteria,
             allowExtendDeadline,
-            status,
+            status: 'DRAFT',
           },
         });
         const createdMap = new Map<string, string>();
@@ -317,39 +369,65 @@ export class ProcessTemplatesController {
       tasks,
     } = body;
 
-    if (ownerId) {
-      const owner = await this.prisma.user.findUnique({ where: { id: ownerId } });
+    const actorIdStr = actorId ? String(actorId) : '';
+    if (!actorIdStr) throw new BadRequestException('actorId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: actorIdStr } });
+    if (!actor) throw new BadRequestException('invalid actorId');
+
+    const existingTmpl = await this.prisma.processTemplate.findUnique({ where: { id } });
+    if (!existingTmpl) throw new BadRequestException('template not found');
+
+    const existingStatus = String((existingTmpl as any)?.status || '').toUpperCase();
+    const nextStatus = status != null ? String(status || '').toUpperCase() : '';
+    if (nextStatus && nextStatus !== existingStatus) throw new ForbiddenException('status change not allowed');
+
+    const isOwner = String(existingTmpl.ownerId) === actorIdStr;
+    const existingVis = String((existingTmpl as any)?.visibility || '').toUpperCase();
+    const actorOrgUnitId = actor.orgUnitId ? String(actor.orgUnitId) : '';
+    const tmplOrgUnitId = existingTmpl.orgUnitId ? String(existingTmpl.orgUnitId) : '';
+
+    const isPublished = existingStatus === 'ACTIVE';
+    const canEdit = !isPublished
+      ? isOwner
+      : existingVis === 'PUBLIC'
+        ? true
+        : existingVis === 'PRIVATE'
+          ? isOwner
+          : existingVis === 'ORG_UNIT'
+            ? (isOwner || (actorOrgUnitId && tmplOrgUnitId && actorOrgUnitId === tmplOrgUnitId))
+            : isOwner;
+    if (!canEdit) throw new ForbiddenException('not allowed');
+
+    const safeOwnerId = isOwner ? ownerId : undefined;
+    const safeVisibility = isOwner ? visibility : undefined;
+    const safeOrgUnitId = isOwner ? orgUnitId : undefined;
+
+    if (safeOwnerId) {
+      const owner = await this.prisma.user.findUnique({ where: { id: safeOwnerId } });
       if (!owner) throw new BadRequestException('invalid ownerId');
     }
 
-    const effectiveActorId = actorId ? String(actorId) : (ownerId ? String(ownerId) : '');
-    if (effectiveActorId) {
-      const actor = await this.prisma.user.findUnique({ where: { id: effectiveActorId } });
-      if (!actor) throw new BadRequestException('invalid actorId');
-    }
-
     try {
-    return await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.processTemplate.update({
-        where: { id },
-        data: {
-          title,
-          description,
-          type,
-          ownerId,
-          ...(effectiveActorId ? { updatedById: effectiveActorId } : {}),
-          visibility,
-          orgUnitId,
-          recurrenceType,
-          recurrenceDetail,
-          bpmnJson,
-          resultInputRequired,
-          expectedDurationDays,
-          expectedCompletionCriteria,
-          allowExtendDeadline,
-          status,
-        },
-      });
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.processTemplate.update({
+          where: { id },
+          data: {
+            title,
+            description,
+            type,
+            ownerId: safeOwnerId,
+            updatedById: actorIdStr,
+            visibility: safeVisibility,
+            orgUnitId: safeOrgUnitId,
+            recurrenceType,
+            recurrenceDetail,
+            bpmnJson,
+            resultInputRequired,
+            expectedDurationDays,
+            expectedCompletionCriteria,
+            allowExtendDeadline,
+          },
+        });
 
       const compiled = this.compileBpmn(bpmnJson);
       const existing = await tx.processTaskTemplate.findMany({ where: { processTemplateId: id }, select: { id: true } });
@@ -453,7 +531,7 @@ export class ProcessTemplatesController {
           orgUnit: { select: { id: true, name: true } },
         } as any),
       });
-    });
+      });
     } catch (e: any) {
       throw new BadRequestException(`failed to update process template: ${e?.message || e}`);
     }
@@ -478,12 +556,42 @@ export class ProcessTemplatesController {
     return role === 'CEO' || role === 'EXEC';
   }
 
+  @Post(':id/publish')
+  async publish(@Param('id') id: string, @Body() body: any) {
+    const { actorId } = body || {};
+    if (!actorId) throw new BadRequestException('actorId required');
+    const actorIdStr = String(actorId);
+    const actor = await this.prisma.user.findUnique({ where: { id: actorIdStr } });
+    if (!actor) throw new BadRequestException('invalid actorId');
+
+    const existing = await this.prisma.processTemplate.findUnique({ where: { id } });
+    if (!existing) throw new BadRequestException('template not found');
+    if (String(existing.ownerId) !== actorIdStr) throw new ForbiddenException('not allowed');
+
+    const nextStatus = String((existing as any)?.status || '').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'ACTIVE';
+    return this.prisma.processTemplate.update({
+      where: { id },
+      data: { status: nextStatus },
+      include: {
+        tasks: { orderBy: { orderHint: 'asc' } },
+        owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+        createdBy: { select: { id: true, name: true } },
+        updatedBy: { select: { id: true, name: true } },
+        orgUnit: { select: { id: true, name: true } },
+      },
+    });
+  }
+
   @Post(':id/promote')
   async promote(@Param('id') id: string, @Body() body: any) {
     const { actorId } = body || {};
     if (!actorId) throw new BadRequestException('actorId required');
     const ok = await this.isExecOrCeo(actorId);
     if (!ok) throw new ForbiddenException('not allowed');
+    const existing = await this.prisma.processTemplate.findUnique({ where: { id } });
+    if (!existing) throw new BadRequestException('template not found');
+    const status = String((existing as any)?.status || '').toUpperCase();
+    if (status !== 'ACTIVE') throw new BadRequestException('template not published');
     const updated = await this.prisma.processTemplate.update({
       where: { id },
       data: ({ official: true } as any),

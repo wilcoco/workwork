@@ -70,6 +70,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const lastContainerWidthRef = useRef<number>(0);
   const nodeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const edgeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const nodeTypes = useMemo(() => ({
@@ -237,7 +238,14 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
       if (!cr) return;
       const minGraph = 260;
       const minPanel = 300;
-      setGraphWidth((prev) => Math.max(minGraph, Math.min(prev, cr.width - minPanel)));
+      setGraphWidth((prev) => {
+        const lastW = lastContainerWidthRef.current || cr.width;
+        const ratio = lastW ? prev / lastW : 0;
+        lastContainerWidthRef.current = cr.width;
+        const maxGraph = cr.width - minPanel;
+        const scaled = ratio ? ratio * cr.width : prev;
+        return Math.max(minGraph, Math.min(scaled, maxGraph));
+      });
     });
     ro.observe(el);
     return () => { try { ro.disconnect(); } catch {} };
@@ -291,7 +299,8 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         insertX = Math.round(lastPaneClick.current.x);
         insertY = Math.round(lastPaneClick.current.y);
       } else if (idx >= 0) {
-        insertY = (prev[idx].position?.y || 60);
+        insertX = (prev[idx].position?.x ?? 180);
+        insertY = (prev[idx].position?.y ?? 60) + 120;
       } else if (prev.length) {
         insertY = Math.max(...prev.map((n) => n.position.y || 0)) + 120;
       }
@@ -305,8 +314,8 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         data: isTask ? { name: '새 과제', taskType: 'WORKLOG', label, kind: type } : { name: label, label, kind: type },
       };
       if (idx >= 0 && !lastPaneClick.current) {
-        const before = prev.slice(0, idx);
-        const after = prev.slice(idx).map((n) => ({
+        const before = prev.slice(0, idx + 1);
+        const after = prev.slice(idx + 1).map((n) => ({
           ...n,
           position: { x: (n.position?.x ?? 180), y: (n.position?.y || 0) + 120 },
         }));
@@ -476,8 +485,8 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onSelectionChange={onSelectionChange as any}
-              onNodeClick={(_: any, n: any) => { setSelectedNodeId(String(n.id)); setSelectedEdgeId(null); }}
-              onEdgeClick={(_: any, e: any) => { setSelectedEdgeId(String(e.id)); setSelectedNodeId(null); }}
+              onNodeClick={(_: any, n: any) => { lastPaneClick.current = null; setSelectedNodeId(String(n.id)); setSelectedEdgeId(null); }}
+              onEdgeClick={(_: any, e: any) => { lastPaneClick.current = null; setSelectedEdgeId(String(e.id)); setSelectedNodeId(null); }}
               onNodeDragStop={() => { toJson(); }}
               nodesDraggable={true}
               nodesConnectable={true}

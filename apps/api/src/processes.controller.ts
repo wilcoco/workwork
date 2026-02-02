@@ -731,6 +731,20 @@ export class ProcessesController {
       if (!tmpl) throw new BadRequestException('template not found');
       const starter = await this.prisma.user.findUnique({ where: { id: startedById } });
       if (!starter) throw new BadRequestException('startedBy user not found');
+
+      const tmplStatus = String((tmpl as any)?.status || '').toUpperCase();
+      if (tmplStatus !== 'ACTIVE') throw new BadRequestException('template not published');
+      const tmplVis = String((tmpl as any)?.visibility || '').toUpperCase();
+      const isOwner = String((tmpl as any)?.ownerId || '') === String(startedById);
+      if (tmplVis === 'PRIVATE') {
+        if (!isOwner) throw new ForbiddenException('not allowed');
+      } else if (tmplVis === 'ORG_UNIT') {
+        if (!isOwner) {
+          const starterOrgUnitId = starter?.orgUnitId ? String(starter.orgUnitId) : '';
+          const tmplOrgUnitId = (tmpl as any)?.orgUnitId ? String((tmpl as any).orgUnitId) : '';
+          if (!starterOrgUnitId || !tmplOrgUnitId || starterOrgUnitId !== tmplOrgUnitId) throw new ForbiddenException('not allowed');
+        }
+      }
       // initiative is optional; if provided but not found, ignore silently
       let linkedInitiativeId: string | undefined = undefined;
       if (initiativeId) {

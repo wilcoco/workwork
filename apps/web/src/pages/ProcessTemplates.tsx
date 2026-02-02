@@ -295,7 +295,7 @@ export function ProcessTemplates() {
 
   useEffect(() => {
     loadList();
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!editing) return;
@@ -352,7 +352,10 @@ export function ProcessTemplates() {
   async function loadList() {
     setLoading(true);
     try {
-      const res = await apiJson<ProcessTemplateDto[]>(`/api/process-templates`);
+      const url = userId
+        ? `/api/process-templates?actorId=${encodeURIComponent(userId)}`
+        : `/api/process-templates`;
+      const res = await apiJson<ProcessTemplateDto[]>(url);
       setItems(res || []);
     } finally {
       setLoading(false);
@@ -392,7 +395,7 @@ export function ProcessTemplates() {
       expectedDurationDays: undefined,
       expectedCompletionCriteria: '',
       allowExtendDeadline: true,
-      status: 'ACTIVE',
+      status: 'DRAFT',
       tasks: [],
     };
     setSelectedId(null);
@@ -412,6 +415,11 @@ export function ProcessTemplates() {
       alert('공식 템플릿 지정 권한이 없습니다.');
       return;
     }
+    const st = String(editing.status || 'ACTIVE').toUpperCase();
+    if (st !== 'ACTIVE') {
+      alert('게시된 템플릿만 공식 지정할 수 있습니다.');
+      return;
+    }
     try {
       await apiJson(`/api/process-templates/${encodeURIComponent(editing.id)}/promote`, {
         method: 'POST',
@@ -422,6 +430,31 @@ export function ProcessTemplates() {
       alert('공식 템플릿으로 지정되었습니다.');
     } catch (e: any) {
       alert('공식 지정에 실패했습니다. 권한이 없을 수 있습니다.');
+    }
+  }
+
+  async function publishTemplate() {
+    if (!editing?.id) return;
+    if (!userId) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+    const st = String(editing.status || 'ACTIVE').toUpperCase();
+    if (st !== 'DRAFT') return;
+    if (String(editing.ownerId || '') !== String(userId || '')) {
+      alert('게시 권한이 없습니다.');
+      return;
+    }
+    try {
+      const res = await apiJson<ProcessTemplateDto>(`/api/process-templates/${encodeURIComponent(editing.id)}/publish`, {
+        method: 'POST',
+        body: JSON.stringify({ actorId: userId }),
+      });
+      await loadList();
+      if (res) setEditing(res);
+      alert('게시되었습니다.');
+    } catch (e: any) {
+      alert(e?.message || '게시 중 오류가 발생했습니다.');
     }
   }
 
@@ -615,6 +648,9 @@ export function ProcessTemplates() {
             >
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span>{it.title}</span>
+                {String(it.status || '').toUpperCase() === 'DRAFT' ? (
+                  <span style={{ fontSize: 11, color: '#334155', background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '0px 6px', borderRadius: 6 }}>초안</span>
+                ) : null}
                 {it.official ? (
                   <span style={{ fontSize: 11, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '0px 6px', borderRadius: 6 }}>공식</span>
                 ) : null}
@@ -677,10 +713,16 @@ export function ProcessTemplates() {
             <h2>업무 프로세스 정의</h2>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {String(editing.status || 'ACTIVE').toUpperCase() === 'DRAFT' ? (
+                  <span style={{ fontSize: 12, color: '#334155', background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '2px 6px', borderRadius: 6 }}>초안</span>
+                ) : null}
+                {String(editing.status || 'ACTIVE').toUpperCase() === 'DRAFT' && String(editing.ownerId || '') === String(userId || '') ? (
+                  <button className="btn btn-primary" onClick={publishTemplate} disabled={!editing?.id}>게시</button>
+                ) : null}
                 {editing?.official ? (
                   <span style={{ fontSize: 12, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '2px 6px', borderRadius: 6 }}>★ 공식 템플릿</span>
                 ) : (
-                  (myRole === 'CEO' || myRole === 'EXEC') ? <button className="btn btn-warning" onClick={promote} disabled={!editing?.id}>공식 지정</button> : null
+                  (myRole === 'CEO' || myRole === 'EXEC') ? <button className="btn btn-warning" onClick={promote} disabled={!editing?.id || String(editing.status || 'ACTIVE').toUpperCase() !== 'ACTIVE'}>공식 지정</button> : null
                 )}
               </div>
               {editing?.id ? (
