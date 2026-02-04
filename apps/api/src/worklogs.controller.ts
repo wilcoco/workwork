@@ -814,6 +814,7 @@ export class WorklogsController {
     // 4) Optional: Share
     const shares: string[] = [];
     const watcherIdsForShare = dto.share?.watcherIds || [];
+    const shareScope = (dto.share?.scope as any) ?? 'READ';
     if (watcherIdsForShare.length) {
       for (const watcherId of watcherIdsForShare) {
         const share = await this.prisma.share.create({
@@ -821,7 +822,7 @@ export class WorklogsController {
             subjectType: 'Worklog',
             subjectId: wl.id,
             watcherId,
-            scope: (dto.share.scope as any) ?? 'READ',
+            scope: shareScope,
           },
         });
         shares.push(share.id);
@@ -831,7 +832,7 @@ export class WorklogsController {
             subjectId: wl.id,
             activity: 'Shared',
             userId: dto.createdById,
-            attrs: { watcherId, scope: dto.share.scope ?? 'READ' },
+            attrs: { watcherId, scope: shareScope },
           },
         });
         await this.prisma.notification.create({
@@ -848,7 +849,12 @@ export class WorklogsController {
 
     const externalEmailsRaw = dto.share?.externalRecipientEmails || [];
     const externalEmails = Array.from(
-      new Map(externalEmailsRaw.map((e) => [String(e || '').trim().toLowerCase(), String(e || '').trim()]).filter(([k]) => !!k)).values(),
+      new Map(
+        externalEmailsRaw
+          .map((e) => String(e || '').trim())
+          .map((e): [string, string] => [e.toLowerCase(), e])
+          .filter(([k]) => !!k),
+      ).values(),
     );
     if (externalEmails.length) {
       const sender = await this.prisma.user.findUnique({ where: { id: dto.createdById } });
