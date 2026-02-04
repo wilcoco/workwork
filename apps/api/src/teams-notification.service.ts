@@ -120,6 +120,12 @@ export class TeamsNotificationService {
     return base;
   }
 
+  private isTeamsDeepLink(url: string): boolean {
+    const u = String(url || '').trim();
+    if (!u) return false;
+    return /^https:\/\/([a-z0-9-]+\.)?teams\.microsoft\.com\/l\//i.test(u);
+  }
+
   private buildPreviewText(n: AppNotificationLike): string {
     const t = String(n?.type || '').trim();
     if (t === 'ApprovalRequested') return '결재 요청이 도착했습니다.';
@@ -240,8 +246,12 @@ export class TeamsNotificationService {
       const preview = this.buildPreviewText(notification);
       const webUrl = this.buildWebUrlForNotification(notification);
 
+      const topic: GraphSendActivityNotificationRequestBody['topic'] = this.isTeamsDeepLink(webUrl)
+        ? { source: 'text', value: preview, webUrl }
+        : { source: 'text', value: preview };
+
       const body: GraphSendActivityNotificationRequestBody = {
-        topic: { source: 'text', value: preview, webUrl },
+        topic,
         activityType: String(notification?.type || 'Notification'),
         previewText: { content: preview },
         recipient: {
