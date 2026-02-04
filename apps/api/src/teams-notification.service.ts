@@ -22,6 +22,36 @@ type AppUserLike = {
 export class TeamsNotificationService {
   private readonly logger = new Logger(TeamsNotificationService.name);
 
+  private getJwtHint(token: string): string {
+    try {
+      const parts = String(token || '').split('.');
+      if (parts.length < 2) return '';
+      let b64 = String(parts[1] || '').replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4;
+      if (pad) b64 = b64 + '='.repeat(4 - pad);
+      const raw = Buffer.from(b64, 'base64').toString('utf8');
+      const j: any = raw ? JSON.parse(raw) : null;
+      if (!j) return '';
+
+      const out: string[] = [];
+      const aud = String(j?.aud || '').trim();
+      const tid = String(j?.tid || '').trim();
+      const scp = String(j?.scp || '').trim();
+      const rolesArr = Array.isArray(j?.roles) ? j.roles : [];
+      const roles = (rolesArr || []).map((r: any) => String(r || '').trim()).filter(Boolean).join(',');
+
+      if (aud) out.push(`aud=${aud}`);
+      if (tid) out.push(`tid=${tid}`);
+      if (roles) out.push(`roles=${roles}`);
+      if (scp) out.push(`scp=${scp}`);
+      if (!roles && !scp) out.push('roles/scp=empty');
+
+      return out.length ? out.join(' ') : '';
+    } catch {
+      return '';
+    }
+  }
+
   private getGraphConfigOrNull(): { tenantId: string; clientId: string; clientSecret: string } | null {
     const tenantId = String(process.env.MS_GRAPH_TENANT_ID || process.env.ENTRA_TENANT_ID || '').trim();
     const clientId = String(process.env.MS_GRAPH_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '').trim();
@@ -98,11 +128,73 @@ export class TeamsNotificationService {
     return '새 알림이 도착했습니다.';
   }
 
-  async sendActivityNotification(userIdOrUpn: string, body: GraphSendActivityNotificationRequestBody): Promise<void> {
-    try {
-      const token = await this.getGraphToken();
-      if (!token) return;
+  private async formatGraphFailure(res: Response, token: string): Promise<string> {
+    const parts: string[] = [];
+    const reqId = String(res.headers.get('request-id') || res.headers.get('x-ms-request-id') || '').trim();
+    const diag = String(res.headers.get('x-ms-ags-diagnostic') || '').trim();
+    const www = String(res.headers.get('www-authenticate') || '').trim();
+    if (reqId) parts.push(`request-id=${reqId}`);
+    if (diag) parts.push(`diag=${diag.replace(/\s+/g, ' ').slice(0, 200)}`);
+    if (www) parts.push(www.replace(/\s+/g, ' ').slice(0, 200));
 
+    const jwtHint = this.getJwtHint(token);
+    if (jwtHint) parts.push(jwtHint);
+
+    const ct = String(res.headers.get('content-type') || '');
+    const text = await res.text().catch(() => '');
+    if (text) {
+      if (ct.includes('application/json')) {
+        try {
+          const j: any = JSON.parse(text);
+          const code = String(j?.error?.code || '').trim();
+          const msg = String(j?.error?.message || '').trim();
+          const combined = [code, msg].filter(Boolean).join(' - ');
+          if (combined) parts.push(combined);
+        } catch {
+          const snippet = String(text || '').replace(/\s+/g, ' ').slice(0, 500);
+          if (snippet) parts.push(snippet);
+        }
+      } else {
+        const snippet = String(text || '').replace(/\s+/g, ' ').slice(0, 500);
+        if (snippet) parts.push(snippet);
+      }
+    }
+
+    return parts.length ? `: ${parts.join(' | ')}` : '';
+  }
+
+  private async lookupAadUserId(token: string, upnOrEmail: string): Promise<string | null> {
+    try {
+      const key = String(upnOrEmail || '').trim();
+      if (!key) return null;
+
+      const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(key)}?$select=id`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) {
+        const detail = await this.formatGraphFailure(res, token);
+        this.logger.error(`graph user lookup failed (${res.status})${detail}`);
+        return null;
+      }
+
+      const json: any = await res.json().catch(() => ({}));
+      const id = String(json?.id || '').trim();
+      if (!id) {
+        this.logger.error('graph user lookup missing id');
+        return null;
+      }
+      return id;
+    } catch (e) {
+      this.logger.error(`graph user lookup error: ${this.formatError(e)}`, (e as any)?.stack);
+      return null;
+    }
+  }
+
+  private async sendActivityNotificationWithToken(
+    userIdOrUpn: string,
+    token: string,
+    body: GraphSendActivityNotificationRequestBody,
+  ): Promise<void> {
+    try {
       const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userIdOrUpn)}/teamwork/sendActivityNotification`;
       const res = await fetch(url, {
         method: 'POST',
@@ -111,10 +203,20 @@ export class TeamsNotificationService {
       });
 
       if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        const snippet = String(text || '').replace(/\s+/g, ' ').slice(0, 500);
-        this.logger.error(`sendActivityNotification failed (${res.status})${snippet ? `: ${snippet}` : ''}`);
+        const detail = await this.formatGraphFailure(res, token);
+        this.logger.error(`sendActivityNotification failed (${res.status})${detail}`);
       }
+    } catch (e) {
+      this.logger.error(`sendActivityNotification error: ${this.formatError(e)}`, (e as any)?.stack);
+    }
+  }
+
+  async sendActivityNotification(userIdOrUpn: string, body: GraphSendActivityNotificationRequestBody): Promise<void> {
+    try {
+      const token = await this.getGraphToken();
+      if (!token) return;
+
+      await this.sendActivityNotificationWithToken(userIdOrUpn, token, body);
     } catch (e) {
       this.logger.error(`sendActivityNotification error: ${this.formatError(e)}`, (e as any)?.stack);
     }
@@ -122,8 +224,18 @@ export class TeamsNotificationService {
 
   async sendForNotification(recipient: AppUserLike, notification: AppNotificationLike): Promise<void> {
     try {
-      const recipientKey = String(recipient?.entraOid || recipient?.teamsUpn || recipient?.email || '').trim();
-      if (!recipientKey) return;
+      const token = await this.getGraphToken();
+      if (!token) return;
+
+      const upnOrEmail = String(recipient?.teamsUpn || recipient?.email || '').trim();
+      const directAadId = String(recipient?.entraOid || '').trim();
+      const resolvedAadId = directAadId || (upnOrEmail ? await this.lookupAadUserId(token, upnOrEmail) : null);
+      if (!resolvedAadId) {
+        const uid = String(recipient?.id || '').trim();
+        const nType = String(notification?.type || '').trim();
+        this.logger.error(`teams notification recipient missing entraOid (user=${uid || 'unknown'} type=${nType || 'unknown'})`);
+        return;
+      }
 
       const preview = this.buildPreviewText(notification);
       const webUrl = this.buildWebUrlForNotification(notification);
@@ -133,12 +245,12 @@ export class TeamsNotificationService {
         activityType: String(notification?.type || 'Notification'),
         previewText: { content: preview },
         recipient: {
-          '@odata.type': 'microsoft.graph.aadUserNotificationRecipient',
-          userId: recipientKey,
+          '@odata.type': '#microsoft.graph.aadUserNotificationRecipient',
+          userId: resolvedAadId,
         },
       };
 
-      await this.sendActivityNotification(recipientKey, body);
+      await this.sendActivityNotificationWithToken(resolvedAadId, token, body);
     } catch (e) {
       this.logger.error(`teams notification failed: ${this.formatError(e)}`, (e as any)?.stack);
     }
