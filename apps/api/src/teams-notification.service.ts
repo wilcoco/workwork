@@ -126,6 +126,18 @@ export class TeamsNotificationService {
     return /^https:\/\/([a-z0-9-]+\.)?teams\.microsoft\.com\/l\//i.test(u);
   }
 
+  private buildTeamsTopicWebUrl(recipient: AppUserLike): string {
+    const configured = String(process.env.TEAMS_ACTIVITY_WEB_URL || process.env.TEAMS_NOTIFICATION_WEB_URL || '').trim();
+    if (this.isTeamsDeepLink(configured)) return configured;
+
+    const upnOrEmail = String(recipient?.teamsUpn || recipient?.email || '').trim();
+    if (upnOrEmail) {
+      return `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(upnOrEmail)}`;
+    }
+
+    return 'https://teams.microsoft.com/l/chat/0/0';
+  }
+
   private buildPreviewText(n: AppNotificationLike): string {
     const t = String(n?.type || '').trim();
     if (t === 'ApprovalRequested') return '결재 요청이 도착했습니다.';
@@ -244,14 +256,10 @@ export class TeamsNotificationService {
       }
 
       const preview = this.buildPreviewText(notification);
-      const webUrl = this.buildWebUrlForNotification(notification);
-
-      const topic: GraphSendActivityNotificationRequestBody['topic'] = this.isTeamsDeepLink(webUrl)
-        ? { source: 'text', value: preview, webUrl }
-        : { source: 'text', value: preview };
+      const webUrl = this.buildTeamsTopicWebUrl(recipient);
 
       const body: GraphSendActivityNotificationRequestBody = {
-        topic,
+        topic: { source: 'text', value: preview, webUrl },
         activityType: String(notification?.type || 'Notification'),
         previewText: { content: preview },
         recipient: {
