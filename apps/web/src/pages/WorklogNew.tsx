@@ -30,6 +30,7 @@ export function WorklogNew() {
   const [approverId, setApproverId] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [watchers, setWatchers] = useState(''); // comma-separated userIds
+  const [externalRecipientEmails, setExternalRecipientEmails] = useState('');
 
   // help (single item for MVP)
   const [helpCategory, setHelpCategory] = useState('');
@@ -118,8 +119,12 @@ export function WorklogNew() {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
-      if (watcherIds.length) {
-        payload.share = { watcherIds, scope: 'COMMENT' };
+      const externalRecipientEmailsList = externalRecipientEmails
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (watcherIds.length || externalRecipientEmailsList.length) {
+        payload.share = { watcherIds, scope: 'COMMENT', ...(externalRecipientEmailsList.length ? { externalRecipientEmails: externalRecipientEmailsList } : {}) };
       }
       if (helpCategory || helpAssigneeId || helpQueue || helpSla !== '' || helpDueAt) {
         const helpDueAtIso = helpDueAt ? (/^\d{4}-\d{2}-\d{2}$/.test(helpDueAt) ? `${helpDueAt}T00:00:00+09:00` : helpDueAt) : undefined;
@@ -431,6 +436,11 @@ export function WorklogNew() {
       <label>
         워처 User ID들(쉼표 구분)
         <input value={watchers} onChange={(e) => setWatchers(e.target.value)} placeholder="u1,u2" />
+      </label>
+
+      <label>
+        외부 수신 이메일들(쉼표 구분)
+        <input value={externalRecipientEmails} onChange={(e) => setExternalRecipientEmails(e.target.value)} placeholder="a@x.com,b@y.com" />
       </label>
 
       

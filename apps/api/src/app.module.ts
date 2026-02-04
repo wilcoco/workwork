@@ -28,6 +28,7 @@ import { ProcessTemplatesController } from './process-templates.controller';
 import { ProcessesController } from './processes.controller';
 import { MastersController } from './masters.controller';
 import { WorklogEvalsController } from './worklog-evals.controller';
+import { TeamsNotificationService } from './teams-notification.service';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -60,6 +61,6 @@ import { WorklogEvalsController } from './worklog-evals.controller';
     MastersController,
     WorklogEvalsController,
   ],
-  providers: [PrismaService],
+  providers: [PrismaService, TeamsNotificationService],
 })
 export class AppModule {}

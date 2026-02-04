@@ -50,6 +50,15 @@ interface ProcessTemplateDto {
   orgUnit?: { id: string; name: string };
 }
 
+interface ProcessTemplateHistoryEntry {
+  id: string;
+  ts: string;
+  activity: string;
+  userId?: string | null;
+  user?: { id: string; name: string } | null;
+  attrs?: any;
+}
+
 export function ProcessTemplates() {
   function stripHtml(html: string): string {
     if (!html) return '';
@@ -77,6 +86,9 @@ export function ProcessTemplates() {
   const [carModelsMaster, setCarModelsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [bpmnJsonText, setBpmnJsonText] = useState('');
   const [bpmnMode, setBpmnMode] = useState<'graph' | 'form'>('graph');
+
+  const [historyRows, setHistoryRows] = useState<ProcessTemplateHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   
   const [inUseCount, setInUseCount] = useState<number>(0);
   const [showCloneModal, setShowCloneModal] = useState(false);
@@ -296,6 +308,29 @@ export function ProcessTemplates() {
   useEffect(() => {
     loadList();
   }, [userId]);
+
+  async function loadHistory(tmplId?: string | null) {
+    if (!tmplId) {
+      setHistoryRows([]);
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const url = userId
+        ? `/api/process-templates/${encodeURIComponent(tmplId)}/history?actorId=${encodeURIComponent(userId)}`
+        : `/api/process-templates/${encodeURIComponent(tmplId)}/history`;
+      const rows = await apiJson<ProcessTemplateHistoryEntry[]>(url);
+      setHistoryRows(rows || []);
+    } catch {
+      setHistoryRows([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadHistory(editing?.id || null);
+  }, [editing?.id, userId]);
 
   useEffect(() => {
     if (!editing) return;
@@ -551,6 +586,7 @@ export function ProcessTemplates() {
         method: 'PUT',
         body: JSON.stringify(body),
       });
+      await loadHistory(editing.id);
     } else {
       const created = await apiJson<ProcessTemplateDto>(`/api/process-templates`, {
         method: 'POST',
@@ -603,14 +639,63 @@ export function ProcessTemplates() {
   async function removeTemplate(id?: string) {
     if (!id) return;
     if (!confirm('정말 삭제하시겠습니까? 이 프로세스의 단계 정의도 함께 삭제됩니다.')) return;
+    if (!userId) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
     try {
-      await apiJson(`/api/process-templates/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await apiJson(`/api/process-templates/${encodeURIComponent(id)}?actorId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
       setEditing(null);
       setSelectedId(null);
       await loadList();
     } catch (e: any) {
       const msg = e?.message || '삭제 중 오류가 발생했습니다.';
       alert(msg);
+    }
+  }
+
+  function activityLabel(a: string) {
+    const k = String(a || '');
+    if (k === 'ProcessTemplateCreated') return '생성';
+    if (k === 'ProcessTemplateUpdated') return '수정';
+    if (k === 'ProcessTemplatePublished') return '게시';
+    if (k === 'ProcessTemplatePromoted') return '공식 지정';
+    if (k === 'ProcessTemplateDeleted') return '삭제';
+    return k;
+  }
+
+  function fieldLabel(f: string) {
+    const key = String(f || '');
+    const map: Record<string, string> = {
+      title: '제목',
+      type: '유형',
+      visibility: '공개 범위',
+      orgUnitId: '팀',
+      recurrenceType: '주기',
+      recurrenceDetail: '주기 상세',
+      resultInputRequired: '결과 입력 필요',
+      expectedDurationDays: '예상 소요 일수',
+      expectedCompletionCriteria: '완료 기대 수준',
+      allowExtendDeadline: '완료 기한 연장 허용',
+      status: '상태',
+      official: '공식 템플릿',
+      description: '정의(본문)',
+      tasksCount: '과제 수',
+      tasks: '과제 구조',
+      bpmnStats: 'BPMN',
+    };
+    return map[key] || key;
+  }
+
+  function fmtValue(v: any) {
+    if (v == null) return '-';
+    if (typeof v === 'string') return stripHtml(v).slice(0, 140);
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    try {
+      const s = JSON.stringify(v);
+      return (s || '').slice(0, 140);
+    } catch {
+      return String(v);
     }
   }
 
@@ -974,6 +1059,41 @@ export function ProcessTemplates() {
                 )}
               </div>
             </div>
+
+            {editing.id ? (
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ margin: 0 }}>수정 이력</h3>
+                  <button className="btn btn-sm" onClick={() => loadHistory(editing.id || null)} disabled={historyLoading}>새로고침</button>
+                </div>
+                {historyLoading ? <div style={{ fontSize: 12, color: '#6b7280' }}>불러오는 중...</div> : null}
+                {!historyLoading && !historyRows.length ? <div style={{ fontSize: 12, color: '#9ca3af' }}>이력이 없습니다.</div> : null}
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {historyRows.map((h) => {
+                    const u = h.user || null;
+                    const changes = Array.isArray((h as any)?.attrs?.changes) ? (h as any).attrs.changes : [];
+                    return (
+                      <div key={h.id} style={{ border: '1px solid #EEF2F7', borderRadius: 8, padding: 10 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: 12, color: '#6b7280' }}>{fmt(h.ts)} · {u?.name || h.userId || '-'}</div>
+                          {u?.id && u?.name ? <UserAvatar userId={String(u.id)} name={String(u.name)} size={14} /> : null}
+                        </div>
+                        <div style={{ marginTop: 4, fontWeight: 700 }}>{activityLabel(h.activity)}</div>
+                        {changes.length ? (
+                          <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
+                            {changes.map((c: any, idx: number) => (
+                              <div key={idx} style={{ fontSize: 12, color: '#475569' }}>
+                                <b>{fieldLabel(String(c.field || ''))}:</b> {fmtValue(c.before)} → {fmtValue(c.after)}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
               <button
                 className="btn btn-outline"

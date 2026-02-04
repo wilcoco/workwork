@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
-import { IsArray, IsBoolean, IsDateString, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 
@@ -14,8 +14,15 @@ class ReportDto {
 }
 
 class ShareDto {
+  @IsOptional()
   @IsArray()
-  watcherIds!: string[];
+  @IsString({ each: true })
+  watcherIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsEmail({}, { each: true })
+  externalRecipientEmails?: string[];
 
   @IsOptional()
   @IsString()
@@ -157,6 +164,156 @@ class CreateSimpleWorklogDto {
 @Controller('worklogs')
 export class WorklogsController {
   constructor(private prisma: PrismaService) {}
+
+  private graphTokenCache: { token: string; expMs: number } | null = null;
+
+  private hasGraphConfig(): boolean {
+    const tenantId = String(process.env.MS_GRAPH_TENANT_ID || process.env.ENTRA_TENANT_ID || '').trim();
+    const clientId = String(process.env.MS_GRAPH_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '').trim();
+    const clientSecret = String(process.env.MS_GRAPH_CLIENT_SECRET || process.env.ENTRA_CLIENT_SECRET || '').trim();
+    return !!(tenantId && clientId && clientSecret);
+  }
+
+  private getGraphConfig() {
+    const tenantId = String(process.env.MS_GRAPH_TENANT_ID || process.env.ENTRA_TENANT_ID || '').trim();
+    const clientId = String(process.env.MS_GRAPH_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '').trim();
+    const clientSecret = String(process.env.MS_GRAPH_CLIENT_SECRET || process.env.ENTRA_CLIENT_SECRET || '').trim();
+    if (!tenantId) throw new BadRequestException('MS_GRAPH_TENANT_ID (or ENTRA_TENANT_ID) required');
+    if (!clientId) throw new BadRequestException('MS_GRAPH_CLIENT_ID (or ENTRA_CLIENT_ID) required');
+    if (!clientSecret) throw new BadRequestException('MS_GRAPH_CLIENT_SECRET (or ENTRA_CLIENT_SECRET) required');
+    return { tenantId, clientId, clientSecret };
+  }
+
+  private async getGraphToken(): Promise<string> {
+    const now = Date.now();
+    if (this.graphTokenCache && this.graphTokenCache.expMs > (now + 30_000)) {
+      return this.graphTokenCache.token;
+    }
+    const { tenantId, clientId, clientSecret } = this.getGraphConfig();
+    const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
+    const form = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'client_credentials',
+      scope: 'https://graph.microsoft.com/.default',
+    });
+    const res = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new BadRequestException(String(json?.error_description || json?.error || `graph token failed (${res.status})`));
+    }
+    const token = String(json?.access_token || '').trim();
+    const expiresInSec = Number(json?.expires_in || 0) || 0;
+    if (!token) throw new BadRequestException('graph token missing access_token');
+    this.graphTokenCache = { token, expMs: now + (expiresInSec * 1000) };
+    return token;
+  }
+
+  private getJwtHint(token: string): string {
+    try {
+      const parts = String(token || '').split('.');
+      if (parts.length < 2) return '';
+      let b64 = String(parts[1] || '').replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4;
+      if (pad) b64 = b64 + '='.repeat(4 - pad);
+      const raw = Buffer.from(b64, 'base64').toString('utf8');
+      const j: any = raw ? JSON.parse(raw) : null;
+      if (!j) return '';
+
+      const out: string[] = [];
+      const aud = String(j?.aud || '').trim();
+      const tid = String(j?.tid || '').trim();
+      const scp = String(j?.scp || '').trim();
+      const rolesArr = Array.isArray(j?.roles) ? j.roles : [];
+      const roles = (rolesArr || []).map((r: any) => String(r || '').trim()).filter(Boolean).join(',');
+
+      if (aud) out.push(`aud=${aud}`);
+      if (tid) out.push(`tid=${tid}`);
+      if (roles) out.push(`roles=${roles}`);
+      if (scp) out.push(`scp=${scp}`);
+      if (!roles && !scp) out.push('roles/scp=empty');
+
+      return out.length ? out.join(' ') : '';
+    } catch {
+      return '';
+    }
+  }
+
+  private getWebBase(): string {
+    const configured = String(process.env.WEB_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (configured) return configured;
+    return 'http://localhost:5173';
+  }
+
+  private async sendGraphMailFromUser(senderUpn: string, toEmail: string, subject: string, contentText: string): Promise<void> {
+    if (!this.hasGraphConfig()) throw new BadRequestException('MS_GRAPH_* config required');
+    const from = String(senderUpn || '').trim();
+    const to = String(toEmail || '').trim();
+    if (!from) throw new BadRequestException('mail sender missing');
+    if (!to) throw new BadRequestException('mail recipient missing');
+
+    let token = await this.getGraphToken();
+    let jwtHint = this.getJwtHint(token);
+    let refreshed = false;
+    const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(from)}/sendMail`;
+    const body = {
+      message: {
+        subject,
+        body: { contentType: 'Text', content: contentText },
+        toRecipients: [{ emailAddress: { address: to } }],
+      },
+      saveToSentItems: false,
+    };
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401 && !refreshed && attempt === 0) {
+        this.graphTokenCache = null;
+        token = await this.getGraphToken();
+        jwtHint = this.getJwtHint(token);
+        refreshed = true;
+        continue;
+      }
+      if (!res.ok) {
+        const ct = String(res.headers.get('content-type') || '');
+        const www = String(res.headers.get('www-authenticate') || '').trim();
+        const reqId = String(res.headers.get('request-id') || res.headers.get('x-ms-request-id') || '').trim();
+        const diag = String(res.headers.get('x-ms-ags-diagnostic') || '').trim();
+        const detailParts: string[] = [];
+        try {
+          const text = await res.text();
+          if (ct.includes('application/json')) {
+            const j: any = text ? JSON.parse(text) : null;
+            const code = String(j?.error?.code || '').trim();
+            const msg = String(j?.error?.message || '').trim();
+            const parts = [code, msg].filter(Boolean);
+            if (parts.length) detailParts.push(parts.join(' - '));
+          } else {
+            const snippet = String(text || '').trim().replace(/\s+/g, ' ').slice(0, 200);
+            if (snippet) detailParts.push(snippet);
+          }
+        } catch {}
+        if (jwtHint) detailParts.push(jwtHint);
+        if (reqId) detailParts.push(`request-id=${reqId}`);
+        if (diag) detailParts.push(`diag=${diag.replace(/\s+/g, ' ').slice(0, 200)}`);
+        if (www) {
+          const snippet = www.replace(/\s+/g, ' ').slice(0, 200);
+          if (snippet) detailParts.push(snippet);
+        }
+        const detail = detailParts.length ? `: ${detailParts.join(' | ')}` : '';
+        throw new BadRequestException(`graph sendMail failed (${res.status})${detail}`);
+      }
+      return;
+    }
+  }
 
   private async assertCeo(userId?: string) {
     if (!userId) throw new BadRequestException('userId required');
@@ -656,8 +813,9 @@ export class WorklogsController {
 
     // 4) Optional: Share
     const shares: string[] = [];
-    if (dto.share?.watcherIds?.length) {
-      for (const watcherId of dto.share.watcherIds) {
+    const watcherIdsForShare = dto.share?.watcherIds || [];
+    if (watcherIdsForShare.length) {
+      for (const watcherId of watcherIdsForShare) {
         const share = await this.prisma.share.create({
           data: {
             subjectType: 'Worklog',
@@ -685,6 +843,35 @@ export class WorklogsController {
             payload: { worklogId: wl.id },
           },
         });
+      }
+    }
+
+    const externalEmailsRaw = dto.share?.externalRecipientEmails || [];
+    const externalEmails = Array.from(
+      new Map(externalEmailsRaw.map((e) => [String(e || '').trim().toLowerCase(), String(e || '').trim()]).filter(([k]) => !!k)).values(),
+    );
+    if (externalEmails.length) {
+      const sender = await this.prisma.user.findUnique({ where: { id: dto.createdById } });
+      const senderUpn = String(process.env.MS_GRAPH_MAIL_SENDER_UPN || (sender as any)?.teamsUpn || sender?.email || '').trim();
+      if (!senderUpn) throw new BadRequestException('mail sender missing');
+
+      const initiative = await this.prisma.initiative.findUnique({ where: { id: initiativeIdFinal }, select: { title: true } });
+      const initTitle = String((initiative as any)?.title || '').trim();
+      const worklogUrl = `${this.getWebBase()}/worklogs/${encodeURIComponent(wl.id)}`;
+
+      const noteRaw = String((wl as any)?.note || '').trim();
+      const noteSnippet = noteRaw.length > 800 ? `${noteRaw.slice(0, 800)}...` : noteRaw;
+      const subject = `업무일지 공유${initTitle ? `: ${initTitle}` : ''}`;
+      const contentText = [
+        '업무일지가 공유되었습니다.',
+        initTitle ? `제목: ${initTitle}` : null,
+        (sender as any)?.name ? `작성자: ${(sender as any).name}` : null,
+        `링크: ${worklogUrl}`,
+        noteSnippet ? `\n내용:\n${noteSnippet}` : null,
+      ].filter(Boolean).join('\n');
+
+      for (const email of externalEmails) {
+        await this.sendGraphMailFromUser(senderUpn, email, subject, contentText);
       }
     }
 

@@ -114,6 +114,117 @@ export class ProcessTemplatesController {
     });
   }
 
+  private hashString(s: string): number {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    }
+    return h;
+  }
+
+  private bpmnStats(bpmn: any) {
+    try {
+      const nodesArr = Array.isArray(bpmn?.nodes) ? bpmn.nodes : [];
+      const edgesArr = Array.isArray(bpmn?.edges) ? bpmn.edges : [];
+      const nodes = nodesArr.length;
+      const edges = edgesArr.length;
+      const sig = [
+        ...nodesArr.map((n: any) => `${n?.id}|${n?.type}|${n?.name || ''}|${n?.taskType || ''}|${n?.stageLabel || ''}`),
+        '---',
+        ...edgesArr.map((e: any) => `${e?.source}->${e?.target}|${e?.condition || ''}`),
+      ].join('\n');
+      const hash = this.hashString(sig);
+      return { nodes, edges, hash };
+    } catch {
+      return { nodes: 0, edges: 0, hash: 0 };
+    }
+  }
+
+  private templateSnapshot(tmpl: any) {
+    if (!tmpl) return null;
+    const tasks = Array.isArray(tmpl?.tasks)
+      ? tmpl.tasks.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        taskType: t.taskType,
+        orderHint: t.orderHint,
+        stageLabel: t.stageLabel,
+        predecessorIds: t.predecessorIds,
+        predecessorMode: t.predecessorMode,
+        xorGroupKey: t.xorGroupKey,
+        xorCondition: t.xorCondition,
+      }))
+      : [];
+    const bpmn = (tmpl as any).bpmnJson;
+    return {
+      id: tmpl.id,
+      title: tmpl.title,
+      description: tmpl.description,
+      type: tmpl.type,
+      ownerId: tmpl.ownerId,
+      visibility: tmpl.visibility,
+      orgUnitId: tmpl.orgUnitId,
+      recurrenceType: tmpl.recurrenceType,
+      recurrenceDetail: tmpl.recurrenceDetail,
+      resultInputRequired: tmpl.resultInputRequired,
+      expectedDurationDays: tmpl.expectedDurationDays,
+      expectedCompletionCriteria: tmpl.expectedCompletionCriteria,
+      allowExtendDeadline: tmpl.allowExtendDeadline,
+      status: tmpl.status,
+      official: (tmpl as any).official,
+      tasks,
+      bpmn: { stats: this.bpmnStats(bpmn) },
+    };
+  }
+
+  private diffTemplateSnapshots(before: any, after: any) {
+    const b = before || {};
+    const a = after || {};
+    const fields = [
+      'title',
+      'type',
+      'visibility',
+      'orgUnitId',
+      'recurrenceType',
+      'recurrenceDetail',
+      'resultInputRequired',
+      'expectedDurationDays',
+      'expectedCompletionCriteria',
+      'allowExtendDeadline',
+      'status',
+      'official',
+    ];
+    const changes: any[] = [];
+    for (const f of fields) {
+      const bv = (b as any)[f];
+      const av = (a as any)[f];
+      if (bv !== av) changes.push({ field: f, before: bv, after: av });
+    }
+    if ((b.description || '') !== (a.description || '')) {
+      changes.push({
+        field: 'description',
+        before: String(b.description || '').slice(0, 2000),
+        after: String(a.description || '').slice(0, 2000),
+      });
+    }
+    const bt = Array.isArray(b.tasks) ? b.tasks : [];
+    const at = Array.isArray(a.tasks) ? a.tasks : [];
+    if (bt.length !== at.length) changes.push({ field: 'tasksCount', before: bt.length, after: at.length });
+    const taskSig = (t: any) => {
+      const parts = [t.taskType, t.name, t.stageLabel, t.predecessorIds, t.predecessorMode, t.xorGroupKey, t.xorCondition];
+      return parts.map((x) => (x == null ? '' : String(x))).join('|');
+    };
+    const btSig = bt.map((t: any) => taskSig(t)).join(' > ');
+    const atSig = at.map((t: any) => taskSig(t)).join(' > ');
+    if (btSig !== atSig) changes.push({ field: 'tasks', before: btSig, after: atSig });
+    const bb = (b as any).bpmn?.stats || {};
+    const ab = (a as any).bpmn?.stats || {};
+    if ((bb.nodes ?? 0) !== (ab.nodes ?? 0) || (bb.edges ?? 0) !== (ab.edges ?? 0) || (bb.hash ?? 0) !== (ab.hash ?? 0)) {
+      changes.push({ field: 'bpmnStats', before: bb, after: ab });
+    }
+    return changes;
+  }
+
   @Get()
   async list(@Query('ownerId') ownerId?: string, @Query('actorId') actorId?: string) {
     const where: any = {};
@@ -332,7 +443,7 @@ export class ProcessTemplatesController {
             })),
           });
         }
-        return tx.processTemplate.findUnique({
+        const created = await tx.processTemplate.findUnique({
           where: { id: tmpl.id },
           include: {
             tasks: { orderBy: { orderHint: 'asc' } },
@@ -342,10 +453,51 @@ export class ProcessTemplatesController {
             orgUnit: { select: { id: true, name: true } },
           },
         });
+        const afterSnap = this.templateSnapshot(created);
+        await tx.event.create({
+          data: {
+            subjectType: 'ProcessTemplate',
+            subjectId: tmpl.id,
+            activity: 'ProcessTemplateCreated',
+            userId: createdById,
+            attrs: { before: null, after: afterSnap, changes: this.diffTemplateSnapshots(null, afterSnap) },
+          },
+        });
+        return created;
       });
     } catch (e: any) {
       throw new BadRequestException(`failed to create process template: ${e?.message || e}`);
     }
+  }
+
+  @Get(':id/history')
+  async history(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    const tmpl = await this.getOne(id, actorId);
+    if (!tmpl) return [];
+
+    const rows = await this.prisma.event.findMany({
+      where: {
+        subjectType: 'ProcessTemplate',
+        subjectId: id,
+        activity: { in: ['ProcessTemplateCreated', 'ProcessTemplateUpdated', 'ProcessTemplatePublished', 'ProcessTemplatePromoted', 'ProcessTemplateDeleted'] } as any,
+      },
+      orderBy: { ts: 'desc' },
+    });
+
+    const userIds = Array.from(new Set((rows || []).map((r: any) => r.userId).filter(Boolean).map((x: any) => String(x))));
+    const users = userIds.length
+      ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+      : [];
+    const userMap = new Map<string, any>((users || []).map((u: any) => [String(u.id), u]));
+
+    return (rows || []).map((e: any) => ({
+      id: e.id,
+      ts: e.ts,
+      activity: e.activity,
+      userId: e.userId,
+      user: e.userId ? (userMap.get(String(e.userId)) || { id: String(e.userId), name: String(e.userId) }) : null,
+      attrs: e.attrs,
+    }));
   }
 
   @Put(':id')
@@ -409,6 +561,11 @@ export class ProcessTemplatesController {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const before = await tx.processTemplate.findUnique({
+          where: { id },
+          include: { tasks: { orderBy: { orderHint: 'asc' } } },
+        });
+
         await tx.processTemplate.update({
           where: { id },
           data: {
@@ -521,7 +678,7 @@ export class ProcessTemplatesController {
         }
       }
 
-      return tx.processTemplate.findUnique({
+      const updated = await tx.processTemplate.findUnique({
         where: { id },
         include: ({
           tasks: { orderBy: { orderHint: 'asc' } },
@@ -531,6 +688,18 @@ export class ProcessTemplatesController {
           orgUnit: { select: { id: true, name: true } },
         } as any),
       });
+      const beforeSnap = this.templateSnapshot(before);
+      const afterSnap = this.templateSnapshot(updated);
+      await tx.event.create({
+        data: {
+          subjectType: 'ProcessTemplate',
+          subjectId: id,
+          activity: 'ProcessTemplateUpdated',
+          userId: actorIdStr,
+          attrs: { before: beforeSnap, after: afterSnap, changes: this.diffTemplateSnapshots(beforeSnap, afterSnap) },
+        },
+      });
+      return updated;
       });
     } catch (e: any) {
       throw new BadRequestException(`failed to update process template: ${e?.message || e}`);
@@ -538,14 +707,40 @@ export class ProcessTemplatesController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    const actorIdStr = actorId ? String(actorId) : '';
+    if (!actorIdStr) throw new BadRequestException('actorId required');
+    const actor = await this.prisma.user.findUnique({ where: { id: actorIdStr } });
+    if (!actor) throw new BadRequestException('invalid actorId');
+    const role = String((actor as any).role || '').toUpperCase();
+    const isExec = role === 'CEO' || role === 'EXEC';
+
     return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.processTemplate.findUnique({
+        where: { id },
+        include: { tasks: { orderBy: { orderHint: 'asc' } } },
+      });
+      if (!existing) throw new BadRequestException('template not found');
+
+      const isOwner = String(existing.ownerId) === actorIdStr;
+      if (!isOwner && !isExec) throw new ForbiddenException('not allowed');
+
       const inUse = await tx.processInstance.count({ where: { templateId: id } });
       if (inUse > 0) {
         throw new BadRequestException('이미 이 템플릿으로 생성된 프로세스가 있어 삭제할 수 없습니다.');
       }
+      const beforeSnap = this.templateSnapshot(existing);
       await tx.processTaskTemplate.deleteMany({ where: { processTemplateId: id } });
       await tx.processTemplate.delete({ where: { id } });
+      await tx.event.create({
+        data: {
+          subjectType: 'ProcessTemplate',
+          subjectId: id,
+          activity: 'ProcessTemplateDeleted',
+          userId: actorIdStr,
+          attrs: { before: beforeSnap, after: null, changes: this.diffTemplateSnapshots(beforeSnap, null) },
+        },
+      });
       return { ok: true };
     });
   }
@@ -569,16 +764,34 @@ export class ProcessTemplatesController {
     if (String(existing.ownerId) !== actorIdStr) throw new ForbiddenException('not allowed');
 
     const nextStatus = String((existing as any)?.status || '').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'ACTIVE';
-    return this.prisma.processTemplate.update({
-      where: { id },
-      data: { status: nextStatus },
-      include: {
-        tasks: { orderBy: { orderHint: 'asc' } },
-        owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
-        createdBy: { select: { id: true, name: true } },
-        updatedBy: { select: { id: true, name: true } },
-        orgUnit: { select: { id: true, name: true } },
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.processTemplate.findUnique({
+        where: { id },
+        include: { tasks: { orderBy: { orderHint: 'asc' } } },
+      });
+      const updated = await tx.processTemplate.update({
+        where: { id },
+        data: { status: nextStatus, updatedById: actorIdStr },
+        include: {
+          tasks: { orderBy: { orderHint: 'asc' } },
+          owner: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } },
+          createdBy: { select: { id: true, name: true } },
+          updatedBy: { select: { id: true, name: true } },
+          orgUnit: { select: { id: true, name: true } },
+        },
+      });
+      const beforeSnap = this.templateSnapshot(before);
+      const afterSnap = this.templateSnapshot(updated);
+      await tx.event.create({
+        data: {
+          subjectType: 'ProcessTemplate',
+          subjectId: id,
+          activity: 'ProcessTemplatePublished',
+          userId: actorIdStr,
+          attrs: { before: beforeSnap, after: afterSnap, changes: this.diffTemplateSnapshots(beforeSnap, afterSnap) },
+        },
+      });
+      return updated;
     });
   }
 
@@ -592,11 +805,28 @@ export class ProcessTemplatesController {
     if (!existing) throw new BadRequestException('template not found');
     const status = String((existing as any)?.status || '').toUpperCase();
     if (status !== 'ACTIVE') throw new BadRequestException('template not published');
-    const updated = await this.prisma.processTemplate.update({
-      where: { id },
-      data: ({ official: true } as any),
-      include: { tasks: { orderBy: { orderHint: 'asc' } } },
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.processTemplate.findUnique({
+        where: { id },
+        include: { tasks: { orderBy: { orderHint: 'asc' } } },
+      });
+      const updated = await tx.processTemplate.update({
+        where: { id },
+        data: ({ official: true, updatedById: String(actorId) } as any),
+        include: { tasks: { orderBy: { orderHint: 'asc' } } },
+      });
+      const beforeSnap = this.templateSnapshot(before);
+      const afterSnap = this.templateSnapshot(updated);
+      await tx.event.create({
+        data: {
+          subjectType: 'ProcessTemplate',
+          subjectId: id,
+          activity: 'ProcessTemplatePromoted',
+          userId: String(actorId),
+          attrs: { before: beforeSnap, after: afterSnap, changes: this.diffTemplateSnapshots(beforeSnap, afterSnap) },
+        },
+      });
+      return updated;
     });
-    return updated;
   }
 }
