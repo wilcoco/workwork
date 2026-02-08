@@ -926,6 +926,61 @@ export class ProcessesController {
           await this.autoCreateApprovalForTaskInstance(tx, inst.id, t.id);
         }
 
+        const tasksNow = await tx.processTaskInstance.findMany({
+          where: { instanceId: inst.id },
+          select: {
+            id: true,
+            assigneeId: true,
+            status: true,
+            name: true,
+            stageLabel: true,
+            taskType: true,
+            approvalRequestId: true,
+          },
+        });
+        const participants: string[] = Array.from(
+          new Set(
+            (tasksNow || [])
+              .map((t: any) => String(t?.assigneeId || '').trim())
+              .filter(Boolean)
+          )
+        );
+
+        const readyTasks = (tasksNow || []).filter(
+          (t: any) =>
+            String(t?.status || '').toUpperCase() === 'READY' &&
+            String(t?.taskType || '').toUpperCase() !== 'APPROVAL' &&
+            String(t?.assigneeId || '').trim()
+        );
+        for (const t of readyTasks) {
+          await tx.notification.create({
+            data: {
+              userId: String(t.assigneeId),
+              type: 'ProcessTaskReady',
+              subjectType: 'PROCESS',
+              subjectId: inst.id,
+              payload: {
+                taskId: t.id,
+                taskName: t.name,
+                stageLabel: t.stageLabel || null,
+              },
+            },
+          });
+        }
+        for (const uid of participants) {
+          await tx.notification.create({
+            data: {
+              userId: uid,
+              type: 'ProcessStarted',
+              subjectType: 'PROCESS',
+              subjectId: inst.id,
+              payload: {
+                processTitle: inst.title,
+              },
+            },
+          });
+        }
+
         const full = await tx.processInstance.findUnique({
           where: { id: inst.id },
           include: {
@@ -1170,8 +1225,35 @@ export class ProcessesController {
 
     // non-XOR tasks: mark READY
     for (const dt of noGroup) {
-      await tx.processTaskInstance.updateMany({ where: { instanceId, taskTemplateId: dt.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } }, data: { status: 'READY' } });
+      const pending = await tx.processTaskInstance.findMany({
+        where: { instanceId, taskTemplateId: dt.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
+        select: { id: true, assigneeId: true, name: true, stageLabel: true },
+      });
+      await tx.processTaskInstance.updateMany({
+        where: { instanceId, taskTemplateId: dt.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
+        data: { status: 'READY' },
+      });
       await this.autoCreateApprovalIfNeeded(tx, instanceId, dt);
+
+      if (String(dt?.taskType || '').toUpperCase() !== 'APPROVAL') {
+        for (const t of pending) {
+          const uid = String((t as any)?.assigneeId || '').trim();
+          if (!uid) continue;
+          await tx.notification.create({
+            data: {
+              userId: uid,
+              type: 'ProcessTaskReady',
+              subjectType: 'PROCESS',
+              subjectId: instanceId,
+              payload: {
+                taskId: (t as any).id,
+                taskName: (t as any).name,
+                stageLabel: (t as any).stageLabel || null,
+              },
+            },
+          });
+        }
+      }
     }
 
     // XOR groups: evaluate conditions
@@ -1202,11 +1284,35 @@ export class ProcessesController {
         }
         if (selected) {
           // mark selected READY; skip siblings
+          const pending = await tx.processTaskInstance.findMany({
+            where: { instanceId, taskTemplateId: selected.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
+            select: { id: true, assigneeId: true, name: true, stageLabel: true },
+          });
           await tx.processTaskInstance.updateMany({
             where: { instanceId, taskTemplateId: selected.id, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
             data: { status: 'READY' },
           });
           await this.autoCreateApprovalIfNeeded(tx, instanceId, selected);
+
+          if (String(selected?.taskType || '').toUpperCase() !== 'APPROVAL') {
+            for (const t of pending) {
+              const uid = String((t as any)?.assigneeId || '').trim();
+              if (!uid) continue;
+              await tx.notification.create({
+                data: {
+                  userId: uid,
+                  type: 'ProcessTaskReady',
+                  subjectType: 'PROCESS',
+                  subjectId: instanceId,
+                  payload: {
+                    taskId: (t as any).id,
+                    taskName: (t as any).name,
+                    stageLabel: (t as any).stageLabel || null,
+                  },
+                },
+              });
+            }
+          }
           const siblingIds = list.map((x: any) => x.id).filter((id: string) => id !== selected.id);
           if (siblingIds.length) {
             await tx.processTaskInstance.updateMany({
@@ -1216,6 +1322,10 @@ export class ProcessesController {
           }
         } else {
           // no condition matched: make all group tasks READY (user will choose), if not already skipped
+          const pending = await tx.processTaskInstance.findMany({
+            where: { instanceId, taskTemplateId: { in: list.map((x: any) => x.id) }, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
+            select: { id: true, assigneeId: true, name: true, stageLabel: true, taskTemplateId: true },
+          });
           await tx.processTaskInstance.updateMany({
             where: { instanceId, taskTemplateId: { in: list.map((x: any) => x.id) }, status: { in: ['NOT_STARTED', 'ON_HOLD'] } },
             data: { status: 'READY' },
@@ -1223,6 +1333,32 @@ export class ProcessesController {
           // attempt auto-create for any APPROVAL-type in this group as well
           for (const dt of list) {
             await this.autoCreateApprovalIfNeeded(tx, instanceId, dt);
+          }
+
+          const approvalTplIds = new Set<string>(
+            (list || [])
+              .filter((dt: any) => String(dt?.taskType || '').toUpperCase() === 'APPROVAL')
+              .map((dt: any) => String(dt?.id || '').trim())
+              .filter(Boolean)
+          );
+          for (const t of pending) {
+            const tplId = String((t as any)?.taskTemplateId || '').trim();
+            if (tplId && approvalTplIds.has(tplId)) continue;
+            const uid = String((t as any)?.assigneeId || '').trim();
+            if (!uid) continue;
+            await tx.notification.create({
+              data: {
+                userId: uid,
+                type: 'ProcessTaskReady',
+                subjectType: 'PROCESS',
+                subjectId: instanceId,
+                payload: {
+                  taskId: (t as any).id,
+                  taskName: (t as any).name,
+                  stageLabel: (t as any).stageLabel || null,
+                },
+              },
+            });
           }
         }
       }
@@ -1396,6 +1532,22 @@ export class ProcessesController {
           await this.autoCreateApprovalForTaskInstance(tx, id, nextChain.id);
         } else {
           await tx.processTaskInstance.update({ where: { id: nextChain.id }, data: { status: 'READY' } });
+          const uid = String((nextChain as any)?.assigneeId || '').trim();
+          if (uid) {
+            await tx.notification.create({
+              data: {
+                userId: uid,
+                type: 'ProcessTaskReady',
+                subjectType: 'PROCESS',
+                subjectId: id,
+                payload: {
+                  taskId: nextChain.id,
+                  taskName: nextChain.name,
+                  stageLabel: (nextChain as any).stageLabel || null,
+                },
+              },
+            });
+          }
         }
       } else {
         await this.unlockReadyDownstreams(tx, id, task.taskTemplateId);
@@ -1431,6 +1583,22 @@ export class ProcessesController {
           await this.autoCreateApprovalForTaskInstance(tx, t.instanceId, nextChain.id);
         } else {
           await tx.processTaskInstance.update({ where: { id: nextChain.id }, data: { status: 'READY' } });
+          const uid = String((nextChain as any)?.assigneeId || '').trim();
+          if (uid) {
+            await tx.notification.create({
+              data: {
+                userId: uid,
+                type: 'ProcessTaskReady',
+                subjectType: 'PROCESS',
+                subjectId: t.instanceId,
+                payload: {
+                  taskId: nextChain.id,
+                  taskName: nextChain.name,
+                  stageLabel: (nextChain as any).stageLabel || null,
+                },
+              },
+            });
+          }
         }
       } else {
         unlockKeys.add(`${t.instanceId}::${t.taskTemplateId}`);

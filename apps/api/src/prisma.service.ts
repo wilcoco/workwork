@@ -19,7 +19,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
 
         const data: any = (params as any)?.args?.data || {};
         const type = String(data?.type || (result as any)?.type || '').trim();
-        if (type !== 'ApprovalRequested' && type !== 'HelpRequested' && type !== 'Delegated') return result;
+        if (
+          type !== 'ApprovalRequested' &&
+          type !== 'HelpRequested' &&
+          type !== 'Delegated' &&
+          type !== 'ProcessStarted' &&
+          type !== 'ProcessTaskReady'
+        ) return result;
 
         const userId = String(data?.userId || data?.user?.connect?.id || (result as any)?.userId || '').trim();
         if (!userId) return result;

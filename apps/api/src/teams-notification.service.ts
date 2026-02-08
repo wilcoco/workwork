@@ -117,6 +117,11 @@ export class TeamsNotificationService {
     if (t === 'ApprovalRequested') return `${base}/approvals/inbox`;
     if (t === 'HelpRequested') return `${base}/coops/inbox`;
     if (t === 'Delegated') return `${base}/me/goals`;
+    if (t === 'ProcessStarted' || t === 'ProcessTaskReady') {
+      const id = String(n?.subjectId || '').trim();
+      if (id) return `${base}/process/instances/${encodeURIComponent(id)}?return=${encodeURIComponent('/process/my')}`;
+      return `${base}/process/my`;
+    }
     return base;
   }
 
@@ -143,6 +148,13 @@ export class TeamsNotificationService {
     if (t === 'ApprovalRequested') return '결재 요청이 도착했습니다.';
     if (t === 'HelpRequested') return '업무협조 요청이 도착했습니다.';
     if (t === 'Delegated') return '업무가 위임되었습니다.';
+    if (t === 'ProcessStarted') return '프로세스가 시작되었습니다.';
+    if (t === 'ProcessTaskReady') {
+      const name = String(n?.payload?.taskName || '').trim();
+      const stage = String(n?.payload?.stageLabel || '').trim();
+      const label = [name, stage].filter(Boolean).join(' · ');
+      return label ? `내 단계 시작: ${label}` : '내 단계가 시작되었습니다.';
+    }
     return '새 알림이 도착했습니다.';
   }
 
