@@ -645,6 +645,10 @@ model ProcessTaskTemplate {
   cooperationTargetOrgUnitId String?
   cooperationTargetRoleCode String?
   expectedOutput         String?
+  emailToTemplate        String?
+  emailCcTemplate        String?
+  emailSubjectTemplate   String?
+  emailBodyTemplate      String?
   worklogTemplateHint    String?
   linkToKpiType          String?
   approvalRouteType      ApprovalRouteType?

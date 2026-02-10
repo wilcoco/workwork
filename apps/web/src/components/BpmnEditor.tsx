@@ -95,6 +95,10 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         taskType: (n.data && (n.data as any).taskType) || undefined,
         description: (n.data && (n.data as any).description) || undefined,
         assigneeHint: (n.data && (n.data as any).assigneeHint) || undefined,
+        emailToTemplate: (n.data && (n.data as any).emailToTemplate) || undefined,
+        emailCcTemplate: (n.data && (n.data as any).emailCcTemplate) || undefined,
+        emailSubjectTemplate: (n.data && (n.data as any).emailSubjectTemplate) || undefined,
+        emailBodyTemplate: (n.data && (n.data as any).emailBodyTemplate) || undefined,
         stageLabel: (n.data && (n.data as any).stageLabel) || undefined,
         deadlineOffsetDays: (n.data && (n.data as any).deadlineOffsetDays) ?? undefined,
         approvalUserIds: (n.data && (n.data as any).approvalUserIds) || undefined,
@@ -132,6 +136,10 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             taskType: n.taskType || undefined,
             description: n.description || undefined,
             assigneeHint: n.assigneeHint || undefined,
+            emailToTemplate: n.emailToTemplate || undefined,
+            emailCcTemplate: n.emailCcTemplate || undefined,
+            emailSubjectTemplate: n.emailSubjectTemplate || undefined,
+            emailBodyTemplate: n.emailBodyTemplate || undefined,
             stageLabel: n.stageLabel || undefined,
             deadlineOffsetDays: n.deadlineOffsetDays ?? undefined,
             approvalUserIds: n.approvalUserIds || undefined,
@@ -359,7 +367,9 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                 </div>
                 <label>타입<select value={(n.data as any)?.taskType || 'WORKLOG'} onChange={(e) => onNodeLabelChange(n.id, 'taskType', e.target.value)}>
                   <option value="WORKLOG">업무일지</option>
+                  <option value="COOPERATION">업무요청</option>
                   <option value="APPROVAL">결재</option>
+                  <option value="TASK">일반</option>
                 </select></label>
                 <div>
                   <label>설명</label>
@@ -370,6 +380,17 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                   />
                 </div>
                 <label>담당자 힌트<input value={(n.data as any)?.assigneeHint || ''} onChange={(e) => onNodeLabelChange(n.id, 'assigneeHint', e.target.value)} /></label>
+                <label>메일 To 템플릿<input value={(n.data as any)?.emailToTemplate || ''} onChange={(e) => onNodeLabelChange(n.id, 'emailToTemplate', e.target.value)} /></label>
+                <label>메일 Cc 템플릿<input value={(n.data as any)?.emailCcTemplate || ''} onChange={(e) => onNodeLabelChange(n.id, 'emailCcTemplate', e.target.value)} /></label>
+                <label>메일 제목 템플릿<input value={(n.data as any)?.emailSubjectTemplate || ''} onChange={(e) => onNodeLabelChange(n.id, 'emailSubjectTemplate', e.target.value)} /></label>
+                <label>
+                  메일 본문 템플릿
+                  <textarea
+                    value={(n.data as any)?.emailBodyTemplate || ''}
+                    onChange={(e) => onNodeLabelChange(n.id, 'emailBodyTemplate', e.target.value)}
+                    rows={6}
+                  />
+                </label>
                 {false && (<label>스테이지<input value={(n.data as any)?.stageLabel || ''} onChange={(e) => onNodeLabelChange(n.id, 'stageLabel', e.target.value)} /></label>)}
                 {false && (<label>마감 오프셋(D+)<input type="number" value={(n.data as any)?.deadlineOffsetDays ?? ''} onChange={(e) => onNodeLabelChange(n.id, 'deadlineOffsetDays', e.target.value ? Number(e.target.value) : undefined)} /></label>)}
                 {false && (

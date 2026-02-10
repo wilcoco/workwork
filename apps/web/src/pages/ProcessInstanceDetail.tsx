@@ -17,6 +17,14 @@ interface ProcTask {
   assigneeId?: string;
   plannedStartAt?: string;
   plannedEndAt?: string;
+  assignee?: { id: string; name: string; email?: string } | null;
+  taskTemplate?: {
+    id: string;
+    emailToTemplate?: string | null;
+    emailCcTemplate?: string | null;
+    emailSubjectTemplate?: string | null;
+    emailBodyTemplate?: string | null;
+  } | null;
 }
 interface ProcInst {
   id: string;
@@ -29,11 +37,13 @@ interface ProcInst {
   moldCode?: string;
   carModelCode?: string;
   initiativeId?: string;
+  startedBy?: { id: string; name: string; email?: string } | null;
+  initiative?: { id: string; title?: string | null } | null;
   template: { id: string; title: string };
   tasks: ProcTask[];
 }
 
-interface UserMe { id: string; name: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' };
+interface UserMe { id: string; name: string; email?: string; role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' };
 type ModChange = { type: 'skip' | 'reassign' | 'update'; taskId: string; name: string; before?: any; after?: any };
 type ModEntry = { ts: string; userId: string; reason: string; changes: ModChange[] };
 type TimelineItem = {
@@ -190,6 +200,100 @@ export function ProcessInstanceDetail() {
       await reload();
     } catch {
       // ignore
+    }
+  };
+
+  const hasEmailTemplate = (t: ProcTask): boolean => {
+    const tt = t?.taskTemplate || null;
+    if (!tt) return false;
+    const parts = [tt.emailToTemplate, tt.emailCcTemplate, tt.emailSubjectTemplate, tt.emailBodyTemplate];
+    return parts.some((x) => String(x || '').trim().length > 0);
+  };
+
+  const ctxGet = (obj: any, path: string): any => {
+    const parts = String(path || '')
+      .split('.')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    let cur: any = obj;
+    for (const p of parts) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  };
+
+  const interpolate = (tmpl: string, ctx: any): string => {
+    const raw = String(tmpl || '');
+    if (!raw.includes('{{')) return raw;
+    return raw.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, expr) => {
+      const key = String(expr || '').trim();
+      if (!key) return '';
+      const val = ctxGet(ctx, key);
+      if (val == null) return '';
+      if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return String(val);
+      try { return JSON.stringify(val); } catch { return String(val); }
+    });
+  };
+
+  const normalizeRecipients = (s: string): string => {
+    const parts = String(s || '')
+      .split(/[;\n,]+/g)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    return parts.join(';');
+  };
+
+  const htmlToText = (s: string): string => {
+    const raw = String(s || '');
+    if (!raw) return '';
+    if (typeof document === 'undefined') return raw;
+    try {
+      const el = document.createElement('div');
+      el.innerHTML = raw;
+      const text = (el as any).innerText || el.textContent || '';
+      return String(text || '').trim();
+    } catch {
+      return raw;
+    }
+  };
+
+  const openOutlookWebCompose = (t: ProcTask) => {
+    if (!inst) return;
+    const tt = t?.taskTemplate || null;
+    if (!tt) return;
+
+    const ctx = {
+      process: inst,
+      task: t,
+      assignee: t.assignee || null,
+      starter: inst.startedBy || null,
+      me: me || null,
+      template: inst.template || null,
+      initiative: inst.initiative || null,
+    };
+
+    const to = normalizeRecipients(interpolate(tt.emailToTemplate || '', ctx));
+    const cc = normalizeRecipients(interpolate(tt.emailCcTemplate || '', ctx));
+    const subject = interpolate(tt.emailSubjectTemplate || '', ctx);
+    const bodyText = htmlToText(interpolate(tt.emailBodyTemplate || '', ctx));
+
+    const base = String((import.meta as any)?.env?.VITE_OUTLOOK_WEB_COMPOSE_BASE || 'https://outlook.office.com/mail/deeplink/compose').trim();
+    try {
+      const u = new URL(base);
+      if (to) u.searchParams.set('to', to);
+      if (cc) u.searchParams.set('cc', cc);
+      if (subject) u.searchParams.set('subject', subject);
+      if (bodyText) u.searchParams.set('body', bodyText);
+      window.open(u.toString(), '_blank', 'noopener');
+    } catch {
+      const params = new URLSearchParams();
+      if (to) params.set('to', to);
+      if (cc) params.set('cc', cc);
+      if (subject) params.set('subject', subject);
+      if (bodyText) params.set('body', bodyText);
+      const url = base + (base.includes('?') ? '&' : '?') + params.toString();
+      window.open(url, '_blank', 'noopener');
     }
   };
 
@@ -351,6 +455,9 @@ export function ProcessInstanceDetail() {
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     {t.status === 'READY' && (
                       <button className="btn btn-primary" onClick={() => onExecute(t)}>실행</button>
+                    )}
+                    {hasEmailTemplate(t) && (
+                      <button className="btn btn-outline" onClick={() => openOutlookWebCompose(t)}>Outlook(웹)</button>
                     )}
                     {canExec() && t.status !== 'COMPLETED' && (
                       <button className="btn" onClick={() => onForceComplete(t)}>강제완료</button>

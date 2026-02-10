@@ -448,6 +448,17 @@ export class ProcessesController {
           initiative: true,
           tasks: {
             orderBy: [{ stageLabel: 'asc' }, { createdAt: 'asc' }],
+            include: {
+              taskTemplate: {
+                select: {
+                  id: true,
+                  emailToTemplate: true,
+                  emailCcTemplate: true,
+                  emailSubjectTemplate: true,
+                  emailBodyTemplate: true,
+                },
+              },
+            },
           },
         },
       });
@@ -456,7 +467,7 @@ export class ProcessesController {
         const assigneeIds = result.tasks.map((t: any) => t.assigneeId).filter(Boolean);
         const assignees = assigneeIds.length ? await (this.prisma as any).user.findMany({
           where: { id: { in: assigneeIds } },
-          select: { id: true, name: true },
+          select: { id: true, name: true, email: true },
         }) : [];
         const assigneeMap = new Map(assignees.map((a: any) => [a.id, a]));
         for (const t of result.tasks) {

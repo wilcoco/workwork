@@ -7,9 +7,13 @@ type BpmnNode = {
   id: string;
   type: 'start' | 'task' | 'gateway_parallel' | 'gateway_xor' | 'end';
   name?: string;
-  taskType?: 'WORKLOG' | 'APPROVAL';
+  taskType?: 'COOPERATION' | 'WORKLOG' | 'APPROVAL' | 'TASK';
   description?: string;
   assigneeHint?: string;
+  emailToTemplate?: string;
+  emailCcTemplate?: string;
+  emailSubjectTemplate?: string;
+  emailBodyTemplate?: string;
   stageLabel?: string;
   deadlineOffsetDays?: number;
   position?: { x: number; y: number };
@@ -40,6 +44,10 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         taskType: n.taskType || undefined,
         description: n.description || n.descriptionHtml || undefined,
         assigneeHint: n.assigneeHint || undefined,
+        emailToTemplate: n.emailToTemplate || undefined,
+        emailCcTemplate: n.emailCcTemplate || undefined,
+        emailSubjectTemplate: n.emailSubjectTemplate || undefined,
+        emailBodyTemplate: n.emailBodyTemplate || undefined,
         stageLabel: n.stageLabel || undefined,
         deadlineOffsetDays: typeof n.deadlineOffsetDays === 'number' ? n.deadlineOffsetDays : undefined,
         position: (n && n.position && typeof n.position.x === 'number' && typeof n.position.y === 'number') ? { x: n.position.x, y: n.position.y } : undefined,
@@ -188,7 +196,9 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
                   과제 타입
                   <select value={n.taskType || 'WORKLOG'} onChange={(e) => updateNode(n.id, { taskType: e.target.value as any })}>
                     <option value="WORKLOG">업무일지</option>
+                    <option value="COOPERATION">업무요청</option>
                     <option value="APPROVAL">결재</option>
+                    <option value="TASK">일반</option>
                   </select>
                 </label>
                 <div>
@@ -202,6 +212,22 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
                 <label>
                   담당자 힌트
                   <input value={n.assigneeHint || ''} onChange={(e) => updateNode(n.id, { assigneeHint: e.target.value })} />
+                </label>
+                <label>
+                  메일 To 템플릿
+                  <input value={n.emailToTemplate || ''} onChange={(e) => updateNode(n.id, { emailToTemplate: e.target.value })} />
+                </label>
+                <label>
+                  메일 Cc 템플릿
+                  <input value={n.emailCcTemplate || ''} onChange={(e) => updateNode(n.id, { emailCcTemplate: e.target.value })} />
+                </label>
+                <label>
+                  메일 제목 템플릿
+                  <input value={n.emailSubjectTemplate || ''} onChange={(e) => updateNode(n.id, { emailSubjectTemplate: e.target.value })} />
+                </label>
+                <label>
+                  메일 본문 템플릿
+                  <textarea value={n.emailBodyTemplate || ''} onChange={(e) => updateNode(n.id, { emailBodyTemplate: e.target.value })} rows={6} />
                 </label>
                 {false && (
                   <label>
