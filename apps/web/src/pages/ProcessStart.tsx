@@ -11,6 +11,10 @@ interface ProcessTaskTemplateDto {
   stageLabel?: string;
   description?: string;
   assigneeHint?: string;
+  emailToTemplate?: string | null;
+  emailCcTemplate?: string | null;
+  emailSubjectTemplate?: string | null;
+  emailBodyTemplate?: string | null;
 }
 interface ProcessTemplateDto {
   id?: string;
@@ -73,11 +77,16 @@ export function ProcessStart() {
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
   const [assignees, setAssignees] = useState<Record<string, string[]>>({});
   const [plans, setPlans] = useState<Record<string, { plannedStartAt?: string; plannedEndAt?: string; deadlineAt?: string }>>({});
+  const [taskEmails, setTaskEmails] = useState<Record<string, { emailTo?: string; emailCc?: string; emailSubject?: string; emailBody?: string }>>({});
   const [initiativeId, setInitiativeId] = useState('');
   const [myInits, setMyInits] = useState<Array<{ id: string; title: string }>>([]);
   const [itemManual, setItemManual] = useState(false);
   const [moldManual, setMoldManual] = useState(false);
   const [carModelManual, setCarModelManual] = useState(false);
+
+  useEffect(() => {
+    setTaskEmails({});
+  }, [tplId]);
 
   // Fallback preview from BPMN if compiled tasks are not present
   const taskPreview: Array<any> = useMemo(() => {
@@ -202,6 +211,12 @@ export function ProcessStart() {
     })();
   }, []);
 
+  const hasEmailTemplateValue = (v: any): boolean => typeof v === 'string' && v.trim().length > 0;
+  const hasAnyEmailTemplate = (t: any): boolean => {
+    const parts = [t?.emailToTemplate, t?.emailCcTemplate, t?.emailSubjectTemplate, t?.emailBodyTemplate];
+    return parts.some((x) => hasEmailTemplateValue(x));
+  };
+
   // Load full template detail when a template is selected to ensure tasks (with IDs) are present
   useEffect(() => {
     (async () => {
@@ -259,6 +274,43 @@ export function ProcessStart() {
     if (!tplId) { alert('템플릿을 선택하세요.'); return; }
     if (!startTitle.trim()) { alert('세부 제목을 입력하세요.'); return; }
     const finalTitle = selected ? `${selected.title} - ${startTitle}` : startTitle;
+
+    const missingEmail: string[] = [];
+    for (const t of taskPreview || []) {
+      if (t?.__source === 'bpmn') continue;
+      const taskTemplateId = String(t?.id || '').trim();
+      if (!taskTemplateId) continue;
+      if (!hasAnyEmailTemplate(t)) continue;
+
+      const rec = (taskEmails as any)[taskTemplateId] || {};
+      const miss: string[] = [];
+      if (!hasEmailTemplateValue(t.emailToTemplate) && !hasEmailTemplateValue(rec.emailTo)) miss.push('To');
+      if (!hasEmailTemplateValue(t.emailCcTemplate) && !hasEmailTemplateValue(rec.emailCc)) miss.push('Cc');
+      if (!hasEmailTemplateValue(t.emailSubjectTemplate) && !hasEmailTemplateValue(rec.emailSubject)) miss.push('Subject');
+      if (!hasEmailTemplateValue(t.emailBodyTemplate) && !hasEmailTemplateValue(rec.emailBody)) miss.push('Body');
+      if (miss.length) missingEmail.push(`${String(t?.name || taskTemplateId)}: ${miss.join(', ')}`);
+    }
+    if (missingEmail.length) {
+      alert(`메일 정보를 입력하세요.\n\n${missingEmail.join('\n')}`);
+      return;
+    }
+
+    const taskEmailsPayload = Object.entries(taskEmails || {})
+      .map(([taskTemplateId, v]) => {
+        const to = v?.emailTo != null ? String(v.emailTo).trim() : '';
+        const cc = v?.emailCc != null ? String(v.emailCc).trim() : '';
+        const subject = v?.emailSubject != null ? String(v.emailSubject).trim() : '';
+        const bodyRaw = v?.emailBody != null ? String(v.emailBody) : '';
+        const body = bodyRaw.trim().length ? bodyRaw : '';
+        return {
+          taskTemplateId,
+          emailTo: to || undefined,
+          emailCc: cc || undefined,
+          emailSubject: subject || undefined,
+          emailBody: body || undefined,
+        };
+      })
+      .filter((x) => x.emailTo || x.emailCc || x.emailSubject || x.emailBody);
     const taskAssignees = Object.entries(assignees)
       .flatMap(([k, arr]) => (arr || []).filter(Boolean).map((v) => ({ taskTemplateId: k, assigneeId: v })));
     const taskPlans = Object.entries(plans)
@@ -278,6 +330,7 @@ export function ProcessStart() {
       carModelCode: carModelCode || undefined,
       taskAssignees,
       taskPlans,
+      taskEmails: taskEmailsPayload.length ? taskEmailsPayload : undefined,
       initiativeId: initiativeId || undefined,
     };
     try {
@@ -630,6 +683,64 @@ export function ProcessStart() {
                           />
                         </label>
                       </div>
+                      {(() => {
+                        if (t.__source === 'bpmn') return null;
+                        const taskTemplateId = String(t?.id || '').trim();
+                        if (!taskTemplateId) return null;
+                        if (!hasAnyEmailTemplate(t)) return null;
+                        const needTo = !hasEmailTemplateValue(t.emailToTemplate);
+                        const needCc = !hasEmailTemplateValue(t.emailCcTemplate);
+                        const needSubject = !hasEmailTemplateValue(t.emailSubjectTemplate);
+                        const needBody = !hasEmailTemplateValue(t.emailBodyTemplate);
+                        if (!needTo && !needCc && !needSubject && !needBody) return null;
+                        const rec = (taskEmails as any)[taskTemplateId] || {};
+                        return (
+                          <div style={{ marginTop: 10, borderTop: '1px dashed #e5e7eb', paddingTop: 8, display: 'grid', gap: 8 }}>
+                            <div style={{ fontWeight: 600, fontSize: 12 }}>메일(Outlook 웹)</div>
+                            {needTo && (
+                              <label style={{ display: 'grid', gap: 4 }}>
+                                <span style={{ fontSize: 12, color: '#64748b' }}>To</span>
+                                <input
+                                  value={rec.emailTo || ''}
+                                  onChange={(e) => setTaskEmails((prev) => ({ ...prev, [taskTemplateId]: { ...prev[taskTemplateId], emailTo: e.target.value } }))}
+                                  placeholder="예: user@company.com; user2@company.com"
+                                />
+                              </label>
+                            )}
+                            {needCc && (
+                              <label style={{ display: 'grid', gap: 4 }}>
+                                <span style={{ fontSize: 12, color: '#64748b' }}>Cc</span>
+                                <input
+                                  value={rec.emailCc || ''}
+                                  onChange={(e) => setTaskEmails((prev) => ({ ...prev, [taskTemplateId]: { ...prev[taskTemplateId], emailCc: e.target.value } }))}
+                                  placeholder="예: user@company.com; user2@company.com"
+                                />
+                              </label>
+                            )}
+                            {needSubject && (
+                              <label style={{ display: 'grid', gap: 4 }}>
+                                <span style={{ fontSize: 12, color: '#64748b' }}>Subject</span>
+                                <input
+                                  value={rec.emailSubject || ''}
+                                  onChange={(e) => setTaskEmails((prev) => ({ ...prev, [taskTemplateId]: { ...prev[taskTemplateId], emailSubject: e.target.value } }))}
+                                  placeholder="메일 제목"
+                                />
+                              </label>
+                            )}
+                            {needBody && (
+                              <label style={{ display: 'grid', gap: 4 }}>
+                                <span style={{ fontSize: 12, color: '#64748b' }}>Body</span>
+                                <textarea
+                                  value={rec.emailBody || ''}
+                                  onChange={(e) => setTaskEmails((prev) => ({ ...prev, [taskTemplateId]: { ...prev[taskTemplateId], emailBody: e.target.value } }))}
+                                  placeholder="메일 본문"
+                                  rows={6}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                   {!taskPreview.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>과제가 없습니다.</div>}

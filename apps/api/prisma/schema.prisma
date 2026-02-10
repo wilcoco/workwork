@@ -707,6 +707,10 @@ model ProcessTaskInstance {
   worklogId         String?
   cooperationId     String?
   approvalRequestId String?
+  emailTo           String?
+  emailCc           String?
+  emailSubject      String?
+  emailBody         String?
   assigneeId        String?
   decidedById       String?
   decisionReason    String?

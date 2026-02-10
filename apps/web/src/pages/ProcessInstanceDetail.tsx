@@ -17,6 +17,10 @@ interface ProcTask {
   assigneeId?: string;
   plannedStartAt?: string;
   plannedEndAt?: string;
+  emailTo?: string | null;
+  emailCc?: string | null;
+  emailSubject?: string | null;
+  emailBody?: string | null;
   assignee?: { id: string; name: string; email?: string } | null;
   taskTemplate?: {
     id: string;
@@ -205,8 +209,16 @@ export function ProcessInstanceDetail() {
 
   const hasEmailTemplate = (t: ProcTask): boolean => {
     const tt = t?.taskTemplate || null;
-    if (!tt) return false;
-    const parts = [tt.emailToTemplate, tt.emailCcTemplate, tt.emailSubjectTemplate, tt.emailBodyTemplate];
+    const parts = [
+      t?.emailTo,
+      t?.emailCc,
+      t?.emailSubject,
+      t?.emailBody,
+      tt?.emailToTemplate,
+      tt?.emailCcTemplate,
+      tt?.emailSubjectTemplate,
+      tt?.emailBodyTemplate,
+    ];
     return parts.some((x) => String(x || '').trim().length > 0);
   };
 
@@ -261,7 +273,6 @@ export function ProcessInstanceDetail() {
   const openOutlookWebCompose = (t: ProcTask) => {
     if (!inst) return;
     const tt = t?.taskTemplate || null;
-    if (!tt) return;
 
     const ctx = {
       process: inst,
@@ -273,10 +284,18 @@ export function ProcessInstanceDetail() {
       initiative: inst.initiative || null,
     };
 
-    const to = normalizeRecipients(interpolate(tt.emailToTemplate || '', ctx));
-    const cc = normalizeRecipients(interpolate(tt.emailCcTemplate || '', ctx));
-    const subject = interpolate(tt.emailSubjectTemplate || '', ctx);
-    const bodyText = htmlToText(interpolate(tt.emailBodyTemplate || '', ctx));
+    const hasVal = (v: any): boolean => String(v || '').trim().length > 0;
+
+    const toSrc = hasVal((t as any)?.emailTo) ? String((t as any).emailTo) : String(tt?.emailToTemplate || '');
+    const ccSrc = hasVal((t as any)?.emailCc) ? String((t as any).emailCc) : String(tt?.emailCcTemplate || '');
+    const subjectSrc = hasVal((t as any)?.emailSubject) ? String((t as any).emailSubject) : String(tt?.emailSubjectTemplate || '');
+    const bodySrc = hasVal((t as any)?.emailBody) ? String((t as any).emailBody) : String(tt?.emailBodyTemplate || '');
+
+    const to = normalizeRecipients(interpolate(toSrc, ctx));
+    const cc = normalizeRecipients(interpolate(ccSrc, ctx));
+    const subject = interpolate(subjectSrc, ctx);
+    const bodyInterpolated = interpolate(bodySrc, ctx);
+    const bodyText = hasVal((t as any)?.emailBody) ? bodyInterpolated : htmlToText(bodyInterpolated);
 
     const base = String((import.meta as any)?.env?.VITE_OUTLOOK_WEB_COMPOSE_BASE || 'https://outlook.office.com/mail/deeplink/compose').trim();
     try {

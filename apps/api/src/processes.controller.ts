@@ -728,6 +728,7 @@ export class ProcessesController {
         carModelCode,
         taskAssignees,
         taskPlans,
+        taskEmails,
         initiativeId,
       } = body || {};
 
@@ -788,6 +789,49 @@ export class ProcessesController {
           }
         }
       }
+
+      const hasEmailTemplateValue = (v: any): boolean => typeof v === 'string' && v.trim().length > 0;
+      const emailMap = new Map<string, { emailTo?: string; emailCc?: string; emailSubject?: string; emailBody?: string }>();
+      const putEmail = (taskTemplateId: any, rec: any) => {
+        if (!taskTemplateId) return;
+        const key = String(taskTemplateId);
+        if (!key) return;
+        const r = rec || {};
+        const emailToRaw = r.emailTo ?? r.to;
+        const emailCcRaw = r.emailCc ?? r.cc;
+        const emailSubjectRaw = r.emailSubject ?? r.subject;
+        const emailBodyRaw = r.emailBody ?? r.body;
+
+        const out: any = {};
+        if (emailToRaw != null) {
+          const s = String(emailToRaw).trim();
+          if (s) out.emailTo = s;
+        }
+        if (emailCcRaw != null) {
+          const s = String(emailCcRaw).trim();
+          if (s) out.emailCc = s;
+        }
+        if (emailSubjectRaw != null) {
+          const s = String(emailSubjectRaw).trim();
+          if (s) out.emailSubject = s;
+        }
+        if (emailBodyRaw != null) {
+          const s = String(emailBodyRaw);
+          if (s.trim()) out.emailBody = s;
+        }
+        if (out.emailTo || out.emailCc || out.emailSubject || out.emailBody) emailMap.set(key, out);
+      };
+
+      if (Array.isArray(taskEmails)) {
+        for (const e of taskEmails) {
+          if (!e || !e.taskTemplateId) continue;
+          putEmail(e.taskTemplateId, e);
+        }
+      } else if (taskEmails && typeof taskEmails === 'object') {
+        for (const k of Object.keys(taskEmails)) {
+          putEmail(k, (taskEmails as any)[k]);
+        }
+      }
       const expectedEndAt = tmpl.expectedDurationDays ? addDays(now, Number(tmpl.expectedDurationDays)) : null;
 
       return await this.prisma.$transaction(async (tx) => {
@@ -833,6 +877,11 @@ export class ProcessesController {
         for (const t of (tmpl.tasks || [])) {
           const preds = parsePreds(t.predecessorIds);
           const initialStatus = preds.length === 0 ? 'READY' : 'NOT_STARTED';
+          const emailRec = emailMap.get(String(t.id)) || {};
+          const emailTo = hasEmailTemplateValue((t as any).emailToTemplate) ? undefined : (emailRec as any).emailTo;
+          const emailCc = hasEmailTemplateValue((t as any).emailCcTemplate) ? undefined : (emailRec as any).emailCc;
+          const emailSubject = hasEmailTemplateValue((t as any).emailSubjectTemplate) ? undefined : (emailRec as any).emailSubject;
+          const emailBody = hasEmailTemplateValue((t as any).emailBodyTemplate) ? undefined : (emailRec as any).emailBody;
           let baseAssigneeId: string | undefined = undefined;
           if (t.assigneeType === 'USER' && t.assigneeUserId) {
             baseAssigneeId = String(t.assigneeUserId);
@@ -862,6 +911,10 @@ export class ProcessesController {
                 status: idx === 0 ? initialStatus : 'CHAIN_WAIT',
                 assigneeId: String(aid),
                 initiativeId: linkedInitiativeId,
+                emailTo,
+                emailCc,
+                emailSubject,
+                emailBody,
                 plannedStartAt: plan.plannedStartAt,
                 plannedEndAt: plan.plannedEndAt,
                 deadlineAt: plan.deadlineAt,
@@ -879,6 +932,10 @@ export class ProcessesController {
               status: initialStatus,
               assigneeId,
               initiativeId: linkedInitiativeId,
+              emailTo,
+              emailCc,
+              emailSubject,
+              emailBody,
               plannedStartAt: plan.plannedStartAt,
               plannedEndAt: plan.plannedEndAt,
               deadlineAt: plan.deadlineAt,
