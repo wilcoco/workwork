@@ -14,6 +14,10 @@ async function bootstrap() {
   app.enableCors({ origin: true });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
+  const expressApp: any = app.getHttpAdapter().getInstance();
+  expressApp.get('/', (_req: any, res: any) => res.status(200).json({ ok: true }));
+  expressApp.get('/health', (_req: any, res: any) => res.status(200).json({ ok: true }));
+
   app.use((req: any, res: any, next: any) => {
     try {
       const url = String(req.originalUrl || req.url || '');
@@ -58,7 +62,7 @@ async function bootstrap() {
 
   const config = app.get(ConfigService);
   const port = Number(process.env.PORT || config.get('PORT') || 3000);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   // eslint-disable-next-line no-console
   console.log(`API running on port ${port}`);
 }

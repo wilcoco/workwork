@@ -2,6 +2,35 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 
+interface ProcTask {
+  id: string;
+  name: string;
+  taskType: 'COOPERATION' | 'WORKLOG' | 'APPROVAL' | 'TASK';
+  status: string;
+  assigneeId?: string | null;
+  emailTo?: string | null;
+  emailCc?: string | null;
+  emailSubject?: string | null;
+  emailBody?: string | null;
+  assignee?: { id: string; name: string; email?: string } | null;
+  taskTemplate?: {
+    id: string;
+    emailToTemplate?: string | null;
+    emailCcTemplate?: string | null;
+    emailSubjectTemplate?: string | null;
+    emailBodyTemplate?: string | null;
+  } | null;
+}
+interface ProcInst {
+  id: string;
+  title: string;
+  startedBy?: { id: string; name: string; email?: string } | null;
+  template?: { id: string; title: string } | null;
+  initiative?: { id: string; title?: string | null } | null;
+  tasks?: ProcTask[];
+}
+interface UserMe { id: string; name: string; email?: string };
+
 export function WorklogNew() {
   const nav = useNavigate();
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -53,6 +82,14 @@ export function WorklogNew() {
   const [selectedProcTaskId, setSelectedProcTaskId] = useState<string>(taskInstanceId || '');
   const [selectedProcInstId, setSelectedProcInstId] = useState<string>(processInstanceId || '');
   const [showProcPopup, setShowProcPopup] = useState(false);
+  const [me, setMe] = useState<UserMe | null>(null);
+  const [procInst, setProcInst] = useState<ProcInst | null>(null);
+  const [procTask, setProcTask] = useState<ProcTask | null>(null);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailCc, setEmailCc] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [emailInitKey, setEmailInitKey] = useState('');
 
   useEffect(() => {
     if (myUserId && !createdById) setCreatedById(myUserId);
@@ -63,6 +100,18 @@ export function WorklogNew() {
           const d = await r.json();
           setUsers((d?.items || []).map((u: any) => ({ id: u.id, name: u.name, orgName: u.orgName || '' })));
         }
+      } catch {}
+    })();
+  }, [myUserId]);
+
+  useEffect(() => {
+    if (!myUserId) return;
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
+        if (!r.ok) return;
+        const d = await r.json();
+        setMe(d || null);
       } catch {}
     })();
   }, [myUserId]);
@@ -82,6 +131,175 @@ export function WorklogNew() {
     })();
   }, [myUserId, processInstanceId]);
 
+  useEffect(() => {
+    const pid = selectedProcInstId || processInstanceId;
+    if (!pid) {
+      setProcInst(null);
+      setProcTask(null);
+      return;
+    }
+    let ignore = false;
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/processes/${encodeURIComponent(pid)}`);
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!ignore) setProcInst(d || null);
+      } catch {}
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [selectedProcInstId, processInstanceId]);
+
+  useEffect(() => {
+    const tid = selectedProcTaskId || taskInstanceId;
+    if (!procInst || !tid) {
+      setProcTask(null);
+      return;
+    }
+    const found = (procInst?.tasks || []).find((t) => String(t.id) === String(tid));
+    setProcTask(found || null);
+  }, [procInst, selectedProcTaskId, taskInstanceId]);
+
+  const hasVal = (v: any): boolean => String(v || '').trim().length > 0;
+  const ctxGet = (obj: any, path: string): any => {
+    const parts = String(path || '')
+      .split('.')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    let cur: any = obj;
+    for (const p of parts) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  };
+  const interpolate = (tmpl: string, ctx: any): string => {
+    const raw = String(tmpl || '');
+    if (!raw.includes('{{')) return raw;
+    return raw.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, expr) => {
+      const key = String(expr || '').trim();
+      if (!key) return '';
+      const val = ctxGet(ctx, key);
+      if (val == null) return '';
+      if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return String(val);
+      try { return JSON.stringify(val); } catch { return String(val); }
+    });
+  };
+  const normalizeRecipients = (s: string): string => {
+    const parts = String(s || '')
+      .split(/[;\n,]+/g)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    return parts.join(';');
+  };
+  const htmlToText = (s: string): string => {
+    const raw = String(s || '');
+    if (!raw) return '';
+    if (typeof document === 'undefined') return raw;
+    try {
+      const el = document.createElement('div');
+      el.innerHTML = raw;
+      const text = (el as any).innerText || el.textContent || '';
+      return String(text || '').trim();
+    } catch {
+      return raw;
+    }
+  };
+
+  useEffect(() => {
+    if (!procInst || !procTask) {
+      setEmailInitKey('');
+      return;
+    }
+    const key = `${procInst.id}:${procTask.id}`;
+    if (emailInitKey === key) return;
+    setEmailInitKey(key);
+
+    const tt = procTask?.taskTemplate || null;
+    const ctx = {
+      process: procInst,
+      task: procTask,
+      assignee: procTask?.assignee || null,
+      starter: procInst?.startedBy || null,
+      me: me || null,
+      template: procInst?.template || null,
+      initiative: procInst?.initiative || null,
+    };
+
+    const toSrc = hasVal(procTask?.emailTo) ? String(procTask?.emailTo) : String(tt?.emailToTemplate || '');
+    const ccSrc = hasVal(procTask?.emailCc) ? String(procTask?.emailCc) : String(tt?.emailCcTemplate || '');
+    const subjectSrc = hasVal(procTask?.emailSubject) ? String(procTask?.emailSubject) : String(tt?.emailSubjectTemplate || '');
+    const bodySrc = hasVal(procTask?.emailBody) ? String(procTask?.emailBody) : String(tt?.emailBodyTemplate || '');
+
+    const to = normalizeRecipients(interpolate(toSrc, ctx));
+    const cc = normalizeRecipients(interpolate(ccSrc, ctx));
+    const subject = interpolate(subjectSrc, ctx);
+    const bodyInterpolated = interpolate(bodySrc, ctx);
+    const bodyText = hasVal(procTask?.emailBody) ? bodyInterpolated : htmlToText(bodyInterpolated);
+
+    setEmailTo(to);
+    setEmailCc(cc);
+    setEmailSubject(subject);
+    setEmailBody(bodyText);
+  }, [procInst, procTask, me, emailInitKey]);
+
+  const buildEmailNoteBlock = () => {
+    if (!hasVal(emailBody)) return '';
+    return String(emailBody || '');
+  };
+  const hasEmailValues = (t: ProcTask | null): boolean => {
+    if (!t) return false;
+    const tt = t?.taskTemplate || null;
+    const parts = [
+      t?.emailTo,
+      t?.emailCc,
+      t?.emailSubject,
+      t?.emailBody,
+      tt?.emailToTemplate,
+      tt?.emailCcTemplate,
+      tt?.emailSubjectTemplate,
+      tt?.emailBodyTemplate,
+    ];
+    return parts.some((x) => hasVal(x));
+  };
+  const showEmailSection = !!procTask && String(procTask?.taskType || '').toUpperCase() === 'WORKLOG' && hasEmailValues(procTask);
+  const emailNoteBlock = showEmailSection ? buildEmailNoteBlock() : '';
+
+  const openOutlookWebCompose = () => {
+    const ctx = {
+      process: procInst,
+      task: procTask,
+      assignee: procTask?.assignee || null,
+      starter: procInst?.startedBy || null,
+      me: me || null,
+      template: procInst?.template || null,
+      initiative: procInst?.initiative || null,
+    };
+    const to = normalizeRecipients(interpolate(emailTo, ctx));
+    const cc = normalizeRecipients(interpolate(emailCc, ctx));
+    const subject = interpolate(emailSubject, ctx);
+    const bodyText = interpolate(emailBody, ctx);
+    const base = String((import.meta as any)?.env?.VITE_OUTLOOK_WEB_COMPOSE_BASE || 'https://outlook.office.com/mail/deeplink/compose').trim();
+    try {
+      const u = new URL(base);
+      if (to) u.searchParams.set('to', to);
+      if (cc) u.searchParams.set('cc', cc);
+      if (subject) u.searchParams.set('subject', subject);
+      if (bodyText) u.searchParams.set('body', bodyText);
+      window.open(u.toString(), '_blank', 'noopener');
+    } catch {
+      const params = new URLSearchParams();
+      if (to) params.set('to', to);
+      if (cc) params.set('cc', cc);
+      if (subject) params.set('subject', subject);
+      if (bodyText) params.set('body', bodyText);
+      const url = base + (base.includes('?') ? '&' : '?') + params.toString();
+      window.open(url, '_blank', 'noopener');
+    }
+  };
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -96,6 +314,8 @@ export function WorklogNew() {
       const hasInit = !!String(initiativeId || '').trim();
       const hasTaskName = !!String(taskName || '').trim();
       if (!hasInit && !hasProcess && !hasTaskName) throw new Error('대상(initiativeId) 또는 신규 과제 제목 또는 프로세스 과제를 선택해 주세요');
+      const baseNote = String(note || '').trim();
+      const noteWithEmail = [baseNote, emailNoteBlock].filter(Boolean).join('\n\n');
       const payload: any = {
         initiativeId: hasInit ? String(initiativeId).trim() : undefined,
         taskName: !hasInit && !hasProcess && hasTaskName ? String(taskName).trim() : undefined,
@@ -103,7 +323,7 @@ export function WorklogNew() {
         progressPct: Number(progressPct) || 0,
         timeSpentMinutes: computedMinutes,
         blockerCode: blockerCode || undefined,
-        note: note || undefined,
+        note: noteWithEmail || undefined,
         urgent: urgent || undefined,
         attachments: attachments.length ? { files: attachments } : undefined,
       };
@@ -344,6 +564,43 @@ export function WorklogNew() {
         <textarea value={note} onChange={(e) => setNote(e.target.value)} />
         <div style={{ fontSize: 12, color: '#6b7280' }}>사진 입력은 빠른 작성(리치 모드)에서 편집기 이미지 버튼을 사용해 본문에 삽입해 주세요.</div>
       </label>
+
+      {showEmailSection && (
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 14px', display: 'grid', gap: 10 }}>
+          <div style={{ fontWeight: 700 }}>외부 메일(Outlook)</div>
+          <div style={{ fontSize: 12, color: '#6b7280' }}>템플릿/프로세스 시작 입력값을 가이드로 채우고, 자유롭게 수정해서 사용하세요. 메일 내용은 업무일지 노트에 자동 입력됩니다.</div>
+          <div className="resp-2">
+            <label>
+              To
+              <input value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="a@x.com; b@y.com" />
+            </label>
+            <label>
+              Cc
+              <input value={emailCc} onChange={(e) => setEmailCc(e.target.value)} placeholder="c@x.com" />
+            </label>
+            <label>
+              Subject
+              <input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
+            </label>
+          </div>
+          <label>
+            Body
+            <textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} rows={6} />
+          </label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-outline" onClick={openOutlookWebCompose} disabled={!hasVal(emailTo) && !hasVal(emailCc) && !hasVal(emailSubject) && !hasVal(emailBody)}>
+              Outlook(웹) 열기
+            </button>
+            <span style={{ fontSize: 12, color: '#6b7280' }}>메일 내용은 저장 시 업무일지 노트에 자동 반영됩니다.</span>
+          </div>
+          {!!emailNoteBlock && (
+            <div style={{ background: '#f8fafc', border: '1px dashed #cbd5f5', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>노트 자동 입력 미리보기</div>
+              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{emailNoteBlock}</pre>
+            </div>
+          )}
+        </div>
+      )}
 
       <h3>성과 입력(선택)</h3>
       <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
