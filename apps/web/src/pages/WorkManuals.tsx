@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
+import { StepFormEditor, StepFormData, parseTextToStepForms, serializeStepsToText, makeEmptyStep } from '../components/StepFormEditor';
 
 type WorkManualDto = {
   id?: string;
@@ -169,6 +170,8 @@ export function WorkManuals() {
   const [aiQuestionsLoading, setAiQuestionsLoading] = useState(false);
   const [validation, setValidation] = useState<{ issues: ManualIssue[] } | null>(null);
   const [aiQuestions, setAiQuestions] = useState<AiQuestionsResult | null>(null);
+  const [editMode, setEditMode] = useState<'text' | 'structured'>('text');
+  const [stepForms, setStepForms] = useState<StepFormData[]>([]);
 
   const selected = useMemo(() => {
     if (!editing) return null;
@@ -231,6 +234,8 @@ export function WorkManuals() {
   useEffect(() => {
     setValidation(null);
     setAiQuestions(null);
+    setEditMode('text');
+    setStepForms([]);
   }, [selectedId]);
 
   function newManual() {
@@ -245,6 +250,30 @@ export function WorkManuals() {
   function editManual(m: WorkManualDto) {
     setSelectedId(String(m.id || ''));
     setEditing({ ...m, content: m.content || '', authorName: m.authorName || '', authorTeamName: m.authorTeamName || '' });
+  }
+
+  function switchToStructured() {
+    if (!editing) return;
+    const text = String(editing.content || '');
+    const forms = parseTextToStepForms(text);
+    if (!forms.length && text.trim().length > 0) {
+      const ok = confirm('현재 메뉴얼에서 STEP 블록을 찾을 수 없습니다.\n\n빈 단계 하나로 구조화 편집을 시작할까요?');
+      if (!ok) return;
+      setStepForms([makeEmptyStep(1)]);
+    } else if (!forms.length) {
+      setStepForms([makeEmptyStep(1)]);
+    } else {
+      setStepForms(forms);
+    }
+    setEditMode('structured');
+  }
+
+  function switchToText() {
+    if (stepForms.length) {
+      const text = serializeStepsToText(stepForms);
+      setEditing((prev) => (prev ? { ...prev, content: text } : prev));
+    }
+    setEditMode('text');
   }
 
   function insertAiFormatTemplate() {
@@ -345,7 +374,12 @@ export function WorkManuals() {
       alert('업무명을 입력하세요.');
       return;
     }
-    const content = String(editing.content || '');
+    const content = editMode === 'structured' && stepForms.length
+      ? serializeStepsToText(stepForms)
+      : String(editing.content || '');
+    if (editMode === 'structured' && stepForms.length) {
+      setEditing((prev) => (prev ? { ...prev, content } : prev));
+    }
     const authorName = String((editing as any)?.authorName ?? userName ?? '').trim();
     const authorTeamName = String((editing as any)?.authorTeamName ?? teamName ?? '').trim();
     setSaving(true);
@@ -550,20 +584,40 @@ export function WorkManuals() {
                   />
                 </label>
 
-                <label style={{ display: 'grid', gap: 6 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ fontWeight: 700 }}>업무 메뉴얼</div>
-                  <textarea
-                    value={String(selected.content || '')}
-                    onChange={(e) => setEditing((prev) => (prev ? { ...prev, content: e.target.value } : prev))}
-                    placeholder="업무 목적, 입력/산출물, 단계별 절차, 담당/협조, 예외 처리, 참고 링크 등을 자유롭게 적어주세요."
-                    rows={18}
-                    style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any }}
-                  />
-                </label>
-
-                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
-                  AI 자동생성 품질을 높이려면 “AI 포맷 템플릿”을 먼저 삽입하고, STEP/분기 형식으로 정리해 주세요. AI로 BPMN 생성 버튼은 이 메뉴얼 내용을 기반으로 프로세스 템플릿 초안을 생성합니다. 생성된 템플릿은 프로세스 템플릿 메뉴에서 수정/게시할 수 있습니다.
+                  <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+                    <button
+                      className={editMode === 'text' ? 'btn btn-sm' : 'btn btn-sm btn-outline'}
+                      type="button"
+                      onClick={() => { if (editMode !== 'text') switchToText(); }}
+                      style={{ fontSize: 12, padding: '4px 10px' }}
+                    >텍스트</button>
+                    <button
+                      className={editMode === 'structured' ? 'btn btn-sm' : 'btn btn-sm btn-outline'}
+                      type="button"
+                      onClick={() => { if (editMode !== 'structured') switchToStructured(); }}
+                      style={{ fontSize: 12, padding: '4px 10px' }}
+                    >구조화 편집</button>
+                  </div>
                 </div>
+
+                {editMode === 'text' ? (
+                  <>
+                    <textarea
+                      value={String(selected.content || '')}
+                      onChange={(e) => setEditing((prev) => (prev ? { ...prev, content: e.target.value } : prev))}
+                      placeholder="업무 목적, 입력/산출물, 단계별 절차, 담당/협조, 예외 처리, 참고 링크 등을 자유롭게 적어주세요."
+                      rows={18}
+                      style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any }}
+                    />
+                    <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+                      텍스트 모드에서 자유롭게 작성하거나, "구조화 편집" 모드로 전환하면 각 단계별 입력 폼으로 편집할 수 있습니다.
+                    </div>
+                  </>
+                ) : (
+                  <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
+                )}
 
                 {validation && (
                   <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, background: '#F8FAFC', padding: 10, display: 'grid', gap: 6 }}>
