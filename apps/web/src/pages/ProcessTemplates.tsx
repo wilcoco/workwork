@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { BpmnEditor } from '../components/BpmnEditor';
 import { BpmnFormEditor } from '../components/BpmnFormEditor';
@@ -72,6 +72,14 @@ export function ProcessTemplates() {
     try { return new Date(s).toLocaleString(); } catch { return s; }
   }
   const nav = useNavigate();
+  const location = useLocation();
+  const openId = (() => {
+    try {
+      return new URLSearchParams(location.search || '').get('openId') || '';
+    } catch {
+      return '';
+    }
+  })();
   const [items, setItems] = useState<ProcessTemplateDto[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProcessTemplateDto | null>(null);
@@ -306,8 +314,8 @@ export function ProcessTemplates() {
   })();
 
   useEffect(() => {
-    loadList();
-  }, [userId]);
+    loadList(openId);
+  }, [openId, userId]);
 
   async function loadHistory(tmplId?: string | null) {
     if (!tmplId) {
@@ -384,7 +392,7 @@ export function ProcessTemplates() {
   }
 
 
-  async function loadList() {
+  async function loadList(openIdParam?: string) {
     setLoading(true);
     try {
       const url = userId
@@ -392,6 +400,11 @@ export function ProcessTemplates() {
         : `/api/process-templates`;
       const res = await apiJson<ProcessTemplateDto[]>(url);
       setItems(res || []);
+      const oid = String(openIdParam || '').trim();
+      if (oid) {
+        const found = (res || []).find((t) => String(t?.id || '') === oid);
+        if (found) editTemplate(found);
+      }
     } finally {
       setLoading(false);
     }

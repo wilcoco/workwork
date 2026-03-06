@@ -29,6 +29,7 @@ import { ProcessesController } from './processes.controller';
 import { MastersController } from './masters.controller';
 import { WorklogEvalsController } from './worklog-evals.controller';
 import { TeamsNotificationService } from './teams-notification.service';
+import { WorkManualsController } from './work-manuals.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -41,6 +42,7 @@ import { TeamsNotificationService } from './teams-notification.service';
     SharesController,
     FeedbacksController,
     WorklogsController,
+    WorkManualsController,
     AuthController,
     EntraAuthController,
     UploadsController,

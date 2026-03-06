@@ -45,6 +45,7 @@ import { ProcessDashboard } from './pages/ProcessDashboard';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
 import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
+import { WorkManuals } from './pages/WorkManuals';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -264,6 +265,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/auth/entra/complete" element={<AuthEntraComplete />} />
           <Route path="/worklogs/new" element={<WorklogNew />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
+          <Route path="/manuals" element={<WorkManuals />} />
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
@@ -437,6 +439,9 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
           <Link to="/process/my">참여 프로세스</Link>
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
+        </NavDropdown>
+        <NavDropdown label="매뉴얼" active={location.pathname.startsWith('/manuals')}>
+          <Link to="/manuals">업무 메뉴얼</Link>
         </NavDropdown>
         {isCeo && (
           <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
@@ -625,6 +630,11 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/process/my', label: '참여 프로세스' },
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         { to: '/process/templates', label: '프로세스 템플릿' },
+      ];
+    }
+    if (path.startsWith('/manuals')) {
+      return [
+        { to: '/manuals', label: '업무 메뉴얼' },
       ];
     }
     if (path.startsWith('/inbox')) {
