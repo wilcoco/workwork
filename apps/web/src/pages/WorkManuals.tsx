@@ -16,6 +16,144 @@ type WorkManualDto = {
   updatedAt?: string;
 };
 
+type ManualIssue = {
+  stepId?: string;
+  issue: string;
+  severity: 'MUST' | 'SHOULD';
+  suggestion?: string;
+};
+
+type ManualQuestion = {
+  stepId?: string;
+  question: string;
+  severity: 'MUST' | 'SHOULD';
+  reason?: string;
+};
+
+type AiQuestionsResult = {
+  summary: string;
+  issues: ManualIssue[];
+  questions: ManualQuestion[];
+};
+
+type ParsedStep = {
+  stepId: string;
+  title: string;
+  raw: string;
+};
+
+function parseStepsFromManual(text: string): ParsedStep[] {
+  const lines = String(text || '').split(/\r?\n/);
+  const out: ParsedStep[] = [];
+  let cur: { stepId: string; title: string; lines: string[] } | null = null;
+
+  for (const line of lines) {
+    const m = line.match(/^###\s*STEP\s+(S\d+)\s*\|\s*(.+)\s*$/i);
+    if (m) {
+      if (cur) {
+        out.push({ stepId: cur.stepId, title: cur.title, raw: `### STEP ${cur.stepId} | ${cur.title}\n${cur.lines.join('\n')}`.trim() });
+      }
+      cur = { stepId: String(m[1] || '').toUpperCase(), title: String(m[2] || '').trim(), lines: [] };
+      continue;
+    }
+    if (cur) cur.lines.push(line);
+  }
+  if (cur) {
+    out.push({ stepId: cur.stepId, title: cur.title, raw: `### STEP ${cur.stepId} | ${cur.title}\n${cur.lines.join('\n')}`.trim() });
+  }
+  return out;
+}
+
+function validateManual(text: string): { issues: ManualIssue[]; steps: ParsedStep[] } {
+  const content = String(text || '');
+  const steps = parseStepsFromManual(content);
+  const issues: ManualIssue[] = [];
+
+  if (!steps.length) {
+    if (content.trim().length > 0) {
+      issues.push({ severity: 'MUST', issue: 'STEP 블록을 찾을 수 없습니다. “### STEP S1 | 단계명” 형식으로 작성해 주세요.' });
+    } else {
+      issues.push({ severity: 'MUST', issue: '메뉴얼 내용이 비어 있습니다.' });
+    }
+    return { issues, steps };
+  }
+
+  const seen = new Set<string>();
+  for (const s of steps) {
+    if (seen.has(s.stepId)) {
+      issues.push({ severity: 'MUST', stepId: s.stepId, issue: 'STEP ID가 중복되었습니다.' });
+    }
+    seen.add(s.stepId);
+  }
+
+  const stepIdSet = new Set(steps.map((s) => s.stepId));
+  const refs: Array<{ from: string; to: string; raw: string }> = [];
+
+  for (const s of steps) {
+    const lines = s.raw.split(/\r?\n/);
+    let taskType = '';
+    for (const line of lines) {
+      const m = line.match(/^\s*-\s*taskType\s*:\s*([A-Za-z_]+)\s*$/i);
+      if (m) {
+        taskType = String(m[1] || '').toUpperCase();
+        break;
+      }
+    }
+    if (!taskType) {
+      issues.push({ severity: 'MUST', stepId: s.stepId, issue: 'taskType이 필요합니다. (WORKLOG/APPROVAL/COOPERATION)' });
+    } else if (taskType === 'TASK') {
+      issues.push({ severity: 'MUST', stepId: s.stepId, issue: 'TASK는 예외입니다. WORKLOG/APPROVAL/COOPERATION 중 하나로 지정해 주세요.' });
+    } else if (!['WORKLOG', 'APPROVAL', 'COOPERATION'].includes(taskType)) {
+      issues.push({ severity: 'MUST', stepId: s.stepId, issue: `지원하지 않는 taskType입니다: ${taskType}` });
+    }
+
+    const hasPurpose = /\n\s*-\s*목적\s*:/i.test(`\n${s.raw}`);
+    const hasInputs = /\n\s*-\s*입력\s*\//i.test(`\n${s.raw}`) || /필요자료\s*\(/i.test(s.raw) || /\n\s*-\s*입력\s*:/i.test(`\n${s.raw}`);
+    const hasOutputs = /\n\s*-\s*산출물\s*:/i.test(`\n${s.raw}`);
+    const hasDone = /\n\s*-\s*완료조건\s*:/i.test(`\n${s.raw}`);
+    const hasWorklog = /업무일지/i.test(s.raw);
+    const hasBranch = /\n\s*-\s*분기\s*:/i.test(`\n${s.raw}`);
+
+    if (!hasPurpose) issues.push({ severity: 'SHOULD', stepId: s.stepId, issue: '목적을 적어주면 좋습니다.' });
+    if (!hasInputs) issues.push({ severity: 'SHOULD', stepId: s.stepId, issue: '입력/필요자료(파일·양식·링크)를 적어주면 좋습니다.' });
+    if (!hasOutputs) issues.push({ severity: 'SHOULD', stepId: s.stepId, issue: '산출물을 적어주면 좋습니다.' });
+    if (!hasDone) issues.push({ severity: 'SHOULD', stepId: s.stepId, issue: '완료조건을 적어주면 좋습니다.' });
+
+    if (taskType === 'WORKLOG' && !hasWorklog) {
+      issues.push({ severity: 'SHOULD', stepId: s.stepId, issue: 'WORKLOG 단계라면 업무일지(기록할 내용)를 구체화하면 AI 품질이 좋아집니다.' });
+    }
+    if (taskType === 'APPROVAL' && !hasBranch) {
+      issues.push({ severity: 'SHOULD', stepId: s.stepId, issue: 'APPROVAL 단계라면 분기(승인/반려 -> 다음 STEP) 또는 승인 기준을 적어주면 좋습니다.' });
+    }
+
+    for (const line of lines) {
+      if (!line.includes('->')) continue;
+      const m = line.match(/->\s*(S\d+)\s*$/i);
+      if (!m) {
+        issues.push({ severity: 'MUST', stepId: s.stepId, issue: `분기 대상 STEP 표기가 올바르지 않습니다: ${line.trim()}` });
+        continue;
+      }
+      refs.push({ from: s.stepId, to: String(m[1] || '').toUpperCase(), raw: line.trim() });
+
+      const before = String(line.split('->')[0] || '').trim();
+      const cond = before.includes(':') ? String(before.split(':').slice(1).join(':')).trim() : '';
+      if (!cond) {
+        issues.push({ severity: 'SHOULD', stepId: s.stepId, issue: `분기 조건식이 비어 있습니다: ${line.trim()}`, suggestion: "예: last.approval.status == 'APPROVED'" });
+      } else if (!/(==|!=)/.test(cond)) {
+        issues.push({ severity: 'SHOULD', stepId: s.stepId, issue: `조건식은 == 또는 != 를 포함해야 런타임에서 평가할 수 있습니다: ${cond}` });
+      }
+    }
+  }
+
+  for (const r of refs) {
+    if (!stepIdSet.has(r.to)) {
+      issues.push({ severity: 'MUST', stepId: r.from, issue: `분기에서 참조한 STEP이 존재하지 않습니다: ${r.raw}` });
+    }
+  }
+
+  return { issues, steps };
+}
+
 export function WorkManuals() {
   const nav = useNavigate();
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -28,6 +166,9 @@ export function WorkManuals() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiQuestionsLoading, setAiQuestionsLoading] = useState(false);
+  const [validation, setValidation] = useState<{ issues: ManualIssue[] } | null>(null);
+  const [aiQuestions, setAiQuestions] = useState<AiQuestionsResult | null>(null);
 
   const selected = useMemo(() => {
     if (!editing) return null;
@@ -41,6 +182,7 @@ export function WorkManuals() {
       setEditing(null);
       return;
     }
+
     setLoading(true);
     try {
       const r = await apiJson<{ items: WorkManualDto[] }>(`/api/work-manuals?userId=${encodeURIComponent(userId)}`);
@@ -86,6 +228,11 @@ export function WorkManuals() {
     void loadList();
   }, [loadList]);
 
+  useEffect(() => {
+    setValidation(null);
+    setAiQuestions(null);
+  }, [selectedId]);
+
   function newManual() {
     if (!userId) {
       alert('로그인이 필요합니다.');
@@ -130,7 +277,7 @@ export function WorkManuals() {
   - 반려: last.approval.status == 'REJECTED' -> S4
 
 ### STEP S3 | (승인 후)
-- taskType: TASK
+- taskType: WORKLOG
 
 ### STEP S4 | (반려 후)
 - taskType: WORKLOG
@@ -151,6 +298,40 @@ export function WorkManuals() {
       const nextText = prevText.trim().length > 0 ? `${prevText.replace(/\s*$/, '')}\n\n${tpl}` : tpl;
       return { ...prev, content: nextText };
     });
+  }
+
+  function runValidate() {
+    if (!editing) return;
+    const r = validateManual(String(editing.content || ''));
+    setValidation({ issues: r.issues });
+    if (!r.issues.length) alert('메뉴얼 점검 결과: 문제를 찾지 못했습니다.');
+  }
+
+  async function aiMakeQuestions() {
+    if (!userId) {
+      alert('로그인이 필요합니다.');
+      return;
+    }
+    if (!editing?.id) {
+      alert('먼저 메뉴얼을 저장해 주세요.');
+      return;
+    }
+    setAiQuestionsLoading(true);
+    try {
+      const r = await apiJson<AiQuestionsResult>(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/questions`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      });
+      setAiQuestions({
+        summary: String(r?.summary || '').trim(),
+        issues: Array.isArray(r?.issues) ? r.issues : [],
+        questions: Array.isArray(r?.questions) ? r.questions : [],
+      });
+    } catch (e: any) {
+      alert(e?.message || 'AI 보완 질문 생성에 실패했습니다.');
+    } finally {
+      setAiQuestionsLoading(false);
+    }
   }
 
   async function save() {
@@ -216,6 +397,21 @@ export function WorkManuals() {
       alert('먼저 메뉴얼을 저장해 주세요.');
       return;
     }
+
+    const v = validateManual(String(editing.content || ''));
+    const mustIssues = v.issues.filter((x) => x.severity === 'MUST');
+    const shouldIssues = v.issues.filter((x) => x.severity === 'SHOULD');
+    if (mustIssues.length) {
+      setValidation({ issues: v.issues });
+      alert(`AI로 BPMN 생성 전에 반드시 수정해야 할 항목이 ${mustIssues.length}개 있습니다. 아래 “메뉴얼 점검 결과”를 확인해 주세요.`);
+      return;
+    }
+    if (shouldIssues.length) {
+      setValidation({ issues: v.issues });
+      const ok = confirm(`AI로 BPMN 생성 전에 보완하면 좋은 항목이 ${shouldIssues.length}개 있습니다.\n\n그래도 AI로 BPMN 생성을 진행할까요?`);
+      if (!ok) return;
+    }
+
     setAiLoading(true);
     try {
       const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/bpmn`, {
@@ -260,6 +456,8 @@ export function WorkManuals() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as any }}>
           <button className="btn btn-outline" type="button" onClick={newManual}>새 메뉴얼</button>
           <button className="btn btn-outline" type="button" onClick={insertAiFormatTemplate} disabled={!editing}>AI 포맷 템플릿</button>
+          <button className="btn btn-outline" type="button" onClick={runValidate} disabled={!editing}>메뉴얼 점검</button>
+          <button className="btn btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}>{aiQuestionsLoading ? '질문 생성중…' : 'AI 보완 질문'}</button>
           <button className="btn" type="button" onClick={save} disabled={saving || loading || !editing}>{saving ? '저장중…' : '저장'}</button>
           <button className="btn btn-outline" type="button" onClick={remove} disabled={!editing?.id}>삭제</button>
           <button className="btn" type="button" onClick={aiToBpmn} disabled={!editing?.id || aiLoading}>{aiLoading ? 'AI 생성중…' : 'AI로 BPMN 생성'}</button>
@@ -366,6 +564,78 @@ export function WorkManuals() {
                 <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
                   AI 자동생성 품질을 높이려면 “AI 포맷 템플릿”을 먼저 삽입하고, STEP/분기 형식으로 정리해 주세요. AI로 BPMN 생성 버튼은 이 메뉴얼 내용을 기반으로 프로세스 템플릿 초안을 생성합니다. 생성된 템플릿은 프로세스 템플릿 메뉴에서 수정/게시할 수 있습니다.
                 </div>
+
+                {validation && (
+                  <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, background: '#F8FAFC', padding: 10, display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ fontWeight: 800 }}>메뉴얼 점검 결과</div>
+                      <button className="btn btn-ghost" type="button" onClick={() => setValidation(null)}>닫기</button>
+                    </div>
+                    {!validation.issues.length ? (
+                      <div style={{ fontSize: 13, color: '#64748b' }}>문제를 찾지 못했습니다.</div>
+                    ) : (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {validation.issues
+                          .slice()
+                          .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'MUST' ? -1 : 1))
+                          .map((it, idx) => (
+                            <div key={idx} style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
+                              <span style={{ fontWeight: 800, color: it.severity === 'MUST' ? '#b91c1c' : '#0f172a' }}>{it.severity}</span>
+                              {it.stepId ? <span style={{ marginLeft: 6, fontWeight: 800 }}>{it.stepId}</span> : null}
+                              <span style={{ marginLeft: 6 }}>{it.issue}</span>
+                              {it.suggestion ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{it.suggestion}</div> : null}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {aiQuestions && (
+                  <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, background: '#FFFFFF', padding: 10, display: 'grid', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div style={{ fontWeight: 800 }}>AI 보완 질문</div>
+                      <button className="btn btn-ghost" type="button" onClick={() => setAiQuestions(null)}>닫기</button>
+                    </div>
+                    {aiQuestions.summary ? (
+                      <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.5 }}>{aiQuestions.summary}</div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: '#64748b' }}>요약 없음</div>
+                    )}
+
+                    {!!aiQuestions.issues.length && (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13 }}>누락/이슈</div>
+                        {aiQuestions.issues.map((it, idx) => (
+                          <div key={idx} style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
+                            <span style={{ fontWeight: 800, color: it.severity === 'MUST' ? '#b91c1c' : '#0f172a' }}>{it.severity}</span>
+                            {it.stepId ? <span style={{ marginLeft: 6, fontWeight: 800 }}>{it.stepId}</span> : null}
+                            <span style={{ marginLeft: 6 }}>{it.issue}</span>
+                            {it.suggestion ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{it.suggestion}</div> : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!!aiQuestions.questions.length && (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13 }}>질문</div>
+                        {aiQuestions.questions.map((q, idx) => (
+                          <div key={idx} style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
+                            <span style={{ fontWeight: 800, color: q.severity === 'MUST' ? '#b91c1c' : '#0f172a' }}>{q.severity}</span>
+                            {q.stepId ? <span style={{ marginLeft: 6, fontWeight: 800 }}>{q.stepId}</span> : null}
+                            <span style={{ marginLeft: 6 }}>{q.question}</span>
+                            {q.reason ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{q.reason}</div> : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!aiQuestions.issues.length && !aiQuestions.questions.length && (
+                      <div style={{ fontSize: 13, color: '#64748b' }}>추가 이슈/질문이 없습니다.</div>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>

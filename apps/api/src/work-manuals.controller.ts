@@ -41,6 +41,11 @@ class AiBpmnDto {
   userId!: string;
 }
 
+class AiQuestionsDto {
+  @IsString() @IsNotEmpty()
+  userId!: string;
+}
+
 @Controller('work-manuals')
 export class WorkManualsController {
   constructor(private prisma: PrismaService) {}
@@ -197,6 +202,12 @@ export class WorkManualsController {
 - 기본은 순차 흐름으로 만들고, 조건 분기가 명확하면 gateway_xor와 edge.condition을 사용
 - 최대 20개의 task 노드까지만 생성
 - description은 사람이 읽기 좋은 HTML로 정리하세요(<ul><li>...</li></ul> 등)
+- 각 task 노드는 taskType을 반드시 포함하세요.
+- 원칙: 업무 단계(task)는 반드시 "업무일지(WORKLOG)" 또는 "결재(APPROVAL)" 같은 완료 근거가 있어야 합니다.
+  - 기본 taskType은 WORKLOG
+  - 결재/결정 단계는 APPROVAL
+  - 타팀/타인 요청 단계는 COOPERATION
+  - TASK는 예외적으로만 사용(가능하면 사용하지 마세요)
 
 메뉴얼에 다음과 같은 표준 포맷이 있으면 그 구조를 우선 파싱하세요:
 - "### STEP S1 | 단계명" 형태의 블록을 하나의 task 노드로 생성
@@ -256,6 +267,100 @@ export class WorkManualsController {
     const edges = Array.isArray(bpmnJson?.edges) ? bpmnJson.edges : null;
     if (!nodes || !edges) throw new BadRequestException('OpenAI JSON missing bpmnJson.nodes/edges');
 
-    return { title: outTitle, bpmnJson };
+    const normalizedNodes = (nodes as any[]).map((n: any) => {
+      const type = String(n?.type || '').trim();
+      if (type !== 'task') return n;
+      const rawTt = String(n?.taskType || '').trim().toUpperCase();
+      let nextTt = rawTt || 'WORKLOG';
+      if (nextTt === 'TASK') nextTt = 'WORKLOG';
+      if (!['WORKLOG', 'APPROVAL', 'COOPERATION'].includes(nextTt)) nextTt = 'WORKLOG';
+      return { ...n, taskType: nextTt };
+    });
+
+    return { title: outTitle, bpmnJson: { ...bpmnJson, nodes: normalizedNodes, edges } };
+  }
+
+  @Post(':id/ai/questions')
+  async aiQuestions(@Param('id') id: string, @Body() dto: AiQuestionsDto) {
+    const uid = String(dto.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
+    if (!apiKey) {
+      throw new BadRequestException('Missing OPENAI_API_KEY (or *_CAMS / *_IAT). Set it as a Railway env var.');
+    }
+
+    const title = String(manual?.title || '').trim();
+    const content = String(manual?.content || '').trim();
+    if (!title) throw new BadRequestException('manual title missing');
+    if (!content) throw new BadRequestException('manual content required');
+
+    const clipped = content.length > 12000 ? content.slice(0, 12000) : content;
+
+    const sys = `당신은 업무 메뉴얼을 검토하여 누락/모호한 부분을 질문으로 정리해주는 도우미입니다.
+반드시 JSON만 출력하세요. 마크다운 코드펜스(\`\`\`)를 사용하지 마세요.
+
+출력 JSON 스키마:
+{
+  "summary": string,
+  "issues": Array<{ stepId?: string, issue: string, severity: "MUST"|"SHOULD", suggestion?: string }>,
+  "questions": Array<{ stepId?: string, question: string, severity: "MUST"|"SHOULD", reason?: string }>
+}
+
+검토 기준(정책):
+- 메뉴얼의 STEP(업무 단계)는 원칙적으로 WORKLOG(업무일지 작성) 또는 APPROVAL(결재) 같은 완료 근거가 있어야 합니다.
+- 각 STEP은 최소한 다음을 명확히 하면 좋습니다: 목적, 입력/필요자료(파일·양식·링크), 산출물, 완료조건.
+- WORKLOG 단계라면 업무일지에 무엇을 기록해야 하는지 구체화하세요.
+- APPROVAL 단계라면 승인/반려 기준과, 필요하면 분기 조건(예: last.approval.status == 'APPROVED')과 대상 STEP을 명확히 하세요.
+
+메뉴얼에 다음과 같은 표준 포맷이 있으면 그 구조를 우선 파싱하세요:
+- "### STEP S1 | 단계명" 형태의 블록
+- "- taskType: WORKLOG|APPROVAL|COOPERATION|TASK"(가능하면 TASK는 사용하지 않도록 질문/제안)
+`;
+
+    const user = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`;
+
+    const f: any = (globalThis as any).fetch;
+    if (!f) {
+      throw new BadRequestException('Server fetch not available. Please use Node 18+ or provide a fetch polyfill.');
+    }
+
+    const resp = await f('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: user },
+        ],
+        temperature: 0.2,
+      }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
+    }
+
+    const data = await resp.json();
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!raw) throw new BadRequestException('OpenAI returned empty response');
+
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new BadRequestException('OpenAI did not return valid JSON');
+    }
+
+    const summary = String(parsed?.summary || '').trim();
+    const issues = Array.isArray(parsed?.issues) ? parsed.issues : [];
+    const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
+
+    return { summary, issues, questions };
   }
 }
