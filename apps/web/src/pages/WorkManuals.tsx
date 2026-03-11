@@ -26,10 +26,19 @@ type ManualIssue = {
 
 type ManualQuestion = {
   stepId?: string;
+  targetStepId?: string;
+  targetField?: string;
   question: string;
   severity: 'MUST' | 'SHOULD';
   reason?: string;
 };
+
+const FILE_FIELDS = new Set(['inputs', 'relatedDocs', 'outputs', 'emailTo', 'emailSubject']);
+
+function isFileField(q: ManualQuestion): boolean {
+  if (!q.targetField) return false;
+  return FILE_FIELDS.has(q.targetField);
+}
 
 type AiQuestionsResult = {
   summary: string;
@@ -171,9 +180,11 @@ export function WorkManuals() {
   const [validation, setValidation] = useState<{ issues: ManualIssue[] } | null>(null);
   const [aiQuestions, setAiQuestions] = useState<AiQuestionsResult | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [answerLinks, setAnswerLinks] = useState<Record<number, { name: string; url: string }[]>>({});
   const [applyLoading, setApplyLoading] = useState(false);
   const [editMode, setEditMode] = useState<'text' | 'structured'>('text');
   const [stepForms, setStepForms] = useState<StepFormData[]>([]);
+  const [draftLoading, setDraftLoading] = useState(false);
 
   const selected = useMemo(() => {
     if (!editing) return null;
@@ -237,6 +248,7 @@ export function WorkManuals() {
     setValidation(null);
     setAiQuestions(null);
     setAnswers({});
+    setAnswerLinks({});
     setEditMode('text');
     setStepForms([]);
   }, [selectedId]);
@@ -255,8 +267,13 @@ export function WorkManuals() {
     setEditing({ ...m, content: m.content || '', authorName: m.authorName || '', authorTeamName: m.authorTeamName || '' });
   }
 
-  function switchToStructured() {
+  function switchToStructured(prefilled?: StepFormData[]) {
     if (!editing) return;
+    if (prefilled && prefilled.length) {
+      setStepForms(prefilled);
+      setEditMode('structured');
+      return;
+    }
     const text = String(editing.content || '');
     const forms = parseTextToStepForms(text);
     if (!forms.length && text.trim().length > 0) {
@@ -269,6 +286,30 @@ export function WorkManuals() {
       setStepForms(forms);
     }
     setEditMode('structured');
+  }
+
+  async function aiDraftSteps() {
+    if (!userId) { alert('로그인이 필요합니다.'); return; }
+    if (!editing?.id) { alert('먼저 메뉴얼을 저장해 주세요.'); return; }
+    const content = String(editing.content || '').trim();
+    if (!content) { alert('메뉴얼 내용을 먼저 입력해 주세요.'); return; }
+    setDraftLoading(true);
+    try {
+      const r = await apiJson<{ draftContent: string; stepCount: number; summary: string }>(
+        `/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/draft-steps`,
+        { method: 'POST', body: JSON.stringify({ userId }) },
+      );
+      if (!r?.draftContent) throw new Error('AI 응답이 올바르지 않습니다.');
+      const ok = confirm(`AI가 ${r.stepCount}개 STEP 초안을 생성했습니다.\n\n${r.summary}\n\n구조화 편집 모드로 전환하여 초안을 확인할까요?\n(현재 메뉴얼 내용은 이 초안으로 교체됩니다)`);
+      if (!ok) return;
+      setEditing(prev => prev ? { ...prev, content: r.draftContent } : prev);
+      const forms = parseTextToStepForms(r.draftContent);
+      switchToStructured(forms.length ? forms : undefined);
+    } catch (e: any) {
+      alert(e?.message || 'AI STEP 초안 생성에 실패했습니다.');
+    } finally {
+      setDraftLoading(false);
+    }
   }
 
   function switchToText() {
@@ -494,6 +535,7 @@ export function WorkManuals() {
           <button className="btn btn-outline" type="button" onClick={newManual}>새 메뉴얼</button>
           <button className="btn btn-outline" type="button" onClick={insertAiFormatTemplate} disabled={!editing}>AI 포맷 템플릿</button>
           <button className="btn btn-outline" type="button" onClick={runValidate} disabled={!editing}>메뉴얼 점검</button>
+          <button className="btn btn-outline" type="button" onClick={() => void aiDraftSteps()} disabled={!editing?.id || draftLoading} title="자유 텍스트 메뉴얼을 AI가 읽고 STEP 초안으로 변환합니다">{draftLoading ? 'STEP 초안 생성중…' : 'AI STEP 초안'}</button>
           <button className="btn btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}>{aiQuestionsLoading ? '질문 생성중…' : 'AI 보완 질문'}</button>
           <button className="btn" type="button" onClick={save} disabled={saving || loading || !editing}>{saving ? '저장중…' : '저장'}</button>
           <button className="btn btn-outline" type="button" onClick={remove} disabled={!editing?.id}>삭제</button>
@@ -677,23 +719,71 @@ export function WorkManuals() {
                     {!!aiQuestions.questions.length && (
                       <div style={{ display: 'grid', gap: 10 }}>
                         <div style={{ fontWeight: 800, fontSize: 13 }}>질문 ({aiQuestions.questions.length}개) — 답변을 입력하면 AI가 메뉴얼에 자동 반영합니다</div>
-                        {aiQuestions.questions.map((q, idx) => (
+                        {aiQuestions.questions.map((q, idx) => {
+                          const isFile = isFileField(q);
+                          const links = answerLinks[idx] || [];
+                          return (
                           <div key={idx} style={{ display: 'grid', gap: 6, background: '#F8FAFC', borderRadius: 8, padding: '8px 10px', border: '1px solid #E5E7EB' }}>
                             <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
                               <span style={{ fontWeight: 800, color: q.severity === 'MUST' ? '#b91c1c' : '#6366f1' }}>{q.severity}</span>
-                              {(q as any).targetStepId ? <span style={{ marginLeft: 6, fontSize: 11, background: '#E0E7FF', color: '#3730a3', borderRadius: 4, padding: '1px 5px' }}>{(q as any).targetStepId}</span> : null}
-                              {(q as any).targetField ? <span style={{ marginLeft: 4, fontSize: 11, background: '#F0FDF4', color: '#166534', borderRadius: 4, padding: '1px 5px' }}>{(q as any).targetField}</span> : null}
+                              {q.targetStepId ? <span style={{ marginLeft: 6, fontSize: 11, background: '#E0E7FF', color: '#3730a3', borderRadius: 4, padding: '1px 5px' }}>{q.targetStepId}</span> : null}
+                              {q.targetField ? <span style={{ marginLeft: 4, fontSize: 11, background: isFile ? '#FEF9C3' : '#F0FDF4', color: isFile ? '#92400E' : '#166534', borderRadius: 4, padding: '1px 5px' }}>{q.targetField}{isFile ? ' 📎' : ''}</span> : null}
                               <span style={{ marginLeft: 6 }}>{q.question}</span>
                               {q.reason ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{q.reason}</div> : null}
                             </div>
-                            <input
-                              value={answers[idx] || ''}
-                              onChange={e => setAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
-                              placeholder="답변을 입력하세요 (모름/없음 입력 시 반영 안 됨)"
-                              style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px', fontSize: 13 }}
-                            />
+
+                            {isFile ? (
+                              <div style={{ display: 'grid', gap: 6 }}>
+                                {links.map((lk, li) => (
+                                  <div key={li} style={{ display: 'flex', gap: 6, alignItems: 'center', background: '#fff', border: '1px solid #CBD5E1', borderRadius: 6, padding: '4px 8px' }}>
+                                    <span style={{ fontSize: 12, color: '#0369a1', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      <a href={lk.url} target="_blank" rel="noreferrer" style={{ color: '#0369a1' }}>📎 {lk.name || lk.url}</a>
+                                    </span>
+                                    <button type="button" style={{ fontSize: 11, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
+                                      onClick={() => setAnswerLinks(prev => ({ ...prev, [idx]: (prev[idx] || []).filter((_, i) => i !== li) }))}>✕</button>
+                                  </div>
+                                ))}
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                  <input
+                                    id={`link-name-${idx}`}
+                                    placeholder="파일명 (예: 도면 Rev.3)"
+                                    style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px', fontSize: 12, width: 140, flexShrink: 0 }}
+                                  />
+                                  <input
+                                    id={`link-url-${idx}`}
+                                    placeholder="OneDrive 링크 붙여넣기"
+                                    style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px', fontSize: 12, flex: 1 }}
+                                  />
+                                  <button type="button" className="btn btn-outline" style={{ fontSize: 12, padding: '4px 10px', flexShrink: 0 }}
+                                    onClick={() => {
+                                      const nameEl = document.getElementById(`link-name-${idx}`) as HTMLInputElement;
+                                      const urlEl = document.getElementById(`link-url-${idx}`) as HTMLInputElement;
+                                      const url = (urlEl?.value || '').trim();
+                                      const name = (nameEl?.value || '').trim() || url;
+                                      if (!url) return;
+                                      setAnswerLinks(prev => ({ ...prev, [idx]: [...(prev[idx] || []), { name, url }] }));
+                                      if (nameEl) nameEl.value = '';
+                                      if (urlEl) urlEl.value = '';
+                                      const linkAnswer = [...links, { name, url }].map(l => `[${l.name}](${l.url})`).join(', ');
+                                      setAnswers(prev => ({ ...prev, [idx]: linkAnswer }));
+                                    }}
+                                  >추가</button>
+                                </div>
+                                {!links.length && (
+                                  <div style={{ fontSize: 11, color: '#94a3b8' }}>OneDrive에서 링크 복사 후 위에 붙여넣고 추가하세요.</div>
+                                )}
+                              </div>
+                            ) : (
+                              <input
+                                value={answers[idx] || ''}
+                                onChange={e => setAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
+                                placeholder="답변을 입력하세요 (모름/없음 입력 시 반영 안 됨)"
+                                style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px', fontSize: 13 }}
+                              />
+                            )}
                           </div>
-                        ))}
+                          );
+                        })}
                         <button
                           className="btn"
                           type="button"
