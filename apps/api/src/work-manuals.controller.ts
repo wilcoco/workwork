@@ -46,6 +46,14 @@ class AiQuestionsDto {
   userId!: string;
 }
 
+class ApplyAnswersDto {
+  @IsString() @IsNotEmpty()
+  userId!: string;
+
+  @IsNotEmpty()
+  answers!: Array<{ targetStepId?: string; targetField?: string; question: string; answer: string }>;
+}
+
 @Controller('work-manuals')
 export class WorkManualsController {
   constructor(private prisma: PrismaService) {}
@@ -297,25 +305,42 @@ export class WorkManualsController {
 
     const clipped = content.length > 12000 ? content.slice(0, 12000) : content;
 
-    const sys = `당신은 업무 메뉴얼을 검토하여 누락/모호한 부분을 질문으로 정리해주는 도우미입니다.
+    const sys = `당신은 제조업 업무 메뉴얼을 검토하여 누락/모호한 부분을 구체적인 질문으로 정리해주는 도우미입니다.
 반드시 JSON만 출력하세요. 마크다운 코드펜스(\`\`\`)를 사용하지 마세요.
 
 출력 JSON 스키마:
 {
   "summary": string,
   "issues": Array<{ stepId?: string, issue: string, severity: "MUST"|"SHOULD", suggestion?: string }>,
-  "questions": Array<{ stepId?: string, question: string, severity: "MUST"|"SHOULD", reason?: string }>
+  "questions": Array<{
+    stepId?: string,
+    targetStepId?: string,
+    targetField?: string,
+    question: string,
+    severity: "MUST"|"SHOULD",
+    reason?: string
+  }>
 }
 
-검토 기준(정책):
-- 메뉴얼의 STEP(업무 단계)는 원칙적으로 WORKLOG(업무일지 작성) 또는 APPROVAL(결재) 같은 완료 근거가 있어야 합니다.
-- 각 STEP은 최소한 다음을 명확히 하면 좋습니다: 목적, 입력/필요자료(파일·양식·링크), 산출물, 완료조건.
-- WORKLOG 단계라면 업무일지에 무엇을 기록해야 하는지 구체화하세요.
-- APPROVAL 단계라면 승인/반려 기준과, 필요하면 분기 조건(예: last.approval.status == 'APPROVED')과 대상 STEP을 명확히 하세요.
+targetField 가능한 값: taskType, purpose, assigneeHint, inputs, outputs, worklogHint, completionCondition, supplierName, supplierContact, cooperationTarget, approvalRouteType, approvalRoleCodes, emailTo, emailSubject, deadlineOffsetDays, slaHours, qualityCheck, safetyCheck, relatedDocs, branches
 
-메뉴얼에 다음과 같은 표준 포맷이 있으면 그 구조를 우선 파싱하세요:
-- "### STEP S1 | 단계명" 형태의 블록
-- "- taskType: WORKLOG|APPROVAL|COOPERATION|TASK"(가능하면 TASK는 사용하지 않도록 질문/제안)
+검토 기준(제조업 특화):
+- taskType: WORKLOG(업무일지 필수), APPROVAL(결재), COOPERATION(협조/외주) 중 하나여야 함. TASK는 WORKLOG로 변환 필요.
+- 각 STEP에서 확인할 항목:
+  1. 담당자/역할(assigneeHint): 누가 담당하는지?
+  2. 입력자료(inputs): 어떤 도면/시방서/양식/파일이 필요한가?
+  3. 관련문서(relatedDocs): 도면번호, 작업표준서, QC공정도 등
+  4. 산출물(outputs): 이 단계가 끝나면 무엇이 만들어지는가?
+  5. 업무일지(worklogHint): 기록할 수량/시간/품질수치/불량내용은?
+  6. 완료조건(completionCondition): 언제 완료로 볼 수 있는가?
+  7. 품질검사(qualityCheck): 검사 항목, 합격기준, 불합격 시 처리방법?
+  8. 안전점검(safetyCheck): 안전 규정, 보호구, 환경 규제?
+  9. 협력사(supplierName/supplierContact): COOPERATION 단계 시 협력사명·담당자?
+  10. 결재선(approvalRouteType/approvalRoleCodes): APPROVAL 단계 시 누가 결재하는가?
+  11. 기한/SLA(deadlineOffsetDays/slaHours): 처리 기한이 있는가?
+  12. 분기(branches): 조건에 따라 다른 단계로 이동하는가?
+- 메뉴얼에 "### STEP S1 | 단계명" 블록이 있으면 그 구조를 우선 파싱하세요.
+- 각 질문에는 반드시 targetStepId(해당 STEP ID)와 targetField(위의 필드명 중 하나)를 포함하세요.
 `;
 
     const user = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`;
@@ -362,5 +387,91 @@ export class WorkManualsController {
     const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
 
     return { summary, issues, questions };
+  }
+
+  @Post(':id/ai/apply-answers')
+  async applyAnswers(@Param('id') id: string, @Body() dto: ApplyAnswersDto) {
+    const uid = String(dto.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
+    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
+
+    const content = String(manual?.content || '').trim();
+    if (!content) throw new BadRequestException('manual content required');
+
+    const answers = (dto.answers || []).filter(a => a.answer && a.answer.trim());
+    if (!answers.length) throw new BadRequestException('answers array is empty');
+
+    const answerText = answers.map((a, i) =>
+      `[${i + 1}] 질문: ${a.question}\n    대상 STEP: ${a.targetStepId || '전체'} / 필드: ${a.targetField || '미지정'}\n    답변: ${a.answer}`
+    ).join('\n\n');
+
+    const sys = `당신은 업무 메뉴얼 DSL 편집 도우미입니다.
+반드시 JSON만 출력하세요. 마크다운 코드펜스를 사용하지 마세요.
+
+메뉴얼 DSL 포맷 규칙:
+- 각 STEP은 "### STEP S1 | 단계명" 으로 시작
+- 필드는 "- 필드명: 값" 형태
+- 가능한 필드: taskType, 목적, 담당자, 입력/필요자료(파일·양식·링크), 관련문서, 산출물, 업무일지(필수), 완료조건, 협력사, 협력사담당자, 내부협조, 결재선, 결재역할, 이메일수신, 이메일CC, 이메일제목, 이메일내용, 기한, SLA, 품질검사, 안전점검, 분기
+- taskType은 WORKLOG/APPROVAL/COOPERATION 중 하나
+
+출력 JSON 스키마:
+{
+  "updatedContent": string,
+  "appliedCount": number,
+  "summary": string
+}
+
+updatedContent는 원본 메뉴얼에 사용자 답변을 반영한 전체 메뉴얼 텍스트입니다.
+답변을 반영할 때 해당 STEP 블록에 적절한 필드 줄을 추가하거나 기존 값을 수정하세요.
+답변이 "모름", "없음", "해당없음" 이면 해당 필드를 추가하지 마세요.`;
+
+    const user = `[원본 메뉴얼]\n${content}\n\n[사용자 답변]\n${answerText}`;
+
+    const f: any = (globalThis as any).fetch;
+    if (!f) throw new BadRequestException('Server fetch not available.');
+
+    const resp = await f('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: sys }, { role: 'user', content: user }],
+        temperature: 0.1,
+      }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
+    }
+
+    const data = await resp.json();
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!raw) throw new BadRequestException('OpenAI returned empty response');
+
+    let parsed: any = null;
+    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('OpenAI did not return valid JSON'); }
+
+    const updatedContent = String(parsed?.updatedContent || '').trim();
+    if (!updatedContent) throw new BadRequestException('AI returned empty updatedContent');
+
+    // Save the updated content to the manual
+    const updated = await this.prisma.workManual.update({
+      where: { id },
+      data: {
+        content: updatedContent,
+        version: { increment: 1 },
+        versionUpAt: new Date(),
+      },
+    });
+
+    return {
+      summary: String(parsed?.summary || ''),
+      appliedCount: Number(parsed?.appliedCount || 0),
+      updatedContent,
+      version: updated.version,
+    };
   }
 }

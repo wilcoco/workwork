@@ -170,6 +170,8 @@ export function WorkManuals() {
   const [aiQuestionsLoading, setAiQuestionsLoading] = useState(false);
   const [validation, setValidation] = useState<{ issues: ManualIssue[] } | null>(null);
   const [aiQuestions, setAiQuestions] = useState<AiQuestionsResult | null>(null);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [applyLoading, setApplyLoading] = useState(false);
   const [editMode, setEditMode] = useState<'text' | 'structured'>('text');
   const [stepForms, setStepForms] = useState<StepFormData[]>([]);
 
@@ -234,6 +236,7 @@ export function WorkManuals() {
   useEffect(() => {
     setValidation(null);
     setAiQuestions(null);
+    setAnswers({});
     setEditMode('text');
     setStepForms([]);
   }, [selectedId]);
@@ -672,16 +675,61 @@ export function WorkManuals() {
                     )}
 
                     {!!aiQuestions.questions.length && (
-                      <div style={{ display: 'grid', gap: 6 }}>
-                        <div style={{ fontWeight: 800, fontSize: 13 }}>질문</div>
+                      <div style={{ display: 'grid', gap: 10 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13 }}>질문 ({aiQuestions.questions.length}개) — 답변을 입력하면 AI가 메뉴얼에 자동 반영합니다</div>
                         {aiQuestions.questions.map((q, idx) => (
-                          <div key={idx} style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
-                            <span style={{ fontWeight: 800, color: q.severity === 'MUST' ? '#b91c1c' : '#0f172a' }}>{q.severity}</span>
-                            {q.stepId ? <span style={{ marginLeft: 6, fontWeight: 800 }}>{q.stepId}</span> : null}
-                            <span style={{ marginLeft: 6 }}>{q.question}</span>
-                            {q.reason ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{q.reason}</div> : null}
+                          <div key={idx} style={{ display: 'grid', gap: 6, background: '#F8FAFC', borderRadius: 8, padding: '8px 10px', border: '1px solid #E5E7EB' }}>
+                            <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
+                              <span style={{ fontWeight: 800, color: q.severity === 'MUST' ? '#b91c1c' : '#6366f1' }}>{q.severity}</span>
+                              {(q as any).targetStepId ? <span style={{ marginLeft: 6, fontSize: 11, background: '#E0E7FF', color: '#3730a3', borderRadius: 4, padding: '1px 5px' }}>{(q as any).targetStepId}</span> : null}
+                              {(q as any).targetField ? <span style={{ marginLeft: 4, fontSize: 11, background: '#F0FDF4', color: '#166534', borderRadius: 4, padding: '1px 5px' }}>{(q as any).targetField}</span> : null}
+                              <span style={{ marginLeft: 6 }}>{q.question}</span>
+                              {q.reason ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{q.reason}</div> : null}
+                            </div>
+                            <input
+                              value={answers[idx] || ''}
+                              onChange={e => setAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
+                              placeholder="답변을 입력하세요 (모름/없음 입력 시 반영 안 됨)"
+                              style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px', fontSize: 13 }}
+                            />
                           </div>
                         ))}
+                        <button
+                          className="btn"
+                          type="button"
+                          disabled={applyLoading || !Object.values(answers).some(v => v.trim())}
+                          onClick={async () => {
+                            if (!editing?.id) return;
+                            setApplyLoading(true);
+                            try {
+                              const toApply = aiQuestions.questions
+                                .map((q, idx) => ({
+                                  targetStepId: (q as any).targetStepId,
+                                  targetField: (q as any).targetField,
+                                  question: q.question,
+                                  answer: answers[idx] || '',
+                                }))
+                                .filter(a => a.answer.trim());
+                              const r = await apiJson<{ summary: string; appliedCount: number; updatedContent: string; version: number }>(
+                                `/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/apply-answers`,
+                                { method: 'POST', body: JSON.stringify({ userId, answers: toApply }) },
+                              );
+                              setEditing(prev => prev ? { ...prev, content: r.updatedContent, version: r.version } : prev);
+                              if (editMode === 'structured') {
+                                setStepForms(parseTextToStepForms(r.updatedContent));
+                              }
+                              setAnswers({});
+                              alert(`반영 완료! ${r.appliedCount}개 항목이 업데이트되었습니다.\n\n${r.summary}`);
+                            } catch (e: any) {
+                              alert(e?.message || 'AI 자동반영에 실패했습니다.');
+                            } finally {
+                              setApplyLoading(false);
+                            }
+                          }}
+                          style={{ justifySelf: 'start' }}
+                        >
+                          {applyLoading ? 'AI 반영중…' : `AI 자동반영 (${Object.values(answers).filter(v => v.trim()).length}개 답변)`}
+                        </button>
                       </div>
                     )}
 
