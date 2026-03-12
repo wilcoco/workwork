@@ -9,14 +9,19 @@ export type StepFormData = {
   title: string;
   taskType: 'WORKLOG' | 'APPROVAL' | 'COOPERATION' | '';
   purpose: string;
+  assigneeHint: string;
+  method: string;
   inputs: string;
   outputs: string;
+  tools: string;
+  relatedDocs: string;
+  checkItems: string;
   worklogHint: string;
   completionCondition: string;
+  contacts: string;
+  risks: string;
   branches: BranchItem[];
   needsFiles: boolean;
-  extra: string;
-  assigneeHint: string;
   supplierName: string;
   supplierContact: string;
   cooperationTarget: string;
@@ -28,9 +33,6 @@ export type StepFormData = {
   emailBody: string;
   deadlineOffsetDays: string;
   slaHours: string;
-  qualityCheck: string;
-  safetyCheck: string;
-  relatedDocs: string;
 };
 
 type ManualIssue = {
@@ -42,12 +44,14 @@ type ManualIssue = {
 
 export function makeEmptyStep(idx: number): StepFormData {
   return {
-    stepId: `S${idx}`, title: '', taskType: 'WORKLOG', purpose: '', inputs: '', outputs: '',
-    worklogHint: '', completionCondition: '', branches: [], needsFiles: false, extra: '',
-    assigneeHint: '', supplierName: '', supplierContact: '', cooperationTarget: '',
+    stepId: `S${idx}`, title: '', taskType: 'WORKLOG', purpose: '', assigneeHint: '',
+    method: '', inputs: '', outputs: '', tools: '', relatedDocs: '',
+    checkItems: '', worklogHint: '', completionCondition: '', contacts: '', risks: '',
+    branches: [], needsFiles: false,
+    supplierName: '', supplierContact: '', cooperationTarget: '',
     approvalRouteType: '', approvalRoleCodes: '',
     emailTo: '', emailCc: '', emailSubject: '', emailBody: '',
-    deadlineOffsetDays: '', slaHours: '', qualityCheck: '', safetyCheck: '', relatedDocs: '',
+    deadlineOffsetDays: '', slaHours: '',
   };
 }
 
@@ -130,7 +134,7 @@ export function parseTextToStepForms(text: string): StepFormData[] {
         continue;
       }
       if (/^-\s*분기\s*:/i.test(trimmed)) { section = 'branch'; continue; }
-      if (/^-\s*(담당자|협력사담당자|협력사|내부협조|결재선|결재역할|이메일수신|이메일CC|이메일제목|이메일내용|기한|SLA|품질검사|안전점검|관련문서)\s*:/i.test(trimmed)) { section = ''; continue; }
+      if (/^-\s*(담당자|작업방법|도구|관련문서|확인사항|연락처|위험대응|협력사담당자|협력사|내부협조|결재선|결재역할|이메일수신|이메일CC|이메일제목|이메일내용|기한|SLA|품질검사|안전점검)\s*:/i.test(trimmed)) { section = ''; continue; }
 
       if (section === 'branch' && trimmed.includes('->')) {
         const arrowIdx = trimmed.indexOf('->');
@@ -154,13 +158,23 @@ export function parseTextToStepForms(text: string): StepFormData[] {
         continue;
       }
 
-      if (trimmed && !section) extraLines.push(trimmed);
     }
+
+    const qc = xf(lines, /^-\s*품질검사\s*:\s*(.+)$/i);
+    const sc = xf(lines, /^-\s*안전점검\s*:\s*(.+)$/i);
+    const ci = xf(lines, /^-\s*확인사항\s*:\s*(.+)$/i);
+    const checkItems = ci || [qc, sc].filter(Boolean).join(', ');
 
     return {
       stepId: p.stepId, title: p.title, taskType, purpose, inputs, outputs,
-      worklogHint, completionCondition, branches, needsFiles, extra: extraLines.join('\n'),
+      worklogHint, completionCondition, branches, needsFiles,
       assigneeHint: xf(lines, /^-\s*담당자\s*:\s*(.+)$/i),
+      method: xf(lines, /^-\s*작업방법\s*:\s*(.+)$/i),
+      tools: xf(lines, /^-\s*도구\s*:\s*(.+)$/i),
+      relatedDocs: xf(lines, /^-\s*관련문서\s*:\s*(.+)$/i),
+      checkItems,
+      contacts: xf(lines, /^-\s*연락처\s*:\s*(.+)$/i),
+      risks: xf(lines, /^-\s*위험대응\s*:\s*(.+)$/i),
       supplierName: xf(lines, /^-\s*협력사\s*:\s*(.+)$/i),
       supplierContact: xf(lines, /^-\s*협력사담당자\s*:\s*(.+)$/i),
       cooperationTarget: xf(lines, /^-\s*내부협조\s*:\s*(.+)$/i),
@@ -172,9 +186,6 @@ export function parseTextToStepForms(text: string): StepFormData[] {
       emailBody: xf(lines, /^-\s*이메일내용\s*:\s*(.+)$/i),
       deadlineOffsetDays: xf(lines, /^-\s*기한\s*:\s*(.+)$/i),
       slaHours: xf(lines, /^-\s*SLA\s*:\s*(.+)$/i),
-      qualityCheck: xf(lines, /^-\s*품질검사\s*:\s*(.+)$/i),
-      safetyCheck: xf(lines, /^-\s*안전점검\s*:\s*(.+)$/i),
-      relatedDocs: xf(lines, /^-\s*관련문서\s*:\s*(.+)$/i),
     };
   });
 }
@@ -187,17 +198,22 @@ export function serializeStepsToText(steps: StepFormData[]): string {
     L.push(`- taskType: ${s.taskType || 'WORKLOG'}`);
     if (s.purpose) L.push(`- 목적: ${s.purpose}`);
     if (s.assigneeHint) L.push(`- 담당자: ${s.assigneeHint}`);
+    if (s.method) L.push(`- 작업방법: ${s.method}`);
     if (s.needsFiles || s.inputs) {
       L.push(`- 입력/필요자료(파일·양식·링크):`);
       if (s.inputs) { for (const x of s.inputs.split(',').map(v => v.trim()).filter(Boolean)) L.push(`  - ${x}`); } else L.push(`  -`);
     }
+    if (s.tools) L.push(`- 도구: ${s.tools}`);
     if (s.relatedDocs) L.push(`- 관련문서: ${s.relatedDocs}`);
     if (s.outputs) { L.push(`- 산출물:`); for (const x of s.outputs.split(',').map(v => v.trim()).filter(Boolean)) L.push(`  - ${x}`); }
+    if (s.checkItems) L.push(`- 확인사항: ${s.checkItems}`);
     if (s.taskType === 'WORKLOG' || s.worklogHint) {
       L.push(`- 업무일지(필수):`); L.push(`  - 기록할 내용:`);
       if (s.worklogHint) { for (const x of s.worklogHint.split(',').map(v => v.trim()).filter(Boolean)) L.push(`    - ${x}`); } else L.push(`    -`);
     }
     if (s.completionCondition) { L.push(`- 완료조건:`); for (const x of s.completionCondition.split(',').map(v => v.trim()).filter(Boolean)) L.push(`  - ${x}`); }
+    if (s.contacts) L.push(`- 연락처: ${s.contacts}`);
+    if (s.risks) L.push(`- 위험대응: ${s.risks}`);
     if (s.supplierName) L.push(`- 협력사: ${s.supplierName}`);
     if (s.supplierContact) L.push(`- 협력사담당자: ${s.supplierContact}`);
     if (s.cooperationTarget) L.push(`- 내부협조: ${s.cooperationTarget}`);
@@ -211,13 +227,10 @@ export function serializeStepsToText(steps: StepFormData[]): string {
     if (s.emailBody) L.push(`- 이메일내용: ${s.emailBody}`);
     if (s.deadlineOffsetDays) L.push(`- 기한: ${s.deadlineOffsetDays}`);
     if (s.slaHours) L.push(`- SLA: ${s.slaHours}`);
-    if (s.qualityCheck) L.push(`- 품질검사: ${s.qualityCheck}`);
-    if (s.safetyCheck) L.push(`- 안전점검: ${s.safetyCheck}`);
     if (s.branches.length) {
       L.push(`- 분기:`);
       for (const b of s.branches) { const lbl = b.label ? `${b.label}: ` : ''; L.push(`  - ${lbl}${b.condition} -> ${b.targetStepId}`); }
     }
-    if (s.extra) L.push(s.extra);
     blocks.push(L.join('\n'));
   }
   return blocks.join('\n\n');
@@ -288,6 +301,10 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
                 <input value={step.assigneeHint} onChange={e => us(si, { assigneeHint: e.target.value })} placeholder="예: 생산기술팀 대리" style={IS} />
               </label>
             </div>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <div style={LS}>작업 방법/절차</div>
+              <input value={step.method} onChange={e => us(si, { method: e.target.value })} placeholder="작업 수행 방법, 절차, 주의사항" style={IS} />
+            </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <label style={{ display: 'grid', gap: 4 }}>
                 <div style={LS}>입력/필요자료<label style={{ marginLeft: 8, fontWeight: 400 }}><input type="checkbox" checked={step.needsFiles} onChange={e => us(si, { needsFiles: e.target.checked })} style={{ marginRight: 4 }} />파일첨부</label></div>
@@ -300,8 +317,18 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <label style={{ display: 'grid', gap: 4 }}>
+                <div style={LS}>도구/장비/시스템</div>
+                <input value={step.tools} onChange={e => us(si, { tools: e.target.value })} placeholder="필요한 도구, 장비, IT 시스템" style={IS} />
+              </label>
+              <label style={{ display: 'grid', gap: 4 }}>
                 <div style={LS}>관련문서 (도면/시방서/양식)</div>
-                <input value={step.relatedDocs} onChange={e => us(si, { relatedDocs: e.target.value })} placeholder="도면번호, 시방서, 양식명 등" style={IS} />
+                <input value={step.relatedDocs} onChange={e => us(si, { relatedDocs: e.target.value })} placeholder="도면번호, 시방서, 양식명, OneDrive 링크 등" style={IS} />
+              </label>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <label style={{ display: 'grid', gap: 4 }}>
+                <div style={LS}>확인/검증 사항</div>
+                <input value={step.checkItems} onChange={e => us(si, { checkItems: e.target.value })} placeholder="품질, 안전, 규정, 기준 등 확인 항목" style={IS} />
               </label>
               <label style={{ display: 'grid', gap: 4 }}>
                 <div style={LS}>완료조건</div>
@@ -314,6 +341,16 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
                 <input value={step.worklogHint} onChange={e => us(si, { worklogHint: e.target.value })} placeholder="업무일지에 기록해야 할 내용 (쉼표 구분)" style={IS} />
               </label>
             )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <label style={{ display: 'grid', gap: 4 }}>
+                <div style={LS}>관련 연락처</div>
+                <input value={step.contacts} onChange={e => us(si, { contacts: e.target.value })} placeholder="내부: 팀/담당자, 외부: 협력사/연락처" style={IS} />
+              </label>
+              <label style={{ display: 'grid', gap: 4 }}>
+                <div style={LS}>위험/이상 시 대응</div>
+                <input value={step.risks} onChange={e => us(si, { risks: e.target.value })} placeholder="이상 발생 시 조치, 에스컬레이션 경로" style={IS} />
+              </label>
+            </div>
             {(step.taskType === 'COOPERATION' || step.supplierName || step.cooperationTarget) && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
                 <label style={{ display: 'grid', gap: 4 }}><div style={LS}>협력사</div><input value={step.supplierName} onChange={e => us(si, { supplierName: e.target.value })} placeholder="협력사명" style={IS} /></label>
@@ -332,10 +369,6 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
                 <label style={{ display: 'grid', gap: 4 }}><div style={LS}>결재 역할/상위자</div><input value={step.approvalRoleCodes} onChange={e => us(si, { approvalRoleCodes: e.target.value })} placeholder="예: 팀장, 부장, 임원" style={IS} /></label>
               </div>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 4 }}><div style={LS}>품질검사 (항목/합격기준)</div><input value={step.qualityCheck} onChange={e => us(si, { qualityCheck: e.target.value })} placeholder="검사 항목, 합격 기준, 불합격 시 처리" style={IS} /></label>
-              <label style={{ display: 'grid', gap: 4 }}><div style={LS}>안전점검</div><input value={step.safetyCheck} onChange={e => us(si, { safetyCheck: e.target.value })} placeholder="안전 점검 항목, 환경 규제 사항" style={IS} /></label>
-            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <label style={{ display: 'grid', gap: 4 }}><div style={LS}>기한 (시작일 기준 +N일)</div><input value={step.deadlineOffsetDays} onChange={e => us(si, { deadlineOffsetDays: e.target.value })} placeholder="예: 3 (시작일+3일)" style={IS} /></label>
               <label style={{ display: 'grid', gap: 4 }}><div style={LS}>SLA (시간)</div><input value={step.slaHours} onChange={e => us(si, { slaHours: e.target.value })} placeholder="예: 24 (24시간 이내)" style={IS} /></label>

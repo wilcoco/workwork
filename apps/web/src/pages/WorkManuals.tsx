@@ -185,6 +185,7 @@ export function WorkManuals() {
   const [editMode, setEditMode] = useState<'text' | 'structured'>('text');
   const [stepForms, setStepForms] = useState<StepFormData[]>([]);
   const [draftLoading, setDraftLoading] = useState(false);
+  const [phase, setPhase] = useState<1 | 2 | 3>(1);
 
   const selected = useMemo(() => {
     if (!editing) return null;
@@ -251,6 +252,7 @@ export function WorkManuals() {
     setAnswerLinks({});
     setEditMode('text');
     setStepForms([]);
+    setPhase(1);
   }, [selectedId]);
 
   function newManual() {
@@ -530,16 +532,30 @@ export function WorkManuals() {
   return (
     <div className="content" style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' as any }}>
-        <h2 style={{ margin: 0 }}>업무 메뉴얼</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h2 style={{ margin: 0 }}>업무 메뉴얼</h2>
+          {selected && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+              {[{n:1,l:'작성'},{n:2,l:'AI 분석/보완'},{n:3,l:'프로세스 생성'}].map((s, i) => (
+                <div key={s.n} style={{ display: 'flex', alignItems: 'center' }}>
+                  {i > 0 && <div style={{ width: 24, height: 2, background: phase >= s.n ? '#0F3D73' : '#CBD5E1' }} />}
+                  <button type="button" onClick={() => setPhase(s.n as 1|2|3)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: phase === s.n ? 800 : 500, border: 'none', cursor: 'pointer',
+                      background: phase === s.n ? '#0F3D73' : phase > s.n ? '#E0E7FF' : '#F1F5F9',
+                      color: phase === s.n ? '#fff' : phase > s.n ? '#0F3D73' : '#64748b' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: '50%', fontSize: 10, fontWeight: 800,
+                      background: phase === s.n ? '#fff' : 'transparent', color: phase === s.n ? '#0F3D73' : 'inherit' }}>{s.n}</span>
+                    {s.l}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as any }}>
           <button className="btn btn-outline" type="button" onClick={newManual}>새 메뉴얼</button>
-          <button className="btn btn-outline" type="button" onClick={insertAiFormatTemplate} disabled={!editing}>AI 포맷 템플릿</button>
-          <button className="btn btn-outline" type="button" onClick={runValidate} disabled={!editing}>메뉴얼 점검</button>
-          <button className="btn btn-outline" type="button" onClick={() => void aiDraftSteps()} disabled={!editing?.id || draftLoading} title="자유 텍스트 메뉴얼을 AI가 읽고 STEP 초안으로 변환합니다">{draftLoading ? 'STEP 초안 생성중…' : 'AI STEP 초안'}</button>
-          <button className="btn btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}>{aiQuestionsLoading ? '질문 생성중…' : 'AI 보완 질문'}</button>
           <button className="btn" type="button" onClick={save} disabled={saving || loading || !editing}>{saving ? '저장중…' : '저장'}</button>
-          <button className="btn btn-outline" type="button" onClick={remove} disabled={!editing?.id}>삭제</button>
-          <button className="btn" type="button" onClick={aiToBpmn} disabled={!editing?.id || aiLoading}>{aiLoading ? 'AI 생성중…' : 'AI로 BPMN 생성'}</button>
+          {editing?.id && <button className="btn btn-outline" type="button" onClick={remove} style={{ color: '#b91c1c' }}>삭제</button>}
         </div>
       </div>
 
@@ -588,246 +604,187 @@ export function WorkManuals() {
           <div style={{ border: '1px solid #E5E7EB', borderRadius: 12, background: '#FFFFFF', padding: 12, display: 'grid', gap: 10 }}>
             {!selected ? (
               <div style={{ color: '#64748b' }}>왼쪽에서 메뉴얼을 선택하거나 새로 만들어 주세요.</div>
-            ) : (
+            ) : phase === 1 ? (
               <>
                 <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <label style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ fontWeight: 700 }}>작성자</div>
-                      <input
-                        value={String((selected as any).authorName || '')}
-                        onChange={(e) => setEditing((prev) => (prev ? { ...prev, authorName: e.target.value } : prev))}
-                        placeholder="예: 홍길동"
-                        style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }}
-                      />
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>업무명</div>
+                      <input value={selected.title} onChange={e => setEditing(p => p ? { ...p, title: e.target.value } : p)} placeholder="예: 금형 발주/관리" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }} />
                     </label>
-                    <label style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ fontWeight: 700 }}>소속</div>
-                      <input
-                        value={String((selected as any).authorTeamName || '')}
-                        onChange={(e) => setEditing((prev) => (prev ? { ...prev, authorTeamName: e.target.value } : prev))}
-                        placeholder="예: 생산기술팀"
-                        style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }}
-                      />
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>작성자</div>
+                      <input value={String((selected as any).authorName || '')} onChange={e => setEditing(p => p ? { ...p, authorName: e.target.value } : p)} placeholder="홍길동" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>소속</div>
+                      <input value={String((selected as any).authorTeamName || '')} onChange={e => setEditing(p => p ? { ...p, authorTeamName: e.target.value } : p)} placeholder="생산기술팀" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }} />
                     </label>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, fontSize: 12, color: '#64748b' }}>
-                    <div>작성일: {selected.createdAt ? formatKstDatetime(selected.createdAt) : '-'}</div>
-                    <div>수정일: {selected.updatedAt ? formatKstDatetime(selected.updatedAt) : '-'}</div>
-                    <div>버전: {(selected as any).version ?? '-'}</div>
-                    <div>버전업: {(selected as any).versionUpAt ? formatKstDatetime(String((selected as any).versionUpAt)) : '-'}</div>
-                  </div>
-                </div>
-
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontWeight: 700 }}>업무명</div>
-                  <input
-                    value={selected.title}
-                    onChange={(e) => setEditing((prev) => (prev ? { ...prev, title: e.target.value } : prev))}
-                    placeholder="예: 금형 발주/관리"
-                    style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }}
-                  />
-                </label>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontWeight: 700 }}>업무 메뉴얼</div>
-                  <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-                    <button
-                      className={editMode === 'text' ? 'btn btn-sm' : 'btn btn-sm btn-outline'}
-                      type="button"
-                      onClick={() => { if (editMode !== 'text') switchToText(); }}
-                      style={{ fontSize: 12, padding: '4px 10px' }}
-                    >텍스트</button>
-                    <button
-                      className={editMode === 'structured' ? 'btn btn-sm' : 'btn btn-sm btn-outline'}
-                      type="button"
-                      onClick={() => { if (editMode !== 'structured') switchToStructured(); }}
-                      style={{ fontSize: 12, padding: '4px 10px' }}
-                    >구조화 편집</button>
-                  </div>
-                </div>
-
-                {editMode === 'text' ? (
-                  <>
-                    <textarea
-                      value={String(selected.content || '')}
-                      onChange={(e) => setEditing((prev) => (prev ? { ...prev, content: e.target.value } : prev))}
-                      placeholder="업무 목적, 입력/산출물, 단계별 절차, 담당/협조, 예외 처리, 참고 링크 등을 자유롭게 적어주세요."
-                      rows={18}
-                      style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any }}
-                    />
-                    <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
-                      텍스트 모드에서 자유롭게 작성하거나, "구조화 편집" 모드로 전환하면 각 단계별 입력 폼으로 편집할 수 있습니다.
+                  {selected.createdAt && (
+                    <div style={{ display: 'flex', gap: 16, fontSize: 11, color: '#94a3b8' }}>
+                      <span>작성: {formatKstDatetime(selected.createdAt)}</span>
+                      <span>수정: {selected.updatedAt ? formatKstDatetime(selected.updatedAt) : '-'}</span>
+                      <span>v{(selected as any).version ?? 1}</span>
                     </div>
-                  </>
-                ) : (
+                  )}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>업무 메뉴얼 내용</div>
+                <textarea
+                  value={String(selected.content || '')}
+                  onChange={e => setEditing(p => p ? { ...p, content: e.target.value } : p)}
+                  placeholder={'업무의 목적, 절차, 담당자, 필요 자료, 조건 등을 자유롭게 적어주세요.\n\n예시:\n- 금형 설계 도면 검토 후 발주서 작성\n- 협력사에 발주서 전달 및 납기 협의\n- 입고 시 품질 검사 후 결과 기록\n- 불합격 시 반품 처리 및 재발주'}
+                  rows={16}
+                  style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '10px 12px', resize: 'vertical' as any, lineHeight: 1.6, fontSize: 14 }}
+                />
+                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                  자유로운 형식으로 작성하세요. 다음 단계에서 AI가 분석하여 프로세스 단계로 자동 분해합니다.
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn" type="button"
+                    disabled={!String(selected.content || '').trim() || !editing?.id || draftLoading}
+                    onClick={async () => {
+                      if (!editing?.id) { await save(); }
+                      if (!editing?.id) return;
+                      setDraftLoading(true);
+                      try {
+                        const r = await apiJson<{ draftContent: string; stepCount: number; summary: string }>(
+                          `/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/draft-steps`,
+                          { method: 'POST', body: JSON.stringify({ userId }) },
+                        );
+                        if (!r?.draftContent) throw new Error('AI 응답 오류');
+                        setEditing(p => p ? { ...p, content: r.draftContent } : p);
+                        const forms = parseTextToStepForms(r.draftContent);
+                        setStepForms(forms.length ? forms : [makeEmptyStep(1)]);
+                        setEditMode('structured');
+                        setPhase(2);
+                        void aiMakeQuestions();
+                      } catch (e: any) { alert(e?.message || 'AI 분석에 실패했습니다.'); }
+                      finally { setDraftLoading(false); }
+                    }}
+                    style={{ padding: '8px 20px' }}
+                  >
+                    {draftLoading ? 'AI 분석중…' : '다음: AI 분석 →'}
+                  </button>
+                </div>
+              </>
+            ) : phase === 2 ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ fontWeight: 700 }}>프로세스 단계 편집</div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className={editMode === 'structured' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
+                      onClick={() => { if (editMode !== 'structured') switchToStructured(); }} style={{ fontSize: 12, padding: '4px 10px' }}>구조화</button>
+                    <button className={editMode === 'text' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
+                      onClick={() => { if (editMode !== 'text') switchToText(); }} style={{ fontSize: 12, padding: '4px 10px' }}>텍스트</button>
+                    <button className="btn btn-sm btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}
+                      style={{ fontSize: 12, padding: '4px 10px' }}>{aiQuestionsLoading ? '분석중…' : 'AI 재분석'}</button>
+                  </div>
+                </div>
+                {editMode === 'structured' ? (
                   <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
+                ) : (
+                  <textarea value={String(selected.content || '')} onChange={e => setEditing(p => p ? { ...p, content: e.target.value } : p)} rows={14}
+                    style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any, fontSize: 13 }} />
                 )}
-
-                {validation && (
-                  <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, background: '#F8FAFC', padding: 10, display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ fontWeight: 800 }}>메뉴얼 점검 결과</div>
-                      <button className="btn btn-ghost" type="button" onClick={() => setValidation(null)}>닫기</button>
-                    </div>
-                    {!validation.issues.length ? (
-                      <div style={{ fontSize: 13, color: '#64748b' }}>문제를 찾지 못했습니다.</div>
-                    ) : (
-                      <div style={{ display: 'grid', gap: 6 }}>
-                        {validation.issues
-                          .slice()
-                          .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'MUST' ? -1 : 1))
-                          .map((it, idx) => (
-                            <div key={idx} style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
-                              <span style={{ fontWeight: 800, color: it.severity === 'MUST' ? '#b91c1c' : '#0f172a' }}>{it.severity}</span>
-                              {it.stepId ? <span style={{ marginLeft: 6, fontWeight: 800 }}>{it.stepId}</span> : null}
-                              <span style={{ marginLeft: 6 }}>{it.issue}</span>
-                              {it.suggestion ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{it.suggestion}</div> : null}
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {aiQuestions && (
-                  <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, background: '#FFFFFF', padding: 10, display: 'grid', gap: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ fontWeight: 800 }}>AI 보완 질문</div>
-                      <button className="btn btn-ghost" type="button" onClick={() => setAiQuestions(null)}>닫기</button>
-                    </div>
-                    {aiQuestions.summary ? (
-                      <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.5 }}>{aiQuestions.summary}</div>
-                    ) : (
-                      <div style={{ fontSize: 13, color: '#64748b' }}>요약 없음</div>
-                    )}
-
-                    {!!aiQuestions.issues.length && (
-                      <div style={{ display: 'grid', gap: 6 }}>
-                        <div style={{ fontWeight: 800, fontSize: 13 }}>누락/이슈</div>
-                        {aiQuestions.issues.map((it, idx) => (
-                          <div key={idx} style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
-                            <span style={{ fontWeight: 800, color: it.severity === 'MUST' ? '#b91c1c' : '#0f172a' }}>{it.severity}</span>
-                            {it.stepId ? <span style={{ marginLeft: 6, fontWeight: 800 }}>{it.stepId}</span> : null}
-                            <span style={{ marginLeft: 6 }}>{it.issue}</span>
-                            {it.suggestion ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{it.suggestion}</div> : null}
+                {aiQuestions && !!aiQuestions.questions.length && (
+                  <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 12, display: 'grid', gap: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13 }}>AI가 추가 정보를 요청합니다 ({aiQuestions.questions.length}개)</div>
+                    {aiQuestions.summary && <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>{aiQuestions.summary}</div>}
+                    {aiQuestions.questions.map((q, idx) => {
+                      const isFile = isFileField(q);
+                      const links = answerLinks[idx] || [];
+                      return (
+                        <div key={idx} style={{ display: 'grid', gap: 5, background: '#fff', borderRadius: 8, padding: '8px 10px', border: '1px solid #E5E7EB' }}>
+                          <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
+                            <span style={{ fontWeight: 800, color: q.severity === 'MUST' ? '#b91c1c' : '#6366f1', fontSize: 11 }}>{q.severity}</span>
+                            {q.targetStepId && <span style={{ marginLeft: 6, fontSize: 11, background: '#E0E7FF', color: '#3730a3', borderRadius: 4, padding: '1px 5px' }}>{q.targetStepId}</span>}
+                            {q.targetField && <span style={{ marginLeft: 4, fontSize: 11, background: isFile ? '#FEF9C3' : '#F0FDF4', color: isFile ? '#92400E' : '#166534', borderRadius: 4, padding: '1px 5px' }}>{q.targetField}{isFile ? ' 📎' : ''}</span>}
+                            <span style={{ marginLeft: 6 }}>{q.question}</span>
                           </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {!!aiQuestions.questions.length && (
-                      <div style={{ display: 'grid', gap: 10 }}>
-                        <div style={{ fontWeight: 800, fontSize: 13 }}>질문 ({aiQuestions.questions.length}개) — 답변을 입력하면 AI가 메뉴얼에 자동 반영합니다</div>
-                        {aiQuestions.questions.map((q, idx) => {
-                          const isFile = isFileField(q);
-                          const links = answerLinks[idx] || [];
-                          return (
-                          <div key={idx} style={{ display: 'grid', gap: 6, background: '#F8FAFC', borderRadius: 8, padding: '8px 10px', border: '1px solid #E5E7EB' }}>
-                            <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
-                              <span style={{ fontWeight: 800, color: q.severity === 'MUST' ? '#b91c1c' : '#6366f1' }}>{q.severity}</span>
-                              {q.targetStepId ? <span style={{ marginLeft: 6, fontSize: 11, background: '#E0E7FF', color: '#3730a3', borderRadius: 4, padding: '1px 5px' }}>{q.targetStepId}</span> : null}
-                              {q.targetField ? <span style={{ marginLeft: 4, fontSize: 11, background: isFile ? '#FEF9C3' : '#F0FDF4', color: isFile ? '#92400E' : '#166534', borderRadius: 4, padding: '1px 5px' }}>{q.targetField}{isFile ? ' 📎' : ''}</span> : null}
-                              <span style={{ marginLeft: 6 }}>{q.question}</span>
-                              {q.reason ? <div style={{ marginTop: 2, color: '#64748b', fontSize: 12 }}>{q.reason}</div> : null}
-                            </div>
-
-                            {isFile ? (
-                              <div style={{ display: 'grid', gap: 6 }}>
-                                {links.map((lk, li) => (
-                                  <div key={li} style={{ display: 'flex', gap: 6, alignItems: 'center', background: '#fff', border: '1px solid #CBD5E1', borderRadius: 6, padding: '4px 8px' }}>
-                                    <span style={{ fontSize: 12, color: '#0369a1', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      <a href={lk.url} target="_blank" rel="noreferrer" style={{ color: '#0369a1' }}>📎 {lk.name || lk.url}</a>
-                                    </span>
-                                    <button type="button" style={{ fontSize: 11, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px' }}
-                                      onClick={() => setAnswerLinks(prev => ({ ...prev, [idx]: (prev[idx] || []).filter((_, i) => i !== li) }))}>✕</button>
-                                  </div>
-                                ))}
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <input
-                                    id={`link-name-${idx}`}
-                                    placeholder="파일명 (예: 도면 Rev.3)"
-                                    style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px', fontSize: 12, width: 140, flexShrink: 0 }}
-                                  />
-                                  <input
-                                    id={`link-url-${idx}`}
-                                    placeholder="OneDrive 링크 붙여넣기"
-                                    style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px', fontSize: 12, flex: 1 }}
-                                  />
-                                  <button type="button" className="btn btn-outline" style={{ fontSize: 12, padding: '4px 10px', flexShrink: 0 }}
-                                    onClick={() => {
-                                      const nameEl = document.getElementById(`link-name-${idx}`) as HTMLInputElement;
-                                      const urlEl = document.getElementById(`link-url-${idx}`) as HTMLInputElement;
-                                      const url = (urlEl?.value || '').trim();
-                                      const name = (nameEl?.value || '').trim() || url;
-                                      if (!url) return;
-                                      setAnswerLinks(prev => ({ ...prev, [idx]: [...(prev[idx] || []), { name, url }] }));
-                                      if (nameEl) nameEl.value = '';
-                                      if (urlEl) urlEl.value = '';
-                                      const linkAnswer = [...links, { name, url }].map(l => `[${l.name}](${l.url})`).join(', ');
-                                      setAnswers(prev => ({ ...prev, [idx]: linkAnswer }));
-                                    }}
-                                  >추가</button>
+                          {isFile ? (
+                            <div style={{ display: 'grid', gap: 4 }}>
+                              {links.map((lk, li) => (
+                                <div key={li} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#0369a1' }}>
+                                  <a href={lk.url} target="_blank" rel="noreferrer" style={{ color: '#0369a1' }}>📎 {lk.name || lk.url}</a>
+                                  <button type="button" style={{ fontSize: 10, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer' }}
+                                    onClick={() => setAnswerLinks(prev => ({ ...prev, [idx]: (prev[idx] || []).filter((_, i) => i !== li) }))}>✕</button>
                                 </div>
-                                {!links.length && (
-                                  <div style={{ fontSize: 11, color: '#94a3b8' }}>OneDrive에서 링크 복사 후 위에 붙여넣고 추가하세요.</div>
-                                )}
+                              ))}
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <input id={`ln-${idx}`} placeholder="파일명" style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '4px 6px', fontSize: 12, width: 120 }} />
+                                <input id={`lu-${idx}`} placeholder="OneDrive 링크" style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '4px 6px', fontSize: 12, flex: 1 }} />
+                                <button type="button" className="btn btn-outline" style={{ fontSize: 11, padding: '3px 8px' }}
+                                  onClick={() => {
+                                    const ne = document.getElementById(`ln-${idx}`) as HTMLInputElement;
+                                    const ue = document.getElementById(`lu-${idx}`) as HTMLInputElement;
+                                    const url = (ue?.value || '').trim(); const name = (ne?.value || '').trim() || url;
+                                    if (!url) return;
+                                    setAnswerLinks(prev => ({ ...prev, [idx]: [...(prev[idx] || []), { name, url }] }));
+                                    if (ne) ne.value = ''; if (ue) ue.value = '';
+                                    setAnswers(prev => ({ ...prev, [idx]: [...links, { name, url }].map(l => `[${l.name}](${l.url})`).join(', ') }));
+                                  }}>추가</button>
                               </div>
-                            ) : (
-                              <input
-                                value={answers[idx] || ''}
-                                onChange={e => setAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
-                                placeholder="답변을 입력하세요 (모름/없음 입력 시 반영 안 됨)"
-                                style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '5px 8px', fontSize: 13 }}
-                              />
-                            )}
-                          </div>
+                            </div>
+                          ) : (
+                            <input value={answers[idx] || ''} onChange={e => setAnswers(prev => ({ ...prev, [idx]: e.target.value }))}
+                              placeholder="답변 (모름/없음 시 건너뜀)" style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '4px 8px', fontSize: 13 }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <button className="btn" type="button" disabled={applyLoading || !Object.values(answers).some(v => v.trim())}
+                      onClick={async () => {
+                        if (!editing?.id || !aiQuestions) return;
+                        setApplyLoading(true);
+                        try {
+                          const toApply = aiQuestions.questions.map((q, i) => ({
+                            targetStepId: q.targetStepId, targetField: q.targetField, question: q.question, answer: answers[i] || '',
+                          })).filter(a => a.answer.trim());
+                          const r = await apiJson<{ summary: string; appliedCount: number; updatedContent: string; version: number }>(
+                            `/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/apply-answers`,
+                            { method: 'POST', body: JSON.stringify({ userId, answers: toApply }) },
                           );
-                        })}
-                        <button
-                          className="btn"
-                          type="button"
-                          disabled={applyLoading || !Object.values(answers).some(v => v.trim())}
-                          onClick={async () => {
-                            if (!editing?.id) return;
-                            setApplyLoading(true);
-                            try {
-                              const toApply = aiQuestions.questions
-                                .map((q, idx) => ({
-                                  targetStepId: (q as any).targetStepId,
-                                  targetField: (q as any).targetField,
-                                  question: q.question,
-                                  answer: answers[idx] || '',
-                                }))
-                                .filter(a => a.answer.trim());
-                              const r = await apiJson<{ summary: string; appliedCount: number; updatedContent: string; version: number }>(
-                                `/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/apply-answers`,
-                                { method: 'POST', body: JSON.stringify({ userId, answers: toApply }) },
-                              );
-                              setEditing(prev => prev ? { ...prev, content: r.updatedContent, version: r.version } : prev);
-                              if (editMode === 'structured') {
-                                setStepForms(parseTextToStepForms(r.updatedContent));
-                              }
-                              setAnswers({});
-                              alert(`반영 완료! ${r.appliedCount}개 항목이 업데이트되었습니다.\n\n${r.summary}`);
-                            } catch (e: any) {
-                              alert(e?.message || 'AI 자동반영에 실패했습니다.');
-                            } finally {
-                              setApplyLoading(false);
-                            }
-                          }}
-                          style={{ justifySelf: 'start' }}
-                        >
-                          {applyLoading ? 'AI 반영중…' : `AI 자동반영 (${Object.values(answers).filter(v => v.trim()).length}개 답변)`}
-                        </button>
-                      </div>
-                    )}
-
-                    {!aiQuestions.issues.length && !aiQuestions.questions.length && (
-                      <div style={{ fontSize: 13, color: '#64748b' }}>추가 이슈/질문이 없습니다.</div>
-                    )}
+                          setEditing(p => p ? { ...p, content: r.updatedContent, version: r.version } : p);
+                          setStepForms(parseTextToStepForms(r.updatedContent));
+                          setAnswers({}); setAnswerLinks({});
+                          alert(`${r.appliedCount}개 항목 반영 완료!\n\n${r.summary}`);
+                        } catch (e: any) { alert(e?.message || 'AI 반영에 실패했습니다.'); }
+                        finally { setApplyLoading(false); }
+                      }}
+                      style={{ justifySelf: 'start', fontSize: 13 }}
+                    >{applyLoading ? 'AI 반영중…' : `AI 자동반영 (${Object.values(answers).filter(v => v.trim()).length}개)`}</button>
                   </div>
                 )}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                  <button className="btn btn-outline" type="button" onClick={() => { switchToText(); setPhase(1); }}>← 이전: 작성</button>
+                  <button className="btn" type="button" onClick={() => { if (editMode === 'structured' && stepForms.length) { setEditing(p => p ? { ...p, content: serializeStepsToText(stepForms) } : p); } setPhase(3); }}
+                    style={{ padding: '8px 20px' }}>다음: 프로세스 생성 →</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>최종 검토 및 프로세스 생성</div>
+                <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+                  아래 메뉴얼 내용을 확인하세요. AI가 이 메뉴얼을 기반으로 BPMN 프로세스 템플릿을 생성합니다.
+                </div>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 8 }}>{selected.title || '(업무명 없음)'}</div>
+                  <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.6, color: '#0f172a', margin: 0, maxHeight: 400, overflow: 'auto' }}>{String(selected.content || '').trim() || '(내용 없음)'}</pre>
+                </div>
+                {(() => { const v = validateManual(String(selected.content || '')); const musts = v.issues.filter(x => x.severity === 'MUST'); return musts.length > 0 ? (
+                  <div style={{ background: '#FEF2F2', borderRadius: 8, padding: 10, display: 'grid', gap: 4 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: '#b91c1c' }}>필수 수정 사항 ({musts.length}개)</div>
+                    {musts.map((it, i) => <div key={i} style={{ fontSize: 12, color: '#b91c1c' }}>{it.stepId ? `[${it.stepId}] ` : ''}{it.issue}</div>)}
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>이전 단계에서 수정한 뒤 다시 시도하세요.</div>
+                  </div>
+                ) : null; })()}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                  <button className="btn btn-outline" type="button" onClick={() => setPhase(2)}>← 이전: AI 분석/보완</button>
+                  <button className="btn" type="button" onClick={aiToBpmn} disabled={aiLoading} style={{ padding: '8px 20px' }}>
+                    {aiLoading ? '프로세스 생성중…' : 'AI로 프로세스 템플릿 생성'}
+                  </button>
+                </div>
               </>
             )}
           </div>
