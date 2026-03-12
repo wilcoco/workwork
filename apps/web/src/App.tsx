@@ -2,6 +2,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useLocation 
 import { useEffect, useRef, useState, CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { apiJson } from './lib/api';
+import { ToastContainer } from './components/Toast';
 import { Home } from './pages/Home';
 import { WorklogNew } from './pages/WorklogNew';
 import { WorklogDetail } from './pages/WorklogDetail';
@@ -107,6 +108,7 @@ export function App() {
   return (
     <BrowserRouter>
       <AppShell SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
+      <ToastContainer />
     </BrowserRouter>
   );
 }

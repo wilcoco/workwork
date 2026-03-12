@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
 import { StepFormEditor, StepFormData, parseTextToStepForms, serializeStepsToText, makeEmptyStep } from '../components/StepFormEditor';
+import { toast, toastConfirm } from '../components/Toast';
 
 type WorkManualDto = {
   id?: string;
@@ -164,6 +165,23 @@ function validateManual(text: string): { issues: ManualIssue[]; steps: ParsedSte
   return { issues, steps };
 }
 
+const T = {
+  border: '1px solid #E5E7EB',
+  borderFocus: '1px solid #0F3D73',
+  radius: 8,
+  radiusLg: 12,
+  radiusPill: 20,
+  input: { border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' } as React.CSSProperties,
+  card: { border: '1px solid #E5E7EB', borderRadius: 12, background: '#FFFFFF', padding: 12 } as React.CSSProperties,
+  muted: '#64748b',
+  primary: '#0F3D73',
+  danger: '#b91c1c',
+  bg: '#FAFBFC',
+  bgSubtle: '#F8FAFC',
+  textSm: { fontSize: 12, color: '#64748b' } as React.CSSProperties,
+  label: { fontWeight: 700, fontSize: 13 } as React.CSSProperties,
+};
+
 export function WorkManuals() {
   const nav = useNavigate();
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -186,6 +204,7 @@ export function WorkManuals() {
   const [stepForms, setStepForms] = useState<StepFormData[]>([]);
   const [draftLoading, setDraftLoading] = useState(false);
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
+  const [prevContent, setPrevContent] = useState<string | null>(null);
 
   const selected = useMemo(() => {
     if (!editing) return null;
@@ -257,7 +276,7 @@ export function WorkManuals() {
 
   function newManual() {
     if (!userId) {
-      alert('로그인이 필요합니다.');
+      toast('로그인이 필요합니다.', 'warning');
       return;
     }
     setSelectedId('');
@@ -269,7 +288,7 @@ export function WorkManuals() {
     setEditing({ ...m, content: m.content || '', authorName: m.authorName || '', authorTeamName: m.authorTeamName || '' });
   }
 
-  function switchToStructured(prefilled?: StepFormData[]) {
+  async function switchToStructured(prefilled?: StepFormData[]) {
     if (!editing) return;
     if (prefilled && prefilled.length) {
       setStepForms(prefilled);
@@ -279,7 +298,7 @@ export function WorkManuals() {
     const text = String(editing.content || '');
     const forms = parseTextToStepForms(text);
     if (!forms.length && text.trim().length > 0) {
-      const ok = confirm('현재 메뉴얼에서 STEP 블록을 찾을 수 없습니다.\n\n빈 단계 하나로 구조화 편집을 시작할까요?');
+      const ok = await toastConfirm('현재 메뉴얼에서 STEP 블록을 찾을 수 없습니다.\n\n빈 단계 하나로 구조화 편집을 시작할까요?');
       if (!ok) return;
       setStepForms([makeEmptyStep(1)]);
     } else if (!forms.length) {
@@ -291,10 +310,10 @@ export function WorkManuals() {
   }
 
   async function aiDraftSteps() {
-    if (!userId) { alert('로그인이 필요합니다.'); return; }
-    if (!editing?.id) { alert('먼저 메뉴얼을 저장해 주세요.'); return; }
+    if (!userId) { toast('로그인이 필요합니다.', 'warning'); return; }
+    if (!editing?.id) { toast('먼저 메뉴얼을 저장해 주세요.', 'warning'); return; }
     const content = String(editing.content || '').trim();
-    if (!content) { alert('메뉴얼 내용을 먼저 입력해 주세요.'); return; }
+    if (!content) { toast('메뉴얼 내용을 먼저 입력해 주세요.', 'warning'); return; }
     setDraftLoading(true);
     try {
       const r = await apiJson<{ draftContent: string; stepCount: number; summary: string }>(
@@ -302,13 +321,13 @@ export function WorkManuals() {
         { method: 'POST', body: JSON.stringify({ userId }) },
       );
       if (!r?.draftContent) throw new Error('AI 응답이 올바르지 않습니다.');
-      const ok = confirm(`AI가 ${r.stepCount}개 STEP 초안을 생성했습니다.\n\n${r.summary}\n\n구조화 편집 모드로 전환하여 초안을 확인할까요?\n(현재 메뉴얼 내용은 이 초안으로 교체됩니다)`);
+      const ok = await toastConfirm(`AI가 ${r.stepCount}개 STEP 초안을 생성했습니다.\n\n${r.summary}\n\n구조화 편집 모드로 전환하여 초안을 확인할까요?\n(현재 메뉴얼 내용은 이 초안으로 교체됩니다)`);
       if (!ok) return;
       setEditing(prev => prev ? { ...prev, content: r.draftContent } : prev);
       const forms = parseTextToStepForms(r.draftContent);
       switchToStructured(forms.length ? forms : undefined);
     } catch (e: any) {
-      alert(e?.message || 'AI STEP 초안 생성에 실패했습니다.');
+      toast(e?.message || 'AI STEP 초안 생성에 실패했습니다.', 'error');
     } finally {
       setDraftLoading(false);
     }
@@ -322,7 +341,7 @@ export function WorkManuals() {
     setEditMode('text');
   }
 
-  function insertAiFormatTemplate() {
+  async function insertAiFormatTemplate() {
     if (!editing) return;
     const title = String(editing.title || '').trim();
     const headerTitle = title ? `(${title})` : '(업무명)';
@@ -364,7 +383,7 @@ export function WorkManuals() {
 
     const cur = String(editing.content || '');
     if (cur.trim().length > 0) {
-      const ok = confirm('현재 메뉴얼 내용 뒤에 AI 포맷 템플릿을 추가할까요?');
+      const ok = await toastConfirm('현재 메뉴얼 내용 뒤에 AI 포맷 템플릿을 추가할까요?');
       if (!ok) return;
     }
     setEditing((prev) => {
@@ -379,16 +398,16 @@ export function WorkManuals() {
     if (!editing) return;
     const r = validateManual(String(editing.content || ''));
     setValidation({ issues: r.issues });
-    if (!r.issues.length) alert('메뉴얼 점검 결과: 문제를 찾지 못했습니다.');
+    if (!r.issues.length) toast('메뉴얼 점검 결과: 문제를 찾지 못했습니다.', 'success');
   }
 
   async function aiMakeQuestions() {
     if (!userId) {
-      alert('로그인이 필요합니다.');
+      toast('로그인이 필요합니다.', 'warning');
       return;
     }
     if (!editing?.id) {
-      alert('먼저 메뉴얼을 저장해 주세요.');
+      toast('먼저 메뉴얼을 저장해 주세요.', 'warning');
       return;
     }
     setAiQuestionsLoading(true);
@@ -403,7 +422,7 @@ export function WorkManuals() {
         questions: Array.isArray(r?.questions) ? r.questions : [],
       });
     } catch (e: any) {
-      alert(e?.message || 'AI 보완 질문 생성에 실패했습니다.');
+      toast(e?.message || 'AI 보완 질문 생성에 실패했습니다.', 'error');
     } finally {
       setAiQuestionsLoading(false);
     }
@@ -411,13 +430,13 @@ export function WorkManuals() {
 
   async function save() {
     if (!userId) {
-      alert('로그인이 필요합니다.');
+      toast('로그인이 필요합니다.', 'warning');
       return;
     }
     if (!editing) return;
     const title = String(editing.title || '').trim();
     if (!title) {
-      alert('업무명을 입력하세요.');
+      toast('업무명을 입력하세요.', 'warning');
       return;
     }
     const content = editMode === 'structured' && stepForms.length
@@ -443,9 +462,9 @@ export function WorkManuals() {
         });
         await loadList(String(created?.id || ''));
       }
-      alert('저장되었습니다.');
+      toast('저장되었습니다.', 'success');
     } catch (e: any) {
-      alert(e?.message || '저장에 실패했습니다.');
+      toast(e?.message || '저장에 실패했습니다.', 'error');
     } finally {
       setSaving(false);
     }
@@ -453,28 +472,28 @@ export function WorkManuals() {
 
   async function remove() {
     if (!userId) {
-      alert('로그인이 필요합니다.');
+      toast('로그인이 필요합니다.', 'warning');
       return;
     }
     if (!editing?.id) return;
-    const ok = confirm('이 메뉴얼을 삭제할까요?');
+    const ok = await toastConfirm('이 메뉴얼을 삭제할까요?');
     if (!ok) return;
     try {
       await apiJson(`/api/work-manuals/${encodeURIComponent(String(editing.id))}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
       await loadList('');
-      alert('삭제되었습니다.');
+      toast('삭제되었습니다.', 'success');
     } catch (e: any) {
-      alert(e?.message || '삭제에 실패했습니다.');
+      toast(e?.message || '삭제에 실패했습니다.', 'error');
     }
   }
 
   async function aiToBpmn() {
     if (!userId) {
-      alert('로그인이 필요합니다.');
+      toast('로그인이 필요합니다.', 'warning');
       return;
     }
     if (!editing?.id) {
-      alert('먼저 메뉴얼을 저장해 주세요.');
+      toast('먼저 메뉴얼을 저장해 주세요.', 'warning');
       return;
     }
 
@@ -483,17 +502,18 @@ export function WorkManuals() {
     const shouldIssues = v.issues.filter((x) => x.severity === 'SHOULD');
     if (mustIssues.length) {
       setValidation({ issues: v.issues });
-      alert(`AI로 BPMN 생성 전에 반드시 수정해야 할 항목이 ${mustIssues.length}개 있습니다. 아래 “메뉴얼 점검 결과”를 확인해 주세요.`);
+      toast(`AI로 BPMN 생성 전에 반드시 수정해야 할 항목이 ${mustIssues.length}개 있습니다. 아래 “메뉴얼 점검 결과”를 확인해 주세요.`, 'error');
       return;
     }
     if (shouldIssues.length) {
       setValidation({ issues: v.issues });
-      const ok = confirm(`AI로 BPMN 생성 전에 보완하면 좋은 항목이 ${shouldIssues.length}개 있습니다.\n\n그래도 AI로 BPMN 생성을 진행할까요?`);
+      const ok = await toastConfirm(`AI로 BPMN 생성 전에 보완하면 좋은 항목이 ${shouldIssues.length}개 있습니다.\n\n그래도 AI로 BPMN 생성을 진행할까요?`);
       if (!ok) return;
     }
 
     setAiLoading(true);
     try {
+      // ... (rest of the code remains the same)
       const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/bpmn`, {
         method: 'POST',
         body: JSON.stringify({ userId }),
@@ -502,7 +522,7 @@ export function WorkManuals() {
       const bpmnJson = r?.bpmnJson;
       if (!tmplTitle || !bpmnJson) throw new Error('AI 응답이 올바르지 않습니다.');
 
-      const ok = confirm(`AI가 BPMN 초안을 만들었습니다.\n\n- 템플릿 제목: ${tmplTitle}\n\n이 초안으로 프로세스 템플릿을 생성할까요?`);
+      const ok = await toastConfirm(`AI가 BPMN 초안을 만들었습니다.\n\n템플릿 제목: ${tmplTitle}\n\n이 초안으로 프로세스 템플릿을 생성할까요?`);
       if (!ok) return;
 
       const created = await apiJson<any>(`/api/process-templates`, {
@@ -520,10 +540,10 @@ export function WorkManuals() {
       });
       const id = String(created?.id || '').trim();
       if (!id) throw new Error('템플릿 생성 응답이 올바르지 않습니다.');
-      alert('프로세스 템플릿이 생성되었습니다.');
+      toast('프로세스 템플릿이 생성되었습니다.', 'success');
       nav(`/process/templates?openId=${encodeURIComponent(id)}`);
     } catch (e: any) {
-      alert(e?.message || 'AI BPMN 생성에 실패했습니다.');
+      toast(e?.message || 'AI BPMN 생성에 실패했습니다.', 'error');
     } finally {
       setAiLoading(false);
     }
@@ -535,21 +555,23 @@ export function WorkManuals() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <h2 style={{ margin: 0 }}>업무 메뉴얼</h2>
           {selected && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+            <nav aria-label="메뉴얼 작성 단계" role="navigation" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
               {[{n:1,l:'작성'},{n:2,l:'AI 분석/보완'},{n:3,l:'프로세스 생성'}].map((s, i) => (
                 <div key={s.n} style={{ display: 'flex', alignItems: 'center' }}>
-                  {i > 0 && <div style={{ width: 24, height: 2, background: phase >= s.n ? '#0F3D73' : '#CBD5E1' }} />}
+                  {i > 0 && <div style={{ width: 24, height: 2, background: phase >= s.n ? '#0F3D73' : '#CBD5E1' }} aria-hidden="true" />}
                   <button type="button" onClick={() => setPhase(s.n as 1|2|3)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 20, fontSize: 12, fontWeight: phase === s.n ? 800 : 500, border: 'none', cursor: 'pointer',
+                    aria-current={phase === s.n ? 'step' : undefined}
+                    aria-label={`${s.n}단계: ${s.l}${phase === s.n ? ' (현재)' : phase > s.n ? ' (완료)' : ''}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: phase === s.n ? 800 : 500, border: 'none', cursor: 'pointer', minHeight: 36,
                       background: phase === s.n ? '#0F3D73' : phase > s.n ? '#E0E7FF' : '#F1F5F9',
                       color: phase === s.n ? '#fff' : phase > s.n ? '#0F3D73' : '#64748b' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: '50%', fontSize: 10, fontWeight: 800,
-                      background: phase === s.n ? '#fff' : 'transparent', color: phase === s.n ? '#0F3D73' : 'inherit' }}>{s.n}</span>
+                      background: phase === s.n ? '#fff' : 'transparent', color: phase === s.n ? '#0F3D73' : 'inherit' }} aria-hidden="true">{s.n}</span>
                     {s.l}
                   </button>
                 </div>
               ))}
-            </div>
+            </nav>
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as any }}>
@@ -601,24 +623,24 @@ export function WorkManuals() {
             </div>
           </div>
 
-          <div style={{ border: '1px solid #E5E7EB', borderRadius: 12, background: '#FFFFFF', padding: 12, display: 'grid', gap: 10 }}>
+          <div style={{ ...T.card, display: 'grid', gap: 10 }}>
             {!selected ? (
-              <div style={{ color: '#64748b' }}>왼쪽에서 메뉴얼을 선택하거나 새로 만들어 주세요.</div>
-            ) : phase === 1 ? (
+              <div style={{ color: T.muted }}>왼쪽에서 메뉴얼을 선택하거나 새로 만들어 주세요.</div>
+            ) : <div key={`phase-${phase}`} style={{ animation: 'phase-fade 0.25s ease-out', display: 'grid', gap: 10 }}>{phase === 1 ? (
               <>
                 <div style={{ display: 'grid', gap: 10 }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
                     <label style={{ display: 'grid', gap: 4 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>업무명</div>
-                      <input value={selected.title} onChange={e => setEditing(p => p ? { ...p, title: e.target.value } : p)} placeholder="예: 금형 발주/관리" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }} />
+                      <div style={T.label}>업무명</div>
+                      <input value={selected.title} onChange={e => setEditing(p => p ? { ...p, title: e.target.value } : p)} placeholder="예: 금형 발주/관리" style={T.input} />
                     </label>
                     <label style={{ display: 'grid', gap: 4 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>작성자</div>
-                      <input value={String((selected as any).authorName || '')} onChange={e => setEditing(p => p ? { ...p, authorName: e.target.value } : p)} placeholder="홍길동" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }} />
+                      <div style={T.label}>작성자</div>
+                      <input value={String((selected as any).authorName || '')} onChange={e => setEditing(p => p ? { ...p, authorName: e.target.value } : p)} placeholder="홍길동" style={T.input} />
                     </label>
                     <label style={{ display: 'grid', gap: 4 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>소속</div>
-                      <input value={String((selected as any).authorTeamName || '')} onChange={e => setEditing(p => p ? { ...p, authorTeamName: e.target.value } : p)} placeholder="생산기술팀" style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }} />
+                      <div style={T.label}>소속</div>
+                      <input value={String((selected as any).authorTeamName || '')} onChange={e => setEditing(p => p ? { ...p, authorTeamName: e.target.value } : p)} placeholder="생산기술팀" style={T.input} />
                     </label>
                   </div>
                   {selected.createdAt && (
@@ -629,7 +651,7 @@ export function WorkManuals() {
                     </div>
                   )}
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>업무 메뉴얼 내용</div>
+                <div style={T.label}>업무 메뉴얼 내용</div>
                 <textarea
                   value={String(selected.content || '')}
                   onChange={e => setEditing(p => p ? { ...p, content: e.target.value } : p)}
@@ -637,7 +659,7 @@ export function WorkManuals() {
                   rows={16}
                   style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '10px 12px', resize: 'vertical' as any, lineHeight: 1.6, fontSize: 14 }}
                 />
-                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                <div style={{ ...T.textSm, lineHeight: 1.5 }}>
                   자유로운 형식으로 작성하세요. 다음 단계에서 AI가 분석하여 프로세스 단계로 자동 분해합니다.
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -659,7 +681,7 @@ export function WorkManuals() {
                         setEditMode('structured');
                         setPhase(2);
                         void aiMakeQuestions();
-                      } catch (e: any) { alert(e?.message || 'AI 분석에 실패했습니다.'); }
+                      } catch (e: any) { toast(e?.message || 'AI 분석에 실패했습니다.', 'error'); }
                       finally { setDraftLoading(false); }
                     }}
                     style={{ padding: '8px 20px' }}
@@ -681,6 +703,15 @@ export function WorkManuals() {
                       style={{ fontSize: 12, padding: '4px 10px' }}>{aiQuestionsLoading ? '분석중…' : 'AI 재분석'}</button>
                   </div>
                 </div>
+                {prevContent !== null && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                    <span style={{ color: '#92400E' }}>AI가 메뉴얼을 수정했습니다.</span>
+                    <button className="btn btn-sm btn-outline" type="button" style={{ fontSize: 11, padding: '2px 10px', color: '#92400E', borderColor: '#FCD34D' }}
+                      onClick={() => { setEditing(p => p ? { ...p, content: prevContent } : p); setStepForms(parseTextToStepForms(prevContent)); setPrevContent(null); toast('이전 내용으로 되돌렸습니다.', 'info'); }}>
+                      되돌리기
+                    </button>
+                  </div>
+                )}
                 {editMode === 'structured' ? (
                   <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
                 ) : (
@@ -738,6 +769,7 @@ export function WorkManuals() {
                         if (!editing?.id || !aiQuestions) return;
                         setApplyLoading(true);
                         try {
+                          setPrevContent(String(editing.content || ''));
                           const toApply = aiQuestions.questions.map((q, i) => ({
                             targetStepId: q.targetStepId, targetField: q.targetField, question: q.question, answer: answers[i] || '',
                           })).filter(a => a.answer.trim());
@@ -748,8 +780,8 @@ export function WorkManuals() {
                           setEditing(p => p ? { ...p, content: r.updatedContent, version: r.version } : p);
                           setStepForms(parseTextToStepForms(r.updatedContent));
                           setAnswers({}); setAnswerLinks({});
-                          alert(`${r.appliedCount}개 항목 반영 완료!\n\n${r.summary}`);
-                        } catch (e: any) { alert(e?.message || 'AI 반영에 실패했습니다.'); }
+                          toast(`${r.appliedCount}개 항목 반영 완료! — ${r.summary}`, 'success', 6000);
+                        } catch (e: any) { toast(e?.message || 'AI 반영에 실패했습니다.', 'error'); }
                         finally { setApplyLoading(false); }
                       }}
                       style={{ justifySelf: 'start', fontSize: 13 }}
@@ -786,10 +818,11 @@ export function WorkManuals() {
                   </button>
                 </div>
               </>
-            )}
+            )}</div>}
           </div>
         </div>
       )}
+      <style>{`@keyframes phase-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }`}</style>
     </div>
   );
 }

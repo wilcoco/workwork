@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { toast, toastConfirm } from './Toast';
+
 type BranchItem = {
   label: string;
   condition: string;
@@ -246,14 +249,16 @@ type StepFormEditorProps = {
 };
 
 export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEditorProps) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const toggle = (id: string) => setExpanded(p => ({ ...p, [id]: !p[id] }));
   function us(i: number, p: Partial<StepFormData>) { onChange(steps.map((s, idx) => (idx === i ? { ...s, ...p } : s))); }
   function addStep() {
     const n = steps.length ? Math.max(...steps.map(s => { const m = s.stepId.match(/\d+/); return m ? +m[0] : 0; })) + 1 : 1;
     onChange([...steps, makeEmptyStep(n)]);
   }
-  function removeStep(i: number) {
-    if (steps.length <= 1) { alert('최소 1개의 단계가 필요합니다.'); return; }
-    if (!confirm(`${steps[i].stepId} 단계를 삭제할까요?`)) return;
+  async function removeStep(i: number) {
+    if (steps.length <= 1) { toast('최소 1개의 단계가 필요합니다.', 'warning'); return; }
+    if (!(await toastConfirm(`${steps[i].stepId} 단계를 삭제할까요?`))) return;
     onChange(steps.filter((_, idx) => idx !== i));
   }
   function moveStep(i: number, d: -1 | 1) {
@@ -264,6 +269,8 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
   function ubr(si: number, bi: number, p: Partial<BranchItem>) { onChange(steps.map((s, i) => i !== si ? s : { ...s, branches: s.branches.map((b, j) => j === bi ? { ...b, ...p } : b) })); }
   function rbr(si: number, bi: number) { onChange(steps.map((s, i) => i !== si ? s : { ...s, branches: s.branches.filter((_, j) => j !== bi) })); }
 
+  const hasDetail = (s: StepFormData) => !!(s.method || s.tools || s.relatedDocs || s.checkItems || s.contacts || s.risks || s.worklogHint || s.supplierName || s.cooperationTarget || s.approvalRouteType || s.approvalRoleCodes || s.deadlineOffsetDays || s.slaHours || s.emailTo || s.emailSubject || s.branches.length);
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
@@ -271,17 +278,21 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
       </div>
       {steps.map((step, si) => {
         const sIss = (validationIssues || []).filter(x => x.stepId === step.stepId);
+        const isOpen = expanded[step.stepId] ?? hasDetail(step);
+        const detailCount = [step.method, step.tools, step.relatedDocs, step.checkItems, step.contacts, step.risks, step.worklogHint, step.supplierName || step.cooperationTarget, step.approvalRouteType, step.deadlineOffsetDays || step.slaHours, step.emailTo, step.branches.length ? 'Y' : ''].filter(Boolean).length;
         return (
-          <div key={step.stepId + '-' + si} style={{ border: sIss.some(x => x.severity === 'MUST') ? '2px solid #dc2626' : '1px solid #E5E7EB', borderRadius: 10, background: '#FAFBFC', padding: 12, display: 'grid', gap: 10 }}>
+          <section key={step.stepId + '-' + si} aria-label={`${step.stepId} ${step.title || '단계'}`} style={{ border: sIss.some(x => x.severity === 'MUST') ? '2px solid #dc2626' : '1px solid #E5E7EB', borderRadius: 10, background: '#FAFBFC', padding: 12, display: 'grid', gap: 10 }}>
+            {/* === Header === */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontWeight: 800, fontSize: 15, color: '#0F3D73' }}>{step.stepId}</div>
               <input value={step.title} onChange={e => us(si, { title: e.target.value })} placeholder="단계 제목" style={{ flex: 1, ...IS, fontWeight: 700 }} />
               <div style={{ display: 'flex', gap: 4 }}>
-                <button className="btn btn-ghost btn-sm" type="button" onClick={() => moveStep(si, -1)} disabled={si === 0} style={{ padding: '2px 6px', fontSize: 12 }}>&#9650;</button>
-                <button className="btn btn-ghost btn-sm" type="button" onClick={() => moveStep(si, 1)} disabled={si === steps.length - 1} style={{ padding: '2px 6px', fontSize: 12 }}>&#9660;</button>
-                <button className="btn btn-ghost btn-sm" type="button" onClick={() => removeStep(si)} style={{ padding: '2px 6px', fontSize: 12, color: '#dc2626' }}>&#10005;</button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => moveStep(si, -1)} disabled={si === 0} aria-label={`${step.stepId} 위로 이동`} style={{ padding: '2px 6px', fontSize: 12 }}>&#9650;</button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => moveStep(si, 1)} disabled={si === steps.length - 1} aria-label={`${step.stepId} 아래로 이동`} style={{ padding: '2px 6px', fontSize: 12 }}>&#9660;</button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => removeStep(si)} aria-label={`${step.stepId} 삭제`} style={{ padding: '2px 6px', fontSize: 12, color: '#dc2626' }}>&#10005;</button>
               </div>
             </div>
+            {/* === Basic fields (always visible) === */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               <label style={{ display: 'grid', gap: 4 }}>
                 <div style={LS}>유형 (taskType)</div>
@@ -301,10 +312,6 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
                 <input value={step.assigneeHint} onChange={e => us(si, { assigneeHint: e.target.value })} placeholder="예: 생산기술팀 대리" style={IS} />
               </label>
             </div>
-            <label style={{ display: 'grid', gap: 4 }}>
-              <div style={LS}>작업 방법/절차</div>
-              <input value={step.method} onChange={e => us(si, { method: e.target.value })} placeholder="작업 수행 방법, 절차, 주의사항" style={IS} />
-            </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <label style={{ display: 'grid', gap: 4 }}>
                 <div style={LS}>입력/필요자료<label style={{ marginLeft: 8, fontWeight: 400 }}><input type="checkbox" checked={step.needsFiles} onChange={e => us(si, { needsFiles: e.target.checked })} style={{ marginRight: 4 }} />파일첨부</label></div>
@@ -315,96 +322,109 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
                 <input value={step.outputs} onChange={e => us(si, { outputs: e.target.value })} placeholder="이 단계의 산출물 (쉼표 구분)" style={IS} />
               </label>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <div style={LS}>도구/장비/시스템</div>
-                <input value={step.tools} onChange={e => us(si, { tools: e.target.value })} placeholder="필요한 도구, 장비, IT 시스템" style={IS} />
-              </label>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <div style={LS}>관련문서 (도면/시방서/양식)</div>
-                <input value={step.relatedDocs} onChange={e => us(si, { relatedDocs: e.target.value })} placeholder="도면번호, 시방서, 양식명, OneDrive 링크 등" style={IS} />
-              </label>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <div style={LS}>확인/검증 사항</div>
-                <input value={step.checkItems} onChange={e => us(si, { checkItems: e.target.value })} placeholder="품질, 안전, 규정, 기준 등 확인 항목" style={IS} />
-              </label>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <div style={LS}>완료조건</div>
-                <input value={step.completionCondition} onChange={e => us(si, { completionCondition: e.target.value })} placeholder="이 단계가 완료되는 조건" style={IS} />
-              </label>
-            </div>
-            {(step.taskType === 'WORKLOG' || step.taskType === '' || step.worklogHint) && (
-              <label style={{ display: 'grid', gap: 4 }}>
-                <div style={LS}>업무일지 기록 내용</div>
-                <input value={step.worklogHint} onChange={e => us(si, { worklogHint: e.target.value })} placeholder="업무일지에 기록해야 할 내용 (쉼표 구분)" style={IS} />
-              </label>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <div style={LS}>관련 연락처</div>
-                <input value={step.contacts} onChange={e => us(si, { contacts: e.target.value })} placeholder="내부: 팀/담당자, 외부: 협력사/연락처" style={IS} />
-              </label>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <div style={LS}>위험/이상 시 대응</div>
-                <input value={step.risks} onChange={e => us(si, { risks: e.target.value })} placeholder="이상 발생 시 조치, 에스컬레이션 경로" style={IS} />
-              </label>
-            </div>
-            {(step.taskType === 'COOPERATION' || step.supplierName || step.cooperationTarget) && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                <label style={{ display: 'grid', gap: 4 }}><div style={LS}>협력사</div><input value={step.supplierName} onChange={e => us(si, { supplierName: e.target.value })} placeholder="협력사명" style={IS} /></label>
-                <label style={{ display: 'grid', gap: 4 }}><div style={LS}>협력사 담당자</div><input value={step.supplierContact} onChange={e => us(si, { supplierContact: e.target.value })} placeholder="이름/연락처" style={IS} /></label>
-                <label style={{ display: 'grid', gap: 4 }}><div style={LS}>내부 협조 부서/인원</div><input value={step.cooperationTarget} onChange={e => us(si, { cooperationTarget: e.target.value })} placeholder="팀명, 담당자" style={IS} /></label>
-              </div>
-            )}
-            {(step.taskType === 'APPROVAL' || step.approvalRouteType) && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <div style={LS}>완료조건</div>
+              <input value={step.completionCondition} onChange={e => us(si, { completionCondition: e.target.value })} placeholder="이 단계가 완료되는 조건" style={IS} />
+            </label>
+            {/* === Detail toggle === */}
+            <button type="button" onClick={() => toggle(step.stepId)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', fontSize: 12, color: '#475569', fontWeight: 600 }}>
+              <span style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }}>▶</span>
+              상세 필드 {detailCount > 0 && <span style={{ background: '#0F3D73', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: 11 }}>{detailCount}</span>}
+            </button>
+            {/* === Detail fields (collapsible) === */}
+            {isOpen && (
+              <div style={{ display: 'grid', gap: 10, paddingLeft: 8, borderLeft: '2px solid #E5E7EB' }}>
                 <label style={{ display: 'grid', gap: 4 }}>
-                  <div style={LS}>결재선 유형</div>
-                  <select value={step.approvalRouteType} onChange={e => us(si, { approvalRouteType: e.target.value })} style={IS}>
-                    <option value="">-- 선택 --</option><option value="SEQUENTIAL">순차결재</option><option value="PARALLEL">병렬결재</option><option value="ANY_ONE">임의 1인 결재</option>
-                  </select>
+                  <div style={LS}>작업 방법/절차</div>
+                  <input value={step.method} onChange={e => us(si, { method: e.target.value })} placeholder="작업 수행 방법, 절차, 주의사항" style={IS} />
                 </label>
-                <label style={{ display: 'grid', gap: 4 }}><div style={LS}>결재 역할/상위자</div><input value={step.approvalRoleCodes} onChange={e => us(si, { approvalRoleCodes: e.target.value })} placeholder="예: 팀장, 부장, 임원" style={IS} /></label>
-              </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={{ display: 'grid', gap: 4 }}><div style={LS}>기한 (시작일 기준 +N일)</div><input value={step.deadlineOffsetDays} onChange={e => us(si, { deadlineOffsetDays: e.target.value })} placeholder="예: 3 (시작일+3일)" style={IS} /></label>
-              <label style={{ display: 'grid', gap: 4 }}><div style={LS}>SLA (시간)</div><input value={step.slaHours} onChange={e => us(si, { slaHours: e.target.value })} placeholder="예: 24 (24시간 이내)" style={IS} /></label>
-            </div>
-            {(step.emailTo || step.emailSubject) ? (
-              <div style={{ display: 'grid', gap: 8, background: '#F1F5F9', borderRadius: 8, padding: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>이메일 통보 설정</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                  <label style={{ display: 'grid', gap: 4 }}><div style={LS}>수신자</div><input value={step.emailTo} onChange={e => us(si, { emailTo: e.target.value })} placeholder="수신자 이메일/역할" style={IS} /></label>
-                  <label style={{ display: 'grid', gap: 4 }}><div style={LS}>CC</div><input value={step.emailCc} onChange={e => us(si, { emailCc: e.target.value })} placeholder="CC" style={IS} /></label>
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <div style={LS}>도구/장비/시스템</div>
+                    <input value={step.tools} onChange={e => us(si, { tools: e.target.value })} placeholder="필요한 도구, 장비, IT 시스템" style={IS} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <div style={LS}>관련문서 (도면/시방서/양식)</div>
+                    <input value={step.relatedDocs} onChange={e => us(si, { relatedDocs: e.target.value })} placeholder="도면번호, 시방서, 양식명, OneDrive 링크 등" style={IS} />
+                  </label>
                 </div>
-                <label style={{ display: 'grid', gap: 4 }}><div style={LS}>제목 템플릿</div><input value={step.emailSubject} onChange={e => us(si, { emailSubject: e.target.value })} placeholder="예: [{itemCode}] {stepTitle} 완료" style={IS} /></label>
-                <label style={{ display: 'grid', gap: 4 }}><div style={LS}>본문 템플릿</div><textarea value={step.emailBody} onChange={e => us(si, { emailBody: e.target.value })} placeholder="이메일 본문 (HTML 가능)" rows={3} style={{ ...IS, resize: 'vertical' as const }} /></label>
-              </div>
-            ) : (
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => us(si, { emailTo: ' ' })} style={{ fontSize: 11, justifySelf: 'start', color: '#64748b' }}>+ 이메일 통보 설정</button>
-            )}
-            {(step.taskType === 'APPROVAL' || step.branches.length > 0) && (
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={LS}>분기 (조건 → 대상 STEP)</div>
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => addBranch(si)} style={{ fontSize: 11, padding: '2px 8px' }}>+ 분기 추가</button>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  <div style={LS}>확인/검증 사항</div>
+                  <input value={step.checkItems} onChange={e => us(si, { checkItems: e.target.value })} placeholder="품질, 안전, 규정, 기준 등 확인 항목" style={IS} />
+                </label>
+                {(step.taskType === 'WORKLOG' || step.taskType === '' || step.worklogHint) && (
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <div style={LS}>업무일지 기록 내용</div>
+                    <input value={step.worklogHint} onChange={e => us(si, { worklogHint: e.target.value })} placeholder="업무일지에 기록해야 할 내용 (쉼표 구분)" style={IS} />
+                  </label>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <div style={LS}>관련 연락처</div>
+                    <input value={step.contacts} onChange={e => us(si, { contacts: e.target.value })} placeholder="내부: 팀/담당자, 외부: 협력사/연락처" style={IS} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <div style={LS}>위험/이상 시 대응</div>
+                    <input value={step.risks} onChange={e => us(si, { risks: e.target.value })} placeholder="이상 발생 시 조치, 에스컬레이션 경로" style={IS} />
+                  </label>
                 </div>
-                {step.branches.map((br, bi) => (
-                  <div key={bi} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 80px 28px', gap: 6, alignItems: 'center' }}>
-                    <input value={br.label} onChange={e => ubr(si, bi, { label: e.target.value })} placeholder="라벨" style={{ ...IS, fontSize: 12 }} />
-                    <input value={br.condition} onChange={e => ubr(si, bi, { condition: e.target.value })} placeholder="조건식 (last.approval.status == 'APPROVED')" style={{ ...IS, fontSize: 12 }} />
-                    <select value={br.targetStepId} onChange={e => ubr(si, bi, { targetStepId: e.target.value })} style={{ ...IS, fontSize: 12 }}>
-                      <option value="">→ STEP</option>
-                      {steps.filter((_, fi) => fi !== si).map(t => (<option key={t.stepId} value={t.stepId}>{t.stepId} {t.title ? `| ${t.title}` : ''}</option>))}
-                    </select>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => rbr(si, bi)} style={{ fontSize: 11, color: '#dc2626', padding: '2px 4px' }}>&#10005;</button>
+                {(step.taskType === 'COOPERATION' || step.supplierName || step.cooperationTarget) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                    <label style={{ display: 'grid', gap: 4 }}><div style={LS}>협력사</div><input value={step.supplierName} onChange={e => us(si, { supplierName: e.target.value })} placeholder="협력사명" style={IS} /></label>
+                    <label style={{ display: 'grid', gap: 4 }}><div style={LS}>협력사 담당자</div><input value={step.supplierContact} onChange={e => us(si, { supplierContact: e.target.value })} placeholder="이름/연락처" style={IS} /></label>
+                    <label style={{ display: 'grid', gap: 4 }}><div style={LS}>내부 협조 부서/인원</div><input value={step.cooperationTarget} onChange={e => us(si, { cooperationTarget: e.target.value })} placeholder="팀명, 담당자" style={IS} /></label>
                   </div>
-                ))}
-                {!step.branches.length && step.taskType === 'APPROVAL' && (
-                  <div style={{ fontSize: 12, color: '#64748b' }}>결재 단계라면 승인/반려 분기를 추가하세요.</div>
+                )}
+                {(step.taskType === 'APPROVAL' || step.approvalRouteType) && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <div style={LS}>결재선 유형</div>
+                      <select value={step.approvalRouteType} onChange={e => us(si, { approvalRouteType: e.target.value })} style={IS}>
+                        <option value="">-- 선택 --</option><option value="SEQUENTIAL">순차결재</option><option value="PARALLEL">병렬결재</option><option value="ANY_ONE">임의 1인 결재</option>
+                      </select>
+                    </label>
+                    <label style={{ display: 'grid', gap: 4 }}><div style={LS}>결재 역할/상위자</div><input value={step.approvalRoleCodes} onChange={e => us(si, { approvalRoleCodes: e.target.value })} placeholder="예: 팀장, 부장, 임원" style={IS} /></label>
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <label style={{ display: 'grid', gap: 4 }}><div style={LS}>기한 (시작일 기준 +N일)</div><input value={step.deadlineOffsetDays} onChange={e => us(si, { deadlineOffsetDays: e.target.value })} placeholder="예: 3 (시작일+3일)" style={IS} /></label>
+                  <label style={{ display: 'grid', gap: 4 }}><div style={LS}>SLA (시간)</div><input value={step.slaHours} onChange={e => us(si, { slaHours: e.target.value })} placeholder="예: 24 (24시간 이내)" style={IS} /></label>
+                </div>
+                {(step.emailTo || step.emailSubject) ? (
+                  <div style={{ display: 'grid', gap: 8, background: '#F1F5F9', borderRadius: 8, padding: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>이메일 통보 설정</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <label style={{ display: 'grid', gap: 4 }}><div style={LS}>수신자</div><input value={step.emailTo} onChange={e => us(si, { emailTo: e.target.value })} placeholder="수신자 이메일/역할" style={IS} /></label>
+                      <label style={{ display: 'grid', gap: 4 }}><div style={LS}>CC</div><input value={step.emailCc} onChange={e => us(si, { emailCc: e.target.value })} placeholder="CC" style={IS} /></label>
+                    </div>
+                    <label style={{ display: 'grid', gap: 4 }}><div style={LS}>제목 템플릿</div><input value={step.emailSubject} onChange={e => us(si, { emailSubject: e.target.value })} placeholder="예: [{itemCode}] {stepTitle} 완료" style={IS} /></label>
+                    <label style={{ display: 'grid', gap: 4 }}><div style={LS}>본문 템플릿</div><textarea value={step.emailBody} onChange={e => us(si, { emailBody: e.target.value })} placeholder="이메일 본문 (HTML 가능)" rows={3} style={{ ...IS, resize: 'vertical' as const }} /></label>
+                  </div>
+                ) : (
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={() => us(si, { emailTo: ' ' })} style={{ fontSize: 11, justifySelf: 'start', color: '#64748b' }}>+ 이메일 통보 설정</button>
+                )}
+                {(step.taskType === 'APPROVAL' || step.branches.length > 0) && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={LS}>분기 (조건 → 대상 STEP)</div>
+                      <button className="btn btn-ghost btn-sm" type="button" onClick={() => addBranch(si)} style={{ fontSize: 11, padding: '2px 8px' }}>+ 분기 추가</button>
+                    </div>
+                    {step.branches.map((br, bi) => (
+                      <div key={bi} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 80px 28px', gap: 6, alignItems: 'center' }}>
+                        <input value={br.label} onChange={e => ubr(si, bi, { label: e.target.value })} placeholder="라벨" style={{ ...IS, fontSize: 12 }} />
+                        <input value={br.condition} onChange={e => ubr(si, bi, { condition: e.target.value })} placeholder="조건식 (last.approval.status == 'APPROVED')" style={{ ...IS, fontSize: 12 }} />
+                        <select value={br.targetStepId} onChange={e => ubr(si, bi, { targetStepId: e.target.value })} style={{ ...IS, fontSize: 12 }}>
+                          <option value="">→ STEP</option>
+                          {steps.filter((_, fi) => fi !== si).map(t => (<option key={t.stepId} value={t.stepId}>{t.stepId} {t.title ? `| ${t.title}` : ''}</option>))}
+                        </select>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => rbr(si, bi)} style={{ fontSize: 11, color: '#dc2626', padding: '2px 4px' }}>&#10005;</button>
+                      </div>
+                    ))}
+                    {!step.branches.length && step.taskType === 'APPROVAL' && (
+                      <div style={{ fontSize: 12, color: '#64748b' }}>결재 단계라면 승인/반려 분기를 추가하세요.</div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -417,10 +437,10 @@ export function StepFormEditor({ steps, onChange, validationIssues }: StepFormEd
                 ))}
               </div>
             )}
-          </div>
+          </section>
         );
       })}
-      <button className="btn btn-outline" type="button" onClick={addStep} style={{ justifySelf: 'start' }}>+ 단계 추가</button>
+      <button className="btn btn-outline" type="button" onClick={addStep} aria-label="새 단계 추가" style={{ justifySelf: 'start' }}>+ 단계 추가</button>
     </div>
   );
 }
