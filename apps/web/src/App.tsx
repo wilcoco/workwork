@@ -446,8 +446,8 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
           <Link to="/manuals">업무 메뉴얼</Link>
         </NavDropdown>
         <NavDropdown label="내부결재" active={false}>
-          <a href="https://apps.powerapps.com/play/e/e6d2c7be-41f5-e499-abb9-1107d4194381/a/3dc3bbd2-ba9f-407d-9391-5500f944a145?tenantId=c0cb4e4b-345c-43eb-859b-eb9397bfbbde" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>업무 프로세스 작성 테스트 <span style={{ fontSize: 11, color: '#64748b' }}>↗</span></a>
-          <a href="https://teams.microsoft.com/l/entity/4c4813d8-bfb5-4ed2-b4db-3b9e4b2e2a91/3dc3bbd2-ba9f-407d-9391-5500f944a145" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Teams에서 열기 <span style={{ fontSize: 11, color: '#64748b' }}>↗</span></a>
+          <a href="https://apps.powerapps.com/play/e/e6d2c7be-41f5-e499-abb9-1107d4194381/a/7630894f-816a-46a0-a334-d81de0ca19c5?tenantId=c0cb4e4b-345c-43eb-859b-eb9397bfbbde" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>내부결재 앱 열기 <span style={{ fontSize: 11, color: '#64748b' }}>↗</span></a>
+          <a href="https://teams.microsoft.com/l/entity/4c4813d8-bfb5-4ed2-b4db-3b9e4b2e2a91/7630894f-816a-46a0-a334-d81de0ca19c5" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Teams에서 열기 <span style={{ fontSize: 11, color: '#64748b' }}>↗</span></a>
         </NavDropdown>
         {isCeo && (
           <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
