@@ -446,7 +446,8 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
           <Link to="/manuals">업무 메뉴얼</Link>
         </NavDropdown>
         <a href="https://apps.powerapps.com/play/e/e6d2c7be-41f5-e499-abb9-1107d4194381/a/7630894f-816a-46a0-a334-d81de0ca19c5?tenantId=c0cb4e4b-345c-43eb-859b-eb9397bfbbde" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>내부결재</a>
-        <a href="https://apps.powerapps.com/play/e/e6d2c7be-41f5-e499-abb9-1107d4194381/a/bb3e1bf6-70d1-4192-844e-a04c3e7d1916?tenantId=c0cb4e4b-345c-43eb-859b-eb9397bfbbde&hint=68fbe35f-6a7e-449f-84cf-86b0f2625178&screen=oracle" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>품의전표</a>
+        {/* 품의전표: Power Apps 스크린 딥링크 해결 후 활성화 */}
+        {/* <a href="https://apps.powerapps.com/play/e/e6d2c7be-41f5-e499-abb9-1107d4194381/a/bb3e1bf6-70d1-4192-844e-a04c3e7d1916?tenantId=c0cb4e4b-345c-43eb-859b-eb9397bfbbde&hint=68fbe35f-6a7e-449f-84cf-86b0f2625178&screen=oracle" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>품의전표</a> */}
         {isCeo && (
           <NavDropdown label="관리" active={location.pathname.startsWith('/admin')}>
             <Link to="/admin/orgs">조직관리</Link>
