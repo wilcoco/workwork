@@ -76,6 +76,97 @@ const LAYER_META: Record<LayerKey, { label: string; icon: string; desc: string }
   timing:     { label: '시간과 SLA',         icon: '6', desc: '기한, SLA, 알림' },
 };
 
+type ManualTemplate = {
+  docName: string;
+  docNumber: string;
+  department: string;
+  approver: string;
+  applicableSystem: string;
+  purpose: string;
+  scope: string;
+  overview: string;
+  triggerTiming: string;
+  relatedDepts: string;
+  relatedSystems: string;
+  processFlow: string;
+  systemProcedure: string;
+  dataDefinition: string;
+  responsibilities: string;
+  exceptionHandling: string;
+  relatedDocs: string;
+};
+
+const EMPTY_TPL: ManualTemplate = {
+  docName: '', docNumber: '', department: '', approver: '', applicableSystem: '',
+  purpose: '', scope: '', overview: '', triggerTiming: '', relatedDepts: '',
+  relatedSystems: '', processFlow: '', systemProcedure: '', dataDefinition: '',
+  responsibilities: '', exceptionHandling: '', relatedDocs: '',
+};
+
+function serializeTemplate(tpl: ManualTemplate, title: string, author: string): string {
+  return [
+    '## 1. 기본 정보', `- 문서명: ${tpl.docName || title}`, `- 문서번호: ${tpl.docNumber}`,
+    `- 업무명: ${title}`, `- 부서: ${tpl.department}`, `- 작성자: ${author}`,
+    `- 승인자: ${tpl.approver}`, `- 적용 시스템: ${tpl.applicableSystem}`,
+    '', '## 2. 업무 목적', tpl.purpose,
+    '', '## 3. 적용 범위', tpl.scope,
+    '', '## 4. 업무 개요', `- 업무 설명: ${tpl.overview}`, `- 업무 발생 시점: ${tpl.triggerTiming}`,
+    `- 관련 부서: ${tpl.relatedDepts}`, `- 관련 시스템: ${tpl.relatedSystems}`,
+    '', '## 5. 업무 흐름', tpl.processFlow,
+    '', '## 6. 전산 입력 절차', tpl.systemProcedure,
+    '', '## 7. 입력 데이터 정의', tpl.dataDefinition,
+    '', '## 8. 업무 담당자', tpl.responsibilities,
+    '', '## 9. 예외 처리', tpl.exceptionHandling,
+    '', '## 10. 관련 문서', tpl.relatedDocs,
+  ].join('\n');
+}
+
+function parseTemplateFromContent(content: string): ManualTemplate | null {
+  if (!content.includes('## 1. 기본 정보')) return null;
+  const tpl = { ...EMPTY_TPL };
+  const sec = (hdr: string, next?: string): string => {
+    const i = content.indexOf(hdr); if (i < 0) return '';
+    const s = i + hdr.length;
+    const e = next ? content.indexOf(next, s) : content.length;
+    return content.slice(s, e >= 0 ? e : content.length).trim();
+  };
+  const fld = (block: string, name: string): string => {
+    const m = block.match(new RegExp(`-\\s*${name}\\s*:\\s*(.*)`));
+    return m ? m[1].trim() : '';
+  };
+  const s1 = sec('## 1. 기본 정보', '## 2.');
+  tpl.docName = fld(s1, '문서명'); tpl.docNumber = fld(s1, '문서번호');
+  tpl.department = fld(s1, '부서'); tpl.approver = fld(s1, '승인자');
+  tpl.applicableSystem = fld(s1, '적용 시스템');
+  tpl.purpose = sec('## 2. 업무 목적', '## 3.');
+  tpl.scope = sec('## 3. 적용 범위', '## 4.');
+  const s4 = sec('## 4. 업무 개요', '## 5.');
+  tpl.overview = fld(s4, '업무 설명'); tpl.triggerTiming = fld(s4, '업무 발생 시점');
+  tpl.relatedDepts = fld(s4, '관련 부서'); tpl.relatedSystems = fld(s4, '관련 시스템');
+  tpl.processFlow = sec('## 5. 업무 흐름', '## 6.');
+  tpl.systemProcedure = sec('## 6. 전산 입력 절차', '## 7.');
+  tpl.dataDefinition = sec('## 7. 입력 데이터 정의', '## 8.');
+  tpl.responsibilities = sec('## 8. 업무 담당자', '## 9.');
+  tpl.exceptionHandling = sec('## 9. 예외 처리', '## 10.');
+  tpl.relatedDocs = sec('## 10. 관련 문서');
+  return tpl;
+}
+
+function templateToStepForms(tpl: ManualTemplate): StepFormData[] {
+  const flowLines = tpl.processFlow.split('\n').map(l => l.trim())
+    .filter(l => /^\d+\.?\s/.test(l) || /^-\s/.test(l));
+  if (!flowLines.length) return [makeEmptyStep(1)];
+  return flowLines.map((line, i) => {
+    const title = line.replace(/^\d+\.?\s*/, '').replace(/^-\s*/, '').trim();
+    const step = makeEmptyStep(i + 1);
+    step.title = title; step.taskType = 'WORKLOG';
+    if (i === 0) step.purpose = tpl.purpose;
+    return step;
+  });
+}
+
+const MIN_QUALITY_SCORE = 60;
+
 type ParsedStep = {
   stepId: string;
   title: string;
@@ -232,7 +323,8 @@ export function WorkManuals() {
   const [editMode, setEditMode] = useState<'text' | 'structured'>('text');
   const [stepForms, setStepForms] = useState<StepFormData[]>([]);
   const [draftLoading, setDraftLoading] = useState(false);
-  const [phase, setPhase] = useState<1 | 2>(1);
+  const [phase, setPhase] = useState<1 | 2 | 3>(1);
+  const [template, setTemplate] = useState<ManualTemplate>({ ...EMPTY_TPL });
   const [prevContent, setPrevContent] = useState<string | null>(null);
   const [qaRound, setQaRound] = useState(0);
   const [qualityScore, setQualityScore] = useState<number | null>(null);
@@ -323,6 +415,7 @@ export function WorkManuals() {
     setEditMode('text');
     setStepForms([]);
     setPhase(1);
+    setTemplate({ ...EMPTY_TPL });
     setQaRound(0);
     setQualityScore(null);
     setStepScores([]);
@@ -377,6 +470,7 @@ export function WorkManuals() {
     }
     setSelectedId('');
     setEditing({ title: '', content: '', authorName: userName || '', authorTeamName: teamName || '' });
+    setTemplate({ ...EMPTY_TPL });
     setStepForms([makeEmptyStep(1)]);
     setEditMode('structured');
     setPhase(1);
@@ -386,10 +480,18 @@ export function WorkManuals() {
   function editManual(m: WorkManualDto) {
     setSelectedId(String(m.id || ''));
     setEditing({ ...m, content: m.content || '', authorName: m.authorName || '', authorTeamName: m.authorTeamName || '' });
-    const forms = parseTextToStepForms(m.content || '');
-    setStepForms(forms.length ? forms : [makeEmptyStep(1)]);
-    setEditMode('structured');
-    setPhase(1);
+    const content = m.content || '';
+    const parsed = parseTemplateFromContent(content);
+    if (parsed) {
+      setTemplate(parsed);
+      setPhase(1);
+    } else {
+      setTemplate({ ...EMPTY_TPL });
+      const forms = parseTextToStepForms(content);
+      setStepForms(forms.length ? forms : [makeEmptyStep(1)]);
+      setEditMode('structured');
+      setPhase(forms.length ? 2 : 1);
+    }
     setAiQuestions(null);
   }
 
@@ -558,13 +660,15 @@ export function WorkManuals() {
       toast('업무명을 입력하세요.', 'warning');
       return;
     }
-    const content = editMode === 'structured' && stepForms.length
-      ? serializeStepsToText(stepForms)
-      : String(editing.content || '');
+    const authorName = String((editing as any)?.authorName ?? userName ?? '').trim();
+    const content = phase === 1
+      ? serializeTemplate(template, title, authorName)
+      : editMode === 'structured' && stepForms.length
+        ? serializeStepsToText(stepForms)
+        : String(editing.content || '');
     if (editMode === 'structured' && stepForms.length) {
       setEditing((prev) => (prev ? { ...prev, content } : prev));
     }
-    const authorName = String((editing as any)?.authorName ?? userName ?? '').trim();
     const authorTeamName = String((editing as any)?.authorTeamName ?? teamName ?? '').trim();
     setSaving(true);
     try {
@@ -675,10 +779,10 @@ export function WorkManuals() {
           <h2 style={{ margin: 0 }}>업무 메뉴얼</h2>
           {selected && (
             <nav aria-label="메뉴얼 작성 단계" role="navigation" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-              {[{n:1,l:'작성'},{n:2,l:'검토/프로세스 생성'}].map((s, i) => (
+              {[{n:1,l:'템플릿 입력'},{n:2,l:'프로세스 단계'},{n:3,l:'검토/생성'}].map((s, i) => (
                 <div key={s.n} style={{ display: 'flex', alignItems: 'center' }}>
                   {i > 0 && <div style={{ width: 24, height: 2, background: phase >= s.n ? '#0F3D73' : '#CBD5E1' }} aria-hidden="true" />}
-                  <button type="button" onClick={() => setPhase(s.n as 1 | 2)}
+                  <button type="button" onClick={() => setPhase(s.n as 1 | 2 | 3)}
                     aria-current={phase === s.n ? 'step' : undefined}
                     aria-label={`${s.n}단계: ${s.l}${phase === s.n ? ' (현재)' : phase > s.n ? ' (완료)' : ''}`}
                     style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: phase === s.n ? 800 : 500, border: 'none', cursor: 'pointer', minHeight: 36,
@@ -768,20 +872,40 @@ export function WorkManuals() {
               <div style={{ color: T.muted }}>왼쪽에서 메뉴얼을 선택하거나 새로 만들어 주세요.</div>
             ) : <div key={`phase-${phase}`} style={{ animation: 'phase-fade 0.25s ease-out', display: 'grid', gap: 10 }}>{phase === 1 ? (
               <>
-                {/* === 업무 개요 === */}
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
-                    <label style={{ display: 'grid', gap: 4 }}>
+                {/* ====== Phase 1: 제조업 표준 매뉴얼 템플릿 ====== */}
+                {/* --- 1. 업무 정의 --- */}
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>1. 업무 정의</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 8 }}>
+                    <label style={{ display: 'grid', gap: 3 }}>
                       <div style={T.label}>업무명</div>
-                      <input value={selected.title} onChange={e => setEditing(p => p ? { ...p, title: e.target.value } : p)} placeholder="예: 금형 발주/관리" style={T.input} />
+                      <input value={selected.title} onChange={e => setEditing(p => p ? { ...p, title: e.target.value } : p)} placeholder="예: 생산실적 입력" style={T.input} />
                     </label>
-                    <label style={{ display: 'grid', gap: 4 }}>
+                    <label style={{ display: 'grid', gap: 3 }}>
                       <div style={T.label}>작성자</div>
                       <input value={String((selected as any).authorName || '')} onChange={e => setEditing(p => p ? { ...p, authorName: e.target.value } : p)} placeholder="홍길동" style={T.input} />
                     </label>
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      <div style={T.label}>소속</div>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>소속(부서)</div>
                       <input value={String((selected as any).authorTeamName || '')} onChange={e => setEditing(p => p ? { ...p, authorTeamName: e.target.value } : p)} placeholder="생산기술팀" style={T.input} />
+                    </label>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8 }}>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>문서명</div>
+                      <input value={template.docName} onChange={e => setTemplate(p => ({ ...p, docName: e.target.value }))} placeholder="생산실적 입력 매뉴얼" style={T.input} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>문서번호</div>
+                      <input value={template.docNumber} onChange={e => setTemplate(p => ({ ...p, docNumber: e.target.value }))} placeholder="PRD-MAN-001" style={T.input} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>승인자</div>
+                      <input value={template.approver} onChange={e => setTemplate(p => ({ ...p, approver: e.target.value }))} placeholder="팀장명" style={T.input} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>적용 시스템</div>
+                      <input value={template.applicableSystem} onChange={e => setTemplate(p => ({ ...p, applicableSystem: e.target.value }))} placeholder="ERP / MES / WMS" style={T.input} />
                     </label>
                   </div>
                   {selected.createdAt && (
@@ -791,33 +915,132 @@ export function WorkManuals() {
                       <span>v{(selected as any).version ?? 1}</span>
                     </div>
                   )}
-                </div>
-
-                {/* === 프로세스 단계 (StepFormEditor) === */}
-                <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a' }}>프로세스 단계</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>각 단계별로 유형, 목적, 담당자, 입출력, 완료조건 등을 입력하세요.</div>
-                    </div>
-                    <button className="btn btn-sm btn-outline" type="button"
-                      disabled={!editing?.id || aiQuestionsLoading || !stepForms.some(s => s.title.trim())}
-                      onClick={async () => {
-                        if (!editing?.id) { await save(); }
-                        if (!editing?.id) return;
-                        setEditing(p => p ? { ...p, content: serializeStepsToText(stepForms) } : p);
-                        setTimeout(() => void aiMakeQuestions(), 100);
-                      }}
-                      style={{ fontSize: 11 }}>{aiQuestionsLoading ? 'AI 검증중…' : 'AI 검증'}</button>
+                  <label style={{ display: 'grid', gap: 3 }}>
+                    <div style={T.label}>업무 목적</div>
+                    <textarea value={template.purpose} onChange={e => setTemplate(p => ({ ...p, purpose: e.target.value }))}
+                      placeholder="예: 생산 실적을 정확히 관리하기 위함" rows={2} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13 }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 3 }}>
+                    <div style={T.label}>적용 범위</div>
+                    <textarea value={template.scope} onChange={e => setTemplate(p => ({ ...p, scope: e.target.value }))}
+                      placeholder="예: 생산팀, 자재팀, 품질관리팀" rows={2} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13 }} />
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>업무 설명</div>
+                      <textarea value={template.overview} onChange={e => setTemplate(p => ({ ...p, overview: e.target.value }))}
+                        placeholder="업무의 전체 흐름 설명" rows={2} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13 }} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>업무 발생 시점</div>
+                      <textarea value={template.triggerTiming} onChange={e => setTemplate(p => ({ ...p, triggerTiming: e.target.value }))}
+                        placeholder="예: 매일 생산 완료 후" rows={2} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13 }} />
+                    </label>
                   </div>
-                  <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>관련 부서</div>
+                      <input value={template.relatedDepts} onChange={e => setTemplate(p => ({ ...p, relatedDepts: e.target.value }))} placeholder="생산팀, 품질팀" style={T.input} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 3 }}>
+                      <div style={T.label}>관련 시스템</div>
+                      <input value={template.relatedSystems} onChange={e => setTemplate(p => ({ ...p, relatedSystems: e.target.value }))} placeholder="ERP, MES" style={T.input} />
+                    </label>
+                  </div>
                 </div>
 
-                {/* === AI 검증 결과 (인라인) === */}
+                {/* --- 2. 업무 흐름 --- */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>2. 업무 흐름</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>번호 목록으로 업무의 전체 흐름을 적어주세요. (프로세스 단계로 자동 변환됩니다)</div>
+                  <textarea value={template.processFlow} onChange={e => setTemplate(p => ({ ...p, processFlow: e.target.value }))}
+                    placeholder={'1. 생산 계획 확인\n2. 작업 지시 등록\n3. 생산 작업 수행\n4. 생산 실적 입력\n5. 품질 검사\n6. 재고 반영'}
+                    rows={6} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+                </div>
+
+                {/* --- 3. 전산 입력 방법 --- */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>3. 전산 입력 방법</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>시스템에서의 입력 절차를 STEP별로 기술하세요.</div>
+                  <textarea value={template.systemProcedure} onChange={e => setTemplate(p => ({ ...p, systemProcedure: e.target.value }))}
+                    placeholder={'STEP 1: 메뉴 접속\nERP → 생산관리 → 생산실적 입력\n\nSTEP 2: 기본 정보 입력\n- 생산일자: 생산 수행 날짜\n- 작업지시번호: 생산 지시 번호\n- 품목코드: 생산 품목\n- 생산수량: 생산된 수량\n\nSTEP 3: 저장\n[저장] 버튼 클릭'}
+                    rows={8} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+                </div>
+
+                {/* --- 4. 데이터 정의 --- */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>4. 데이터 정의</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>입력 항목의 설명과 필수 여부를 정리하세요.</div>
+                  <textarea value={template.dataDefinition} onChange={e => setTemplate(p => ({ ...p, dataDefinition: e.target.value }))}
+                    placeholder={'- 품목코드: 제품 코드 (필수)\n- 생산수량: 생산 수량 (필수)\n- 작업자: 작업 담당자 (선택)\n- 비고: 추가 정보 (선택)'}
+                    rows={5} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+                </div>
+
+                {/* --- 5. 예외 처리 / 담당자 / 관련 문서 --- */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>5. 예외 처리 · 담당자 · 관련 문서</div>
+                  <label style={{ display: 'grid', gap: 3 }}>
+                    <div style={T.label}>업무 담당자</div>
+                    <textarea value={template.responsibilities} onChange={e => setTemplate(p => ({ ...p, responsibilities: e.target.value }))}
+                      placeholder={'- 업무 수행: 생산 담당자\n- 업무 검토: 생산 관리자\n- 데이터 관리: 전산팀'}
+                      rows={3} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 3 }}>
+                    <div style={T.label}>예외 처리</div>
+                    <textarea value={template.exceptionHandling} onChange={e => setTemplate(p => ({ ...p, exceptionHandling: e.target.value }))}
+                      placeholder={'- 생산 수량 오류 → 수정 요청 후 재입력\n- 품목 코드 오류 → 품목 마스터 확인\n- 시스템 오류 → 전산팀 문의'}
+                      rows={3} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 3 }}>
+                    <div style={T.label}>관련 문서</div>
+                    <textarea value={template.relatedDocs} onChange={e => setTemplate(p => ({ ...p, relatedDocs: e.target.value }))}
+                      placeholder={'- 생산 계획서\n- 작업 지시서\n- 생산 실적 보고서'}
+                      rows={2} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+                  </label>
+                </div>
+
+                {/* --- 하단 버튼 --- */}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                  <button className="btn" type="button"
+                    disabled={!selected.title?.trim() || !template.processFlow.trim()}
+                    onClick={() => {
+                      const authorN = String((selected as any).authorName || userName || '');
+                      const content = serializeTemplate(template, selected.title, authorN);
+                      setEditing(p => p ? { ...p, content } : p);
+                      const forms = templateToStepForms(template);
+                      setStepForms(forms);
+                      setEditMode('structured');
+                      setAiQuestions(null);
+                      setPhase(2);
+                    }}
+                    style={{ padding: '8px 20px' }}>다음: 프로세스 단계 변환 →</button>
+                </div>
+              </>
+            ) : phase === 2 ? (
+              <>
+                {/* ====== Phase 2: StepFormEditor + AI 검증 ====== */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a' }}>프로세스 단계 편집</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>템플릿에서 변환된 단계를 확인하고, BPMN에 필요한 세부 항목을 보완하세요.</div>
+                  </div>
+                  <button className="btn btn-sm btn-outline" type="button"
+                    disabled={!editing?.id || aiQuestionsLoading || !stepForms.some(s => s.title.trim())}
+                    onClick={async () => {
+                      if (!editing?.id) { await save(); }
+                      if (!editing?.id) return;
+                      setEditing(p => p ? { ...p, content: serializeStepsToText(stepForms) } : p);
+                      setTimeout(() => void aiMakeQuestions(), 100);
+                    }}
+                    style={{ fontSize: 11 }}>{aiQuestionsLoading ? 'AI 검증중…' : 'AI 검증'}</button>
+                </div>
+                <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
+
+                {/* AI 검증 결과 */}
                 {aiQuestionsLoading && !aiQuestions && (
                   <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 16, textAlign: 'center' as any }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 4 }}>AI 검증 중...</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>입력한 단계를 BPMN 관점에서 분석하고 있습니다.</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>프로세스 단계를 BPMN 관점에서 분석하고 있습니다.</div>
                   </div>
                 )}
                 {aiQuestions && (
@@ -851,13 +1074,26 @@ export function WorkManuals() {
                   </div>
                 )}
 
-                {/* === 하단 버튼 === */}
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                {/* 완성도 점수 바 */}
+                {qualityScore !== null && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E5E7EB' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>완성도</div>
+                    <div style={{ flex: 1, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(qualityScore, 100)}%`, borderRadius: 3, transition: 'width 0.5s ease',
+                        background: qualityScore >= MIN_QUALITY_SCORE ? '#16a34a' : qualityScore >= 40 ? '#ca8a04' : '#dc2626' }} />
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: qualityScore >= MIN_QUALITY_SCORE ? '#16a34a' : qualityScore >= 40 ? '#ca8a04' : '#dc2626', minWidth: 36, textAlign: 'right' as any }}>{qualityScore}점</div>
+                  </div>
+                )}
+
+                {/* 하단 네비 */}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 4 }}>
+                  <button className="btn btn-outline" type="button" onClick={() => setPhase(1)}>← 이전: 템플릿</button>
                   <button className="btn" type="button"
                     disabled={!stepForms.some(s => s.title.trim())}
                     onClick={() => {
                       setEditing(p => p ? { ...p, content: serializeStepsToText(stepForms) } : p);
-                      setPhase(2);
+                      setPhase(3);
                     }}
                     style={{ padding: '8px 20px' }}>다음: 검토/프로세스 생성 →</button>
                 </div>
@@ -922,11 +1158,20 @@ export function WorkManuals() {
                   </div>
                 )}
 
+                {/* 품질 게이트 */}
+                {qualityScore !== null && qualityScore < MIN_QUALITY_SCORE && (!selected.status || selected.status === 'DRAFT' || selected.status === 'REJECTED') && (
+                  <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E' }}>완성도 {qualityScore}점 — 검토 요청에는 {MIN_QUALITY_SCORE}점 이상이 필요합니다.</div>
+                    <div style={{ fontSize: 12, color: '#92400E', marginTop: 4 }}>이전 단계에서 AI 검증을 실행하고 부족한 항목을 보완하세요.</div>
+                  </div>
+                )}
+
                 {/* 검토 요청 (DRAFT 또는 REJECTED 상태) */}
                 {(!selected.status || selected.status === 'DRAFT' || selected.status === 'REJECTED') && selected.userId === userId && (
                   <div style={{ display: 'grid', gap: 6 }}>
                     {!reviewerPickOpen ? (
-                      <button className="btn btn-outline" type="button" onClick={() => setReviewerPickOpen(true)} disabled={statusLoading}
+                      <button className="btn btn-outline" type="button" onClick={() => setReviewerPickOpen(true)}
+                        disabled={statusLoading || (qualityScore !== null && qualityScore < MIN_QUALITY_SCORE)}
                         style={{ justifySelf: 'start', color: '#2563eb', borderColor: '#2563eb' }}>팀장에게 검토 요청</button>
                     ) : (
                       <div style={{ border: '1px solid #DBEAFE', borderRadius: 8, background: '#F8FAFC', padding: 10, display: 'grid', gap: 6 }}>
@@ -947,7 +1192,7 @@ export function WorkManuals() {
                 )}
 
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
-                  <button className="btn btn-outline" type="button" onClick={() => setPhase(1)}>← 이전: 작성</button>
+                  <button className="btn btn-outline" type="button" onClick={() => setPhase(2)}>← 이전: 프로세스 단계</button>
                   {selected.status === 'APPROVED' ? (
                     <button className="btn" type="button" onClick={aiToBpmn} disabled={aiLoading} style={{ padding: '8px 20px' }}>
                       {aiLoading ? '프로세스 생성중…' : 'AI로 프로세스 템플릿 생성'}
