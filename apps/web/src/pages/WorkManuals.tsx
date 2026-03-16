@@ -59,7 +59,21 @@ type AiQuestionsResult = {
   issues: ManualIssue[];
   questions: ManualQuestion[];
   score?: number;
+  layerScore?: number | null;
+  layer?: string | null;
+  layerLabel?: string | null;
   stepScores?: StepScore[];
+};
+
+const LAYERS = ['skeleton', 'roles', 'io', 'decisions', 'exceptions', 'timing'] as const;
+type LayerKey = typeof LAYERS[number];
+const LAYER_META: Record<LayerKey, { label: string; icon: string; desc: string }> = {
+  skeleton:   { label: '프로세스 골격',       icon: '1', desc: '단계 구조, 순서, 시작/끝' },
+  roles:      { label: '역할과 담당자',       icon: '2', desc: '담당자, 결재자, 협조 대상' },
+  io:         { label: '입력물/산출물',       icon: '3', desc: '필요 자료, 도구, 산출물' },
+  decisions:  { label: '판단과 분기',         icon: '4', desc: '조건 분기, 완료 기준' },
+  exceptions: { label: '예외와 에스컬레이션', icon: '5', desc: '이상 대응, 위험 요소' },
+  timing:     { label: '시간과 SLA',         icon: '6', desc: '기한, SLA, 알림' },
 };
 
 type ParsedStep = {
@@ -228,6 +242,9 @@ export function WorkManuals() {
   const [reviewerPickOpen, setReviewerPickOpen] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [qaStep, setQaStep] = useState<'feedback' | 'input'>('feedback');
+  const [currentLayer, setCurrentLayer] = useState<LayerKey>('skeleton');
+  const [layerScores, setLayerScores] = useState<Record<string, number>>({});
+  const [layerDone, setLayerDone] = useState<Set<string>>(new Set());
 
   const selected = useMemo(() => {
     if (!editing) return null;
@@ -480,7 +497,7 @@ export function WorkManuals() {
     if (!r.issues.length) toast('메뉴얼 점검 결과: 문제를 찾지 못했습니다.', 'success');
   }
 
-  async function aiMakeQuestions() {
+  async function aiMakeQuestions(layer?: LayerKey) {
     if (!userId) {
       toast('로그인이 필요합니다.', 'warning');
       return;
@@ -491,19 +508,27 @@ export function WorkManuals() {
     }
     setAiQuestionsLoading(true);
     try {
+      const body: any = { userId };
+      if (layer) body.layer = layer;
       const r = await apiJson<AiQuestionsResult>(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/questions`, {
         method: 'POST',
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify(body),
       });
       setAiQuestions({
         summary: String(r?.summary || '').trim(),
         issues: Array.isArray(r?.issues) ? r.issues : [],
         questions: Array.isArray(r?.questions) ? r.questions : [],
         score: r?.score,
+        layerScore: r?.layerScore,
+        layer: r?.layer,
+        layerLabel: r?.layerLabel,
         stepScores: r?.stepScores,
       });
       if (typeof r?.score === 'number') setQualityScore(r.score);
       if (Array.isArray(r?.stepScores)) setStepScores(r.stepScores);
+      if (layer && typeof r?.layerScore === 'number') {
+        setLayerScores(prev => ({ ...prev, [layer]: r.layerScore as number }));
+      }
       setQaRound(prev => prev + 1);
       setQaStep('feedback');
     } catch (e: any) {
@@ -786,7 +811,10 @@ export function WorkManuals() {
                         setStepForms(forms.length ? forms : [makeEmptyStep(1)]);
                         setEditMode('structured');
                         setPhase(2);
-                        void aiMakeQuestions();
+                        setCurrentLayer('skeleton');
+                        setLayerScores({});
+                        setLayerDone(new Set());
+                        void aiMakeQuestions('skeleton');
                       } catch (e: any) { toast(e?.message || 'AI 분석에 실패했습니다.', 'error'); }
                       finally { setDraftLoading(false); }
                     }}
@@ -798,111 +826,123 @@ export function WorkManuals() {
               </>
             ) : phase === 2 ? (
               <>
+                {/* --- Layer Progress Bar --- */}
+                <div style={{ display: 'flex', gap: 2, marginBottom: 2 }}>
+                  {LAYERS.map((lk, li) => {
+                    const meta = LAYER_META[lk];
+                    const isCur = lk === currentLayer;
+                    const isDone = layerDone.has(lk);
+                    const sc = layerScores[lk];
+                    return (
+                      <button key={lk} type="button"
+                        onClick={() => { setCurrentLayer(lk); setQaStep('feedback'); setAiQuestions(null); void aiMakeQuestions(lk); }}
+                        style={{
+                          flex: 1, padding: '6px 2px', borderRadius: 8, border: isCur ? '2px solid #2563eb' : '1px solid #E5E7EB',
+                          background: isDone ? '#F0FDF4' : isCur ? '#EFF6FF' : '#fff', cursor: 'pointer', textAlign: 'center' as any,
+                          transition: 'all 0.15s',
+                        }}>
+                        <div style={{ fontWeight: 800, fontSize: 11, color: isCur ? '#2563eb' : isDone ? '#16a34a' : '#94a3b8' }}>{meta.icon}</div>
+                        <div style={{ fontSize: 10, color: isCur ? '#1e40af' : '#64748b', fontWeight: isCur ? 700 : 400, marginTop: 1, whiteSpace: 'nowrap' as any, overflow: 'hidden', textOverflow: 'ellipsis' }}>{meta.label}</div>
+                        {typeof sc === 'number' && <div style={{ fontSize: 9, color: sc >= 70 ? '#16a34a' : sc >= 40 ? '#ca8a04' : '#dc2626', fontWeight: 700 }}>{sc}%</div>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* --- Overall Score --- */}
                 {qualityScore !== null && (
-                  <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, background: '#fff', padding: '10px 14px', display: 'grid', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ fontWeight: 800, fontSize: 13 }}>매뉴얼 완성도</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {qaRound > 0 && <span style={{ fontSize: 11, color: '#64748b' }}>{qaRound}차 보완</span>}
-                        <span style={{ fontWeight: 800, fontSize: 15, color: qualityScore >= 70 ? '#16a34a' : qualityScore >= 40 ? '#ca8a04' : '#dc2626' }}>{qualityScore}점</span>
-                      </div>
-                    </div>
-                    <div style={{ height: 8, background: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${Math.min(qualityScore, 100)}%`, borderRadius: 4, transition: 'width 0.5s ease',
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E5E7EB' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>전체 완성도</div>
+                    <div style={{ flex: 1, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(qualityScore, 100)}%`, borderRadius: 3, transition: 'width 0.5s ease',
                         background: qualityScore >= 70 ? '#16a34a' : qualityScore >= 40 ? '#ca8a04' : '#dc2626' }} />
                     </div>
-                    {stepScores.length > 0 && (
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as any, marginTop: 2 }}>
-                        {stepScores.map(ss => (
-                          <span key={ss.stepId} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                            background: ss.score >= 70 ? '#F0FDF4' : ss.score >= 40 ? '#FFFBEB' : '#FEF2F2',
-                            color: ss.score >= 70 ? '#16a34a' : ss.score >= 40 ? '#92400E' : '#dc2626' }}>
-                            {ss.stepId} {ss.score}점
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    <div style={{ fontWeight: 800, fontSize: 13, color: qualityScore >= 70 ? '#16a34a' : qualityScore >= 40 ? '#ca8a04' : '#dc2626', minWidth: 36, textAlign: 'right' as any }}>{qualityScore}점</div>
                   </div>
                 )}
-                {aiQuestionsLoading && (
+
+                {/* --- Current Layer Header --- */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0' }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a' }}>{LAYER_META[currentLayer].label}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{LAYER_META[currentLayer].desc}</div>
+                  </div>
+                  <button className="btn btn-sm btn-outline" type="button" onClick={() => aiMakeQuestions(currentLayer)} disabled={!editing?.id || aiQuestionsLoading}
+                    style={{ fontSize: 11 }}>{aiQuestionsLoading ? '분석중…' : 'AI 재분석'}</button>
+                </div>
+
+                {/* --- Loading --- */}
+                {aiQuestionsLoading && !aiQuestions && (
                   <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 20, textAlign: 'center' as any }}>
                     <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 6 }}>AI 분석 중...</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>매뉴얼을 분석하여 보완이 필요한 항목을 찾고 있습니다.</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{LAYER_META[currentLayer].label} 관점에서 매뉴얼을 분석하고 있습니다.</div>
                   </div>
                 )}
-                {aiQuestions && !!aiQuestions.questions.length && qaStep === 'feedback' && (
+
+                {/* --- Feedback View --- */}
+                {aiQuestions && qaStep === 'feedback' && (
                   <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 14, display: 'grid', gap: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ fontWeight: 800, fontSize: 14, color: '#1e40af' }}>AI 분석 결과</div>
-                      <button className="btn btn-sm btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}
-                        style={{ fontSize: 11 }}>{aiQuestionsLoading ? '분석중…' : 'AI 재분석'}</button>
-                    </div>
                     {aiQuestions.summary && (
                       <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.7, background: '#fff', borderRadius: 8, padding: '10px 12px', border: '1px solid #E5E7EB' }}>
                         {aiQuestions.summary}
                       </div>
                     )}
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginTop: 2 }}>보완이 필요한 항목 ({aiQuestions.questions.length}개)</div>
-                    {(() => {
-                      const grouped: Record<string, ManualQuestion[]> = {};
-                      for (const q of aiQuestions.questions) {
-                        const key = q.targetStepId || '공통';
-                        if (!grouped[key]) grouped[key] = [];
-                        grouped[key].push(q);
-                      }
-                      return Object.entries(grouped).map(([stepId, qs]) => (
-                        <div key={stepId} style={{ background: '#fff', borderRadius: 8, padding: '8px 12px', border: '1px solid #E5E7EB' }}>
-                          <div style={{ fontWeight: 700, fontSize: 12, color: '#3730a3', marginBottom: 6 }}>{stepId}</div>
-                          {qs.map((q, i) => (
-                            <div key={i} style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, paddingLeft: 8, borderLeft: `3px solid ${q.severity === 'MUST' ? '#ef4444' : '#a5b4fc'}`, marginBottom: 6 }}>
-                              <span style={{ fontWeight: 700, color: q.severity === 'MUST' ? '#dc2626' : '#6366f1', fontSize: 11, marginRight: 6 }}>{q.severity === 'MUST' ? '필수' : '권장'}</span>
-                              {q.targetField && <span style={{ fontSize: 11, background: '#F0FDF4', color: '#166534', borderRadius: 4, padding: '1px 5px', marginRight: 6 }}>{q.targetField}</span>}
-                              {q.question}
+                    {aiQuestions.questions.length > 0 ? (
+                      <>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151' }}>보완이 필요한 항목 ({aiQuestions.questions.length}개)</div>
+                        {(() => {
+                          const grouped: Record<string, ManualQuestion[]> = {};
+                          for (const q of aiQuestions.questions) {
+                            const key = q.targetStepId || '공통';
+                            if (!grouped[key]) grouped[key] = [];
+                            grouped[key].push(q);
+                          }
+                          return Object.entries(grouped).map(([stepId, qs]) => (
+                            <div key={stepId} style={{ background: '#fff', borderRadius: 8, padding: '8px 12px', border: '1px solid #E5E7EB' }}>
+                              <div style={{ fontWeight: 700, fontSize: 12, color: '#3730a3', marginBottom: 6 }}>{stepId}</div>
+                              {qs.map((q, i) => (
+                                <div key={i} style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, paddingLeft: 8, borderLeft: `3px solid ${q.severity === 'MUST' ? '#ef4444' : '#a5b4fc'}`, marginBottom: 6 }}>
+                                  <span style={{ fontWeight: 700, color: q.severity === 'MUST' ? '#dc2626' : '#6366f1', fontSize: 11, marginRight: 6 }}>{q.severity === 'MUST' ? '필수' : '권장'}</span>
+                                  {q.targetField && <span style={{ fontSize: 11, background: '#F0FDF4', color: '#166534', borderRadius: 4, padding: '1px 5px', marginRight: 6 }}>{q.targetField}</span>}
+                                  {q.question}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          ));
+                        })()}
+                        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                          <button className="btn" type="button" onClick={() => { setQaStep('input'); setAnswers({}); setAnswerLinks({}); }}
+                            style={{ fontSize: 13, padding: '8px 20px' }}>보완 입력하기</button>
+                          <button className="btn btn-outline" type="button"
+                            onClick={() => {
+                              setLayerDone(prev => new Set(prev).add(currentLayer));
+                              const nextIdx = LAYERS.indexOf(currentLayer) + 1;
+                              if (nextIdx < LAYERS.length) {
+                                const next = LAYERS[nextIdx];
+                                setCurrentLayer(next); setAiQuestions(null); void aiMakeQuestions(next);
+                              }
+                            }}
+                            style={{ fontSize: 12 }}>건너뛰기 →</button>
                         </div>
-                      ));
-                    })()}
-                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                      <button className="btn" type="button" onClick={() => { setQaStep('input'); setAnswers({}); setAnswerLinks({}); }}
-                        style={{ fontSize: 13, padding: '8px 20px' }}>
-                        보완 입력하기
-                      </button>
-                      <button className="btn btn-outline" type="button" onClick={() => { setQaStep('input'); }}
-                        style={{ fontSize: 12 }}>건너뛰고 직접 편집</button>
-                    </div>
+                      </>
+                    ) : (
+                      <div style={{ textAlign: 'center' as any, padding: 10 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#16a34a' }}>이 레이어는 충분히 작성되었습니다!</div>
+                        <button className="btn btn-outline" type="button" style={{ marginTop: 8, fontSize: 12 }}
+                          onClick={() => {
+                            setLayerDone(prev => new Set(prev).add(currentLayer));
+                            const nextIdx = LAYERS.indexOf(currentLayer) + 1;
+                            if (nextIdx < LAYERS.length) {
+                              const next = LAYERS[nextIdx];
+                              setCurrentLayer(next); setAiQuestions(null); void aiMakeQuestions(next);
+                            }
+                          }}>다음 레이어 →</button>
+                      </div>
+                    )}
                   </div>
                 )}
-                {qaStep === 'input' && (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={{ fontWeight: 700 }}>프로세스 단계 편집</div>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button className={editMode === 'structured' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
-                          onClick={() => { if (editMode !== 'structured') switchToStructured(); }} style={{ fontSize: 12, padding: '4px 10px' }}>구조화</button>
-                        <button className={editMode === 'text' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
-                          onClick={() => { if (editMode !== 'text') switchToText(); }} style={{ fontSize: 12, padding: '4px 10px' }}>텍스트</button>
-                        <button className="btn btn-sm btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}
-                          style={{ fontSize: 12, padding: '4px 10px' }}>{aiQuestionsLoading ? '분석중…' : 'AI 재분석'}</button>
-                      </div>
-                    </div>
-                    {prevContent !== null && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
-                        <span style={{ color: '#92400E' }}>AI가 메뉴얼을 수정했습니다.</span>
-                        <button className="btn btn-sm btn-outline" type="button" style={{ fontSize: 11, padding: '2px 10px', color: '#92400E', borderColor: '#FCD34D' }}
-                          onClick={() => { setEditing(p => p ? { ...p, content: prevContent } : p); setStepForms(parseTextToStepForms(prevContent)); setPrevContent(null); toast('이전 내용으로 되돌렸습니다.', 'info'); }}>
-                          되돌리기
-                        </button>
-                      </div>
-                    )}
-                    {editMode === 'structured' ? (
-                      <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
-                    ) : (
-                      <textarea value={String(selected.content || '')} onChange={e => setEditing(p => p ? { ...p, content: e.target.value } : p)} rows={14}
-                        style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any, fontSize: 13 }} />
-                    )}
-                  </>
-                )}
+
+                {/* --- Input View --- */}
                 {aiQuestions && !!aiQuestions.questions.length && qaStep === 'input' && (
                   <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 12, display: 'grid', gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -970,13 +1010,16 @@ export function WorkManuals() {
                           setAnswers({}); setAnswerLinks({});
                           if (typeof r?.score === 'number') setQualityScore(r.score);
                           if (Array.isArray(r?.stepScores)) setStepScores(r.stepScores);
-                          const remainCount = Array.isArray(r?.remainingIssues) ? r.remainingIssues.length : 0;
-                          toast(`${r.appliedCount}개 항목 반영 완료! — ${r.summary}${remainCount > 0 ? ` (보완 가능 항목 ${remainCount}개 남음)` : ''}`, 'success', 6000);
-                          if (remainCount > 0) {
-                            setAiQuestions(prev => prev ? { ...prev, questions: (r.remainingIssues || []).map((q: any) => ({ ...q, targetStepId: q.stepId, source: q.source || 'rule' })), score: r.score, stepScores: r.stepScores } : prev);
-                            setQaStep('feedback');
+                          setLayerDone(prev => new Set(prev).add(currentLayer));
+                          toast(`${r.appliedCount}개 항목 반영 완료! — ${r.summary}`, 'success', 5000);
+                          // Move to next layer
+                          const nextIdx = LAYERS.indexOf(currentLayer) + 1;
+                          if (nextIdx < LAYERS.length) {
+                            const next = LAYERS[nextIdx];
+                            setCurrentLayer(next); setAiQuestions(null); void aiMakeQuestions(next);
                           } else {
-                            setAiQuestions(null);
+                            setAiQuestions(null); setQaStep('feedback');
+                            toast('모든 레이어 보완을 완료했습니다!', 'success');
                           }
                         } catch (e: any) { toast(e?.message || 'AI 반영에 실패했습니다.', 'error'); }
                         finally { setApplyLoading(false); }
@@ -985,11 +1028,50 @@ export function WorkManuals() {
                     >{applyLoading ? 'AI 반영중…' : `AI 자동반영 (${Object.values(answers).filter(v => v.trim()).length}개)`}</button>
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+
+                {/* --- Undo Banner --- */}
+                {prevContent !== null && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                    <span style={{ color: '#92400E' }}>AI가 메뉴얼을 수정했습니다.</span>
+                    <button className="btn btn-sm btn-outline" type="button" style={{ fontSize: 11, padding: '2px 10px', color: '#92400E', borderColor: '#FCD34D' }}
+                      onClick={() => { setEditing(p => p ? { ...p, content: prevContent } : p); setStepForms(parseTextToStepForms(prevContent)); setPrevContent(null); toast('이전 내용으로 되돌렸습니다.', 'info'); }}>
+                      되돌리기
+                    </button>
+                  </div>
+                )}
+
+                {/* --- Bottom Nav --- */}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', marginTop: 4 }}>
                   <button className="btn btn-outline" type="button" onClick={() => { switchToText(); setPhase(1); }}>← 이전: 작성</button>
-                  <button className="btn" type="button" onClick={() => { if (editMode === 'structured' && stepForms.length) { setEditing(p => p ? { ...p, content: serializeStepsToText(stepForms) } : p); } setPhase(3); }}
-                    style={{ padding: '8px 20px' }}>다음: 프로세스 생성 →</button>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn btn-outline" type="button"
+                      onClick={() => { setQaStep('input'); setAiQuestions(null); }}
+                      style={{ fontSize: 12 }}>직접 편집</button>
+                    <button className="btn" type="button" onClick={() => { if (editMode === 'structured' && stepForms.length) { setEditing(p => p ? { ...p, content: serializeStepsToText(stepForms) } : p); } setPhase(3); }}
+                      style={{ padding: '8px 20px' }}>다음: 프로세스 생성 →</button>
+                  </div>
                 </div>
+
+                {/* --- Direct Edit (collapsed, opens on '직접 편집') --- */}
+                {qaStep === 'input' && !aiQuestions && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 }}>
+                      <div style={{ fontWeight: 700 }}>프로세스 단계 편집</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className={editMode === 'structured' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
+                          onClick={() => { if (editMode !== 'structured') switchToStructured(); }} style={{ fontSize: 12, padding: '4px 10px' }}>구조화</button>
+                        <button className={editMode === 'text' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
+                          onClick={() => { if (editMode !== 'text') switchToText(); }} style={{ fontSize: 12, padding: '4px 10px' }}>텍스트</button>
+                      </div>
+                    </div>
+                    {editMode === 'structured' ? (
+                      <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
+                    ) : (
+                      <textarea value={String(selected.content || '')} onChange={e => setEditing(p => p ? { ...p, content: e.target.value } : p)} rows={14}
+                        style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any, fontSize: 13 }} />
+                    )}
+                  </>
+                )}
               </>
             ) : (
               <>

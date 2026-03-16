@@ -44,7 +44,35 @@ class AiBpmnDto {
 class AiQuestionsDto {
   @IsString() @IsNotEmpty()
   userId!: string;
+  layer?: string; // skeleton | roles | io | decisions | exceptions | timing
 }
+
+const LAYER_FIELDS: Record<string, string[]> = {
+  skeleton: ['taskType', 'purpose', 'method'],
+  roles: ['assigneeHint', 'approvalRouteType', 'approvalRoleCodes', 'cooperationTarget'],
+  io: ['inputs', 'outputs', 'relatedDocs', 'tools', 'worklogHint'],
+  decisions: ['branches', 'completionCondition'],
+  exceptions: ['risks', 'checkItems', 'supplierName', 'supplierContact'],
+  timing: ['deadlineOffsetDays', 'slaHours', 'emailTo', 'emailCc', 'emailSubject'],
+};
+
+const LAYER_LABELS: Record<string, string> = {
+  skeleton: '프로세스 골격',
+  roles: '역할과 담당자',
+  io: '입력물/산출물',
+  decisions: '판단과 분기',
+  exceptions: '예외와 에스컬레이션',
+  timing: '시간과 SLA',
+};
+
+const LAYER_AI_FOCUS: Record<string, string> = {
+  skeleton: '프로세스의 전체 단계 구조, 순서, 시작/종료 조건에 집중하세요. 빠진 단계나 순서 오류를 찾으세요.',
+  roles: '각 단계의 담당자, 결재자, 협조 대상에 집중하세요. 누가 수행하고 누가 검토/승인하는지 확인하세요.',
+  io: '각 단계에 필요한 입력 자료(도면/양식/파일)와 산출물에 집중하세요. 도구나 시스템도 확인하세요.',
+  decisions: '조건 분기와 판단 기준에 집중하세요. 승인/반려 흐름, 조건식, 완료 판단 기준을 확인하세요.',
+  exceptions: '예외 상황, 위험 요소, 에스컬레이션 경로에 집중하세요. 이상 발생 시 대응 절차를 확인하세요.',
+  timing: '처리 기한, SLA, 알림 설정에 집중하세요. 각 단계의 소요 시간과 지연 시 조치를 확인하세요.',
+};
 
 class ApplyAnswersDto {
   @IsString() @IsNotEmpty()
@@ -534,30 +562,40 @@ export class WorkManualsController {
     if (!title) throw new BadRequestException('manual title missing');
     if (!content) throw new BadRequestException('manual content required');
 
-    // 1) Rule-based validation first
+    const layer = String(dto.layer || '').trim();
+    const layerFields = layer && LAYER_FIELDS[layer] ? new Set(LAYER_FIELDS[layer]) : null;
+    const layerLabel = layer && LAYER_LABELS[layer] ? LAYER_LABELS[layer] : '';
+    const layerFocus = layer && LAYER_AI_FOCUS[layer] ? LAYER_AI_FOCUS[layer] : '';
+
+    // 1) Rule-based validation (full), then filter by layer
     const ruleResult = this.ruleBasedValidation(content);
-    const ruleQuestions = ruleResult.questions;
+    const allRuleQuestions = ruleResult.questions;
+    const ruleQuestions = layerFields
+      ? allRuleQuestions.filter(q => q.targetField && layerFields.has(q.targetField))
+      : allRuleQuestions;
     const ruleCaughtSummary = ruleQuestions.map(q => `[${q.stepId || '전체'}] ${q.targetField}: ${q.question}`).join('\n');
 
     const clipped = content.length > 12000 ? content.slice(0, 12000) : content;
 
-    // 2) AI for contextual/ambiguity questions only
-    const sys = `당신은 제조업 업무 메뉴얼을 검토하여 **맥락상 모호하거나 불충분한 부분**을 질문으로 정리해주는 도우미입니다.
+    // 2) Layer-specific AI prompt
+    const allowedFields = layerFields ? Array.from(layerFields).join(', ') : 'taskType, purpose, assigneeHint, method, inputs, outputs, tools, relatedDocs, checkItems, worklogHint, completionCondition, contacts, risks, supplierName, supplierContact, cooperationTarget, approvalRouteType, approvalRoleCodes, emailTo, emailSubject, deadlineOffsetDays, slaHours, branches';
+
+    const layerInstruction = layerFocus
+      ? `\n\n**현재 분석 레이어: [${layerLabel}]**\n${layerFocus}\n이 레이어에 해당하는 필드(${allowedFields})에 대해서만 질문하세요. 다른 레이어의 질문은 하지 마세요.`
+      : '';
+
+    const sys = `당신은 제조업 업무 메뉴얼을 BPMN 프로세스로 전환하기 위해 검토하는 전문 컨설턴트입니다.
 반드시 JSON만 출력하세요. 마크다운 코드펜스(\`\`\`)를 사용하지 마세요.
+${layerInstruction}
 
 중요: 아래 항목은 이미 규칙 엔진이 검출했으므로 **중복 질문하지 마세요**:
 ${ruleCaughtSummary || '(없음)'}
 
 당신은 위 항목 외에, 내용이 있지만 모호하거나 불충분한 부분만 질문하세요.
-예:
-- "검토 후 처리"라고만 되어 있는데 누가 검토하는지 불명확
-- "필요 시 보고"라고 되어 있는데 기준이 없음
-- 절차는 있는데 예외 상황 대응이 없음
-- 구체성이 부족한 서술 ("적절히", "상황에 따라" 등)
 
 출력 JSON 스키마:
 {
-  "summary": string,
+  "summary": string (이 레이어에 대한 전체적 평가를 2~3문장으로 서술),
   "issues": Array<{ stepId?: string, issue: string, severity: "MUST"|"SHOULD", suggestion?: string }>,
   "questions": Array<{
     stepId?: string,
@@ -569,7 +607,7 @@ ${ruleCaughtSummary || '(없음)'}
   }>
 }
 
-targetField 가능한 값: taskType, purpose, assigneeHint, method, inputs, outputs, tools, relatedDocs, checkItems, worklogHint, completionCondition, contacts, risks, supplierName, supplierContact, cooperationTarget, approvalRouteType, approvalRoleCodes, emailTo, emailSubject, deadlineOffsetDays, slaHours, branches
+targetField 가능한 값: ${allowedFields}
 
 - 메뉴얼에 "### STEP S1 | 단계명" 블록이 있으면 그 구조를 우선 파싱하세요.
 - 각 질문에는 반드시 targetStepId(해당 STEP ID)와 targetField(위의 필드명 중 하나)를 포함하세요.
@@ -617,7 +655,12 @@ targetField 가능한 값: taskType, purpose, assigneeHint, method, inputs, outp
 
     const summary = String(parsed?.summary || '').trim();
     const aiIssues = Array.isArray(parsed?.issues) ? parsed.issues : [];
-    const aiQuestions = (Array.isArray(parsed?.questions) ? parsed.questions : []).map((q: any) => ({ ...q, source: 'ai' }));
+    let aiQuestions = (Array.isArray(parsed?.questions) ? parsed.questions : []).map((q: any) => ({ ...q, source: 'ai' }));
+
+    // Filter AI questions to layer fields too
+    if (layerFields) {
+      aiQuestions = aiQuestions.filter((q: any) => !q.targetField || layerFields.has(q.targetField));
+    }
 
     // 3) Merge: rule questions first (marked as rule), then AI questions
     const mergedQuestions = [
@@ -625,11 +668,27 @@ targetField 가능한 값: taskType, purpose, assigneeHint, method, inputs, outp
       ...aiQuestions,
     ];
 
+    // 4) Per-layer score: count how many layer fields are filled vs missing
+    let layerScore: number | undefined;
+    if (layerFields) {
+      let filled = 0, total = 0;
+      for (const ss of ruleResult.stepScores) {
+        for (const f of Array.from(layerFields)) {
+          total++;
+          if (!ss.missingFields.includes(f)) filled++;
+        }
+      }
+      layerScore = total > 0 ? Math.round((filled / total) * 100) : 100;
+    }
+
     return {
+      layer: layer || null,
+      layerLabel: layerLabel || null,
       summary,
       issues: aiIssues,
       questions: mergedQuestions,
       score: ruleResult.score,
+      layerScore: layerScore ?? null,
       stepScores: ruleResult.stepScores,
     };
   }
