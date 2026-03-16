@@ -824,35 +824,19 @@ export function WorkManuals() {
                     )}
                   </div>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <div style={{ fontWeight: 700 }}>프로세스 단계 편집</div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button className={editMode === 'structured' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
-                      onClick={() => { if (editMode !== 'structured') switchToStructured(); }} style={{ fontSize: 12, padding: '4px 10px' }}>구조화</button>
-                    <button className={editMode === 'text' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
-                      onClick={() => { if (editMode !== 'text') switchToText(); }} style={{ fontSize: 12, padding: '4px 10px' }}>텍스트</button>
-                    <button className="btn btn-sm btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}
-                      style={{ fontSize: 12, padding: '4px 10px' }}>{aiQuestionsLoading ? '분석중…' : 'AI 재분석'}</button>
+                {aiQuestionsLoading && (
+                  <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 20, textAlign: 'center' as any }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 6 }}>AI 분석 중...</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>매뉴얼을 분석하여 보완이 필요한 항목을 찾고 있습니다.</div>
                   </div>
-                </div>
-                {prevContent !== null && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
-                    <span style={{ color: '#92400E' }}>AI가 메뉴얼을 수정했습니다.</span>
-                    <button className="btn btn-sm btn-outline" type="button" style={{ fontSize: 11, padding: '2px 10px', color: '#92400E', borderColor: '#FCD34D' }}
-                      onClick={() => { setEditing(p => p ? { ...p, content: prevContent } : p); setStepForms(parseTextToStepForms(prevContent)); setPrevContent(null); toast('이전 내용으로 되돌렸습니다.', 'info'); }}>
-                      되돌리기
-                    </button>
-                  </div>
-                )}
-                {editMode === 'structured' ? (
-                  <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
-                ) : (
-                  <textarea value={String(selected.content || '')} onChange={e => setEditing(p => p ? { ...p, content: e.target.value } : p)} rows={14}
-                    style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any, fontSize: 13 }} />
                 )}
                 {aiQuestions && !!aiQuestions.questions.length && qaStep === 'feedback' && (
                   <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 14, display: 'grid', gap: 10 }}>
-                    <div style={{ fontWeight: 800, fontSize: 14, color: '#1e40af' }}>AI 분석 결과</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: '#1e40af' }}>AI 분석 결과</div>
+                      <button className="btn btn-sm btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}
+                        style={{ fontSize: 11 }}>{aiQuestionsLoading ? '분석중…' : 'AI 재분석'}</button>
+                    </div>
                     {aiQuestions.summary && (
                       <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.7, background: '#fff', borderRadius: 8, padding: '10px 12px', border: '1px solid #E5E7EB' }}>
                         {aiQuestions.summary}
@@ -884,10 +868,40 @@ export function WorkManuals() {
                         style={{ fontSize: 13, padding: '8px 20px' }}>
                         보완 입력하기
                       </button>
-                      <button className="btn btn-outline" type="button" onClick={() => setAiQuestions(null)}
-                        style={{ fontSize: 12 }}>나중에 하기</button>
+                      <button className="btn btn-outline" type="button" onClick={() => { setQaStep('input'); }}
+                        style={{ fontSize: 12 }}>건너뛰고 직접 편집</button>
                     </div>
                   </div>
+                )}
+                {qaStep === 'input' && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ fontWeight: 700 }}>프로세스 단계 편집</div>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className={editMode === 'structured' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
+                          onClick={() => { if (editMode !== 'structured') switchToStructured(); }} style={{ fontSize: 12, padding: '4px 10px' }}>구조화</button>
+                        <button className={editMode === 'text' ? 'btn btn-sm' : 'btn btn-sm btn-outline'} type="button"
+                          onClick={() => { if (editMode !== 'text') switchToText(); }} style={{ fontSize: 12, padding: '4px 10px' }}>텍스트</button>
+                        <button className="btn btn-sm btn-outline" type="button" onClick={aiMakeQuestions} disabled={!editing?.id || aiQuestionsLoading}
+                          style={{ fontSize: 12, padding: '4px 10px' }}>{aiQuestionsLoading ? '분석중…' : 'AI 재분석'}</button>
+                      </div>
+                    </div>
+                    {prevContent !== null && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+                        <span style={{ color: '#92400E' }}>AI가 메뉴얼을 수정했습니다.</span>
+                        <button className="btn btn-sm btn-outline" type="button" style={{ fontSize: 11, padding: '2px 10px', color: '#92400E', borderColor: '#FCD34D' }}
+                          onClick={() => { setEditing(p => p ? { ...p, content: prevContent } : p); setStepForms(parseTextToStepForms(prevContent)); setPrevContent(null); toast('이전 내용으로 되돌렸습니다.', 'info'); }}>
+                          되돌리기
+                        </button>
+                      </div>
+                    )}
+                    {editMode === 'structured' ? (
+                      <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={validation?.issues} />
+                    ) : (
+                      <textarea value={String(selected.content || '')} onChange={e => setEditing(p => p ? { ...p, content: e.target.value } : p)} rows={14}
+                        style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any, fontSize: 13 }} />
+                    )}
+                  </>
                 )}
                 {aiQuestions && !!aiQuestions.questions.length && qaStep === 'input' && (
                   <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 12, display: 'grid', gap: 8 }}>
