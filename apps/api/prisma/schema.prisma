@@ -145,6 +145,7 @@ model User {
   processStopEvents ProcessStopEvent[] @relation("ProcessStop_on_User")
 
   workManuals WorkManual[]
+  manualReviews WorkManual[] @relation("ManualReviewer")
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -268,22 +269,37 @@ model Worklog {
   @@index([visibility, date])
 }
 
+enum ManualStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  REJECTED
+}
+
 model WorkManual {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User         @relation(fields: [userId], references: [id])
   title           String
   content         String?
-  authorName      String   @default("")
-  authorTeamName  String   @default("")
-  version         Int      @default(1)
-  versionUpAt     DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  authorName      String       @default("")
+  authorTeamName  String       @default("")
+  version         Int          @default(1)
+  versionUpAt     DateTime     @default(now())
+  status          ManualStatus @default(DRAFT)
+  reviewerId      String?
+  reviewer        User?        @relation("ManualReviewer", fields: [reviewerId], references: [id])
+  reviewedAt      DateTime?
+  reviewComment   String?
+  qualityScore    Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   @@index([userId])
   @@index([updatedAt])
   @@index([versionUpAt])
+  @@index([status])
+  @@index([reviewerId])
 }
 
 model Event {

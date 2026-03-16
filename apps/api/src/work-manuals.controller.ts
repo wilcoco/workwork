@@ -59,6 +59,28 @@ class AiDraftStepsDto {
   userId!: string;
 }
 
+class ChangeStatusDto {
+  @IsString() @IsNotEmpty()
+  userId!: string;
+
+  @IsString() @IsNotEmpty()
+  status!: string;
+
+  @IsOptional() @IsString()
+  reviewerId?: string;
+}
+
+class ReviewManualDto {
+  @IsString() @IsNotEmpty()
+  userId!: string;
+
+  @IsString() @IsNotEmpty()
+  decision!: string;
+
+  @IsOptional() @IsString()
+  comment?: string;
+}
+
 @Controller('work-manuals')
 export class WorkManualsController {
   constructor(private prisma: PrismaService) {}
@@ -82,6 +104,106 @@ export class WorkManualsController {
     return m as any;
   }
 
+  private parseStepsServer(content: string): Array<{ stepId: string; title: string; raw: string; fields: Record<string, boolean> }> {
+    const lines = String(content || '').split(/\r?\n/);
+    const blocks: Array<{ stepId: string; title: string; lines: string[] }> = [];
+    let cur: { stepId: string; title: string; lines: string[] } | null = null;
+    for (const line of lines) {
+      const m = line.match(/^###\s*STEP\s+(S\d+)\s*\|\s*(.+)\s*$/i);
+      if (m) {
+        if (cur) blocks.push(cur);
+        cur = { stepId: String(m[1]).toUpperCase(), title: String(m[2]).trim(), lines: [] };
+        continue;
+      }
+      if (cur) cur.lines.push(line);
+    }
+    if (cur) blocks.push(cur);
+
+    return blocks.map(s => {
+      const raw = `### STEP ${s.stepId} | ${s.title}\n${s.lines.join('\n')}`.trim();
+      const t = `\n${raw}`;
+      const fields: Record<string, boolean> = {
+        taskType: /\n\s*-\s*taskType\s*:/i.test(t),
+        purpose: /\n\s*-\s*목적\s*:/i.test(t),
+        assigneeHint: /\n\s*-\s*담당자\s*:/i.test(t),
+        method: /\n\s*-\s*작업방법\s*:/i.test(t),
+        inputs: /\n\s*-\s*(입력\s*[\/·]|필요자료|입력\s*:)/i.test(t),
+        tools: /\n\s*-\s*도구\s*:/i.test(t),
+        relatedDocs: /\n\s*-\s*관련문서\s*:/i.test(t),
+        outputs: /\n\s*-\s*산출물\s*:/i.test(t),
+        checkItems: /\n\s*-\s*확인사항\s*:/i.test(t),
+        worklogHint: /\n\s*-\s*업무일지/i.test(t),
+        completionCondition: /\n\s*-\s*완료조건\s*:/i.test(t),
+        contacts: /\n\s*-\s*연락처\s*:/i.test(t),
+        risks: /\n\s*-\s*위험대응\s*:/i.test(t),
+        supplierName: /\n\s*-\s*협력사\s*:/i.test(t),
+        cooperationTarget: /\n\s*-\s*내부협조\s*:/i.test(t),
+        approvalRouteType: /\n\s*-\s*결재선\s*:/i.test(t),
+        approvalRoleCodes: /\n\s*-\s*결재역할\s*:/i.test(t),
+        deadlineOffsetDays: /\n\s*-\s*기한\s*:/i.test(t),
+        slaHours: /\n\s*-\s*SLA\s*:/i.test(t),
+        branches: /\n\s*-\s*분기\s*:/i.test(t),
+      };
+      const ttMatch = raw.match(/-\s*taskType\s*:\s*([A-Za-z_]+)/i);
+      (fields as any)._taskType = ttMatch ? String(ttMatch[1]).toUpperCase() : '';
+      return { stepId: s.stepId, title: s.title, raw, fields };
+    });
+  }
+
+  ruleBasedValidation(content: string): {
+    questions: Array<{ stepId?: string; targetField?: string; question: string; severity: 'MUST' | 'SHOULD'; source: string }>;
+    score: number;
+    stepScores: Array<{ stepId: string; title: string; score: number; missingFields: string[] }>;
+  } {
+    const steps = this.parseStepsServer(content);
+    const questions: Array<{ stepId?: string; targetField?: string; question: string; severity: 'MUST' | 'SHOULD'; source: string }> = [];
+    const stepScores: Array<{ stepId: string; title: string; score: number; missingFields: string[] }> = [];
+
+    if (!steps.length) {
+      return { questions: [{ question: 'STEP 블록이 없습니다. "### STEP S1 | 단계명" 형식으로 작성해 주세요.', severity: 'MUST', source: 'rule' }], score: 0, stepScores: [] };
+    }
+
+    for (const step of steps) {
+      const { stepId, title, fields } = step;
+      const tt = (fields as any)._taskType || '';
+      const missing: string[] = [];
+      let pts = 0, maxPts = 0;
+
+      const checks: Array<{ field: string; weight: number; sev: 'MUST' | 'SHOULD'; q: string; cond?: boolean }> = [
+        { field: 'taskType', weight: 10, sev: 'MUST', q: 'taskType(WORKLOG/APPROVAL/COOPERATION)을 지정해 주세요.' },
+        { field: 'purpose', weight: 8, sev: 'SHOULD', q: '이 단계의 목적은 무엇입니까?' },
+        { field: 'assigneeHint', weight: 10, sev: 'SHOULD', q: '이 단계의 담당자(역할/팀)는 누구입니까?' },
+        { field: 'outputs', weight: 10, sev: 'SHOULD', q: '이 단계 완료 시 어떤 산출물이 만들어집니까?' },
+        { field: 'completionCondition', weight: 10, sev: 'SHOULD', q: '완료 판단 기준은 무엇입니까?' },
+        { field: 'method', weight: 8, sev: 'SHOULD', q: '구체적 수행 절차와 방법은?' },
+        { field: 'inputs', weight: 8, sev: 'SHOULD', q: '필요한 입력 자료(도면/시방서/양식/파일)는?' },
+        { field: 'checkItems', weight: 8, sev: 'SHOULD', q: '품질/안전/규정 확인 항목이 있습니까?' },
+        { field: 'risks', weight: 5, sev: 'SHOULD', q: '이상 발생 시 대응 절차와 에스컬레이션 경로는?' },
+        { field: 'deadlineOffsetDays', weight: 5, sev: 'SHOULD', q: '이 단계의 처리 기한은 며칠입니까?' },
+        { field: 'worklogHint', weight: 8, sev: 'SHOULD', q: '업무일지에 기록할 항목(수량/시간/품질수치 등)은?', cond: tt === 'WORKLOG' },
+        { field: 'approvalRouteType', weight: 10, sev: 'SHOULD', q: '결재선(SEQUENTIAL/PARALLEL/ANY_ONE)과 결재 역할을 지정해 주세요.', cond: tt === 'APPROVAL' },
+        { field: 'branches', weight: 8, sev: 'SHOULD', q: '승인/반려 시 다음 단계 분기를 지정해 주세요.', cond: tt === 'APPROVAL' },
+        { field: 'supplierName', weight: 10, sev: 'SHOULD', q: '협력사명과 담당자를 지정해 주세요.', cond: tt === 'COOPERATION' },
+      ];
+
+      for (const c of checks) {
+        if (c.cond === false) continue;
+        maxPts += c.weight;
+        if (fields[c.field]) {
+          pts += c.weight;
+        } else {
+          missing.push(c.field);
+          questions.push({ stepId, targetField: c.field, question: c.q, severity: c.sev, source: 'rule' });
+        }
+      }
+
+      stepScores.push({ stepId, title, score: maxPts > 0 ? Math.round((pts / maxPts) * 100) : 0, missingFields: missing });
+    }
+
+    const score = stepScores.length > 0 ? Math.round(stepScores.reduce((s, x) => s + x.score, 0) / stepScores.length) : 0;
+    return { questions, score, stepScores };
+  }
+
   @Get()
   async list(@Query('userId') userId?: string) {
     const uid = String(userId || '').trim();
@@ -101,6 +223,11 @@ export class WorkManualsController {
         authorTeamName: it.authorTeamName || '',
         version: it.version ?? 1,
         versionUpAt: it.versionUpAt,
+        status: it.status || 'DRAFT',
+        reviewerId: it.reviewerId || null,
+        reviewedAt: it.reviewedAt || null,
+        reviewComment: it.reviewComment || null,
+        qualityScore: it.qualityScore ?? 0,
         createdAt: it.createdAt,
         updatedAt: it.updatedAt,
       })),
@@ -166,6 +293,104 @@ export class WorkManualsController {
     await this.requireOwner(uid, id);
     await (this.prisma as any).workManual.delete({ where: { id: String(id) } });
     return { ok: true };
+  }
+
+  @Post(':id/validate')
+  async validate(@Param('id') id: string, @Body() dto: { userId: string }) {
+    const uid = String(dto.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const content = String(manual?.content || '').trim();
+    return this.ruleBasedValidation(content);
+  }
+
+  @Post(':id/status')
+  async changeStatus(@Param('id') id: string, @Body() dto: ChangeStatusDto) {
+    const uid = String(dto.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const nextStatus = String(dto.status || '').trim().toUpperCase();
+    const current = String(manual.status || 'DRAFT');
+
+    const allowed: Record<string, string[]> = {
+      DRAFT: ['REVIEW'],
+      REVIEW: ['DRAFT'],
+      REJECTED: ['REVIEW', 'DRAFT'],
+      APPROVED: ['DRAFT'],
+    };
+    if (!(allowed[current] || []).includes(nextStatus)) {
+      throw new BadRequestException(`Cannot change status from ${current} to ${nextStatus}`);
+    }
+
+    const data: any = { status: nextStatus };
+    if (nextStatus === 'REVIEW') {
+      const reviewerId = String(dto.reviewerId || '').trim();
+      if (!reviewerId) throw new BadRequestException('reviewerId required for REVIEW');
+      const reviewer = await this.prisma.user.findUnique({ where: { id: reviewerId } });
+      if (!reviewer) throw new BadRequestException('reviewer not found');
+      data.reviewerId = reviewerId;
+      data.reviewComment = null;
+      data.reviewedAt = null;
+    }
+
+    const content = String(manual.content || '').trim();
+    if (nextStatus === 'REVIEW' && content) {
+      const v = this.ruleBasedValidation(content);
+      data.qualityScore = v.score;
+    }
+
+    const updated = await (this.prisma as any).workManual.update({ where: { id }, data });
+    return updated;
+  }
+
+  @Post(':id/review')
+  async reviewManual(@Param('id') id: string, @Body() dto: ReviewManualDto) {
+    const uid = String(dto.userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const mid = String(id || '').trim();
+    const manual = await (this.prisma as any).workManual.findUnique({ where: { id: mid } });
+    if (!manual) throw new BadRequestException('manual not found');
+    if (String(manual.status) !== 'REVIEW') throw new BadRequestException('manual is not in REVIEW status');
+    if (String(manual.reviewerId) !== uid) throw new ForbiddenException('only assigned reviewer can review');
+
+    const decision = String(dto.decision || '').trim().toUpperCase();
+    if (!['APPROVED', 'REJECTED'].includes(decision)) {
+      throw new BadRequestException('decision must be APPROVED or REJECTED');
+    }
+
+    const updated = await (this.prisma as any).workManual.update({
+      where: { id: mid },
+      data: {
+        status: decision,
+        reviewedAt: new Date(),
+        reviewComment: String(dto.comment || '').trim() || null,
+      },
+    });
+    return updated;
+  }
+
+  @Get('review-queue')
+  async reviewQueue(@Query('userId') userId?: string) {
+    const uid = String(userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const items = await (this.prisma as any).workManual.findMany({
+      where: { reviewerId: uid, status: 'REVIEW' },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+    return {
+      items: (items || []).map((it: any) => ({
+        id: it.id,
+        userId: it.userId,
+        title: it.title,
+        content: it.content,
+        authorName: it.authorName || '',
+        authorTeamName: it.authorTeamName || '',
+        version: it.version ?? 1,
+        status: it.status,
+        qualityScore: it.qualityScore ?? 0,
+        createdAt: it.createdAt,
+        updatedAt: it.updatedAt,
+      })),
+    };
   }
 
   @Post(':id/ai/bpmn')
@@ -309,10 +534,26 @@ export class WorkManualsController {
     if (!title) throw new BadRequestException('manual title missing');
     if (!content) throw new BadRequestException('manual content required');
 
+    // 1) Rule-based validation first
+    const ruleResult = this.ruleBasedValidation(content);
+    const ruleQuestions = ruleResult.questions;
+    const ruleCaughtSummary = ruleQuestions.map(q => `[${q.stepId || '전체'}] ${q.targetField}: ${q.question}`).join('\n');
+
     const clipped = content.length > 12000 ? content.slice(0, 12000) : content;
 
-    const sys = `당신은 제조업 업무 메뉴얼을 검토하여 누락/모호한 부분을 구체적인 질문으로 정리해주는 도우미입니다.
+    // 2) AI for contextual/ambiguity questions only
+    const sys = `당신은 제조업 업무 메뉴얼을 검토하여 **맥락상 모호하거나 불충분한 부분**을 질문으로 정리해주는 도우미입니다.
 반드시 JSON만 출력하세요. 마크다운 코드펜스(\`\`\`)를 사용하지 마세요.
+
+중요: 아래 항목은 이미 규칙 엔진이 검출했으므로 **중복 질문하지 마세요**:
+${ruleCaughtSummary || '(없음)'}
+
+당신은 위 항목 외에, 내용이 있지만 모호하거나 불충분한 부분만 질문하세요.
+예:
+- "검토 후 처리"라고만 되어 있는데 누가 검토하는지 불명확
+- "필요 시 보고"라고 되어 있는데 기준이 없음
+- 절차는 있는데 예외 상황 대응이 없음
+- 구체성이 부족한 서술 ("적절히", "상황에 따라" 등)
 
 출력 JSON 스키마:
 {
@@ -330,24 +571,6 @@ export class WorkManualsController {
 
 targetField 가능한 값: taskType, purpose, assigneeHint, method, inputs, outputs, tools, relatedDocs, checkItems, worklogHint, completionCondition, contacts, risks, supplierName, supplierContact, cooperationTarget, approvalRouteType, approvalRoleCodes, emailTo, emailSubject, deadlineOffsetDays, slaHours, branches
 
-검토 기준(제조업 특화):
-- taskType: WORKLOG(업무일지 필수), APPROVAL(결재), COOPERATION(협조/외주) 중 하나여야 함. TASK는 WORKLOG로 변환 필요.
-- 각 STEP에서 확인할 항목:
-  1. 담당자/역할(assigneeHint): 누가 담당하는지?
-  2. 입력자료(inputs): 어떤 도면/시방서/양식/파일이 필요한가?
-  3. 관련문서(relatedDocs): 도면번호, 작업표준서, QC공정도 등
-  4. 산출물(outputs): 이 단계가 끝나면 무엇이 만들어지는가?
-  5. 업무일지(worklogHint): 기록할 수량/시간/품질수치/불량내용은?
-  6. 완료조건(completionCondition): 언제 완료로 볼 수 있는가?
-  7. 확인사항(checkItems): 품질, 안전, 규정 준수 등 확인/검증 항목, 합격기준, 불합격 시 처리?
-  8. 작업방법(method): 구체적 수행 절차, 방법, 주의사항?
-  8-1. 도구(tools): 필요한 도구, 장비, IT 시스템?
-  8-2. 연락처(contacts): 관련 내부/외부 연락처?
-  8-3. 위험대응(risks): 이상 발생 시 조치, 에스컬레이션 경로?
-  9. 협력사(supplierName/supplierContact): COOPERATION 단계 시 협력사명·담당자?
-  10. 결재선(approvalRouteType/approvalRoleCodes): APPROVAL 단계 시 누가 결재하는가?
-  11. 기한/SLA(deadlineOffsetDays/slaHours): 처리 기한이 있는가?
-  12. 분기(branches): 조건에 따라 다른 단계로 이동하는가?
 - 메뉴얼에 "### STEP S1 | 단계명" 블록이 있으면 그 구조를 우선 파싱하세요.
 - 각 질문에는 반드시 targetStepId(해당 STEP ID)와 targetField(위의 필드명 중 하나)를 포함하세요.
 `;
@@ -393,10 +616,22 @@ targetField 가능한 값: taskType, purpose, assigneeHint, method, inputs, outp
     }
 
     const summary = String(parsed?.summary || '').trim();
-    const issues = Array.isArray(parsed?.issues) ? parsed.issues : [];
-    const questions = Array.isArray(parsed?.questions) ? parsed.questions : [];
+    const aiIssues = Array.isArray(parsed?.issues) ? parsed.issues : [];
+    const aiQuestions = (Array.isArray(parsed?.questions) ? parsed.questions : []).map((q: any) => ({ ...q, source: 'ai' }));
 
-    return { summary, issues, questions };
+    // 3) Merge: rule questions first (marked as rule), then AI questions
+    const mergedQuestions = [
+      ...ruleQuestions.map(q => ({ ...q, targetStepId: q.stepId, source: 'rule' })),
+      ...aiQuestions,
+    ];
+
+    return {
+      summary,
+      issues: aiIssues,
+      questions: mergedQuestions,
+      score: ruleResult.score,
+      stepScores: ruleResult.stepScores,
+    };
   }
 
   @Post(':id/ai/apply-answers')
@@ -478,11 +713,17 @@ updatedContent는 원본 메뉴얼에 사용자 답변을 반영한 전체 메�
       },
     });
 
+    // Re-validate after applying answers
+    const afterValidation = this.ruleBasedValidation(updatedContent);
+
     return {
       summary: String(parsed?.summary || ''),
       appliedCount: Number(parsed?.appliedCount || 0),
       updatedContent,
       version: updated.version,
+      remainingIssues: afterValidation.questions,
+      score: afterValidation.score,
+      stepScores: afterValidation.stepScores,
     };
   }
 

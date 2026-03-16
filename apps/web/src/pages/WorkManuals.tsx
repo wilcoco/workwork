@@ -14,6 +14,11 @@ type WorkManualDto = {
   authorTeamName?: string | null;
   version?: number | null;
   versionUpAt?: string | null;
+  status?: string;
+  reviewerId?: string | null;
+  reviewedAt?: string | null;
+  reviewComment?: string | null;
+  qualityScore?: number;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -32,6 +37,14 @@ type ManualQuestion = {
   question: string;
   severity: 'MUST' | 'SHOULD';
   reason?: string;
+  source?: 'rule' | 'ai';
+};
+
+type StepScore = {
+  stepId: string;
+  title: string;
+  score: number;
+  missingFields: string[];
 };
 
 const FILE_FIELDS = new Set(['inputs', 'relatedDocs', 'outputs', 'emailTo', 'emailSubject']);
@@ -45,6 +58,8 @@ type AiQuestionsResult = {
   summary: string;
   issues: ManualIssue[];
   questions: ManualQuestion[];
+  score?: number;
+  stepScores?: StepScore[];
 };
 
 type ParsedStep = {
@@ -205,6 +220,13 @@ export function WorkManuals() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
   const [prevContent, setPrevContent] = useState<string | null>(null);
+  const [qaRound, setQaRound] = useState(0);
+  const [qualityScore, setQualityScore] = useState<number | null>(null);
+  const [stepScores, setStepScores] = useState<StepScore[]>([]);
+  const [reviewQueue, setReviewQueue] = useState<WorkManualDto[]>([]);
+  const [orgUsers, setOrgUsers] = useState<Array<{ id: string; name: string; role: string }>>([]);
+  const [reviewerPickOpen, setReviewerPickOpen] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(false);
 
   const selected = useMemo(() => {
     if (!editing) return null;
@@ -265,6 +287,17 @@ export function WorkManuals() {
   }, [loadList]);
 
   useEffect(() => {
+    if (userId) {
+      apiJson<{ items: WorkManualDto[] }>(`/api/work-manuals/review-queue?userId=${encodeURIComponent(userId)}`)
+        .then(r => setReviewQueue(Array.isArray(r?.items) ? r.items : []))
+        .catch(() => setReviewQueue([]));
+      apiJson<{ items: Array<{ id: string; name: string; role: string }> }>(`/api/users?take=200`)
+        .then(r => setOrgUsers(Array.isArray(r?.items) ? r.items : []))
+        .catch(() => setOrgUsers([]));
+    }
+  }, [userId, items]);
+
+  useEffect(() => {
     setValidation(null);
     setAiQuestions(null);
     setAnswers({});
@@ -272,7 +305,52 @@ export function WorkManuals() {
     setEditMode('text');
     setStepForms([]);
     setPhase(1);
+    setQaRound(0);
+    setQualityScore(null);
+    setStepScores([]);
   }, [selectedId]);
+
+  async function requestReview(reviewerId: string) {
+    if (!editing?.id) return;
+    setStatusLoading(true);
+    try {
+      await apiJson(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ userId, status: 'REVIEW', reviewerId }),
+      });
+      toast('검토 요청이 전송되었습니다.', 'success');
+      setReviewerPickOpen(false);
+      await loadList(String(editing.id));
+    } catch (e: any) { toast(e?.message || '검토 요청에 실패했습니다.', 'error'); }
+    finally { setStatusLoading(false); }
+  }
+
+  async function reviewDecision(manualId: string, decision: 'APPROVED' | 'REJECTED', comment?: string) {
+    setStatusLoading(true);
+    try {
+      await apiJson(`/api/work-manuals/${encodeURIComponent(manualId)}/review`, {
+        method: 'POST',
+        body: JSON.stringify({ userId, decision, comment }),
+      });
+      toast(decision === 'APPROVED' ? '승인 완료' : '반려 완료', 'success');
+      await loadList(selectedId || '');
+    } catch (e: any) { toast(e?.message || '처리에 실패했습니다.', 'error'); }
+    finally { setStatusLoading(false); }
+  }
+
+  async function revertToDraft() {
+    if (!editing?.id) return;
+    setStatusLoading(true);
+    try {
+      await apiJson(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/status`, {
+        method: 'POST',
+        body: JSON.stringify({ userId, status: 'DRAFT' }),
+      });
+      toast('초안 상태로 되돌렸습니다.', 'success');
+      await loadList(String(editing.id));
+    } catch (e: any) { toast(e?.message || '상태 변경에 실패했습니다.', 'error'); }
+    finally { setStatusLoading(false); }
+  }
 
   function newManual() {
     if (!userId) {
@@ -420,7 +498,12 @@ export function WorkManuals() {
         summary: String(r?.summary || '').trim(),
         issues: Array.isArray(r?.issues) ? r.issues : [],
         questions: Array.isArray(r?.questions) ? r.questions : [],
+        score: r?.score,
+        stepScores: r?.stepScores,
       });
+      if (typeof r?.score === 'number') setQualityScore(r.score);
+      if (Array.isArray(r?.stepScores)) setStepScores(r.stepScores);
+      setQaRound(prev => prev + 1);
     } catch (e: any) {
       toast(e?.message || 'AI 보완 질문 생성에 실패했습니다.', 'error');
     } finally {
@@ -612,7 +695,16 @@ export function WorkManuals() {
                       gap: 4,
                     }}
                   >
-                    <div style={{ fontWeight: 800, color: '#0f172a' }}>{title}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ fontWeight: 800, color: '#0f172a', flex: 1 }}>{title}</div>
+                      {m.status && m.status !== 'DRAFT' && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
+                          background: m.status === 'APPROVED' ? '#DCFCE7' : m.status === 'REVIEW' ? '#DBEAFE' : m.status === 'REJECTED' ? '#FEE2E2' : '#F1F5F9',
+                          color: m.status === 'APPROVED' ? '#16a34a' : m.status === 'REVIEW' ? '#2563eb' : m.status === 'REJECTED' ? '#dc2626' : '#64748b' }}>
+                          {m.status === 'APPROVED' ? '승인' : m.status === 'REVIEW' ? '검토중' : m.status === 'REJECTED' ? '반려' : m.status}
+                        </span>
+                      )}
+                    </div>
                     <div style={{ fontSize: 12, color: '#64748b' }}>{excerpt}</div>
                   </button>
                 );
@@ -621,6 +713,18 @@ export function WorkManuals() {
                 <div style={{ color: '#64748b', fontSize: 13 }}>아직 메뉴얼이 없습니다. “새 메뉴얼”을 눌러 작성해 주세요.</div>
               )}
             </div>
+            {reviewQueue.length > 0 && (
+              <div style={{ marginTop: 8, borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
+                <div style={{ fontWeight: 800, fontSize: 12, color: '#2563eb', marginBottom: 6 }}>검토 요청 ({reviewQueue.length})</div>
+                {reviewQueue.map(rq => (
+                  <button key={String(rq.id)} type="button" className="btn btn-ghost" onClick={() => editManual(rq)}
+                    style={{ justifyContent: 'flex-start', textAlign: 'left', padding: '6px 8px', borderRadius: 8, display: 'grid', gap: 2, border: String(rq.id) === selectedId ? '1px solid #2563eb' : '1px solid transparent', background: String(rq.id) === selectedId ? '#EFF6FF' : 'transparent', width: '100%' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{String(rq.title || '').trim() || '(제목 없음)'}</div>
+                    <div style={{ fontSize: 11, color: '#2563eb' }}>{rq.authorName} · {rq.qualityScore ?? 0}점</div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={{ ...T.card, display: 'grid', gap: 10 }}>
@@ -692,6 +796,32 @@ export function WorkManuals() {
               </>
             ) : phase === 2 ? (
               <>
+                {qualityScore !== null && (
+                  <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, background: '#fff', padding: '10px 14px', display: 'grid', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontWeight: 800, fontSize: 13 }}>매뉴얼 완성도</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {qaRound > 0 && <span style={{ fontSize: 11, color: '#64748b' }}>{qaRound}차 보완</span>}
+                        <span style={{ fontWeight: 800, fontSize: 15, color: qualityScore >= 70 ? '#16a34a' : qualityScore >= 40 ? '#ca8a04' : '#dc2626' }}>{qualityScore}점</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 8, background: '#F1F5F9', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.min(qualityScore, 100)}%`, borderRadius: 4, transition: 'width 0.5s ease',
+                        background: qualityScore >= 70 ? '#16a34a' : qualityScore >= 40 ? '#ca8a04' : '#dc2626' }} />
+                    </div>
+                    {stepScores.length > 0 && (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as any, marginTop: 2 }}>
+                        {stepScores.map(ss => (
+                          <span key={ss.stepId} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                            background: ss.score >= 70 ? '#F0FDF4' : ss.score >= 40 ? '#FFFBEB' : '#FEF2F2',
+                            color: ss.score >= 70 ? '#16a34a' : ss.score >= 40 ? '#92400E' : '#dc2626' }}>
+                            {ss.stepId} {ss.score}점
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <div style={{ fontWeight: 700 }}>프로세스 단계 편집</div>
                   <div style={{ display: 'flex', gap: 4 }}>
@@ -728,6 +858,7 @@ export function WorkManuals() {
                       return (
                         <div key={idx} style={{ display: 'grid', gap: 5, background: '#fff', borderRadius: 8, padding: '8px 10px', border: '1px solid #E5E7EB' }}>
                           <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.4 }}>
+                            <span style={{ fontWeight: 800, color: q.source === 'rule' ? '#b45309' : '#6366f1', fontSize: 10, background: q.source === 'rule' ? '#FEF3C7' : '#EEF2FF', borderRadius: 3, padding: '1px 4px', marginRight: 4 }}>{q.source === 'rule' ? '규칙' : 'AI'}</span>
                             <span style={{ fontWeight: 800, color: q.severity === 'MUST' ? '#b91c1c' : '#6366f1', fontSize: 11 }}>{q.severity}</span>
                             {q.targetStepId && <span style={{ marginLeft: 6, fontSize: 11, background: '#E0E7FF', color: '#3730a3', borderRadius: 4, padding: '1px 5px' }}>{q.targetStepId}</span>}
                             {q.targetField && <span style={{ marginLeft: 4, fontSize: 11, background: isFile ? '#FEF9C3' : '#F0FDF4', color: isFile ? '#92400E' : '#166534', borderRadius: 4, padding: '1px 5px' }}>{q.targetField}{isFile ? ' 📎' : ''}</span>}
@@ -773,14 +904,22 @@ export function WorkManuals() {
                           const toApply = aiQuestions.questions.map((q, i) => ({
                             targetStepId: q.targetStepId, targetField: q.targetField, question: q.question, answer: answers[i] || '',
                           })).filter(a => a.answer.trim());
-                          const r = await apiJson<{ summary: string; appliedCount: number; updatedContent: string; version: number }>(
+                          const r = await apiJson<{ summary: string; appliedCount: number; updatedContent: string; version: number; remainingIssues?: any[]; score?: number; stepScores?: StepScore[] }>(
                             `/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/apply-answers`,
                             { method: 'POST', body: JSON.stringify({ userId, answers: toApply }) },
                           );
                           setEditing(p => p ? { ...p, content: r.updatedContent, version: r.version } : p);
                           setStepForms(parseTextToStepForms(r.updatedContent));
                           setAnswers({}); setAnswerLinks({});
-                          toast(`${r.appliedCount}개 항목 반영 완료! — ${r.summary}`, 'success', 6000);
+                          if (typeof r?.score === 'number') setQualityScore(r.score);
+                          if (Array.isArray(r?.stepScores)) setStepScores(r.stepScores);
+                          const remainCount = Array.isArray(r?.remainingIssues) ? r.remainingIssues.length : 0;
+                          toast(`${r.appliedCount}개 항목 반영 완료! — ${r.summary}${remainCount > 0 ? ` (보완 가능 항목 ${remainCount}개 남음)` : ''}`, 'success', 6000);
+                          if (remainCount > 0) {
+                            setAiQuestions(prev => prev ? { ...prev, questions: (r.remainingIssues || []).map((q: any) => ({ ...q, targetStepId: q.stepId, source: q.source || 'rule' })), score: r.score, stepScores: r.stepScores } : prev);
+                          } else {
+                            setAiQuestions(null);
+                          }
                         } catch (e: any) { toast(e?.message || 'AI 반영에 실패했습니다.', 'error'); }
                         finally { setApplyLoading(false); }
                       }}
@@ -796,9 +935,32 @@ export function WorkManuals() {
               </>
             ) : (
               <>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>최종 검토 및 프로세스 생성</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>최종 검토 및 프로세스 생성</div>
+                  {selected.status && (
+                    <span style={{ fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 10,
+                      background: selected.status === 'APPROVED' ? '#DCFCE7' : selected.status === 'REVIEW' ? '#DBEAFE' : selected.status === 'REJECTED' ? '#FEE2E2' : '#F1F5F9',
+                      color: selected.status === 'APPROVED' ? '#16a34a' : selected.status === 'REVIEW' ? '#2563eb' : selected.status === 'REJECTED' ? '#dc2626' : '#64748b' }}>
+                      {selected.status === 'APPROVED' ? '승인됨' : selected.status === 'REVIEW' ? '검토 대기중' : selected.status === 'REJECTED' ? '반려됨' : '초안'}
+                    </span>
+                  )}
+                </div>
+
+                {selected.status === 'REJECTED' && selected.reviewComment && (
+                  <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: '#dc2626', marginBottom: 4 }}>반려 사유</div>
+                    <div style={{ fontSize: 13, color: '#0f172a' }}>{selected.reviewComment}</div>
+                    <button className="btn btn-sm btn-outline" type="button" style={{ marginTop: 6, fontSize: 11 }} disabled={statusLoading}
+                      onClick={revertToDraft}>{statusLoading ? '처리중…' : '초안으로 되돌려 수정하기'}</button>
+                  </div>
+                )}
+
                 <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
-                  아래 메뉴얼 내용을 확인하세요. AI가 이 메뉴얼을 기반으로 BPMN 프로세스 템플릿을 생성합니다.
+                  {selected.status === 'APPROVED'
+                    ? '매뉴얼이 승인되었습니다. AI로 프로세스 템플릿을 생성할 수 있습니다.'
+                    : selected.status === 'REVIEW'
+                    ? '팀장 검토 대기 중입니다. 승인되면 프로세스를 생성할 수 있습니다.'
+                    : '아래 메뉴얼 내용을 확인 후, 팀장에게 검토를 요청하세요. 승인 후 프로세스를 생성할 수 있습니다.'}
                 </div>
                 <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontWeight: 700, marginBottom: 8 }}>{selected.title || '(업무명 없음)'}</div>
@@ -811,11 +973,61 @@ export function WorkManuals() {
                     <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>이전 단계에서 수정한 뒤 다시 시도하세요.</div>
                   </div>
                 ) : null; })()}
+
+                {/* 검토자인 경우: 승인/반려 버튼 */}
+                {selected.status === 'REVIEW' && selected.reviewerId === userId && (
+                  <div style={{ border: '1px solid #DBEAFE', borderRadius: 10, background: '#EFF6FF', padding: 12, display: 'grid', gap: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: '#1d4ed8' }}>검토 결정</div>
+                    <textarea id="review-comment" placeholder="코멘트 (선택)" rows={2}
+                      style={{ border: '1px solid #CBD5E1', borderRadius: 6, padding: '6px 8px', fontSize: 13, resize: 'vertical' as any }} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button className="btn" type="button" disabled={statusLoading} style={{ background: '#16a34a', color: '#fff' }}
+                        onClick={() => reviewDecision(String(selected.id), 'APPROVED', (document.getElementById('review-comment') as HTMLTextAreaElement)?.value)}>
+                        {statusLoading ? '처리중…' : '승인'}
+                      </button>
+                      <button className="btn btn-outline" type="button" disabled={statusLoading} style={{ color: '#dc2626', borderColor: '#dc2626' }}
+                        onClick={() => reviewDecision(String(selected.id), 'REJECTED', (document.getElementById('review-comment') as HTMLTextAreaElement)?.value)}>
+                        {statusLoading ? '처리중…' : '반려'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 검토 요청 (DRAFT 또는 REJECTED 상태) */}
+                {(!selected.status || selected.status === 'DRAFT' || selected.status === 'REJECTED') && selected.userId === userId && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {!reviewerPickOpen ? (
+                      <button className="btn btn-outline" type="button" onClick={() => setReviewerPickOpen(true)} disabled={statusLoading}
+                        style={{ justifySelf: 'start', color: '#2563eb', borderColor: '#2563eb' }}>팀장에게 검토 요청</button>
+                    ) : (
+                      <div style={{ border: '1px solid #DBEAFE', borderRadius: 8, background: '#F8FAFC', padding: 10, display: 'grid', gap: 6 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>검토자 선택</div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as any }}>
+                          {orgUsers.filter(u => u.id !== userId && ['CEO', 'EXEC', 'MANAGER'].includes(u.role)).map(u => (
+                            <button key={u.id} className="btn btn-sm btn-outline" type="button" disabled={statusLoading}
+                              onClick={() => requestReview(u.id)} style={{ fontSize: 12 }}>{u.name} ({u.role})</button>
+                          ))}
+                          {orgUsers.filter(u => u.id !== userId && ['CEO', 'EXEC', 'MANAGER'].includes(u.role)).length === 0 && (
+                            <div style={{ fontSize: 12, color: '#64748b' }}>검토 가능한 관리자가 없습니다.</div>
+                          )}
+                        </div>
+                        <button className="btn btn-sm btn-outline" type="button" onClick={() => setReviewerPickOpen(false)} style={{ justifySelf: 'start', fontSize: 11 }}>취소</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
                   <button className="btn btn-outline" type="button" onClick={() => setPhase(2)}>← 이전: AI 분석/보완</button>
-                  <button className="btn" type="button" onClick={aiToBpmn} disabled={aiLoading} style={{ padding: '8px 20px' }}>
-                    {aiLoading ? '프로세스 생성중…' : 'AI로 프로세스 템플릿 생성'}
-                  </button>
+                  {selected.status === 'APPROVED' ? (
+                    <button className="btn" type="button" onClick={aiToBpmn} disabled={aiLoading} style={{ padding: '8px 20px' }}>
+                      {aiLoading ? '프로세스 생성중…' : 'AI로 프로세스 템플릿 생성'}
+                    </button>
+                  ) : (
+                    <button className="btn" type="button" disabled style={{ padding: '8px 20px', opacity: 0.5 }}>
+                      승인 후 프로세스 생성 가능
+                    </button>
+                  )}
                 </div>
               </>
             )}</div>}
