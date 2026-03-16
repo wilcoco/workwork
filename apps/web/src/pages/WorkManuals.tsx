@@ -227,6 +227,7 @@ export function WorkManuals() {
   const [orgUsers, setOrgUsers] = useState<Array<{ id: string; name: string; role: string }>>([]);
   const [reviewerPickOpen, setReviewerPickOpen] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [qaStep, setQaStep] = useState<'feedback' | 'input'>('feedback');
 
   const selected = useMemo(() => {
     if (!editing) return null;
@@ -504,6 +505,7 @@ export function WorkManuals() {
       if (typeof r?.score === 'number') setQualityScore(r.score);
       if (Array.isArray(r?.stepScores)) setStepScores(r.stepScores);
       setQaRound(prev => prev + 1);
+      setQaStep('feedback');
     } catch (e: any) {
       toast(e?.message || 'AI 보완 질문 생성에 실패했습니다.', 'error');
     } finally {
@@ -848,10 +850,51 @@ export function WorkManuals() {
                   <textarea value={String(selected.content || '')} onChange={e => setEditing(p => p ? { ...p, content: e.target.value } : p)} rows={14}
                     style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px', resize: 'vertical' as any, fontSize: 13 }} />
                 )}
-                {aiQuestions && !!aiQuestions.questions.length && (
+                {aiQuestions && !!aiQuestions.questions.length && qaStep === 'feedback' && (
+                  <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 14, display: 'grid', gap: 10 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: '#1e40af' }}>AI 분석 결과</div>
+                    {aiQuestions.summary && (
+                      <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.7, background: '#fff', borderRadius: 8, padding: '10px 12px', border: '1px solid #E5E7EB' }}>
+                        {aiQuestions.summary}
+                      </div>
+                    )}
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', marginTop: 2 }}>보완이 필요한 항목 ({aiQuestions.questions.length}개)</div>
+                    {(() => {
+                      const grouped: Record<string, ManualQuestion[]> = {};
+                      for (const q of aiQuestions.questions) {
+                        const key = q.targetStepId || '공통';
+                        if (!grouped[key]) grouped[key] = [];
+                        grouped[key].push(q);
+                      }
+                      return Object.entries(grouped).map(([stepId, qs]) => (
+                        <div key={stepId} style={{ background: '#fff', borderRadius: 8, padding: '8px 12px', border: '1px solid #E5E7EB' }}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: '#3730a3', marginBottom: 6 }}>{stepId}</div>
+                          {qs.map((q, i) => (
+                            <div key={i} style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, paddingLeft: 8, borderLeft: `3px solid ${q.severity === 'MUST' ? '#ef4444' : '#a5b4fc'}`, marginBottom: 6 }}>
+                              <span style={{ fontWeight: 700, color: q.severity === 'MUST' ? '#dc2626' : '#6366f1', fontSize: 11, marginRight: 6 }}>{q.severity === 'MUST' ? '필수' : '권장'}</span>
+                              {q.targetField && <span style={{ fontSize: 11, background: '#F0FDF4', color: '#166534', borderRadius: 4, padding: '1px 5px', marginRight: 6 }}>{q.targetField}</span>}
+                              {q.question}
+                            </div>
+                          ))}
+                        </div>
+                      ));
+                    })()}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <button className="btn" type="button" onClick={() => { setQaStep('input'); setAnswers({}); setAnswerLinks({}); }}
+                        style={{ fontSize: 13, padding: '8px 20px' }}>
+                        보완 입력하기
+                      </button>
+                      <button className="btn btn-outline" type="button" onClick={() => setAiQuestions(null)}
+                        style={{ fontSize: 12 }}>나중에 하기</button>
+                    </div>
+                  </div>
+                )}
+                {aiQuestions && !!aiQuestions.questions.length && qaStep === 'input' && (
                   <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 12, display: 'grid', gap: 8 }}>
-                    <div style={{ fontWeight: 800, fontSize: 13 }}>AI가 추가 정보를 요청합니다 ({aiQuestions.questions.length}개)</div>
-                    {aiQuestions.summary && <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>{aiQuestions.summary}</div>}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ fontWeight: 800, fontSize: 13 }}>보완 항목 입력 ({aiQuestions.questions.length}개)</div>
+                      <button className="btn btn-sm btn-outline" type="button" onClick={() => setQaStep('feedback')} style={{ fontSize: 11 }}>피드백 다시 보기</button>
+                    </div>
                     {aiQuestions.questions.map((q, idx) => {
                       const isFile = isFileField(q);
                       const links = answerLinks[idx] || [];
@@ -917,6 +960,7 @@ export function WorkManuals() {
                           toast(`${r.appliedCount}개 항목 반영 완료! — ${r.summary}${remainCount > 0 ? ` (보완 가능 항목 ${remainCount}개 남음)` : ''}`, 'success', 6000);
                           if (remainCount > 0) {
                             setAiQuestions(prev => prev ? { ...prev, questions: (r.remainingIssues || []).map((q: any) => ({ ...q, targetStepId: q.stepId, source: q.source || 'rule' })), score: r.score, stepScores: r.stepScores } : prev);
+                            setQaStep('feedback');
                           } else {
                             setAiQuestions(null);
                           }
