@@ -234,6 +234,32 @@ export class WorkManualsController {
     };
   }
 
+  @Get('review-queue')
+  async reviewQueue(@Query('userId') userId?: string) {
+    const uid = String(userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const items = await (this.prisma as any).workManual.findMany({
+      where: { reviewerId: uid, status: 'REVIEW' },
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    });
+    return {
+      items: (items || []).map((it: any) => ({
+        id: it.id,
+        userId: it.userId,
+        title: it.title,
+        content: it.content,
+        authorName: it.authorName || '',
+        authorTeamName: it.authorTeamName || '',
+        version: it.version ?? 1,
+        status: it.status,
+        qualityScore: it.qualityScore ?? 0,
+        createdAt: it.createdAt,
+        updatedAt: it.updatedAt,
+      })),
+    };
+  }
+
   @Post()
   async create(@Body() dto: CreateWorkManualDto) {
     const uid = String(dto.userId || '').trim();
@@ -365,32 +391,6 @@ export class WorkManualsController {
       },
     });
     return updated;
-  }
-
-  @Get('review-queue')
-  async reviewQueue(@Query('userId') userId?: string) {
-    const uid = String(userId || '').trim();
-    if (!uid) throw new BadRequestException('userId required');
-    const items = await (this.prisma as any).workManual.findMany({
-      where: { reviewerId: uid, status: 'REVIEW' },
-      orderBy: { updatedAt: 'desc' },
-      take: 100,
-    });
-    return {
-      items: (items || []).map((it: any) => ({
-        id: it.id,
-        userId: it.userId,
-        title: it.title,
-        content: it.content,
-        authorName: it.authorName || '',
-        authorTeamName: it.authorTeamName || '',
-        version: it.version ?? 1,
-        status: it.status,
-        qualityScore: it.qualityScore ?? 0,
-        createdAt: it.createdAt,
-        updatedAt: it.updatedAt,
-      })),
-    };
   }
 
   @Post(':id/ai/bpmn')
