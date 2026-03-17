@@ -97,6 +97,7 @@ export function WorkManualExt() {
   const [title, setTitle] = useState('');
   const [department, setDepartment] = useState(teamName);
   const [freeText, setFreeText] = useState('');
+  const [relatedDocs, setRelatedDocs] = useState<Array<{ label: string; url: string }>>([]);
 
   // Phase 2
   const [p2Loading, setP2Loading] = useState(false);
@@ -158,6 +159,7 @@ export function WorkManualExt() {
     setTitle(m.title || '');
     setDepartment(m.department || m.authorTeamName || teamName);
     setFreeText(m.phaseData?.phase1?.freeText || m.content || '');
+    setRelatedDocs(Array.isArray(m.phaseData?.phase1?.relatedDocs) ? m.phaseData.phase1.relatedDocs : []);
     // restore phase states
     if (m.phaseData?.phase4?.manualContent) setP4Content(m.phaseData.phase4.manualContent);
     if (m.phaseData?.phase5?.finalContent) setP5Final(m.phaseData.phase5.finalContent);
@@ -171,6 +173,7 @@ export function WorkManualExt() {
     setTitle('');
     setDepartment(teamName);
     setFreeText('');
+    setRelatedDocs([]);
     setP2Questions([]); setP2Answers([]); setP2Structured(''); setP2Round(1); setP2CompletionRate(0);
     setP3Recommended([]); setP3Selected({});
     setP4Content(''); setP4Summary(''); setP4Security([]);
@@ -187,7 +190,7 @@ export function WorkManualExt() {
     setSaving(true);
     try {
       const phaseData = {
-        phase1: { baseType: selectedBaseType, department, jobTitle: title, author: userName, freeText },
+        phase1: { baseType: selectedBaseType, department, jobTitle: title, author: userName, freeText, relatedDocs: relatedDocs.filter(d => d.url.trim()) },
       };
       if (manual?.id) {
         const updated = await apiJson<ManualDto>(`/api/work-manuals/${encodeURIComponent(manual.id)}`, {
@@ -547,6 +550,28 @@ export function WorkManualExt() {
                   placeholder={'예: 매달 월초에 전월 생산실적을 ERP에서 뽑아서 엑셀로 정리하고\n팀장님 결재 받은 다음에 경영지원팀에 보내요.\n가끔 수치가 안 맞으면 MES 데이터랑 대조해야 해요.'}
                   rows={6} style={{ ...S.input, resize: 'vertical' as any, lineHeight: 1.6 }} />
               </label>
+
+              {/* 관련 문서 (OneDrive 링크) */}
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={S.label}>관련 문서 (OneDrive 링크)</div>
+                  <button type="button" className="btn btn-outline" onClick={() => setRelatedDocs(prev => [...prev, { label: '', url: '' }])}
+                    style={{ padding: '3px 10px', fontSize: 11 }}>+ 문서 추가</button>
+                </div>
+                {relatedDocs.length === 0 && (
+                  <div style={{ fontSize: 12, color: '#94a3b8' }}>참고 문서가 있으면 OneDrive 공유 링크를 추가해 주세요. (선택사항)</div>
+                )}
+                {relatedDocs.map((doc, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 6, alignItems: 'center' }}>
+                    <input value={doc.label} onChange={e => setRelatedDocs(prev => prev.map((d, j) => j === i ? { ...d, label: e.target.value } : d))}
+                      placeholder="문서명 (예: 생산실적 양식)" style={{ ...S.input, fontSize: 12 }} />
+                    <input value={doc.url} onChange={e => setRelatedDocs(prev => prev.map((d, j) => j === i ? { ...d, url: e.target.value } : d))}
+                      placeholder="https://onedrive.live.com/...  또는 SharePoint 링크" style={{ ...S.input, fontSize: 12 }} />
+                    <button type="button" onClick={() => setRelatedDocs(prev => prev.filter((_, j) => j !== i))}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: 16, padding: '0 4px' }}>×</button>
+                  </div>
+                ))}
+              </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn" type="button" onClick={savePhase1} disabled={saving || !selectedBaseType || !title.trim() || !freeText.trim()}
