@@ -99,6 +99,7 @@ model OrgUnit {
   objectives Objective[]
   processTemplates ProcessTemplate[]
   worklogTeamDailyEvals WorklogTeamDailyEval[]
+  weeklyReports WeeklyReport[] @relation("WeeklyReportOrg")
 }
 
 model User {
@@ -146,6 +147,7 @@ model User {
 
   workManuals WorkManual[]
   manualReviews WorkManual[] @relation("ManualReviewer")
+  weeklyReports WeeklyReport[] @relation("WeeklyReportAuthor")
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -268,6 +270,28 @@ model Worklog {
   @@index([createdById, date])
   @@index([createdById, createdAt])
   @@index([visibility, date])
+}
+
+enum WeeklyReportStatus {
+  DRAFT
+  CONFIRMED
+}
+
+model WeeklyReport {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation("WeeklyReportAuthor", fields: [userId], references: [id])
+  orgUnitId   String?
+  orgUnit     OrgUnit?            @relation("WeeklyReportOrg", fields: [orgUnitId], references: [id])
+  weekStart   DateTime
+  sections    Json?
+  status      WeeklyReportStatus  @default(DRAFT)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([userId, weekStart])
+  @@index([orgUnitId, weekStart])
+  @@index([weekStart])
 }
 
 enum ManualStatus {

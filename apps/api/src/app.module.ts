@@ -30,6 +30,7 @@ import { MastersController } from './masters.controller';
 import { WorklogEvalsController } from './worklog-evals.controller';
 import { TeamsNotificationService } from './teams-notification.service';
 import { WorkManualsController } from './work-manuals.controller';
+import { WeeklyReportsController } from './weekly-reports.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -43,6 +44,7 @@ import { WorkManualsController } from './work-manuals.controller';
     FeedbacksController,
     WorklogsController,
     WorkManualsController,
+    WeeklyReportsController,
     AuthController,
     EntraAuthController,
     UploadsController,

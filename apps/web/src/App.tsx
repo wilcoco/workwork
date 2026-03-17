@@ -47,6 +47,7 @@ import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
 import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 import { WorkManuals } from './pages/WorkManuals';
+import { WeeklyReport } from './pages/WeeklyReport';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -268,6 +269,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/worklogs/new" element={<WorklogNew />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
           <Route path="/manuals" element={<WorkManuals />} />
+          <Route path="/worklogs/weekly" element={<WeeklyReport />} />
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
@@ -405,6 +407,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
         <NavDropdown label="업무일지" active={(location.pathname === '/quick') || location.pathname.startsWith('/search') || location.pathname.startsWith('/worklogs')}>
           <Link to="/quick">작성</Link>
           <Link to="/search">조회</Link>
+          <Link to="/worklogs/weekly">주간 리포트</Link>
           <Link to="/worklogs/stats">업무 현황</Link>
           {canEvaluate && <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>}
           <Link to="/worklogs/ai">AI 분석</Link>
@@ -583,11 +586,12 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
       const base = [
         { to: '/quick', label: '작성' },
         { to: '/search', label: '조회' },
+        { to: '/worklogs/weekly', label: '주간 리포트' },
         { to: '/worklogs/stats', label: '업무 현황' },
         { to: '/worklogs/ai', label: 'AI 분석' },
       ];
       return canEvaluate
-        ? [...base.slice(0, 3), { to: '/worklogs/eval-monthly', label: '업무 평가 리포트' }, ...base.slice(3)]
+        ? [...base.slice(0, 4), { to: '/worklogs/eval-monthly', label: '업무 평가 리포트' }, ...base.slice(4)]
         : base;
     }
     if (path.startsWith('/okr')) {
