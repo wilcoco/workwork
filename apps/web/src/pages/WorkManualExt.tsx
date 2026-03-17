@@ -126,6 +126,11 @@ export function WorkManualExt() {
   const [p5Final, setP5Final] = useState('');
   const [p5Summary, setP5Summary] = useState('');
 
+  // BPMN auto-conversion for procedure type
+  const [bpmnJson, setBpmnJson] = useState<any>(null);
+  const [bpmnLoading, setBpmnLoading] = useState(false);
+  const [bpmnTemplateId, setBpmnTemplateId] = useState('');
+
   // Module integration
   const [modKbCreated, setModKbCreated] = useState(false);
   const [modSchedCreated, setModSchedCreated] = useState(false);
@@ -326,8 +331,54 @@ export function WorkManualExt() {
       setP4Security(r.securityItems || []);
       if (r.title) setTitle(r.title);
       toast('산출물 생성 완료!', 'success');
+
+      // 업무 절차 기본형이면 자동으로 BPMN 변환 시작
+      if (selectedBaseType === 'procedure' && r.manualContent) {
+        void autoBpmnConvert();
+      }
     } catch (e: any) { toast(e?.message || '산출물 생성 실패', 'error'); }
     finally { setP4Loading(false); }
+  }
+
+  async function autoBpmnConvert() {
+    if (!manual?.id) return;
+    setBpmnLoading(true);
+    try {
+      const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ai/bpmn`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      });
+      if (r?.bpmnJson) {
+        setBpmnJson(r.bpmnJson);
+        toast('BPMN 프로세스 구조가 생성되었습니다.', 'success');
+      }
+    } catch (e: any) { toast(e?.message || 'BPMN 변환 실패', 'error'); }
+    finally { setBpmnLoading(false); }
+  }
+
+  async function createBpmnTemplate() {
+    if (!manual?.id || !bpmnJson) return;
+    setModLoading('bpmn_engine');
+    try {
+      const created = await apiJson<{ id: string }>('/api/process-templates', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: title || manual.title || '업무 프로세스',
+          description: `매뉴얼 「${manual.title}」에서 AI로 생성된 BPMN 프로세스`,
+          type: 'PROJECT',
+          ownerId: userId,
+          actorId: userId,
+          visibility: 'PRIVATE',
+          bpmnJson,
+          tasks: [],
+        }),
+      });
+      const tmplId = String(created?.id || '').trim();
+      if (!tmplId) throw new Error('프로세스 템플릿 생성 실패');
+      setBpmnTemplateId(tmplId);
+      toast('프로세스 템플릿이 생성되었습니다!', 'success');
+    } catch (e: any) { toast(e?.message || '프로세스 템플릿 생성 실패', 'error'); }
+    finally { setModLoading(''); }
   }
 
   useEffect(() => {
@@ -733,13 +784,22 @@ export function WorkManualExt() {
           {phase === 4 && (
             <div style={{ display: 'grid', gap: 12, animation: 'phase-fade 0.25s ease-out' }}>
               <div>
-                <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a' }}>4단계: 산출물 생성</div>
-                <div style={S.muted}>AI가 입력된 정보를 바탕으로 구조화된 매뉴얼을 생성합니다.</div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a' }}>
+                  4단계: {selectedBaseType === 'procedure' ? '프로세스 생성' : '산출물 생성'}
+                </div>
+                <div style={S.muted}>
+                  {selectedBaseType === 'procedure'
+                    ? 'AI가 입력된 정보를 BPMN 프로세스로 변환합니다. 매뉴얼 → BPMN 변환 → 프로세스 템플릿 순으로 자동 진행됩니다.'
+                    : 'AI가 입력된 정보를 바탕으로 구조화된 매뉴얼을 생성합니다.'}
+                </div>
               </div>
 
+              {/* 로딩: 매뉴얼 생성 중 */}
               {p4Loading && !p4Content && (
                 <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>매뉴얼을 생성하고 있습니다...</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+                    {selectedBaseType === 'procedure' ? 'BPMN 형식 매뉴얼을 생성하고 있습니다...' : '매뉴얼을 생성하고 있습니다...'}
+                  </div>
                   <div style={{ fontSize: 12 }}>기본형과 옵션에 따라 최적화된 산출물을 만들고 있습니다.</div>
                 </div>
               )}
@@ -760,17 +820,94 @@ export function WorkManualExt() {
               )}
 
               {p4Content && (
-                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, maxHeight: 500, overflow: 'auto' }}>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, maxHeight: selectedBaseType === 'procedure' ? 300 : 500, overflow: 'auto' }}>
                   <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.7, color: '#0f172a', margin: 0 }}>{p4Content}</pre>
                 </div>
               )}
 
-              {/* Module Integration */}
-              {p4Content && applicableModules.length > 0 && (
+              {/* ── 업무 절차 기본형: BPMN 자동 변환 플로우 ── */}
+              {selectedBaseType === 'procedure' && p4Content && (
+                <div style={{ border: '2px solid #0F3D73', borderRadius: 12, padding: 16, background: '#EFF6FF' }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: '#0F3D73', marginBottom: 10 }}>⚙️ BPMN 프로세스 변환</div>
+
+                  {/* BPMN 변환 중 */}
+                  {bpmnLoading && !bpmnJson && (
+                    <div style={{ textAlign: 'center', padding: 20, color: '#64748b' }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>BPMN 프로세스를 생성하고 있습니다...</div>
+                      <div style={{ fontSize: 11 }}>매뉴얼의 STEP 구조를 분석하여 프로세스 노드/엣지로 변환 중입니다.</div>
+                    </div>
+                  )}
+
+                  {/* BPMN 미리보기 */}
+                  {bpmnJson && (
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div style={{ background: '#fff', border: '1px solid #BFDBFE', borderRadius: 8, padding: 10 }}>
+                          <div style={{ fontWeight: 700, fontSize: 11, color: '#1e40af', marginBottom: 6 }}>노드 ({(bpmnJson.nodes || []).length}개)</div>
+                          <div style={{ display: 'grid', gap: 3 }}>
+                            {(bpmnJson.nodes || []).map((n: any, i: number) => (
+                              <div key={i} style={{ fontSize: 11, color: '#0f172a', display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{ fontSize: 10, color: '#64748b', minWidth: 60 }}>
+                                  {n.type === 'start' ? '🟢 시작' : n.type === 'end' ? '🔴 종료' : n.type === 'gateway_xor' ? '🔶 분기' : `📋 ${n.taskType || 'TASK'}`}
+                                </span>
+                                <span style={{ fontWeight: 600 }}>{n.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ background: '#fff', border: '1px solid #BFDBFE', borderRadius: 8, padding: 10 }}>
+                          <div style={{ fontWeight: 700, fontSize: 11, color: '#1e40af', marginBottom: 6 }}>흐름 ({(bpmnJson.edges || []).length}개)</div>
+                          <div style={{ display: 'grid', gap: 3 }}>
+                            {(bpmnJson.edges || []).map((e: any, i: number) => {
+                              const src = (bpmnJson.nodes || []).find((n: any) => n.id === e.source);
+                              const tgt = (bpmnJson.nodes || []).find((n: any) => n.id === e.target);
+                              return (
+                                <div key={i} style={{ fontSize: 11, color: '#334155' }}>
+                                  {src?.name || e.source} → {tgt?.name || e.target}
+                                  {e.condition && <span style={{ color: '#64748b', fontSize: 10 }}> ({e.condition})</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 프로세스 템플릿 생성 / 편집기 이동 */}
+                      {!bpmnTemplateId ? (
+                        <button className="btn" type="button" onClick={createBpmnTemplate} disabled={modLoading === 'bpmn_engine'}
+                          style={{ padding: '10px 24px', fontSize: 14, fontWeight: 800, background: '#0F3D73' }}>
+                          {modLoading === 'bpmn_engine' ? '프로세스 템플릿 생성 중...' : '✅ 프로세스 템플릿 생성'}
+                        </button>
+                      ) : (
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, padding: 10, textAlign: 'center', fontWeight: 700, fontSize: 13, color: '#166534' }}>
+                            프로세스 템플릿이 생성되었습니다!
+                          </div>
+                          <button className="btn" type="button"
+                            onClick={() => nav(`/process/templates?openId=${encodeURIComponent(bpmnTemplateId)}`)}
+                            style={{ padding: '10px 24px', fontSize: 14, fontWeight: 800 }}>
+                            🔧 프로세스 편집기에서 확인/수정 →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* BPMN 변환 실패 시 수동 버튼 */}
+                  {!bpmnLoading && !bpmnJson && p4Content && (
+                    <button className="btn" type="button" onClick={autoBpmnConvert} style={{ padding: '8px 20px', fontSize: 12 }}>
+                      BPMN 변환 재시도
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* ── 다른 기본형: 기존 모듈 연동 ── */}
+              {selectedBaseType !== 'procedure' && p4Content && applicableModules.length > 0 && (
                 <div style={{ border: '1px solid #C7D2FE', borderRadius: 10, padding: 12, background: '#EEF2FF' }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#3730a3', marginBottom: 8 }}>모듈 연동</div>
                   <div style={{ display: 'grid', gap: 6 }}>
-                    {applicableModules.map(mk => {
+                    {applicableModules.filter(mk => mk !== 'bpmn_engine').map(mk => {
                       const mod = MODULE_MAP[mk];
                       if (!mod) return null;
                       const created = isModuleCreated(mk);
@@ -786,7 +923,7 @@ export function WorkManualExt() {
                           <button className="btn" type="button" disabled={created || modLoading === mk}
                             onClick={() => createModuleIntegration(mk)}
                             style={{ padding: '5px 14px', fontSize: 11, background: created ? '#16a34a' : undefined, whiteSpace: 'nowrap' }}>
-                            {modLoading === mk ? '처리 중...' : created ? '완료 ✓' : mk === 'bpmn_engine' ? 'BPMN 생성' : '등록'}
+                            {modLoading === mk ? '처리 중...' : created ? '완료 ✓' : '등록'}
                           </button>
                         </div>
                       );
