@@ -94,6 +94,7 @@ type ManualTemplate = {
   responsibilities: string;
   exceptionHandling: string;
   relatedDocs: string;
+  erpScreens: Array<{ imageUrl: string; description: string }>;
 };
 
 const EMPTY_TPL: ManualTemplate = {
@@ -101,6 +102,7 @@ const EMPTY_TPL: ManualTemplate = {
   purpose: '', scope: '', overview: '', triggerTiming: '', relatedDepts: '',
   relatedSystems: '', processFlow: '', systemProcedure: '', dataDefinition: '',
   responsibilities: '', exceptionHandling: '', relatedDocs: '',
+  erpScreens: [],
 };
 
 function serializeTemplate(tpl: ManualTemplate, title: string, author: string): string {
@@ -115,9 +117,13 @@ function serializeTemplate(tpl: ManualTemplate, title: string, author: string): 
     '', '## 5. 업무 흐름', tpl.processFlow,
     '', '## 6. 관련 데이터 정의', tpl.systemProcedure,
     '', '## 7. 데이터 저장 방식 및 접근 방법', tpl.dataDefinition,
-    '', '## 8. 업무 담당자', tpl.responsibilities,
-    '', '## 9. 예외 처리', tpl.exceptionHandling,
-    '', '## 10. 관련 문서', tpl.relatedDocs,
+    '', '## 8. ERP 화면 설명',
+    ...(tpl.erpScreens.length ? tpl.erpScreens.map((s, i) =>
+      `[화면 ${i + 1}]\n- 이미지: ${s.imageUrl}\n- 설명: ${s.description}`
+    ) : ['']),
+    '', '## 9. 업무 담당자', tpl.responsibilities,
+    '', '## 10. 예외 처리', tpl.exceptionHandling,
+    '', '## 11. 관련 문서', tpl.relatedDocs,
   ].join('\n');
 }
 
@@ -146,9 +152,16 @@ function parseTemplateFromContent(content: string): ManualTemplate | null {
   tpl.processFlow = sec('## 5. 업무 흐름', '## 6.');
   tpl.systemProcedure = sec('## 6. 관련 데이터 정의', '## 7.');
   tpl.dataDefinition = sec('## 7. 데이터 저장 방식 및 접근 방법', '## 8.');
-  tpl.responsibilities = sec('## 8. 업무 담당자', '## 9.');
-  tpl.exceptionHandling = sec('## 9. 예외 처리', '## 10.');
-  tpl.relatedDocs = sec('## 10. 관련 문서');
+  const erpRaw = sec('## 8. ERP 화면 설명', '## 9.');
+  if (erpRaw) {
+    tpl.erpScreens = erpRaw.split(/\[화면\s*\d+\]/).filter(b => b.trim()).map(block => ({
+      imageUrl: fld(block, '이미지'),
+      description: fld(block, '설명'),
+    }));
+  }
+  tpl.responsibilities = sec('## 9. 업무 담당자', '## 10.');
+  tpl.exceptionHandling = sec('## 10. 예외 처리', '## 11.');
+  tpl.relatedDocs = sec('## 11. 관련 문서');
   return tpl;
 }
 
@@ -325,6 +338,7 @@ export function WorkManuals() {
   const [draftLoading, setDraftLoading] = useState(false);
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
   const [template, setTemplate] = useState<ManualTemplate>({ ...EMPTY_TPL });
+  const [approverOpen, setApproverOpen] = useState(false);
   const [prevContent, setPrevContent] = useState<string | null>(null);
   const [qaRound, setQaRound] = useState(0);
   const [qualityScore, setQualityScore] = useState<number | null>(null);
@@ -899,10 +913,32 @@ export function WorkManuals() {
                       <div style={T.label}>문서번호</div>
                       <input value={template.docNumber} onChange={e => setTemplate(p => ({ ...p, docNumber: e.target.value }))} placeholder="PRD-MAN-001" style={T.input} />
                     </label>
-                    <label style={{ display: 'grid', gap: 3 }}>
+                    <div style={{ display: 'grid', gap: 3, position: 'relative' as any }}>
                       <div style={T.label}>승인자</div>
-                      <input value={template.approver} onChange={e => setTemplate(p => ({ ...p, approver: e.target.value }))} placeholder="팀장명" style={T.input} />
-                    </label>
+                      <input value={template.approver}
+                        onChange={e => { setTemplate(p => ({ ...p, approver: e.target.value })); setApproverOpen(true); }}
+                        onFocus={() => setApproverOpen(true)}
+                        placeholder="이름 검색" style={T.input} autoComplete="off" />
+                      {approverOpen && (() => {
+                        const q = template.approver.trim().toLowerCase();
+                        const filtered = orgUsers.filter(u => !q || u.name.toLowerCase().includes(q));
+                        if (!filtered.length) return null;
+                        return (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #CBD5E1', borderRadius: 8, maxHeight: 180, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
+                            {filtered.map(u => (
+                              <button key={u.id} type="button"
+                                onMouseDown={e => { e.preventDefault(); setTemplate(p => ({ ...p, approver: u.name })); setApproverOpen(false); }}
+                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 13 }}
+                                onMouseEnter={e => (e.currentTarget.style.background = '#EFF6FF')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                                <span style={{ fontWeight: 600 }}>{u.name}</span>
+                                <span style={{ fontSize: 11, color: '#64748b', marginLeft: 6 }}>{u.role}</span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <label style={{ display: 'grid', gap: 3 }}>
                       <div style={T.label}>적용 시스템</div>
                       <input value={template.applicableSystem} onChange={e => setTemplate(p => ({ ...p, applicableSystem: e.target.value }))} placeholder="ERP / MES / WMS" style={T.input} />
@@ -976,9 +1012,55 @@ export function WorkManuals() {
                     rows={5} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
                 </div>
 
-                {/* --- 5. 예외 처리 / 담당자 / 관련 문서 --- */}
+                {/* --- 5. ERP 화면 설명 --- */}
                 <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>5. 예외 처리 · 담당자 · 관련 문서</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>5. ERP 화면 설명</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>ERP/MES 화면을 순서대로 설명하세요. 좌측에 화면 이미지 URL, 우측에 조작 방법을 입력합니다.</div>
+                    </div>
+                    <button className="btn btn-sm btn-outline" type="button"
+                      onClick={() => setTemplate(p => ({ ...p, erpScreens: [...p.erpScreens, { imageUrl: '', description: '' }] }))}
+                      style={{ fontSize: 11, whiteSpace: 'nowrap' as any }}>+ 화면 추가</button>
+                  </div>
+                  {template.erpScreens.length === 0 && (
+                    <div style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center' as any, padding: 16, border: '1px dashed #CBD5E1', borderRadius: 8 }}>
+                      아직 등록된 화면이 없습니다. "화면 추가" 버튼을 눌러 ERP 화면을 추가하세요.
+                    </div>
+                  )}
+                  {template.erpScreens.map((scr, idx) => (
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, background: '#FAFBFC' }}>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ fontWeight: 700, fontSize: 12, color: '#374151' }}>화면 {idx + 1} — 이미지</div>
+                          <button type="button" onClick={() => setTemplate(p => ({ ...p, erpScreens: p.erpScreens.filter((_, i) => i !== idx) }))}
+                            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 11, color: '#b91c1c', fontWeight: 600 }}>삭제</button>
+                        </div>
+                        <input value={scr.imageUrl}
+                          onChange={e => setTemplate(p => ({ ...p, erpScreens: p.erpScreens.map((s, i) => i === idx ? { ...s, imageUrl: e.target.value } : s) }))}
+                          placeholder="이미지 URL (예: https://drive.google.com/...)" style={T.input} />
+                        {scr.imageUrl && (
+                          <div style={{ border: '1px solid #E5E7EB', borderRadius: 6, overflow: 'hidden', maxHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+                            <img src={scr.imageUrl} alt={`화면 ${idx + 1}`}
+                              style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain' as any }}
+                              onError={e => (e.currentTarget.style.display = 'none')} />
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: '#374151' }}>화면 {idx + 1} — 조작 방법</div>
+                        <textarea value={scr.description}
+                          onChange={e => setTemplate(p => ({ ...p, erpScreens: p.erpScreens.map((s, i) => i === idx ? { ...s, description: e.target.value } : s) }))}
+                          placeholder={'1. 메뉴에서 [생산관리] > [생산실적] 클릭\n2. 작업지시 번호를 선택\n3. 생산수량 입력\n4. [저장] 클릭'}
+                          rows={6} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* --- 6. 예외 처리 / 담당자 / 관련 문서 --- */}
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>6. 예외 처리 · 담당자 · 관련 문서</div>
                   <label style={{ display: 'grid', gap: 3 }}>
                     <div style={T.label}>업무 담당자</div>
                     <textarea value={template.responsibilities} onChange={e => setTemplate(p => ({ ...p, responsibilities: e.target.value }))}
