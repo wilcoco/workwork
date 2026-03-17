@@ -2047,4 +2047,99 @@ export class WorklogsController {
     const summary = String(data?.choices?.[0]?.message?.content || '').trim();
     return { from: from.toISOString(), to: to.toISOString(), days, summary };
   }
+
+  /** 반복 업무 패턴 감지 → 매뉴얼 작성 제안 */
+  @Post('suggest-manuals')
+  async suggestManuals(@Body() body: { userId?: string; orgUnitId?: string; days?: number }) {
+    const days = body.days || 30;
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const where: any = { date: { gte: since } };
+    if (body.userId) where.createdById = body.userId;
+    if (body.orgUnitId) where.createdBy = { orgUnitId: body.orgUnitId };
+
+    const worklogs = await this.prisma.worklog.findMany({
+      where,
+      orderBy: { date: 'asc' },
+      include: { initiative: true, createdBy: { select: { id: true, name: true } } },
+    });
+
+    if (!worklogs.length) {
+      return { suggestions: [], message: '분석할 업무일지가 없습니다.' };
+    }
+
+    // Count task frequencies
+    const taskFreq = new Map<string, { count: number; title: string; users: Set<string>; hashTags: Set<string>; latestNote: string }>();
+    for (const wl of worklogs) {
+      const key = wl.initiative?.title || '';
+      if (!key) continue;
+      const existing = taskFreq.get(key) || { count: 0, title: key, users: new Set(), hashTags: new Set(), latestNote: '' };
+      existing.count++;
+      if (wl.createdBy) existing.users.add((wl.createdBy as any).name || (wl.createdBy as any).id);
+      const tags = (wl as any).tags;
+      if (tags?.hashTags && Array.isArray(tags.hashTags)) {
+        for (const ht of tags.hashTags) existing.hashTags.add(ht);
+      }
+      existing.latestNote = String(wl.note || '').slice(0, 300);
+      taskFreq.set(key, existing);
+    }
+
+    // Filter tasks with >= 3 occurrences as "repeated"
+    const repeated = Array.from(taskFreq.values())
+      .filter(t => t.count >= 3)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    if (!repeated.length) {
+      return { suggestions: [], message: `최근 ${days}일간 3회 이상 반복된 업무가 없습니다.` };
+    }
+
+    // Check if manuals already exist for these tasks
+    const existingManuals = await (this.prisma as any).workManual.findMany({
+      where: { title: { in: repeated.map(r => r.title) } },
+      select: { title: true },
+    });
+    const existingTitles = new Set((existingManuals || []).map((m: any) => m.title));
+
+    const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+
+    // Build suggestions
+    const suggestions = repeated.map(r => ({
+      taskTitle: r.title,
+      frequency: r.count,
+      users: Array.from(r.users),
+      hashTags: Array.from(r.hashTags),
+      hasManual: existingTitles.has(r.title),
+      latestNote: r.latestNote,
+    }));
+
+    // If AI available, get AI analysis
+    let aiAnalysis: string | null = null;
+    if (apiKey) {
+      try {
+        const context = suggestions.map((s, i) =>
+          `${i + 1}. "${s.taskTitle}" - ${s.frequency}회 반복, 담당: ${s.users.join(', ')}, 태그: ${s.hashTags.join(', ') || '없음'}, 매뉴얼 존재: ${s.hasManual ? '있음' : '없음'}`
+        ).join('\n');
+
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: '당신은 제조업 업무 프로세스 전문가입니다. 반복 업무 패턴을 분석하여 매뉴얼 작성 우선순위와 제안을 한국어로 간결하게 작성하세요.' },
+              { role: 'user', content: `다음은 최근 ${days}일간 반복된 업무 목록입니다:\n\n${context}\n\n매뉴얼이 없는 업무 중 매뉴얼 작성이 가장 필요한 순서대로 정리하고, 각 업무에 대해 매뉴얼에 포함해야 할 핵심 내용을 2-3줄로 제안해 주세요.` },
+            ],
+            temperature: 0.3,
+            max_tokens: 1500,
+          }),
+        });
+        const data = await resp.json();
+        aiAnalysis = String(data?.choices?.[0]?.message?.content || '').trim() || null;
+      } catch {}
+    }
+
+    return { suggestions, aiAnalysis, days };
+  }
 }

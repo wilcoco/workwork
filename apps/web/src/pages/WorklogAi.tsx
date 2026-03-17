@@ -51,6 +51,12 @@ export function WorklogAi() {
   const [includeApprovals, setIncludeApprovals] = useState(true);
   const [includeEvaluation, setIncludeEvaluation] = useState(true);
 
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<Array<{ taskTitle: string; frequency: number; users: string[]; hashTags: string[]; hasManual: boolean; latestNote: string }>>([]);
+  const [suggestAi, setSuggestAi] = useState<string | null>(null);
+  const [suggestDays, setSuggestDays] = useState(30);
+
   const [me, setMe] = useState<Me | null>(null);
   const [teams, setTeams] = useState<OrgUnitItem[]>([]);
   const [managedTeams, setManagedTeams] = useState<OrgUnitItem[]>([]);
@@ -268,6 +274,84 @@ export function WorklogAi() {
       </div>
       <div style={{ color: '#64748b', fontSize: 12 }}>
         참고: OpenAI API 키는 코드에 저장하지 않고 Railway 환경 변수(예: OPENAI_API_KEY, OPENAI_API_KEY_CAMS, OPENAI_API_KEY_IAT)에서 읽습니다.
+      </div>
+
+      <div style={{ borderTop: '2px solid #E5E7EB', marginTop: 16, paddingTop: 16, display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>반복업무 → 매뉴얼 제안</h3>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select value={suggestDays} onChange={e => setSuggestDays(Number(e.target.value))}
+              style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', fontSize: 13, appearance: 'auto' as any }}>
+              <option value={14}>최근 14일</option>
+              <option value={30}>최근 30일</option>
+              <option value={60}>최근 60일</option>
+              <option value={90}>최근 90일</option>
+            </select>
+            <button className="btn" onClick={async () => {
+              setSuggestLoading(true);
+              setSuggestError(null);
+              try {
+                const res = await apiJson<{ suggestions: any[]; aiAnalysis?: string; message?: string; days?: number }>('/api/worklogs/suggest-manuals', {
+                  method: 'POST',
+                  body: JSON.stringify({ userId: myUserId || undefined, days: suggestDays }),
+                });
+                setSuggestions(res.suggestions || []);
+                setSuggestAi(res.aiAnalysis || res.message || null);
+              } catch (e: any) {
+                setSuggestError(e?.message || '분석 실패');
+              } finally {
+                setSuggestLoading(false);
+              }
+            }} disabled={suggestLoading}>
+              {suggestLoading ? '분석 중...' : '분석'}
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b' }}>
+          일정 기간 동안 3회 이상 반복된 업무를 감지하여 매뉴얼 작성이 필요한 업무를 제안합니다.
+        </div>
+        {suggestError && <div style={{ color: '#b91c1c', fontSize: 13 }}>{suggestError}</div>}
+        {suggestions.length > 0 && (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {suggestions.map((s, i) => (
+              <div key={i} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 12, background: '#fff', display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{s.taskTitle}</span>
+                  <span style={{ background: '#EFF6FF', color: '#1e40af', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>{s.frequency}회</span>
+                  {s.hasManual ? (
+                    <span style={{ background: '#DCFCE7', color: '#166534', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>매뉴얼 있음</span>
+                  ) : (
+                    <span style={{ background: '#FEF2F2', color: '#991b1b', borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 600 }}>매뉴얼 없음</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  담당: {s.users.join(', ') || '-'}
+                  {s.hashTags.length > 0 && (
+                    <span style={{ marginLeft: 8 }}>
+                      {s.hashTags.map((ht, j) => (
+                        <span key={j} style={{ background: '#EFF6FF', color: '#1e40af', borderRadius: 999, padding: '0 6px', fontSize: 11, marginRight: 4 }}>#{ht}</span>
+                      ))}
+                    </span>
+                  )}
+                </div>
+                {!s.hasManual && (
+                  <a href="/manuals" style={{ fontSize: 12, color: '#0F3D73', fontWeight: 600, textDecoration: 'none' }}>→ 매뉴얼 작성하기</a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {suggestAi && (
+          <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, whiteSpace: 'pre-wrap', fontSize: 13, color: '#334155', lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6, color: '#0f172a' }}>AI 분석 결과</div>
+            {suggestAi}
+          </div>
+        )}
+        {!suggestLoading && suggestions.length === 0 && !suggestError && (
+          <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center' as any, padding: 20 }}>
+            "분석" 버튼을 눌러 반복 업무를 감지하세요.
+          </div>
+        )}
       </div>
     </div>
   );
