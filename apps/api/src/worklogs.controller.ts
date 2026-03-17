@@ -1092,6 +1092,7 @@ export class WorklogsController {
     @Query('initiativeId') initiativeId?: string,
     @Query('urgent') urgentStr?: string,
     @Query('viewerId') viewerId?: string,
+    @Query('tag') tagFilter?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '20', 10) || 20, 100);
     const where: any = {};
@@ -1103,6 +1104,9 @@ export class WorklogsController {
     if (q) where.note = { contains: q, mode: 'insensitive' as any };
     if (teamName) where.createdBy = { orgUnit: { name: teamName } };
     if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
+    if (tagFilter) {
+      where.tags = { path: ['hashTags'], array_contains: [tagFilter] };
+    }
     if (typeof urgentStr === 'string') {
       const v = urgentStr.toLowerCase();
       if (v === 'true' || v === '1') (where as any).urgent = true;
@@ -1169,6 +1173,7 @@ export class WorklogsController {
         note: it.note ?? undefined,
         urgent: (it as any).urgent ?? false,
         structuredData: (it as any).structuredData ?? undefined,
+        tags: (it as any).tags ?? undefined,
       };
     });
     return { items: mapped, nextCursor };

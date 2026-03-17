@@ -218,6 +218,14 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
         </div>
       )}
 
+      {showBody && Array.isArray(worklog?.tags?.hashTags) && worklog.tags.hashTags.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {worklog.tags.hashTags.map((ht: string, i: number) => (
+            <span key={i} style={{ display: 'inline-block', background: '#EFF6FF', color: '#1e40af', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>#{ht}</span>
+          ))}
+        </div>
+      )}
+
       {showBody && worklog?.structuredData && (() => {
         const sd = worklog.structuredData;
         const statusLabel = (s: string) => s === 'completed' ? '완료' : s === 'in_progress' ? '진행' : '대기';

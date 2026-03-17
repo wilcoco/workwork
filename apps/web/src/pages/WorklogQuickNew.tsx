@@ -51,6 +51,8 @@ export function WorklogQuickNew() {
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
   const [tags, setTags] = useState<DocumentTagsValue>({});
+  const [hashTags, setHashTags] = useState<string[]>([]);
+  const [hashTagInput, setHashTagInput] = useState('');
   const [structuredMode, setStructuredMode] = useState(false);
   const [sections, setSections] = useState<{
     todayTasks: Array<{ name: string; detail: string; status: 'completed' | 'in_progress' | 'waiting' }>;
@@ -406,7 +408,7 @@ export function WorklogQuickNew() {
             date,
             urgent,
             visibility,
-            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode) ? tags : undefined,
+            tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode || hashTags.length) ? { ...tags, hashTags: hashTags.length ? hashTags : undefined } : undefined,
             structuredData: structuredMode ? sections : undefined,
           }),
         }
@@ -1001,8 +1003,33 @@ export function WorklogQuickNew() {
             )}
           </div>
           <DocumentTags value={tags} onChange={setTags} />
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>#️⃣ 자유 태그</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {hashTags.map((ht, i) => (
+                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#EFF6FF', color: '#1e40af', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>
+                  #{ht}
+                  <button type="button" onClick={() => setHashTags(p => p.filter((_, j) => j !== i))}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#1e40af', fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button>
+                </span>
+              ))}
+              <input value={hashTagInput}
+                onChange={e => setHashTagInput(e.target.value.replace(/\s+/g, ''))}
+                onKeyDown={e => {
+                  if ((e.key === 'Enter' || e.key === ' ' || e.key === ',') && hashTagInput.trim()) {
+                    e.preventDefault();
+                    const tag = hashTagInput.replace(/^#/, '').trim();
+                    if (tag && !hashTags.includes(tag)) setHashTags(p => [...p, tag]);
+                    setHashTagInput('');
+                  }
+                }}
+                placeholder="#사출 #ERP #설비점검 (Enter로 추가)"
+                style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', fontSize: 12, outline: 'none', minWidth: 180 }} />
+            </div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>태그를 입력하고 Enter를 누르세요. 예: 사출프로세스, ERP, 품질이슈</div>
+          </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setStructuredMode(false); setSections({ todayTasks: [{ name: '', detail: '', status: 'in_progress' }], ongoingTasks: [], issues: [], tomorrowPlan: [{ task: '', goal: '' }], remarks: '' }); setAttachments([]); setPhotos([]); setTags({}); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
+            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setStructuredMode(false); setSections({ todayTasks: [{ name: '', detail: '', status: 'in_progress' }], ongoingTasks: [], issues: [], tomorrowPlan: [{ task: '', goal: '' }], remarks: '' }); setAttachments([]); setPhotos([]); setTags({}); setHashTags([]); setHashTagInput(''); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
               초기화
             </button>
             <button className="btn btn-primary" disabled={loading}>
