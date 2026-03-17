@@ -113,8 +113,8 @@ function serializeTemplate(tpl: ManualTemplate, title: string, author: string): 
     '', '## 4. 업무 개요', `- 업무 설명: ${tpl.overview}`, `- 업무 발생 시점: ${tpl.triggerTiming}`,
     `- 관련 부서: ${tpl.relatedDepts}`, `- 관련 시스템: ${tpl.relatedSystems}`,
     '', '## 5. 업무 흐름', tpl.processFlow,
-    '', '## 6. 전산 입력 절차', tpl.systemProcedure,
-    '', '## 7. 입력 데이터 정의', tpl.dataDefinition,
+    '', '## 6. 관련 데이터 정의', tpl.systemProcedure,
+    '', '## 7. 데이터 저장 방식 및 접근 방법', tpl.dataDefinition,
     '', '## 8. 업무 담당자', tpl.responsibilities,
     '', '## 9. 예외 처리', tpl.exceptionHandling,
     '', '## 10. 관련 문서', tpl.relatedDocs,
@@ -144,8 +144,8 @@ function parseTemplateFromContent(content: string): ManualTemplate | null {
   tpl.overview = fld(s4, '업무 설명'); tpl.triggerTiming = fld(s4, '업무 발생 시점');
   tpl.relatedDepts = fld(s4, '관련 부서'); tpl.relatedSystems = fld(s4, '관련 시스템');
   tpl.processFlow = sec('## 5. 업무 흐름', '## 6.');
-  tpl.systemProcedure = sec('## 6. 전산 입력 절차', '## 7.');
-  tpl.dataDefinition = sec('## 7. 입력 데이터 정의', '## 8.');
+  tpl.systemProcedure = sec('## 6. 관련 데이터 정의', '## 7.');
+  tpl.dataDefinition = sec('## 7. 데이터 저장 방식 및 접근 방법', '## 8.');
   tpl.responsibilities = sec('## 8. 업무 담당자', '## 9.');
   tpl.exceptionHandling = sec('## 9. 예외 처리', '## 10.');
   tpl.relatedDocs = sec('## 10. 관련 문서');
@@ -958,21 +958,21 @@ export function WorkManuals() {
                     rows={6} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
                 </div>
 
-                {/* --- 3. 전산 입력 방법 --- */}
+                {/* --- 3. 관련 데이터 정의 --- */}
                 <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>3. 전산 입력 방법</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>시스템에서의 입력 절차를 STEP별로 기술하세요.</div>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>3. 관련 데이터 정의</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>업무에 사용되는 데이터 항목, 코드, 필수 여부 등을 정리하세요.</div>
                   <textarea value={template.systemProcedure} onChange={e => setTemplate(p => ({ ...p, systemProcedure: e.target.value }))}
-                    placeholder={'STEP 1: 메뉴 접속\nERP → 생산관리 → 생산실적 입력\n\nSTEP 2: 기본 정보 입력\n- 생산일자: 생산 수행 날짜\n- 작업지시번호: 생산 지시 번호\n- 품목코드: 생산 품목\n- 생산수량: 생산된 수량\n\nSTEP 3: 저장\n[저장] 버튼 클릭'}
-                    rows={8} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+                    placeholder={'- 품목코드: 제품 식별 코드 (필수)\n- 작업지시번호: 생산 지시 번호 (필수)\n- 생산수량: 생산 수량 (필수)\n- 불량수량: 불량 발생 수량 (선택)\n- 작업자: 작업 담당자 (선택)\n- LOT번호: 추적 관리용 (필수)'}
+                    rows={6} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
                 </div>
 
-                {/* --- 4. 데이터 정의 --- */}
+                {/* --- 4. 데이터 저장 방식 및 접근 방법 --- */}
                 <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>4. 데이터 정의</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>입력 항목의 설명과 필수 여부를 정리하세요.</div>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', borderBottom: '2px solid #0F3D73', paddingBottom: 4 }}>4. 데이터 저장 방식 및 접근 방법</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>데이터가 저장되는 시스템, 테이블/화면, 접근 경로 등을 기술하세요.</div>
                   <textarea value={template.dataDefinition} onChange={e => setTemplate(p => ({ ...p, dataDefinition: e.target.value }))}
-                    placeholder={'- 품목코드: 제품 코드 (필수)\n- 생산수량: 생산 수량 (필수)\n- 작업자: 작업 담당자 (선택)\n- 비고: 추가 정보 (선택)'}
+                    placeholder={'- 저장 시스템: ERP (SAP)\n- 메뉴 경로: 생산관리 → 생산실적 입력\n- 테이블/화면: PPORD (생산 오더)\n- 접근 권한: 생산팀 전원 (조회), 관리자 (수정)\n- 백업 주기: 일 1회 자동 백업'}
                     rows={5} style={{ ...T.input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
                 </div>
 
