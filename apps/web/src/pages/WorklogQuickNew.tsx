@@ -51,6 +51,20 @@ export function WorklogQuickNew() {
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
   const [tags, setTags] = useState<DocumentTagsValue>({});
+  const [structuredMode, setStructuredMode] = useState(false);
+  const [sections, setSections] = useState<{
+    todayTasks: Array<{ name: string; detail: string; status: 'completed' | 'in_progress' | 'waiting' }>;
+    ongoingTasks: Array<{ name: string; progressPct: number; nextAction: string }>;
+    issues: Array<{ problem: string; cause: string; support: string }>;
+    tomorrowPlan: Array<{ task: string; goal: string }>;
+    remarks: string;
+  }>({
+    todayTasks: [{ name: '', detail: '', status: 'in_progress' }],
+    ongoingTasks: [],
+    issues: [],
+    tomorrowPlan: [{ task: '', goal: '' }],
+    remarks: '',
+  });
 
   function canUpdateKrForTask(t: { isKpi?: boolean; krOwnerId?: string | null } | undefined) {
     if (!t) return false;
@@ -355,13 +369,45 @@ export function WorklogQuickNew() {
                   ? (title || '신규 과제')
                   : undefined)),
             title,
-            content: plainMode ? contentPlain : stripHtml(contentHtml),
-            contentHtml: plainMode ? undefined : (contentHtml || undefined),
+            content: structuredMode
+              ? (() => {
+                  const lines: string[] = [];
+                  lines.push('【금일 수행 업무】');
+                  sections.todayTasks.filter(t => t.name.trim()).forEach(t => {
+                    const st = t.status === 'completed' ? '완료' : t.status === 'in_progress' ? '진행' : '대기';
+                    lines.push(`- ${t.name} [${st}]${t.detail ? ': ' + t.detail : ''}`);
+                  });
+                  if (sections.ongoingTasks.some(t => t.name.trim())) {
+                    lines.push('', '【진행 중 업무】');
+                    sections.ongoingTasks.filter(t => t.name.trim()).forEach(t => {
+                      lines.push(`- ${t.name} (${t.progressPct}%)${t.nextAction ? ' → ' + t.nextAction : ''}`);
+                    });
+                  }
+                  if (sections.issues.some(t => t.problem.trim())) {
+                    lines.push('', '【이슈 / 문제】');
+                    sections.issues.filter(t => t.problem.trim()).forEach(t => {
+                      lines.push(`- 문제: ${t.problem}${t.cause ? ' / 원인: ' + t.cause : ''}${t.support ? ' / 지원: ' + t.support : ''}`);
+                    });
+                  }
+                  if (sections.tomorrowPlan.some(t => t.task.trim())) {
+                    lines.push('', '【익일 계획】');
+                    sections.tomorrowPlan.filter(t => t.task.trim()).forEach(t => {
+                      lines.push(`- ${t.task}${t.goal ? ' (목표: ' + t.goal + ')' : ''}`);
+                    });
+                  }
+                  if (sections.remarks.trim()) {
+                    lines.push('', '【특이사항 / 건의】', sections.remarks.trim());
+                  }
+                  return lines.join('\n');
+                })()
+              : (plainMode ? contentPlain : stripHtml(contentHtml)),
+            contentHtml: structuredMode ? undefined : (plainMode ? undefined : (contentHtml || undefined)),
             attachments: { files: attachments, photos },
             date,
             urgent,
             visibility,
             tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode) ? tags : undefined,
+            structuredData: structuredMode ? sections : undefined,
           }),
         }
       );
@@ -764,27 +810,131 @@ export function WorklogQuickNew() {
           })()}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontSize: 13, color: '#6b7280' }}>
-              본문 작성 {plainMode ? '(텍스트 모드)' : '(리치 모드)'}
+              본문 작성 {structuredMode ? '(구조화 모드)' : plainMode ? '(텍스트 모드)' : '(리치 모드)'}
             </div>
-            <button type="button" className="btn btn-sm" onClick={() => setPlainMode((v) => !v)}>
-              {plainMode ? '리치 모드' : '텍스트 모드'}
-            </button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button type="button" className="btn btn-sm" style={structuredMode ? { background: '#0F3D73', color: '#fff' } : {}} onClick={() => { setStructuredMode(true); setPlainMode(false); }}>구조화</button>
+              <button type="button" className="btn btn-sm" style={!structuredMode && !plainMode ? { background: '#0F3D73', color: '#fff' } : {}} onClick={() => { setStructuredMode(false); setPlainMode(false); }}>리치</button>
+              <button type="button" className="btn btn-sm" style={!structuredMode && plainMode ? { background: '#0F3D73', color: '#fff' } : {}} onClick={() => { setStructuredMode(false); setPlainMode(true); }}>텍스트</button>
+            </div>
           </div>
-          <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden' }}>
-            {plainMode ? (
-              <textarea
-                value={contentPlain}
-                onChange={(e) => setContentPlain(e.target.value)}
-                placeholder="텍스트로 업무 내용을 입력하세요."
-                style={{ ...input, minHeight: 200, resize: 'vertical' }}
-              />
-            ) : (
-              <div ref={editorEl} style={{ minHeight: 260, width: '100%' }} />
-            )}
-          </div>
-          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, lineHeight: 1.45 }}>
-            사진 입력: 상단 편집기 툴바의 이미지 버튼을 사용해 본문에 삽입해 주세요.
-          </div>
+          {structuredMode ? (
+            <div style={{ display: 'grid', gap: 14, border: '1px solid #E5E7EB', borderRadius: 10, padding: 14, background: '#FAFBFC' }}>
+              {/* 1. 금일 수행 업무 */}
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>1. 금일 수행 업무</div>
+                  <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11 }}
+                    onClick={() => setSections(p => ({ ...p, todayTasks: [...p.todayTasks, { name: '', detail: '', status: 'in_progress' }] }))}>+ 추가</button>
+                </div>
+                {sections.todayTasks.map((t, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr auto auto', gap: 6, alignItems: 'start' }}>
+                    <input value={t.name} onChange={e => setSections(p => ({ ...p, todayTasks: p.todayTasks.map((x, j) => j === i ? { ...x, name: e.target.value } : x) }))}
+                      placeholder="업무명" style={input} />
+                    <input value={t.detail} onChange={e => setSections(p => ({ ...p, todayTasks: p.todayTasks.map((x, j) => j === i ? { ...x, detail: e.target.value } : x) }))}
+                      placeholder="세부내용" style={input} />
+                    <select value={t.status} onChange={e => setSections(p => ({ ...p, todayTasks: p.todayTasks.map((x, j) => j === i ? { ...x, status: e.target.value as any } : x) }))}
+                      style={{ ...input, width: 80, appearance: 'auto' as any, fontSize: 12 }}>
+                      <option value="completed">완료</option>
+                      <option value="in_progress">진행</option>
+                      <option value="waiting">대기</option>
+                    </select>
+                    {sections.todayTasks.length > 1 && (
+                      <button type="button" onClick={() => setSections(p => ({ ...p, todayTasks: p.todayTasks.filter((_, j) => j !== i) }))}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: 14, padding: '8px 4px' }}>✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {/* 2. 진행 중 업무 */}
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>2. 진행 중 업무</div>
+                  <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11 }}
+                    onClick={() => setSections(p => ({ ...p, ongoingTasks: [...p.ongoingTasks, { name: '', progressPct: 0, nextAction: '' }] }))}>+ 추가</button>
+                </div>
+                {sections.ongoingTasks.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>항목 없음 ("추가" 버튼으로 추가)</div>}
+                {sections.ongoingTasks.map((t, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr auto', gap: 6, alignItems: 'start' }}>
+                    <input value={t.name} onChange={e => setSections(p => ({ ...p, ongoingTasks: p.ongoingTasks.map((x, j) => j === i ? { ...x, name: e.target.value } : x) }))}
+                      placeholder="업무명" style={input} />
+                    <input type="number" min={0} max={100} value={t.progressPct} onChange={e => setSections(p => ({ ...p, ongoingTasks: p.ongoingTasks.map((x, j) => j === i ? { ...x, progressPct: Math.min(100, Math.max(0, Number(e.target.value) || 0)) } : x) }))}
+                      placeholder="%" style={{ ...input, textAlign: 'center' as any }} />
+                    <input value={t.nextAction} onChange={e => setSections(p => ({ ...p, ongoingTasks: p.ongoingTasks.map((x, j) => j === i ? { ...x, nextAction: e.target.value } : x) }))}
+                      placeholder="다음 액션" style={input} />
+                    <button type="button" onClick={() => setSections(p => ({ ...p, ongoingTasks: p.ongoingTasks.filter((_, j) => j !== i) }))}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: 14, padding: '8px 4px' }}>✕</button>
+                  </div>
+                ))}
+              </div>
+              {/* 3. 이슈 / 문제 */}
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>3. 이슈 / 문제</div>
+                  <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11 }}
+                    onClick={() => setSections(p => ({ ...p, issues: [...p.issues, { problem: '', cause: '', support: '' }] }))}>+ 추가</button>
+                </div>
+                {sections.issues.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>이슈 없음 ("추가" 버튼으로 등록)</div>}
+                {sections.issues.map((t, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 6, alignItems: 'start' }}>
+                    <input value={t.problem} onChange={e => setSections(p => ({ ...p, issues: p.issues.map((x, j) => j === i ? { ...x, problem: e.target.value } : x) }))}
+                      placeholder="발생 문제" style={input} />
+                    <input value={t.cause} onChange={e => setSections(p => ({ ...p, issues: p.issues.map((x, j) => j === i ? { ...x, cause: e.target.value } : x) }))}
+                      placeholder="원인" style={input} />
+                    <input value={t.support} onChange={e => setSections(p => ({ ...p, issues: p.issues.map((x, j) => j === i ? { ...x, support: e.target.value } : x) }))}
+                      placeholder="필요 지원" style={input} />
+                    <button type="button" onClick={() => setSections(p => ({ ...p, issues: p.issues.filter((_, j) => j !== i) }))}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: 14, padding: '8px 4px' }}>✕</button>
+                  </div>
+                ))}
+              </div>
+              {/* 4. 익일 계획 */}
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>4. 익일 계획</div>
+                  <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11 }}
+                    onClick={() => setSections(p => ({ ...p, tomorrowPlan: [...p.tomorrowPlan, { task: '', goal: '' }] }))}>+ 추가</button>
+                </div>
+                {sections.tomorrowPlan.map((t, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 6, alignItems: 'start' }}>
+                    <input value={t.task} onChange={e => setSections(p => ({ ...p, tomorrowPlan: p.tomorrowPlan.map((x, j) => j === i ? { ...x, task: e.target.value } : x) }))}
+                      placeholder="예정 작업" style={input} />
+                    <input value={t.goal} onChange={e => setSections(p => ({ ...p, tomorrowPlan: p.tomorrowPlan.map((x, j) => j === i ? { ...x, goal: e.target.value } : x) }))}
+                      placeholder="목표" style={input} />
+                    {sections.tomorrowPlan.length > 1 && (
+                      <button type="button" onClick={() => setSections(p => ({ ...p, tomorrowPlan: p.tomorrowPlan.filter((_, j) => j !== i) }))}
+                        style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b91c1c', fontSize: 14, padding: '8px 4px' }}>✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {/* 5. 특이사항 / 건의 */}
+              <div style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>5. 특이사항 / 건의</div>
+                <textarea value={sections.remarks} onChange={e => setSections(p => ({ ...p, remarks: e.target.value }))}
+                  placeholder="개선사항, 건의사항 등을 자유롭게 입력하세요." rows={3}
+                  style={{ ...input, resize: 'vertical' as any, fontSize: 13, lineHeight: 1.6 }} />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="quill-box" style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 4, overflow: 'hidden' }}>
+                {plainMode ? (
+                  <textarea
+                    value={contentPlain}
+                    onChange={(e) => setContentPlain(e.target.value)}
+                    placeholder="텍스트로 업무 내용을 입력하세요."
+                    style={{ ...input, minHeight: 200, resize: 'vertical' }}
+                  />
+                ) : (
+                  <div ref={editorEl} style={{ minHeight: 260, width: '100%' }} />
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4, lineHeight: 1.45 }}>
+                사진 입력: 상단 편집기 툴바의 이미지 버튼을 사용해 본문에 삽입해 주세요.
+              </div>
+            </>
+          )}
           
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>사진 추가</label>
@@ -852,7 +1002,7 @@ export function WorklogQuickNew() {
           </div>
           <DocumentTags value={tags} onChange={setTags} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setAttachments([]); setPhotos([]); setTags({}); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
+            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setStructuredMode(false); setSections({ todayTasks: [{ name: '', detail: '', status: 'in_progress' }], ongoingTasks: [], issues: [], tomorrowPlan: [{ task: '', goal: '' }], remarks: '' }); setAttachments([]); setPhotos([]); setTags({}); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
               초기화
             </button>
             <button className="btn btn-primary" disabled={loading}>

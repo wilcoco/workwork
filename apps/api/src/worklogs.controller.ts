@@ -159,6 +159,7 @@ class CreateSimpleWorklogDto {
   @IsOptional() @IsString() keyResultId?: string;
   @IsOptional() @IsEnum({ ALL: 'ALL', MANAGER_PLUS: 'MANAGER_PLUS', EXEC_PLUS: 'EXEC_PLUS', CEO_ONLY: 'CEO_ONLY' } as any)
   visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY';
+  @IsOptional() structuredData?: any;
 }
 
 @Controller('worklogs')
@@ -1067,6 +1068,7 @@ export class WorklogsController {
         timeSpentMinutes: dto.timeSpentMinutes ?? 0,
         attachments: attachmentsJson as any,
         tags: (dto as any).tags as any,
+        structuredData: (dto as any).structuredData ?? undefined,
         date: dateValSimple,
         urgent: !!dto.urgent,
         visibility: (dto.visibility as any) ?? 'ALL',
@@ -1166,6 +1168,7 @@ export class WorklogsController {
         attachments: (it as any).attachments ?? undefined,
         note: it.note ?? undefined,
         urgent: (it as any).urgent ?? false,
+        structuredData: (it as any).structuredData ?? undefined,
       };
     });
     return { items: mapped, nextCursor };

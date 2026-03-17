@@ -251,6 +251,7 @@ model Worklog {
   timeSpentMinutes      Int       @default(0)
   blockerCode           String?
   note                  String?
+  structuredData        Json?
   createdById           String
   createdBy             User      @relation("WorklogCreator", fields: [createdById], references: [id])
   attachments           Json?

@@ -218,7 +218,70 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
         </div>
       )}
 
-      {showBody && (
+      {showBody && worklog?.structuredData && (() => {
+        const sd = worklog.structuredData;
+        const statusLabel = (s: string) => s === 'completed' ? '완료' : s === 'in_progress' ? '진행' : '대기';
+        const statusColor = (s: string) => s === 'completed' ? '#16a34a' : s === 'in_progress' ? '#2563eb' : '#94a3b8';
+        return (
+          <div style={{ display: 'grid', gap: 10, border: '1px solid #E5E7EB', borderRadius: 12, padding: 14, background: '#FAFBFC' }}>
+            {Array.isArray(sd.todayTasks) && sd.todayTasks.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>1. 금일 수행 업무</div>
+                {sd.todayTasks.map((t: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#334155', padding: '3px 0' }}>
+                    <span style={{ background: statusColor(t.status), color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>{statusLabel(t.status)}</span>
+                    <span style={{ fontWeight: 600 }}>{t.name}</span>
+                    {t.detail && <span style={{ color: '#64748b' }}>— {t.detail}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {Array.isArray(sd.ongoingTasks) && sd.ongoingTasks.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>2. 진행 중 업무</div>
+                {sd.ongoingTasks.map((t: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#334155', padding: '3px 0' }}>
+                    <span style={{ background: '#EFF6FF', color: '#1e40af', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>{t.progressPct ?? 0}%</span>
+                    <span style={{ fontWeight: 600 }}>{t.name}</span>
+                    {t.nextAction && <span style={{ color: '#64748b' }}>→ {t.nextAction}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {Array.isArray(sd.issues) && sd.issues.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#b91c1c', marginBottom: 6 }}>3. 이슈 / 문제</div>
+                {sd.issues.map((t: any, i: number) => (
+                  <div key={i} style={{ fontSize: 13, color: '#334155', padding: '3px 0', borderLeft: '3px solid #fca5a5', paddingLeft: 8 }}>
+                    <div><b>문제:</b> {t.problem}</div>
+                    {t.cause && <div style={{ color: '#64748b' }}><b>원인:</b> {t.cause}</div>}
+                    {t.support && <div style={{ color: '#64748b' }}><b>지원:</b> {t.support}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {Array.isArray(sd.tomorrowPlan) && sd.tomorrowPlan.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>4. 익일 계획</div>
+                {sd.tomorrowPlan.map((t: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#334155', padding: '3px 0' }}>
+                    <span style={{ fontWeight: 600 }}>{t.task}</span>
+                    {t.goal && <span style={{ color: '#64748b' }}>(목표: {t.goal})</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {sd.remarks && String(sd.remarks).trim() && (
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>5. 특이사항 / 건의</div>
+                <div style={{ fontSize: 13, color: '#334155', whiteSpace: 'pre-wrap' }}>{String(sd.remarks).trim()}</div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {showBody && !worklog?.structuredData && (
         <div>
           {contentHtml ? (
             <div
