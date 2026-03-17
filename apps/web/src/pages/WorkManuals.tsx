@@ -812,6 +812,7 @@ export function WorkManuals() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as any }}>
+          <button className="btn" type="button" onClick={() => nav('/manuals/ext')} style={{ background: '#7c3aed', color: '#fff' }}>AI 매뉴얼 외재화</button>
           <button className="btn btn-outline" type="button" onClick={newManual}>새 메뉴얼</button>
           <button className="btn" type="button" onClick={save} disabled={saving || loading || !editing}>{saving ? '저장중…' : '저장'}</button>
           {editing?.id && <button className="btn btn-outline" type="button" onClick={remove} style={{ color: '#b91c1c' }}>삭제</button>}

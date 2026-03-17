@@ -47,6 +47,7 @@ import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
 import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 import { WorkManuals } from './pages/WorkManuals';
+import { WorkManualExt } from './pages/WorkManualExt';
 import { WeeklyReport } from './pages/WeeklyReport';
 
 function DeployBanner() {
@@ -269,6 +270,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/worklogs/new" element={<WorklogNew />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
           <Route path="/manuals" element={<WorkManuals />} />
+          <Route path="/manuals/ext" element={<WorkManualExt />} />
           <Route path="/worklogs/weekly" element={<WeeklyReport />} />
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />

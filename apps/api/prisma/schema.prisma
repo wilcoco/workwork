@@ -309,6 +309,11 @@ model WorkManual {
   content         String?
   authorName      String       @default("")
   authorTeamName  String       @default("")
+  department      String       @default("")
+  baseType        String       @default("")
+  options         Json?
+  phaseData       Json?
+  currentPhase    Int          @default(1)
   version         Int          @default(1)
   versionUpAt     DateTime     @default(now())
   status          ManualStatus @default(DRAFT)
@@ -325,6 +330,7 @@ model WorkManual {
   @@index([versionUpAt])
   @@index([status])
   @@index([reviewerId])
+  @@index([baseType])
 }
 
 model Event {

@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
+import { BASE_TYPES, BASE_TYPE_MAP, QUESTION_SETS, TACIT_KNOWLEDGE_QUESTIONS, OPTION_GROUPS, AI_SYSTEM_PROMPT, recommendOptions, detectSecurityInfo, type PhaseData } from './manual-externalization.constants';
 
 class CreateWorkManualDto {
   @IsString() @IsNotEmpty()
@@ -17,6 +18,20 @@ class CreateWorkManualDto {
 
   @IsOptional() @IsString()
   authorTeamName?: string;
+
+  @IsOptional() @IsString()
+  department?: string;
+
+  @IsOptional() @IsString()
+  baseType?: string;
+
+  @IsOptional()
+  options?: any;
+
+  @IsOptional()
+  phaseData?: any;
+
+  currentPhase?: number;
 }
 
 class UpdateWorkManualDto {
@@ -34,6 +49,20 @@ class UpdateWorkManualDto {
 
   @IsOptional() @IsString()
   authorTeamName?: string;
+
+  @IsOptional() @IsString()
+  department?: string;
+
+  @IsOptional() @IsString()
+  baseType?: string;
+
+  @IsOptional()
+  options?: any;
+
+  @IsOptional()
+  phaseData?: any;
+
+  currentPhase?: number;
 }
 
 class AiBpmnDto {
@@ -249,6 +278,11 @@ export class WorkManualsController {
         content: it.content,
         authorName: it.authorName || '',
         authorTeamName: it.authorTeamName || '',
+        department: it.department || '',
+        baseType: it.baseType || '',
+        options: it.options || null,
+        phaseData: it.phaseData || null,
+        currentPhase: it.currentPhase ?? 1,
         version: it.version ?? 1,
         versionUpAt: it.versionUpAt,
         status: it.status || 'DRAFT',
@@ -298,8 +332,13 @@ export class WorkManualsController {
 
     const authorName = String(dto.authorName || '').trim() || String((u as any)?.name || '').trim() || '';
     const authorTeamName = String(dto.authorTeamName || '').trim() || String((u as any)?.orgUnit?.name || '').trim() || '';
+    const department = String(dto.department || '').trim() || authorTeamName;
+    const baseType = String(dto.baseType || '').trim();
+    const options = dto.options != null ? dto.options : undefined;
+    const phaseData = dto.phaseData != null ? dto.phaseData : undefined;
+    const currentPhase = typeof dto.currentPhase === 'number' ? dto.currentPhase : 1;
     const created = await (this.prisma as any).workManual.create({
-      data: { userId: uid, title, content, authorName, authorTeamName },
+      data: { userId: uid, title, content, authorName, authorTeamName, department, baseType, options, phaseData, currentPhase },
     });
     return created;
   }
@@ -324,20 +363,35 @@ export class WorkManualsController {
     const authorTeamChanged = wantsAuthorTeamName ? String(existing?.authorTeamName || '').trim() !== nextAuthorTeamName : false;
 
     const titleChanged = String(existing?.title || '').trim() !== title;
-    const changed = titleChanged || contentChanged || authorNameChanged || authorTeamChanged;
+
+    const wantsDept = dto.department != null;
+    const wantsBaseType = dto.baseType != null;
+    const wantsOptions = dto.options != null;
+    const wantsPhaseData = dto.phaseData != null;
+    const wantsCurrentPhase = dto.currentPhase != null;
+
+    const changed = titleChanged || contentChanged || authorNameChanged || authorTeamChanged
+      || wantsDept || wantsBaseType || wantsOptions || wantsPhaseData || wantsCurrentPhase;
 
     if (!changed) return existing;
 
+    const data: any = {
+      title,
+      authorName: nextAuthorName,
+      authorTeamName: nextAuthorTeamName,
+      version: { increment: 1 },
+      versionUpAt: new Date(),
+    };
+    if (wantsContent) data.content = nextContent;
+    if (wantsDept) data.department = String(dto.department).trim();
+    if (wantsBaseType) data.baseType = String(dto.baseType).trim();
+    if (wantsOptions) data.options = dto.options;
+    if (wantsPhaseData) data.phaseData = dto.phaseData;
+    if (wantsCurrentPhase) data.currentPhase = Number(dto.currentPhase);
+
     return (this.prisma as any).workManual.update({
       where: { id: String(id) },
-      data: {
-        title,
-        content: wantsContent ? nextContent : undefined,
-        authorName: nextAuthorName,
-        authorTeamName: nextAuthorTeamName,
-        version: { increment: 1 },
-        versionUpAt: new Date(),
-      },
+      data,
     });
   }
 
@@ -876,6 +930,380 @@ DSL 포맷 규칙:
       draftContent,
       stepCount: Number(parsed?.stepCount || 0),
       summary: String(parsed?.summary || ''),
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 업무 매뉴얼 외재화 시스템 — 새 AI 파이프라인 엔드포인트
+  // ═══════════════════════════════════════════════════════════
+
+  @Get('ext/base-types')
+  getBaseTypes() {
+    return { baseTypes: BASE_TYPES, optionGroups: OPTION_GROUPS };
+  }
+
+  @Post(':id/ext/phase2')
+  async extPhase2(@Param('id') id: string, @Body() body: { userId: string; roundNum?: number }) {
+    const uid = String(body.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const baseType = String(manual.baseType || '').trim();
+    const btDef = BASE_TYPE_MAP[baseType];
+    if (!btDef) throw new BadRequestException(`invalid baseType: ${baseType}`);
+
+    const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
+    const p1 = phaseData.phase1;
+    const freeText = p1?.freeText || String(manual.content || '');
+    const rounds = phaseData.phase2?.rounds || [];
+    const roundNum = body.roundNum ?? (rounds.length + 1);
+
+    const qs = QUESTION_SETS[baseType];
+    if (!qs) throw new BadRequestException(`no question set for baseType: ${baseType}`);
+
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
+    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
+
+    const previousRoundsSummary = rounds.map((r: any) =>
+      `[Round ${r.roundNum}]\n질문: ${(r.aiQuestions || []).join('\n')}\n답변: ${(r.userAnswers || []).join('\n')}`
+    ).join('\n\n');
+
+    const sys = `${AI_SYSTEM_PROMPT}
+
+### 현재 기본형: ${btDef.name} (${btDef.id})
+${btDef.userDescription}
+
+### 이 기본형의 핵심 질문 가이드:
+${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+
+### 지시사항
+- 현재 Round ${roundNum}/${3} 입니다.
+- 사용자가 자유 입력한 내용과 이전 대화를 분석하세요.
+- 2~3개의 구체적인 후속 질문을 생성하세요.
+- 각 질문은 기본형(${btDef.name})의 핵심 질문 가이드를 기반으로 하되, 사용자가 이미 답변한 내용은 반복하지 마세요.
+- 매 라운드마다 "지금까지 정리된 내용"을 structuredSoFar에 포함하세요.
+
+반드시 JSON만 출력하세요. 마크다운 코드펜스를 사용하지 마세요.
+출력 JSON:
+{
+  "questions": string[],
+  "structuredSoFar": string,
+  "summary": string,
+  "completionRate": number
+}`;
+
+    const userMsg = `[사용자 자유 입력]\n${freeText}\n\n[이전 대화]\n${previousRoundsSummary || '(첫 라운드)'}`;
+
+    const f: any = (globalThis as any).fetch;
+    if (!f) throw new BadRequestException('Server fetch not available.');
+
+    const resp = await f('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: sys }, { role: 'user', content: userMsg }],
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
+    }
+
+    const data = await resp.json();
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    let parsed: any = {};
+    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('AI did not return valid JSON'); }
+
+    return {
+      roundNum,
+      questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+      structuredSoFar: String(parsed.structuredSoFar || ''),
+      summary: String(parsed.summary || ''),
+      completionRate: Number(parsed.completionRate || 0),
+    };
+  }
+
+  @Post(':id/ext/phase2/answer')
+  async extPhase2Answer(@Param('id') id: string, @Body() body: { userId: string; roundNum: number; answers: string[] }) {
+    const uid = String(body.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
+
+    if (!phaseData.phase2) phaseData.phase2 = { rounds: [], completedRounds: 0 };
+    const existing = phaseData.phase2.rounds.findIndex((r: any) => r.roundNum === body.roundNum);
+    if (existing >= 0) {
+      phaseData.phase2.rounds[existing].userAnswers = body.answers || [];
+    } else {
+      phaseData.phase2.rounds.push({ roundNum: body.roundNum, aiQuestions: [], userAnswers: body.answers || [] });
+    }
+    phaseData.phase2.completedRounds = phaseData.phase2.rounds.filter((r: any) => r.userAnswers?.length > 0).length;
+
+    await (this.prisma as any).workManual.update({
+      where: { id },
+      data: { phaseData, currentPhase: 2 },
+    });
+
+    return { ok: true, completedRounds: phaseData.phase2.completedRounds };
+  }
+
+  @Post(':id/ext/phase3')
+  async extPhase3(@Param('id') id: string, @Body() body: { userId: string }) {
+    const uid = String(body.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const baseType = String(manual.baseType || '').trim();
+    const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
+
+    const freeText = phaseData.phase1?.freeText || String(manual.content || '');
+    const roundTexts = (phaseData.phase2?.rounds || []).map((r: any) => (r.userAnswers || []).join(' ')).join(' ');
+    const fullText = `${freeText} ${roundTexts}`;
+
+    const recommended = recommendOptions(baseType, fullText);
+
+    return {
+      baseType,
+      optionGroups: OPTION_GROUPS,
+      recommendedOptionIds: recommended,
+    };
+  }
+
+  @Post(':id/ext/phase3/save')
+  async extPhase3Save(@Param('id') id: string, @Body() body: { userId: string; selectedOptions: Record<string, string[]> }) {
+    const uid = String(body.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
+
+    phaseData.phase3 = {
+      selectedOptions: body.selectedOptions || {},
+      recommendedOptions: phaseData.phase3?.recommendedOptions || [],
+    };
+
+    await (this.prisma as any).workManual.update({
+      where: { id },
+      data: { phaseData, options: body.selectedOptions, currentPhase: 3 },
+    });
+
+    return { ok: true };
+  }
+
+  @Post(':id/ext/phase4')
+  async extPhase4(@Param('id') id: string, @Body() body: { userId: string }) {
+    const uid = String(body.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const baseType = String(manual.baseType || '').trim();
+    const btDef = BASE_TYPE_MAP[baseType];
+    if (!btDef) throw new BadRequestException(`invalid baseType: ${baseType}`);
+
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
+    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
+
+    const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
+    const p1 = phaseData.phase1;
+    const freeText = p1?.freeText || String(manual.content || '');
+    const roundsSummary = (phaseData.phase2?.rounds || []).map((r: any) =>
+      `[Round ${r.roundNum}]\n질문: ${(r.aiQuestions || []).join('\n')}\n답변: ${(r.userAnswers || []).join('\n')}`
+    ).join('\n\n');
+    const selectedOpts = phaseData.phase3?.selectedOptions || {};
+    const optionLabels: string[] = [];
+    for (const grp of OPTION_GROUPS) {
+      const sel = selectedOpts[grp.id] || [];
+      for (const it of grp.items) {
+        if (sel.includes(it.id)) optionLabels.push(it.label);
+      }
+    }
+
+    const templateInstructions: Record<string, string> = {
+      procedure: `BPMN 프로세스 형태로 작성하세요:
+- 각 단계는 "### STEP S1 | 단계명" 형식
+- 필수 필드: taskType(WORKLOG/APPROVAL/COOPERATION), 목적, 담당자, 산출물, 완료조건
+- 결재 단계는 분기(승인/반려) 포함
+- 인수인계 가이드 섹션 포함`,
+      dev_project: `개발 프로젝트 마일스톤 형태로 작성하세요:
+- 각 마일스톤은 "### MILESTONE M1 | 마일스톤명" 형식
+- 필수 필드: 기간(M-n/M+n), Gate 통과 기준, Input/Output, 담당자
+- 고객사 제출물 목록 포함
+- 위험요소/대응 포함`,
+      system_operation: `시스템 조작 가이드 형태로 작성하세요:
+- 각 조작은 "### SCREEN SC1 | 화면명" 형식
+- 필수 필드: 메뉴경로, 필수입력항목, 주의사항, 연관화면
+- FAQ 섹션 포함
+- 스크린샷 위치 표시`,
+      calculation: `계산/산출 가이드 형태로 작성하세요:
+- 각 산출은 "### CALC C1 | 산출항목명" 형식
+- 필수 필드: 계산공식, 입력데이터, 출처, 검증방법
+- Worked Example 포함
+- 주의사항/예외 포함`,
+      inspection_mgmt: `점검/관리 체크리스트 형태로 작성하세요:
+- 각 점검은 "### CHECK CK1 | 점검항목명" 형식
+- 필수 필드: 점검주기, 판단기준(정상/이상), 이상시 조치, 담당자
+- 안전 주의사항 섹션 포함
+- 설비 정보 섹션 포함`,
+    };
+
+    const sys = `${AI_SYSTEM_PROMPT}
+
+### 산출물 생성 Phase
+기본형: ${btDef.name} (${btDef.id})
+선택된 옵션: ${optionLabels.join(', ') || '없음'}
+
+### 출력 형식
+${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하세요.'}
+
+반드시 JSON만 출력하세요. 마크다운 코드펜스를 사용하지 마세요.
+출력 JSON:
+{
+  "manualContent": string,
+  "title": string,
+  "summary": string,
+  "securityItems": Array<{ systemName: string, original: string, replacement: string }>
+}
+
+보안 정보(ID, PW, 비밀번호 등)가 입력에 포함되어 있으면:
+- manualContent에서는 "[보안정보 #n]"으로 대체
+- securityItems 배열에 원본과 대체 텍스트를 기록`;
+
+    const userMsg = `업무명: ${manual.title}\n부서: ${manual.department || manual.authorTeamName || ''}\n작성자: ${manual.authorName || ''}\n\n[사용자 입력]\n${freeText}\n\n[AI 대화 내역]\n${roundsSummary || '(없음)'}`;
+
+    const f: any = (globalThis as any).fetch;
+    if (!f) throw new BadRequestException('Server fetch not available.');
+
+    const resp = await f('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: sys }, { role: 'user', content: userMsg }],
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
+    }
+
+    const data = await resp.json();
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    let parsed: any = {};
+    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('AI did not return valid JSON'); }
+
+    const manualContent = String(parsed.manualContent || '').trim();
+    if (!manualContent) throw new BadRequestException('AI returned empty manualContent');
+
+    phaseData.phase4 = {
+      manualContent,
+      securityItems: Array.isArray(parsed.securityItems) ? parsed.securityItems : [],
+    };
+
+    await (this.prisma as any).workManual.update({
+      where: { id },
+      data: { content: manualContent, phaseData, currentPhase: 4, title: String(parsed.title || manual.title).trim() },
+    });
+
+    return {
+      manualContent,
+      title: String(parsed.title || manual.title).trim(),
+      summary: String(parsed.summary || ''),
+      securityItems: phaseData.phase4.securityItems,
+    };
+  }
+
+  @Post(':id/ext/phase5')
+  async extPhase5(@Param('id') id: string, @Body() body: { userId: string }) {
+    const uid = String(body.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+
+    return {
+      questions: TACIT_KNOWLEDGE_QUESTIONS.map((q, i) => ({ id: i, question: q })),
+      currentContent: String(manual.content || ''),
+    };
+  }
+
+  @Post(':id/ext/phase5/complete')
+  async extPhase5Complete(@Param('id') id: string, @Body() body: { userId: string; answers: Array<{ question: string; answer: string }> }) {
+    const uid = String(body.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+
+    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
+    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
+
+    const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
+    const currentContent = String(manual.content || '');
+    const answeredQAs = (body.answers || []).filter(a => a.answer && a.answer.trim());
+
+    if (!answeredQAs.length) {
+      phaseData.phase5 = { questions: [], finalContent: currentContent };
+      await (this.prisma as any).workManual.update({
+        where: { id },
+        data: { phaseData, currentPhase: 5, status: 'DRAFT' },
+      });
+      return { finalContent: currentContent, summary: '암묵지 답변 없이 완료됨' };
+    }
+
+    const qaText = answeredQAs.map((a, i) => `[${i + 1}] 질문: ${a.question}\n    답변: ${a.answer}`).join('\n\n');
+
+    const sys = `${AI_SYSTEM_PROMPT}
+
+### 암묵지 보완 Phase
+사용자가 추가로 답변한 암묵지(경험·노하우·주의사항)를 기존 매뉴얼에 자연스럽게 통합하세요.
+
+규칙:
+- 기존 매뉴얼 구조를 유지하면서, 적절한 위치에 암묵지 내용을 추가
+- 별도 "암묵지/노하우" 섹션을 추가하여 정리
+- 인수인계 가이드에도 반영
+
+반드시 JSON만 출력하세요.
+출력 JSON:
+{
+  "finalContent": string,
+  "addedItems": number,
+  "summary": string
+}`;
+
+    const userMsg = `[현재 매뉴얼]\n${currentContent}\n\n[암묵지 답변]\n${qaText}`;
+
+    const f: any = (globalThis as any).fetch;
+    if (!f) throw new BadRequestException('Server fetch not available.');
+
+    const resp = await f('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'system', content: sys }, { role: 'user', content: userMsg }],
+        temperature: 0.15,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
+    }
+
+    const data = await resp.json();
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    let parsed: any = {};
+    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('AI did not return valid JSON'); }
+
+    const finalContent = String(parsed.finalContent || currentContent).trim();
+
+    phaseData.phase5 = {
+      questions: answeredQAs,
+      finalContent,
+    };
+
+    await (this.prisma as any).workManual.update({
+      where: { id },
+      data: { content: finalContent, phaseData, currentPhase: 5, status: 'DRAFT' },
+    });
+
+    return {
+      finalContent,
+      addedItems: Number(parsed.addedItems || 0),
+      summary: String(parsed.summary || ''),
     };
   }
 }
