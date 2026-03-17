@@ -399,14 +399,44 @@ export function WorkManualExt() {
 
   async function createModuleIntegration(moduleKey: string) {
     if (!manual?.id) return;
-    const mod = MODULE_MAP[moduleKey];
-    if (!mod || !mod.endpoint) {
-      if (moduleKey === 'bpmn_engine') {
-        nav('/manuals');
-        return;
-      }
+
+    // BPMN 연동: AI로 BPMN 생성 → 프로세스 템플릿 생성 → 편집기 이동
+    if (moduleKey === 'bpmn_engine') {
+      setModLoading('bpmn_engine');
+      try {
+        const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ai/bpmn`, {
+          method: 'POST',
+          body: JSON.stringify({ userId }),
+        });
+        const tmplTitle = String(r?.title || manual.title || '').trim();
+        const bpmnJson = r?.bpmnJson;
+        if (!bpmnJson) throw new Error('AI BPMN 응답이 올바르지 않습니다.');
+
+        const created = await apiJson<{ id: string }>('/api/process-templates', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: tmplTitle,
+            description: `매뉴얼 「${manual.title}」에서 AI로 생성된 BPMN 프로세스`,
+            type: 'PROJECT',
+            ownerId: userId,
+            actorId: userId,
+            visibility: 'PRIVATE',
+            bpmnJson,
+            tasks: [],
+          }),
+        });
+        const tmplId = String(created?.id || '').trim();
+        if (!tmplId) throw new Error('프로세스 템플릿 생성 실패');
+        setModKbCreated(false); // reset
+        toast('BPMN 프로세스 템플릿이 생성되었습니다.', 'success');
+        nav(`/process/templates?openId=${encodeURIComponent(tmplId)}`);
+      } catch (e: any) { toast(e?.message || 'BPMN 생성 실패', 'error'); }
+      finally { setModLoading(''); }
       return;
     }
+
+    const mod = MODULE_MAP[moduleKey];
+    if (!mod || !mod.endpoint) return;
     setModLoading(moduleKey);
     try {
       await apiJson(mod.endpoint + encodeURIComponent(manual.id), {
@@ -756,7 +786,7 @@ export function WorkManualExt() {
                           <button className="btn" type="button" disabled={created || modLoading === mk}
                             onClick={() => createModuleIntegration(mk)}
                             style={{ padding: '5px 14px', fontSize: 11, background: created ? '#16a34a' : undefined, whiteSpace: 'nowrap' }}>
-                            {modLoading === mk ? '처리 중...' : created ? '완료 ✓' : mk === 'bpmn_engine' ? 'BPMN 이동' : '등록'}
+                            {modLoading === mk ? '처리 중...' : created ? '완료 ✓' : mk === 'bpmn_engine' ? 'BPMN 생성' : '등록'}
                           </button>
                         </div>
                       );
