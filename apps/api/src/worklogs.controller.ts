@@ -2017,8 +2017,43 @@ export class WorklogsController {
 
     const evaluationContext = evalLines.length ? evalLines.join('\n') : '';
     const q = String(question || '').trim();
-    const sys = '당신은 제조업(사출/도장/조립) 환경의 팀 리더 보조 AI입니다. 최근 업무일지와(선택 시) 현재 진행 현황/평가 정보를 바탕으로 팀별/개인별 진행 상황을 한국어로 간결하게 요약하고, 리스크/의존성/다음 액션을 bullet로 정리하세요. 넘겨받은 텍스트에 없는 추정은 하지 마세요.';
-    const user = `기간: ${kstYmd(from)} ~ ${kstYmd(to)} (총 ${days}일)\n\n요약을 작성해 주세요.\n- 팀별로 먼저 요약\n- 개인별 한줄 요약\n- 마지막에 전체 하이라이트 3개, 리스크 3개, 다음 액션 3개\n\n${q ? `[추가 문의사항]\n${q}\n\n추가 문의사항이 있으면 별도 섹션에서 답변해 주세요.\n\n` : ''}${statusContext ? `[현재 진행 현황]\n${statusContext}\n\n` : ''}${evaluationContext ? `[업무 평가(팀장/임원)]\n${evaluationContext}\n\n` : ''}[업무일지 데이터]\n${context}`;
+    const sys = `당신은 제조업(사출/도장/조립) 회사의 **대표이사(CEO)** 관점에서 업무를 분석·평가하는 경영 보좌 AI입니다.
+
+## 역할
+- 단순 취합/정리가 아니라, 대표이사가 해당 팀과 구성원의 업무를 **검토·평가**하는 시각으로 작성하세요.
+- 각 팀/구성원의 업무 기여도, 업무량, 집중도, 지연 리스크를 평가하세요.
+- 긍정적 성과는 인정하되, 개선이 필요한 부분은 구체적인 **개선 지침(Directive)**으로 제시하세요.
+
+## 출력 형식 (반드시 이 구조를 따르세요)
+### 📊 종합 경영 평가
+- 전체 조직 상태를 2~3문장으로 평가
+
+### 📋 팀별 분석
+각 팀에 대해:
+- **[팀명]**
+  - 평가: (잘한 점 / 부족한 점)
+  - 주요 성과:
+  - 우려 사항:
+  - 개선 지침:
+
+### 👤 구성원별 평가
+각 구성원에 대해:
+- **[이름] ([팀명])**
+  - 업무량/기여도: (상/중/하)
+  - 핵심 업무:
+  - 평가 코멘트:
+
+### ⚠️ 리스크 및 주의사항
+- 지연/병목/의존성 리스크
+
+### 📌 대표이사 개선 지침
+- 조직 차원에서 개선해야 할 사항을 구체적 지시 형태로 작성
+
+## 규칙
+- 넘겨받은 텍스트에 없는 추정은 하지 마세요.
+- 업무일지가 부실하거나 누락된 구성원이 있으면 해당 사실을 지적하세요.
+- 평가는 공정하고 건설적으로, 지침은 실행 가능하게 작성하세요.`;
+    const user = `기간: ${kstYmd(from)} ~ ${kstYmd(to)} (총 ${days}일)\n\n대표이사 관점에서 해당 기간의 업무를 분석·평가해 주세요.\n\n${q ? `[대표이사 추가 질의]\n${q}\n\n이 질의에 대해 별도 섹션에서 상세히 답변해 주세요.\n\n` : ''}${statusContext ? `[현재 진행 현황]\n${statusContext}\n\n` : ''}${evaluationContext ? `[업무 평가(팀장/임원)]\n${evaluationContext}\n\n` : ''}[업무일지 데이터]\n${context}`;
     // Call OpenAI
     const f: any = (globalThis as any).fetch;
     if (!f) {
@@ -2050,14 +2085,27 @@ export class WorklogsController {
 
   /** 반복 업무 패턴 감지 → 매뉴얼 작성 제안 */
   @Post('suggest-manuals')
-  async suggestManuals(@Body() body: { userId?: string; orgUnitId?: string; days?: number }) {
+  async suggestManuals(@Body() body: { userId?: string; orgUnitId?: string; days?: number; viewerId?: string; team?: string; user?: string }) {
     const days = body.days || 30;
     const since = new Date();
     since.setDate(since.getDate() - days);
 
     const where: any = { date: { gte: since } };
-    if (body.userId) where.createdById = body.userId;
-    if (body.orgUnitId) where.createdBy = { orgUnitId: body.orgUnitId };
+
+    // 위 AI 분석과 동일한 팀/구성원 스코프 적용
+    const viewerId = String(body.viewerId || body.userId || '').trim();
+    if (viewerId) {
+      const scopeOrgUnitIds = await this.getScopeOrgUnitIdsForViewer(viewerId);
+      if (scopeOrgUnitIds.size > 0) {
+        const createdByWhere: any = { orgUnitId: { in: Array.from(scopeOrgUnitIds) } };
+        if (body.team) createdByWhere.orgUnit = { name: body.team };
+        if (body.user) createdByWhere.name = { contains: body.user, mode: 'insensitive' as any };
+        where.createdBy = createdByWhere;
+      }
+    } else {
+      if (body.userId) where.createdById = body.userId;
+      if (body.orgUnitId) where.createdBy = { orgUnitId: body.orgUnitId };
+    }
 
     const worklogs = await this.prisma.worklog.findMany({
       where,

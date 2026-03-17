@@ -293,7 +293,7 @@ export function WorklogAi() {
               try {
                 const res = await apiJson<{ suggestions: any[]; aiAnalysis?: string; message?: string; days?: number }>('/api/worklogs/suggest-manuals', {
                   method: 'POST',
-                  body: JSON.stringify({ userId: myUserId || undefined, days: suggestDays }),
+                  body: JSON.stringify({ viewerId: myUserId || undefined, team: team || undefined, user: user || undefined, days: suggestDays }),
                 });
                 setSuggestions(res.suggestions || []);
                 setSuggestAi(res.aiAnalysis || res.message || null);
