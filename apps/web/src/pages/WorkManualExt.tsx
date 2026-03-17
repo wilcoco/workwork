@@ -238,12 +238,24 @@ export function WorkManualExt() {
     if (!filled.length) { toast('답변을 하나 이상 입력해 주세요.', 'warning'); return; }
     setP2Loading(true);
     try {
-      await apiJson(`/api/work-manuals/${encodeURIComponent(manual.id)}/ext/phase2/answer`, {
-        method: 'POST',
-        body: JSON.stringify({ userId, roundNum: p2Round, answers: p2Answers }),
-      });
+      const r = await apiJson<{ ok: boolean; completedRounds: number; nextRound?: { roundNum: number; questions: string[]; structuredSoFar: string; summary: string; completionRate: number } }>(
+        `/api/work-manuals/${encodeURIComponent(manual.id)}/ext/phase2/answer`, {
+          method: 'POST',
+          body: JSON.stringify({ userId, roundNum: p2Round, answers: p2Answers }),
+        });
       if (p2Round < 3) {
         setP2Round(prev => prev + 1);
+        // 백엔드가 다음 라운드 질문을 함께 반환하면 바로 적용 (2차 API 호출 불필요)
+        if (r.nextRound?.questions?.length) {
+          setP2Questions(r.nextRound.questions);
+          setP2Answers(new Array(r.nextRound.questions.length).fill(''));
+          setP2Structured(r.nextRound.structuredSoFar || '');
+          setP2Summary(r.nextRound.summary || '');
+          setP2CompletionRate(r.nextRound.completionRate || 0);
+          setP2Loading(false);
+          toast(`Round ${p2Round} 완료`, 'success');
+          return;
+        }
         toast(`Round ${p2Round} 완료. 다음 질문을 생성합니다.`, 'success');
       } else {
         toast('AI 구조화 질문 완료!', 'success');
