@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
+import { StepFormEditor, StepFormData, parseTextToStepForms, serializeStepsToText, makeEmptyStep } from '../components/StepFormEditor';
 
 // ─── Types ────────────────────────────────────────────────
 type BaseTypeDef = {
@@ -75,6 +76,12 @@ const PHASE_LABELS = [
   { n: 5, label: '암묵지 보완' },
 ];
 
+const PROC_PHASE_LABELS = [
+  { n: 1, label: '업무 입력' },
+  { n: 2, label: '프로세스 단계 편집' },
+  { n: 3, label: 'BPMN 프로세스 생성' },
+];
+
 // ═══════════════════════════════════════════════════════════
 export function WorkManualExt() {
   const nav = useNavigate();
@@ -126,10 +133,17 @@ export function WorkManualExt() {
   const [p5Final, setP5Final] = useState('');
   const [p5Summary, setP5Summary] = useState('');
 
-  // BPMN auto-conversion for procedure type
+  // BPMN / procedure-specific state
   const [bpmnJson, setBpmnJson] = useState<any>(null);
   const [bpmnLoading, setBpmnLoading] = useState(false);
   const [bpmnTemplateId, setBpmnTemplateId] = useState('');
+
+  // Procedure flow: StepFormEditor + AI validation
+  const [stepForms, setStepForms] = useState<StepFormData[]>([]);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [procAiLoading, setProcAiLoading] = useState(false);
+  const [procAiResult, setProcAiResult] = useState<{ summary: string; questions: Array<{ severity: string; question: string; targetStepId?: string; targetField?: string }> } | null>(null);
+  const [procQualityScore, setProcQualityScore] = useState<number | null>(null);
 
   // Module integration
   const [modKbCreated, setModKbCreated] = useState(false);
@@ -168,6 +182,15 @@ export function WorkManualExt() {
     // restore phase states
     if (m.phaseData?.phase4?.manualContent) setP4Content(m.phaseData.phase4.manualContent);
     if (m.phaseData?.phase5?.finalContent) setP5Final(m.phaseData.phase5.finalContent);
+    // procedure: restore stepForms from content if Phase >= 2
+    if (m.baseType === 'procedure' && (m.currentPhase || 1) >= 2 && m.content) {
+      const forms = parseTextToStepForms(m.content);
+      setStepForms(forms.length ? forms : [makeEmptyStep(1)]);
+    } else {
+      setStepForms([]);
+    }
+    setProcAiResult(null); setProcQualityScore(null);
+    setBpmnJson(null); setBpmnTemplateId('');
   }
 
   function newManual() {
@@ -183,7 +206,12 @@ export function WorkManualExt() {
     setP3Recommended([]); setP3Selected({});
     setP4Content(''); setP4Summary(''); setP4Security([]);
     setP5Questions([]); setP5Answers({}); setP5Final(''); setP5Summary('');
+    setStepForms([]); setProcAiResult(null); setProcQualityScore(null);
+    setBpmnJson(null); setBpmnTemplateId('');
   }
+
+  const isProcedure = selectedBaseType === 'procedure';
+  const phaseLabels = isProcedure ? PROC_PHASE_LABELS : PHASE_LABELS;
 
   // ─── Phase 1: Save & Continue ───────────────────────────
   async function savePhase1() {
@@ -215,11 +243,90 @@ export function WorkManualExt() {
       toast('저장 완료', 'success');
       setPhase(2);
       await loadList();
+      // procedure 타입이면 자동으로 AI STEP 변환 시작
+      if (selectedBaseType === 'procedure') {
+        setTimeout(() => void procDraftSteps(), 100);
+      }
     } catch (e: any) { toast(e?.message || '저장 실패', 'error'); }
     finally { setSaving(false); }
   }
 
-  // ─── Phase 2: AI Questions ──────────────────────────────
+  // ─── Procedure: AI Draft Steps (자유텍스트 → STEP 변환) ────
+  async function procDraftSteps() {
+    if (!manual?.id) return;
+    setDraftLoading(true);
+    try {
+      // 먼저 content를 최신 freeText로 저장
+      await apiJson(`/api/work-manuals/${encodeURIComponent(manual.id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId, title, content: freeText, authorName: userName, authorTeamName: teamName }),
+      });
+      const r = await apiJson<{ draftContent: string; stepCount: number; summary: string }>(
+        `/api/work-manuals/${encodeURIComponent(manual.id)}/ai/draft-steps`,
+        { method: 'POST', body: JSON.stringify({ userId }) },
+      );
+      if (!r?.draftContent) throw new Error('AI 응답이 올바르지 않습니다.');
+      const forms = parseTextToStepForms(r.draftContent);
+      setStepForms(forms.length ? forms : [makeEmptyStep(1)]);
+      // content도 STEP 형식으로 업데이트
+      await apiJson(`/api/work-manuals/${encodeURIComponent(manual.id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId, title, content: r.draftContent, authorName: userName, authorTeamName: teamName, currentPhase: 2 }),
+      });
+      toast(`AI가 ${r.stepCount}개 프로세스 단계를 생성했습니다.`, 'success');
+    } catch (e: any) { toast(e?.message || 'AI STEP 변환 실패', 'error'); }
+    finally { setDraftLoading(false); }
+  }
+
+  // ─── Procedure: AI Validation (StepFormEditor 검증) ────
+  async function procAiValidate() {
+    if (!manual?.id || !stepForms.some(s => s.title.trim())) return;
+    setProcAiLoading(true);
+    try {
+      // 먼저 현재 steps를 content에 저장
+      const content = serializeStepsToText(stepForms);
+      await apiJson(`/api/work-manuals/${encodeURIComponent(manual.id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId, title, content, authorName: userName, authorTeamName: teamName }),
+      });
+      const r = await apiJson<{ summary: string; issues: any[]; questions: any[]; score?: number }>(
+        `/api/work-manuals/${encodeURIComponent(manual.id)}/ai/questions`,
+        { method: 'POST', body: JSON.stringify({ userId }) },
+      );
+      setProcAiResult({
+        summary: String(r?.summary || ''),
+        questions: Array.isArray(r?.questions) ? r.questions : [],
+      });
+      if (typeof r?.score === 'number') setProcQualityScore(r.score);
+    } catch (e: any) { toast(e?.message || 'AI 검증 실패', 'error'); }
+    finally { setProcAiLoading(false); }
+  }
+
+  // ─── Procedure: Save steps & generate BPMN ────
+  async function procSaveAndBpmn() {
+    if (!manual?.id || !stepForms.some(s => s.title.trim())) return;
+    setBpmnLoading(true);
+    try {
+      const content = serializeStepsToText(stepForms);
+      await apiJson(`/api/work-manuals/${encodeURIComponent(manual.id)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId, title, content, authorName: userName, authorTeamName: teamName, currentPhase: 3 }),
+      });
+      const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ai/bpmn`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      });
+      if (r?.bpmnJson) {
+        setBpmnJson(r.bpmnJson);
+        toast('BPMN 프로세스가 생성되었습니다!', 'success');
+      } else {
+        throw new Error('BPMN 응답이 올바르지 않습니다.');
+      }
+    } catch (e: any) { toast(e?.message || 'BPMN 생성 실패', 'error'); }
+    finally { setBpmnLoading(false); }
+  }
+
+  // ─── Phase 2: AI Questions (non-procedure) ─────────────────────
   async function loadPhase2Questions() {
     if (!manual?.id) return;
     setP2Loading(true);
@@ -271,10 +378,10 @@ export function WorkManualExt() {
   }
 
   useEffect(() => {
-    if (phase === 2 && manual?.id && p2Questions.length === 0 && !p2Loading) {
+    if (phase === 2 && manual?.id && p2Questions.length === 0 && !p2Loading && selectedBaseType !== 'procedure') {
       void loadPhase2Questions();
     }
-  }, [phase, manual?.id, p2Round]);
+  }, [phase, manual?.id, p2Round, selectedBaseType]);
 
   // ─── Phase 3: Options ──────────────────────────────────
   async function loadPhase3() {
@@ -312,10 +419,10 @@ export function WorkManualExt() {
   }
 
   useEffect(() => {
-    if (phase === 3 && manual?.id && !p3Loading && p3Recommended.length === 0) {
+    if (phase === 3 && manual?.id && !p3Loading && p3Recommended.length === 0 && selectedBaseType !== 'procedure') {
       void loadPhase3();
     }
-  }, [phase, manual?.id]);
+  }, [phase, manual?.id, selectedBaseType]);
 
   // ─── Phase 4: Generate Output ──────────────────────────
   async function generatePhase4() {
@@ -540,7 +647,7 @@ export function WorkManualExt() {
           <h2 style={{ margin: 0 }}>업무 매뉴얼 외재화</h2>
           {manual && (
             <nav style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-              {PHASE_LABELS.map((s, i) => (
+              {phaseLabels.map((s, i) => (
                 <div key={s.n} style={{ display: 'flex', alignItems: 'center' }}>
                   {i > 0 && <div style={{ width: 20, height: 2, background: phase >= s.n ? S.primary : '#CBD5E1' }} />}
                   <button type="button"
@@ -669,14 +776,105 @@ export function WorkManualExt() {
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn" type="button" onClick={savePhase1} disabled={saving || !selectedBaseType || !title.trim() || !freeText.trim()}
                   style={{ padding: '8px 24px' }}>
-                  {saving ? '저장 중...' : '다음: AI 구조화 →'}
+                  {saving ? '저장 중...' : isProcedure ? '다음: 프로세스 단계 변환 →' : '다음: AI 구조화 →'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* ═══ Phase 2: AI 구조화 질문 ═══ */}
-          {phase === 2 && (
+          {/* ═══ Phase 2 ═══ */}
+          {phase === 2 && isProcedure && (
+            <div style={{ display: 'grid', gap: 12, animation: 'phase-fade 0.25s ease-out' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a' }}>2단계: 프로세스 단계 편집</div>
+                  <div style={S.muted}>AI가 변환한 프로세스 단계를 확인하고, BPMN에 필요한 세부 항목을 보완하세요.</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-sm btn-outline" type="button" onClick={procAiValidate}
+                    disabled={procAiLoading || !stepForms.some(s => s.title.trim())}
+                    style={{ fontSize: 11 }}>{procAiLoading ? 'AI 검증중…' : 'AI 검증'}</button>
+                  <button className="btn btn-sm btn-outline" type="button" onClick={procDraftSteps}
+                    disabled={draftLoading}
+                    style={{ fontSize: 11 }}>{draftLoading ? '변환중…' : 'AI 재변환'}</button>
+                </div>
+              </div>
+
+              {/* 로딩: AI가 STEP 변환 중 */}
+              {draftLoading && stepForms.length === 0 && (
+                <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>AI가 업무를 프로세스 단계로 변환하고 있습니다...</div>
+                  <div style={{ fontSize: 12 }}>자유 입력한 내용을 분석하여 STEP 구조로 변환 중입니다.</div>
+                </div>
+              )}
+
+              {/* StepFormEditor */}
+              {stepForms.length > 0 && (
+                <StepFormEditor steps={stepForms} onChange={setStepForms} validationIssues={procAiResult?.questions?.filter(q => q.severity === 'MUST').map(q => ({ stepId: q.targetStepId, issue: q.question, severity: q.severity as 'MUST' | 'SHOULD' }))} />
+              )}
+
+              {/* AI 검증 결과 */}
+              {procAiLoading && !procAiResult && (
+                <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 16, textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1e40af', marginBottom: 4 }}>AI 검증 중...</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>프로세스 단계를 BPMN 관점에서 분석하고 있습니다.</div>
+                </div>
+              )}
+              {procAiResult && (
+                <div style={{ border: '1px solid #E0E7FF', borderRadius: 10, background: '#F8FAFC', padding: 12, display: 'grid', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: '#1e40af' }}>AI 검증 결과</div>
+                    {procQualityScore !== null && (
+                      <span style={{ fontWeight: 800, fontSize: 13, color: procQualityScore >= 70 ? '#16a34a' : procQualityScore >= 40 ? '#ca8a04' : '#dc2626' }}>{procQualityScore}점</span>
+                    )}
+                  </div>
+                  {procAiResult.summary && (
+                    <div style={{ fontSize: 13, color: '#0f172a', lineHeight: 1.7, background: '#fff', borderRadius: 8, padding: '8px 10px', border: '1px solid #E5E7EB' }}>
+                      {procAiResult.summary}
+                    </div>
+                  )}
+                  {procAiResult.questions.length > 0 ? (
+                    <>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#374151' }}>보완 필요 ({procAiResult.questions.length}개) — 위 단계에서 직접 수정하세요</div>
+                      {procAiResult.questions.map((q, i) => (
+                        <div key={i} style={{ fontSize: 12, color: '#374151', lineHeight: 1.5, paddingLeft: 8, borderLeft: `3px solid ${q.severity === 'MUST' ? '#ef4444' : '#a5b4fc'}`, background: '#fff', borderRadius: 6, padding: '6px 8px 6px 12px' }}>
+                          <span style={{ fontWeight: 700, color: q.severity === 'MUST' ? '#dc2626' : '#6366f1', fontSize: 10, marginRight: 4 }}>{q.severity === 'MUST' ? '필수' : '권장'}</span>
+                          {q.targetStepId && <span style={{ fontSize: 10, background: '#E0E7FF', color: '#3730a3', borderRadius: 4, padding: '1px 4px', marginRight: 4 }}>{q.targetStepId}</span>}
+                          {q.targetField && <span style={{ fontSize: 10, background: '#F0FDF4', color: '#166534', borderRadius: 4, padding: '1px 4px', marginRight: 4 }}>{q.targetField}</span>}
+                          {q.question}
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#16a34a', textAlign: 'center', padding: 6 }}>모든 항목이 충분히 작성되었습니다!</div>
+                  )}
+                </div>
+              )}
+
+              {/* 완성도 점수 바 */}
+              {procQualityScore !== null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E5E7EB' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>완성도</div>
+                  <div style={{ flex: 1, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(procQualityScore, 100)}%`, borderRadius: 3, transition: 'width 0.5s ease',
+                      background: procQualityScore >= 70 ? '#16a34a' : procQualityScore >= 40 ? '#ca8a04' : '#dc2626' }} />
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: procQualityScore >= 70 ? '#16a34a' : procQualityScore >= 40 ? '#ca8a04' : '#dc2626', minWidth: 36, textAlign: 'right' }}>{procQualityScore}점</div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button className="btn btn-outline" type="button" onClick={() => setPhase(1)}>← 이전: 업무 입력</button>
+                <button className="btn" type="button"
+                  disabled={!stepForms.some(s => s.title.trim())}
+                  onClick={() => { setPhase(3); void procSaveAndBpmn(); }}
+                  style={{ padding: '8px 24px' }}>다음: BPMN 프로세스 생성 →</button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══ Phase 2 (non-procedure): AI 구조화 질문 ═══ */}
+          {phase === 2 && !isProcedure && (
             <div style={{ display: 'grid', gap: 12, animation: 'phase-fade 0.25s ease-out' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
@@ -731,8 +929,97 @@ export function WorkManualExt() {
             </div>
           )}
 
-          {/* ═══ Phase 3: 옵션 선택 ═══ */}
-          {phase === 3 && (
+          {/* ═══ Phase 3 (procedure): BPMN 프로세스 생성 ═══ */}
+          {phase === 3 && isProcedure && (
+            <div style={{ display: 'grid', gap: 12, animation: 'phase-fade 0.25s ease-out' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a' }}>3단계: BPMN 프로세스 생성</div>
+                <div style={S.muted}>프로세스 단계를 BPMN 그래프로 변환하고, 프로세스 템플릿을 생성합니다.</div>
+              </div>
+
+              {/* BPMN 변환 중 */}
+              {bpmnLoading && !bpmnJson && (
+                <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8 }}>BPMN 프로세스를 생성하고 있습니다...</div>
+                  <div style={{ fontSize: 12 }}>프로세스 단계를 분석하여 노드/엣지로 변환 중입니다.</div>
+                </div>
+              )}
+
+              {/* BPMN 결과 미리보기 */}
+              {bpmnJson && (
+                <div style={{ border: '2px solid #0F3D73', borderRadius: 12, padding: 16, background: '#EFF6FF' }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: '#0F3D73', marginBottom: 10 }}>BPMN 프로세스 구조</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                    <div style={{ background: '#fff', border: '1px solid #BFDBFE', borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontWeight: 700, fontSize: 11, color: '#1e40af', marginBottom: 6 }}>노드 ({(bpmnJson.nodes || []).length}개)</div>
+                      <div style={{ display: 'grid', gap: 3 }}>
+                        {(bpmnJson.nodes || []).map((n: any, i: number) => (
+                          <div key={i} style={{ fontSize: 11, color: '#0f172a', display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <span style={{ fontSize: 10, color: '#64748b', minWidth: 60 }}>
+                              {n.type === 'start' ? '🟢 시작' : n.type === 'end' ? '🔴 종료' : n.type === 'gateway_xor' ? '🔶 분기' : `📋 ${n.taskType || 'TASK'}`}
+                            </span>
+                            <span style={{ fontWeight: 600 }}>{n.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ background: '#fff', border: '1px solid #BFDBFE', borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontWeight: 700, fontSize: 11, color: '#1e40af', marginBottom: 6 }}>흐름 ({(bpmnJson.edges || []).length}개)</div>
+                      <div style={{ display: 'grid', gap: 3 }}>
+                        {(bpmnJson.edges || []).map((e: any, i: number) => {
+                          const src = (bpmnJson.nodes || []).find((n: any) => n.id === e.source);
+                          const tgt = (bpmnJson.nodes || []).find((n: any) => n.id === e.target);
+                          return (
+                            <div key={i} style={{ fontSize: 11, color: '#334155' }}>
+                              {src?.name || e.source} → {tgt?.name || e.target}
+                              {e.condition && <span style={{ color: '#64748b', fontSize: 10 }}> ({e.condition})</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 프로세스 템플릿 생성 / 편집기 이동 */}
+                  {!bpmnTemplateId ? (
+                    <button className="btn" type="button" onClick={createBpmnTemplate} disabled={modLoading === 'bpmn_engine'}
+                      style={{ width: '100%', padding: '12px 24px', fontSize: 14, fontWeight: 800, background: '#0F3D73' }}>
+                      {modLoading === 'bpmn_engine' ? '프로세스 템플릿 생성 중...' : '프로세스 템플릿 생성'}
+                    </button>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, padding: 10, textAlign: 'center', fontWeight: 700, fontSize: 13, color: '#166534' }}>
+                        프로세스 템플릿이 생성되었습니다!
+                      </div>
+                      <button className="btn" type="button"
+                        onClick={() => nav(`/process/templates?openId=${encodeURIComponent(bpmnTemplateId)}`)}
+                        style={{ width: '100%', padding: '12px 24px', fontSize: 14, fontWeight: 800 }}>
+                        프로세스 편집기에서 확인/수정 →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* BPMN 변환 실패 시 */}
+              {!bpmnLoading && !bpmnJson && (
+                <div style={{ border: '1px solid #FCD34D', borderRadius: 10, background: '#FFFBEB', padding: 16, textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E', marginBottom: 8 }}>BPMN 변환이 아직 완료되지 않았습니다.</div>
+                  <button className="btn" type="button" onClick={procSaveAndBpmn} style={{ padding: '8px 20px', fontSize: 13 }}>
+                    BPMN 변환 시작
+                  </button>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button className="btn btn-outline" type="button" onClick={() => setPhase(2)}>← 이전: 프로세스 단계 편집</button>
+                <button className="btn btn-outline" type="button" onClick={() => nav('/manuals')}>매뉴얼 목록으로</button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══ Phase 3 (non-procedure): 옵션 선택 ═══ */}
+          {phase === 3 && !isProcedure && (
             <div style={{ display: 'grid', gap: 12, animation: 'phase-fade 0.25s ease-out' }}>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a' }}>3단계: 옵션 선택</div>
