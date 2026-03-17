@@ -148,6 +148,9 @@ model User {
   workManuals WorkManual[]
   manualReviews WorkManual[] @relation("ManualReviewer")
   weeklyReports WeeklyReport[] @relation("WeeklyReportAuthor")
+  knowledgeBases KnowledgeBase[]
+  schedules Schedule[]
+  periodicAlarms PeriodicAlarm[]
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -331,6 +334,10 @@ model WorkManual {
   @@index([status])
   @@index([reviewerId])
   @@index([baseType])
+
+  knowledgeBases KnowledgeBase[]
+  schedules Schedule[]
+  periodicAlarms PeriodicAlarm[]
 }
 
 model Event {
@@ -846,4 +853,72 @@ model Equipment {
   code      String   @unique
   name      String
   createdAt DateTime @default(now())
+}
+
+// ── 지식베이스 (system_operation / calculation 기본형 연동) ──
+model KnowledgeBase {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  manualId      String?
+  manual        WorkManual? @relation(fields: [manualId], references: [id])
+  category      String   @default("general")
+  title         String
+  content       String
+  tags          String   @default("")
+  systemName    String?
+  version       Int      @default(1)
+  viewCount     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([manualId])
+  @@index([category])
+  @@index([systemName])
+}
+
+// ── 일정관리 (dev_project 기본형 연동) ──
+model Schedule {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  manualId      String?
+  manual        WorkManual? @relation(fields: [manualId], references: [id])
+  title         String
+  description   String?
+  startDate     DateTime
+  endDate       DateTime
+  milestones    Json?
+  status        String   @default("planned")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([manualId])
+  @@index([startDate])
+}
+
+// ── 주기알람 (inspection_mgmt 기본형 연동) ──
+model PeriodicAlarm {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  manualId      String?
+  manual        WorkManual? @relation(fields: [manualId], references: [id])
+  title         String
+  description   String?
+  cronExpression String?
+  intervalDays  Int       @default(0)
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  isActive      Boolean   @default(true)
+  checkItems    Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([manualId])
+  @@index([nextRunAt])
+  @@index([isActive])
 }

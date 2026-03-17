@@ -125,6 +125,12 @@ export function WorkManualExt() {
   const [p5Final, setP5Final] = useState('');
   const [p5Summary, setP5Summary] = useState('');
 
+  // Module integration
+  const [modKbCreated, setModKbCreated] = useState(false);
+  const [modSchedCreated, setModSchedCreated] = useState(false);
+  const [modAlarmCreated, setModAlarmCreated] = useState(false);
+  const [modLoading, setModLoading] = useState('');
+
   // ─── Load base types + list ─────────────────────────────
   useEffect(() => {
     apiJson<{ baseTypes: BaseTypeDef[]; optionGroups: OptionGroup[] }>('/api/work-manuals/ext/base-types')
@@ -352,6 +358,60 @@ export function WorkManualExt() {
       void loadPhase5();
     }
   }, [phase, manual?.id]);
+
+  // ─── Module integration helpers ─────────────────────────
+  const MODULE_MAP: Record<string, { label: string; icon: string; desc: string; endpoint: string }> = {
+    knowledge_base: { label: '지식베이스 등록', icon: '📚', desc: '시스템 조작/계산 매뉴얼을 지식베이스에 등록합니다.', endpoint: '/api/knowledge-base/from-manual/' },
+    schedule_mgmt: { label: '일정 생성', icon: '📅', desc: '개발 프로젝트 일정을 자동 생성합니다.', endpoint: '/api/schedules/from-manual/' },
+    periodic_alarm_report: { label: '주기알람 등록', icon: '🔔', desc: '점검/관리 주기 알람을 등록합니다.', endpoint: '/api/periodic-alarms/from-manual/' },
+    bpmn_engine: { label: 'BPMN 프로세스', icon: '⚙️', desc: '업무 절차를 BPMN 프로세스 템플릿으로 변환합니다.', endpoint: '' },
+  };
+
+  const applicableModules = useMemo(() => {
+    const bt = baseTypes.find(b => b.id === selectedBaseType);
+    if (!bt) return [];
+    const modules = [bt.targetModule];
+    // add modules from selected options
+    for (const grp of optionGroups) {
+      for (const it of grp.items) {
+        if ((p3Selected[grp.id] || []).includes(it.id) && it.targetModule && it.targetModule !== 'none') {
+          if (!modules.includes(it.targetModule)) modules.push(it.targetModule);
+        }
+      }
+    }
+    return modules.filter(m => !!MODULE_MAP[m]);
+  }, [selectedBaseType, baseTypes, optionGroups, p3Selected]);
+
+  async function createModuleIntegration(moduleKey: string) {
+    if (!manual?.id) return;
+    const mod = MODULE_MAP[moduleKey];
+    if (!mod || !mod.endpoint) {
+      if (moduleKey === 'bpmn_engine') {
+        nav('/manuals');
+        return;
+      }
+      return;
+    }
+    setModLoading(moduleKey);
+    try {
+      await apiJson(mod.endpoint + encodeURIComponent(manual.id), {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      });
+      if (moduleKey === 'knowledge_base') setModKbCreated(true);
+      else if (moduleKey === 'schedule_mgmt') setModSchedCreated(true);
+      else if (moduleKey === 'periodic_alarm_report') setModAlarmCreated(true);
+      toast(`${mod.label} 완료!`, 'success');
+    } catch (e: any) { toast(e?.message || `${mod.label} 실패`, 'error'); }
+    finally { setModLoading(''); }
+  }
+
+  function isModuleCreated(moduleKey: string) {
+    if (moduleKey === 'knowledge_base') return modKbCreated;
+    if (moduleKey === 'schedule_mgmt') return modSchedCreated;
+    if (moduleKey === 'periodic_alarm_report') return modAlarmCreated;
+    return false;
+  }
 
   // ─── Toggle option helper ──────────────────────────────
   function toggleOption(groupId: string, itemId: string) {
@@ -635,6 +695,36 @@ export function WorkManualExt() {
               {p4Content && (
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, maxHeight: 500, overflow: 'auto' }}>
                   <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.7, color: '#0f172a', margin: 0 }}>{p4Content}</pre>
+                </div>
+              )}
+
+              {/* Module Integration */}
+              {p4Content && applicableModules.length > 0 && (
+                <div style={{ border: '1px solid #C7D2FE', borderRadius: 10, padding: 12, background: '#EEF2FF' }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#3730a3', marginBottom: 8 }}>모듈 연동</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {applicableModules.map(mk => {
+                      const mod = MODULE_MAP[mk];
+                      if (!mod) return null;
+                      const created = isModuleCreated(mk);
+                      return (
+                        <div key={mk} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', border: '1px solid #E0E7FF', borderRadius: 8, padding: '8px 12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 18 }}>{mod.icon}</span>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 12, color: '#1e1b4b' }}>{mod.label}</div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>{mod.desc}</div>
+                            </div>
+                          </div>
+                          <button className="btn" type="button" disabled={created || modLoading === mk}
+                            onClick={() => createModuleIntegration(mk)}
+                            style={{ padding: '5px 14px', fontSize: 11, background: created ? '#16a34a' : undefined, whiteSpace: 'nowrap' }}>
+                            {modLoading === mk ? '처리 중...' : created ? '완료 ✓' : mk === 'bpmn_engine' ? 'BPMN 이동' : '등록'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

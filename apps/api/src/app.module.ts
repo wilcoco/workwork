@@ -31,6 +31,9 @@ import { WorklogEvalsController } from './worklog-evals.controller';
 import { TeamsNotificationService } from './teams-notification.service';
 import { WorkManualsController } from './work-manuals.controller';
 import { WeeklyReportsController } from './weekly-reports.controller';
+import { KnowledgeBaseController } from './knowledge-base.controller';
+import { SchedulesController } from './schedules.controller';
+import { PeriodicAlarmsController } from './periodic-alarms.controller';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -64,6 +67,9 @@ import { WeeklyReportsController } from './weekly-reports.controller';
     ProcessesController,
     MastersController,
     WorklogEvalsController,
+    KnowledgeBaseController,
+    SchedulesController,
+    PeriodicAlarmsController,
   ],
   providers: [PrismaService, TeamsNotificationService],
 })
