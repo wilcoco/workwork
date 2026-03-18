@@ -151,6 +151,7 @@ model User {
   knowledgeBases KnowledgeBase[]
   schedules Schedule[]
   periodicAlarms PeriodicAlarm[]
+  workSkillFiles WorkSkillFile[]
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -338,6 +339,7 @@ model WorkManual {
   knowledgeBases KnowledgeBase[]
   schedules Schedule[]
   periodicAlarms PeriodicAlarm[]
+  workSkillFiles WorkSkillFile[]
 }
 
 model Event {
@@ -921,4 +923,24 @@ model PeriodicAlarm {
   @@index([manualId])
   @@index([nextRunAt])
   @@index([isActive])
+}
+
+// ── 업무 스킬 파일 (Claude Skills 기반 업무 지식 구조화) ──
+model WorkSkillFile {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id])
+  manualId      String?
+  manual        WorkManual?  @relation(fields: [manualId], references: [id])
+  title         String
+  version       Int          @default(1)
+  skillData     Json         // WorkSkillFileData JSON (overview, actors, steps, decisions, exceptions, etc.)
+  status        String       @default("draft") // draft | active | archived
+  qaHistory     Json?        // Array of Q&A conversations
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([manualId])
+  @@index([status])
 }

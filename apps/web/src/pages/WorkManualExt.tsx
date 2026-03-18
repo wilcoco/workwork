@@ -154,6 +154,15 @@ export function WorkManualExt() {
   // AI model selection: 'openai' (저가) | 'claude' (고가/고품질)
   const [aiModel, setAiModel] = useState<'openai' | 'claude'>('openai');
 
+  // Skill File + Q&A
+  const [skillFile, setSkillFile] = useState<any>(null);
+  const [skillLoading, setSkillLoading] = useState(false);
+  const [skillTab, setSkillTab] = useState<'overview' | 'steps' | 'faq' | 'qa'>('overview');
+  const [qaMessages, setQaMessages] = useState<Array<{ role: 'user' | 'ai'; text: string; relatedSteps?: string[]; suggestedFollowUp?: string[] }>>([]);
+  const [qaInput, setQaInput] = useState('');
+  const [qaLoading, setQaLoading] = useState(false);
+  const [showSkillPanel, setShowSkillPanel] = useState(false);
+
   // ─── Load base types + list ─────────────────────────────
   useEffect(() => {
     apiJson<{ baseTypes: BaseTypeDef[]; optionGroups: OptionGroup[] }>('/api/work-manuals/ext/base-types')
@@ -329,6 +338,61 @@ export function WorkManualExt() {
         throw new Error('BPMN 응답이 올바르지 않습니다.');
       }
     } catch (e: any) { toast(e?.message || 'BPMN 생성 실패', 'error'); }
+    finally { setBpmnLoading(false); }
+  }
+
+  // ─── Skill File: Generate / Load / Q&A ───────────────────
+  async function generateSkillFile() {
+    if (!manual?.id) return;
+    setSkillLoading(true);
+    try {
+      const r = await apiJson<{ skillFile: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/skill-file`, {
+        method: 'POST', body: JSON.stringify({ userId, aiModel }),
+      });
+      setSkillFile(r.skillFile);
+      setShowSkillPanel(true);
+      toast('업무 스킬 파일이 생성되었습니다!', 'success');
+    } catch (e: any) { toast(e?.message || '스킬 파일 생성 실패', 'error'); }
+    finally { setSkillLoading(false); }
+  }
+
+  async function loadSkillFile() {
+    if (!manual?.id) return;
+    try {
+      const r = await apiJson<{ skillFile: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/skill-file?userId=${encodeURIComponent(userId)}`);
+      setSkillFile(r.skillFile);
+    } catch { /* no skill file yet */ }
+  }
+
+  useEffect(() => { if (manual?.id) loadSkillFile(); }, [manual?.id]);
+
+  async function sendQaQuestion(q?: string) {
+    const question = q || qaInput.trim();
+    if (!manual?.id || !question) return;
+    setQaMessages(prev => [...prev, { role: 'user', text: question }]);
+    setQaInput('');
+    setQaLoading(true);
+    try {
+      const r = await apiJson<{ answer: string; relatedSteps: string[]; suggestedFollowUp: string[] }>(
+        `/api/work-manuals/${encodeURIComponent(manual.id)}/skill-qa`,
+        { method: 'POST', body: JSON.stringify({ userId, question, aiModel }) },
+      );
+      setQaMessages(prev => [...prev, { role: 'ai', text: r.answer, relatedSteps: r.relatedSteps, suggestedFollowUp: r.suggestedFollowUp }]);
+    } catch (e: any) {
+      setQaMessages(prev => [...prev, { role: 'ai', text: `오류: ${e?.message || 'Q&A 실패'}` }]);
+    }
+    finally { setQaLoading(false); }
+  }
+
+  async function skillFileToBpmn() {
+    if (!manual?.id) return;
+    setBpmnLoading(true);
+    try {
+      const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/skill-file/to-bpmn`, {
+        method: 'POST', body: JSON.stringify({ userId, aiModel }),
+      });
+      if (r?.bpmnJson) { setBpmnJson(r.bpmnJson); toast('Skill File 기반 BPMN이 생성되었습니다!', 'success'); }
+    } catch (e: any) { toast(e?.message || 'BPMN 변환 실패', 'error'); }
     finally { setBpmnLoading(false); }
   }
 
@@ -1314,7 +1378,206 @@ export function WorkManualExt() {
         </div>
       </div>
 
-      <style>{`@keyframes phase-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      {/* ═══ Skill File 패널 (슬라이드 오버) ═══ */}
+      {showSkillPanel && skillFile && (() => {
+        const sd = skillFile.skillData || {};
+        const tabs: Array<{ key: typeof skillTab; label: string }> = [
+          { key: 'overview', label: '개요' },
+          { key: 'steps', label: '프로세스 단계' },
+          { key: 'faq', label: 'FAQ' },
+          { key: 'qa', label: 'Q&A 챗봇' },
+        ];
+        return (
+          <div style={{ position: 'fixed', top: 0, right: 0, width: 480, height: '100vh', background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', zIndex: 1000, display: 'flex', flexDirection: 'column', animation: 'slide-in 0.2s ease-out' }}>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>📋</span>
+                <div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: '#0f172a' }}>업무 스킬 파일</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>v{skillFile.version} · {sd.meta?.domain || sd.meta?.baseType || ''}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="btn btn-outline" type="button" onClick={skillFileToBpmn} disabled={bpmnLoading} style={{ fontSize: 11, padding: '4px 10px' }}>
+                  {bpmnLoading ? '변환 중...' : 'BPMN 생성'}
+                </button>
+                <button type="button" onClick={() => setShowSkillPanel(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#64748b', padding: '2px 6px' }}>✕</button>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0', background: '#FAFBFC' }}>
+              {tabs.map(t => (
+                <button key={t.key} type="button" onClick={() => setSkillTab(t.key)}
+                  style={{ flex: 1, padding: '8px 0', fontSize: 12, fontWeight: skillTab === t.key ? 700 : 400, border: 'none', borderBottom: skillTab === t.key ? '2px solid #0F3D73' : '2px solid transparent', background: 'transparent', cursor: 'pointer', color: skillTab === t.key ? '#0F3D73' : '#64748b' }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Content */}
+            <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+
+              {/* Overview Tab */}
+              {skillTab === 'overview' && (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div style={{ background: '#EFF6FF', borderRadius: 8, padding: 12 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#1e40af', marginBottom: 4 }}>{sd.meta?.title}</div>
+                    <div style={{ fontSize: 12, color: '#334155' }}>{sd.overview?.purpose}</div>
+                  </div>
+                  {sd.overview?.scope && <div style={{ fontSize: 12, color: '#475569' }}><strong>적용 범위:</strong> {sd.overview.scope}</div>}
+                  {sd.overview?.triggerConditions?.length > 0 && (
+                    <div><div style={{ fontWeight: 700, fontSize: 12, color: '#0f172a', marginBottom: 4 }}>시작 조건</div>
+                      {sd.overview.triggerConditions.map((c: string, i: number) => <div key={i} style={{ fontSize: 12, color: '#475569', paddingLeft: 8 }}>• {c}</div>)}
+                    </div>
+                  )}
+                  {sd.actors?.length > 0 && (
+                    <div><div style={{ fontWeight: 700, fontSize: 12, color: '#0f172a', marginBottom: 4 }}>역할</div>
+                      {sd.actors.map((a: any, i: number) => (
+                        <div key={i} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 6, padding: 8, marginBottom: 4 }}>
+                          <div style={{ fontWeight: 600, fontSize: 12 }}>{a.role} {a.department ? `(${a.department})` : ''}</div>
+                          {a.responsibilities?.map((r: string, j: number) => <div key={j} style={{ fontSize: 11, color: '#64748b', paddingLeft: 8 }}>- {r}</div>)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {sd.exceptions?.length > 0 && (
+                    <div><div style={{ fontWeight: 700, fontSize: 12, color: '#DC2626', marginBottom: 4 }}>예외 상황</div>
+                      {sd.exceptions.map((e: any, i: number) => (
+                        <div key={i} style={{ background: '#FEF2F2', borderRadius: 6, padding: 8, marginBottom: 4, fontSize: 12 }}>
+                          <div style={{ fontWeight: 600, color: '#991B1B' }}>{e.situation}</div>
+                          <div style={{ color: '#475569' }}>대응: {e.response}</div>
+                          {e.escalation && <div style={{ color: '#64748b', fontSize: 11 }}>에스컬레이션: {e.escalation}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {sd.handover && (
+                    <div><div style={{ fontWeight: 700, fontSize: 12, color: '#0f172a', marginBottom: 4 }}>인수인계 가이드</div>
+                      {sd.handover.criticalPoints?.map((p: string, i: number) => <div key={i} style={{ fontSize: 12, color: '#DC2626', paddingLeft: 8 }}>⚠ {p}</div>)}
+                      {sd.handover.firstWeekGuide?.map((g: string, i: number) => <div key={i} style={{ fontSize: 12, color: '#475569', paddingLeft: 8 }}>• {g}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Steps Tab */}
+              {skillTab === 'steps' && (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {(sd.steps || []).map((step: any, i: number) => (
+                    <div key={step.id || i} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, padding: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                        <span style={{ background: step.taskType === 'APPROVAL' ? '#DC2626' : step.taskType === 'COOPERATION' ? '#D97706' : '#0F3D73', color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>{step.taskType || 'WORKLOG'}</span>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{step.id} {step.name}</span>
+                      </div>
+                      {step.actor && <div style={{ fontSize: 11, color: '#64748b' }}>담당: {step.actor}</div>}
+                      {step.purpose && <div style={{ fontSize: 12, color: '#334155', marginTop: 2 }}>{step.purpose}</div>}
+                      {step.method && <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>방법: {step.method}</div>}
+                      {step.tips?.length > 0 && (
+                        <div style={{ marginTop: 4 }}>
+                          {step.tips.map((t: string, j: number) => <div key={j} style={{ fontSize: 11, color: '#16a34a', paddingLeft: 8 }}>💡 {t}</div>)}
+                        </div>
+                      )}
+                      {step.commonMistakes?.length > 0 && (
+                        <div style={{ marginTop: 2 }}>
+                          {step.commonMistakes.map((m: string, j: number) => <div key={j} style={{ fontSize: 11, color: '#DC2626', paddingLeft: 8 }}>⚠ {m}</div>)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {sd.decisions?.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#7C3AED', marginBottom: 4 }}>분기점</div>
+                      {sd.decisions.map((d: any, i: number) => (
+                        <div key={i} style={{ background: '#F5F3FF', borderRadius: 6, padding: 8, marginBottom: 4, fontSize: 12 }}>
+                          <div style={{ fontWeight: 600 }}>{d.afterStep} 이후: {d.question}</div>
+                          {d.conditions?.map((c: any, j: number) => <div key={j} style={{ paddingLeft: 8, color: '#6D28D9' }}>→ {c.condition}: {c.nextStep}</div>)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* FAQ Tab */}
+              {skillTab === 'faq' && (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {(sd.faq || []).map((f: any, i: number) => (
+                    <div key={i} style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#0F3D73', marginBottom: 4 }}>Q. {f.question}</div>
+                      <div style={{ fontSize: 12, color: '#334155' }}>{f.answer}</div>
+                    </div>
+                  ))}
+                  {sd.tacitKnowledge?.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: '#0f172a', marginBottom: 4 }}>암묵지 / 노하우</div>
+                      {sd.tacitKnowledge.map((tk: any, i: number) => (
+                        <div key={i} style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: 8, marginBottom: 4, fontSize: 12 }}>
+                          <span style={{ fontWeight: 600 }}>[{tk.category}]</span> {tk.content}
+                          {tk.context && <div style={{ color: '#92400E', fontSize: 11 }}>상황: {tk.context}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Q&A Chat Tab */}
+              {skillTab === 'qa' && (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>이 업무에 대해 궁금한 것을 자유롭게 질문하세요. Skill File을 기반으로 답변합니다.</div>
+                  <div style={{ flex: 1, overflow: 'auto', display: 'grid', gap: 8, alignContent: 'start' }}>
+                    {qaMessages.map((m, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                        <div style={{
+                          maxWidth: '85%', padding: '8px 12px', borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                          background: m.role === 'user' ? '#0F3D73' : '#F1F5F9', color: m.role === 'user' ? '#fff' : '#0f172a', fontSize: 12, lineHeight: 1.6,
+                        }}>
+                          <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                          {m.relatedSteps?.length ? <div style={{ fontSize: 10, marginTop: 4, opacity: 0.7 }}>관련 단계: {m.relatedSteps.join(', ')}</div> : null}
+                          {m.suggestedFollowUp?.length ? (
+                            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                              {m.suggestedFollowUp.map((sq, j) => (
+                                <button key={j} type="button" onClick={() => sendQaQuestion(sq)}
+                                  style={{ fontSize: 10, padding: '2px 8px', borderRadius: 12, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                  {sq}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                    {qaLoading && <div style={{ fontSize: 12, color: '#64748b', padding: 8 }}>답변 생성 중...</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, borderTop: '1px solid #E2E8F0', paddingTop: 8 }}>
+                    <input value={qaInput} onChange={e => setQaInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQaQuestion(); } }}
+                      placeholder="질문을 입력하세요..." style={{ flex: 1, padding: '8px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 12, outline: 'none' }} />
+                    <button className="btn" type="button" onClick={() => sendQaQuestion()} disabled={qaLoading || !qaInput.trim()} style={{ padding: '8px 16px', fontSize: 12 }}>전송</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Skill File floating button */}
+      {manual && !showSkillPanel && (
+        <button type="button" onClick={() => { if (skillFile) setShowSkillPanel(true); else generateSkillFile(); }}
+          disabled={skillLoading}
+          style={{ position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: '50%', background: skillFile ? '#0F3D73' : '#D97706', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 22, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}
+          title={skillFile ? '스킬 파일 보기' : '스킬 파일 생성'}>
+          {skillLoading ? '⏳' : skillFile ? '📋' : '🧠'}
+        </button>
+      )}
+
+      <style>{`
+        @keyframes phase-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+      `}</style>
     </div>
   );
 }
