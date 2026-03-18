@@ -99,6 +99,9 @@ export function WorkManualExt() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Work Mode: classic(기존) / skill-plus(스킬추가) / skill-center(스킬중심)
+  const [workMode, setWorkMode] = useState<'classic' | 'skill-plus' | 'skill-center'>('skill-plus');
+
   // Phase 1
   const [selectedBaseType, setSelectedBaseType] = useState('');
   const [title, setTitle] = useState('');
@@ -781,6 +784,31 @@ export function WorkManualExt() {
         </div>
       </div>
 
+      {/* ── 모드 선택 대메뉴 ── */}
+      <div style={{ display: 'flex', gap: 0, borderRadius: 10, overflow: 'hidden', border: '2px solid #E2E8F0' }}>
+        {([
+          { key: 'classic' as const, label: '기존 방식', icon: '📄', desc: '5단계 위저드 + from-manual 모듈', color: '#475569' },
+          { key: 'skill-plus' as const, label: '스킬 추가 버전', icon: '🧠', desc: '기존 + Skill File Q&A/인수인계', color: '#0F3D73' },
+          { key: 'skill-center' as const, label: '스킬 중심 버전', icon: '⚡', desc: 'Skill File 허브 → 모든 모듈 생성', color: '#7C3AED' },
+        ]).map((m) => {
+          const active = workMode === m.key;
+          return (
+            <button key={m.key} type="button" onClick={() => setWorkMode(m.key)}
+              style={{
+                flex: 1, padding: '10px 12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s',
+                background: active ? (m.key === 'classic' ? '#F1F5F9' : m.key === 'skill-plus' ? '#EFF6FF' : '#F5F3FF') : '#fff',
+                borderBottom: active ? `3px solid ${m.color}` : '3px solid transparent',
+              }}>
+              <span style={{ fontSize: 22 }}>{m.icon}</span>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: active ? 800 : 600, fontSize: 13, color: active ? m.color : '#64748b' }}>{m.label}</div>
+                <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.3 }}>{m.desc}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── Layout ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 12, alignItems: 'start' }}>
         {/* Sidebar */}
@@ -1191,47 +1219,40 @@ export function WorkManualExt() {
                 </div>
               </div>
 
-              {/* ── 생성 전략 선택 (방안 A / B / C) ── */}
-              {skillFile && (
-                <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 10, padding: 12 }}>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: '#5B21B6', marginBottom: 8 }}>🧪 생성 전략 비교</div>
-                  <div style={{ display: 'grid', gap: 6, fontSize: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 6, padding: '8px 10px', border: '1px solid #E9D5FF' }}>
-                      <span style={{ fontWeight: 800, color: '#7C3AED', minWidth: 48 }}>방안 A</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, color: '#0f172a' }}>기존 방식 (매뉴얼 → 모듈)</div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>Phase 4 산출물 + from-manual API로 모듈 생성. 아래 기존 플로우 사용.</div>
-                      </div>
-                      <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700 }}>현재 활성</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 6, padding: '8px 10px', border: '1px solid #E9D5FF' }}>
-                      <span style={{ fontWeight: 800, color: '#7C3AED', minWidth: 48 }}>방안 B</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, color: '#0f172a' }}>Skill File 기반 (Skill File → 모듈)</div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>구조화된 Skill File에서 직접 모듈 생성. 정확도 높음.</div>
-                      </div>
-                      <button className="btn" type="button" onClick={() => { setShowSkillPanel(true); setSkillTab('modules'); }}
-                        style={{ fontSize: 10, padding: '3px 10px', whiteSpace: 'nowrap' }}>
-                        Skill 패널 열기
-                      </button>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 6, padding: '8px 10px', border: '1px solid #E9D5FF' }}>
-                      <span style={{ fontWeight: 800, color: '#7C3AED', minWidth: 48 }}>방안 C</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, color: '#0f172a' }}>병행 비교 (A + B 동시 실행)</div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>두 방식으로 각각 생성한 뒤 결과 품질을 비교 검증.</div>
-                      </div>
-                      <span style={{ fontSize: 10, color: '#64748b' }}>A+B 각각 실행</span>
-                    </div>
-                  </div>
+              {/* ── 모드별 안내 배너 ── */}
+              {workMode === 'skill-plus' && skillFile && (
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: 10, fontSize: 12, color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>🧠 <strong>스킬 추가 모드</strong> — 기존 모듈 생성 + Skill File 기반 보강 기능 활성</span>
+                  <button className="btn" type="button" onClick={() => { setShowSkillPanel(true); setSkillTab('modules'); }}
+                    style={{ fontSize: 10, padding: '3px 10px', whiteSpace: 'nowrap' }}>Skill 패널 열기</button>
                 </div>
               )}
-              {!skillFile && manual?.content && (
+              {workMode === 'skill-plus' && !skillFile && manual?.content && (
                 <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: 10, fontSize: 12, color: '#92400E', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>💡 Skill File을 생성하면 <strong>방안 B/C</strong>(Skill File 기반 모듈 생성 + 비교 검증)를 사용할 수 있습니다.</span>
+                  <span>💡 Skill File을 생성하면 Q&A/인수인계/정밀 모듈 생성 기능을 추가로 사용할 수 있습니다.</span>
                   <button className="btn" type="button" onClick={generateSkillFile} disabled={skillLoading}
                     style={{ fontSize: 11, padding: '4px 12px', whiteSpace: 'nowrap' }}>
                     {skillLoading ? '생성 중...' : '스킬 파일 생성'}
+                  </button>
+                </div>
+              )}
+              {workMode === 'skill-center' && !skillFile && manual?.content && (
+                <div style={{ background: '#F5F3FF', border: '2px solid #DDD6FE', borderRadius: 10, padding: 14, textAlign: 'center' }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#7C3AED', marginBottom: 6 }}>⚡ 스킬 중심 모드 — Skill File 필요</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>이 모드에서는 Skill File이 모든 모듈 생성의 중심입니다. 먼저 Skill File을 생성해주세요.</div>
+                  <button className="btn" type="button" onClick={generateSkillFile} disabled={skillLoading}
+                    style={{ padding: '8px 24px', background: '#7C3AED' }}>
+                    {skillLoading ? '스킬 파일 생성 중...' : '🧠 스킬 파일 생성'}
+                  </button>
+                </div>
+              )}
+              {workMode === 'skill-center' && skillFile && (
+                <div style={{ background: '#F5F3FF', border: '2px solid #DDD6FE', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#7C3AED', marginBottom: 4 }}>⚡ 스킬 중심 모드 — Skill File → 모듈 직접 생성</div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>구조화된 Skill File에서 직접 모듈을 생성합니다. 기존 from-manual보다 정확도가 높습니다.</div>
+                  <button className="btn" type="button" onClick={() => { setShowSkillPanel(true); setSkillTab('modules'); }}
+                    style={{ padding: '6px 16px', fontSize: 12, background: '#7C3AED' }}>
+                    📋 Skill File 모듈 생성 패널 열기
                   </button>
                 </div>
               )}
@@ -1267,8 +1288,8 @@ export function WorkManualExt() {
                 </div>
               )}
 
-              {/* ── 업무 절차 기본형: BPMN 자동 변환 플로우 ── */}
-              {selectedBaseType === 'procedure' && p4Content && (
+              {/* ── 업무 절차 기본형: BPMN 자동 변환 플로우 (classic/skill-plus만) ── */}
+              {workMode !== 'skill-center' && selectedBaseType === 'procedure' && p4Content && (
                 <div style={{ border: '2px solid #0F3D73', borderRadius: 12, padding: 16, background: '#EFF6FF' }}>
                   <div style={{ fontWeight: 800, fontSize: 14, color: '#0F3D73', marginBottom: 10 }}>⚙️ BPMN 프로세스 변환</div>
 
@@ -1344,8 +1365,8 @@ export function WorkManualExt() {
                 </div>
               )}
 
-              {/* ── 다른 기본형: 기존 모듈 연동 ── */}
-              {selectedBaseType !== 'procedure' && p4Content && applicableModules.length > 0 && (
+              {/* ── 다른 기본형: 기존 모듈 연동 (classic/skill-plus만) ── */}
+              {workMode !== 'skill-center' && selectedBaseType !== 'procedure' && p4Content && applicableModules.length > 0 && (
                 <div style={{ border: '1px solid #C7D2FE', borderRadius: 10, padding: 12, background: '#EEF2FF' }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#3730a3', marginBottom: 8 }}>모듈 연동</div>
                   <div style={{ display: 'grid', gap: 6 }}>
@@ -1390,8 +1411,8 @@ export function WorkManualExt() {
             </div>
           )}
 
-          {/* ═══ Phase 5: 암묵지 보완 ═══ */}
-          {phase === 5 && (
+          {/* ═══ Phase 5: 암묵지 보완 (classic / skill-plus) ═══ */}
+          {phase === 5 && workMode !== 'skill-center' && (
             <div style={{ display: 'grid', gap: 12, animation: 'phase-fade 0.25s ease-out' }}>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a' }}>5단계: 암묵지 보완</div>
@@ -1437,6 +1458,109 @@ export function WorkManualExt() {
                     </button>
                   </div>
                 </>
+              )}
+            </div>
+          )}
+
+          {/* ═══ Phase 5: Skill File Q&A + 인수인계 (skill-center) ═══ */}
+          {phase === 5 && workMode === 'skill-center' && (
+            <div style={{ display: 'grid', gap: 12, animation: 'phase-fade 0.25s ease-out' }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#7C3AED' }}>5단계: 스킬 파일 활용</div>
+                <div style={S.muted}>Skill File 기반 Q&A로 업무 지식을 검증하고, 인수인계 가이드를 확인하세요.</div>
+              </div>
+
+              {skillFile ? (() => {
+                const sd = skillFile.skillData || {};
+                return (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {/* 인수인계 가이드 */}
+                    {sd.handover && (
+                      <div style={{ border: '2px solid #DDD6FE', borderRadius: 10, padding: 12, background: '#F5F3FF' }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#7C3AED', marginBottom: 8 }}>📋 인수인계 가이드</div>
+                        {sd.handover.criticalPoints?.length > 0 && (
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontWeight: 600, fontSize: 12, color: '#DC2626', marginBottom: 4 }}>⚠ 핵심 주의사항</div>
+                            {sd.handover.criticalPoints.map((p: string, i: number) => <div key={i} style={{ fontSize: 12, color: '#7f1d1d', paddingLeft: 8, marginBottom: 2 }}>• {p}</div>)}
+                          </div>
+                        )}
+                        {sd.handover.firstWeekGuide?.length > 0 && (
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 12, color: '#5B21B6', marginBottom: 4 }}>📅 첫 주 가이드</div>
+                            {sd.handover.firstWeekGuide.map((g: string, i: number) => <div key={i} style={{ fontSize: 12, color: '#475569', paddingLeft: 8, marginBottom: 2 }}>• {g}</div>)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 암묵지/노하우 */}
+                    {sd.tacitKnowledge?.length > 0 && (
+                      <div style={{ border: '1px solid #FDE68A', borderRadius: 10, padding: 12, background: '#FFFBEB' }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E', marginBottom: 8 }}>💡 암묵지 / 노하우</div>
+                        {sd.tacitKnowledge.map((tk: any, i: number) => (
+                          <div key={i} style={{ fontSize: 12, color: '#78350F', marginBottom: 4 }}>
+                            <span style={{ fontWeight: 600 }}>[{tk.category}]</span> {tk.content}
+                            {tk.context && <span style={{ color: '#92400E' }}> — {tk.context}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Q&A 인라인 */}
+                    <div style={{ border: '2px solid #E2E8F0', borderRadius: 10, padding: 12, background: '#FAFBFC' }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 8 }}>💬 업무 Q&A</div>
+                      <div style={{ maxHeight: 300, overflow: 'auto', display: 'grid', gap: 6, marginBottom: 8 }}>
+                        {qaMessages.length === 0 && (
+                          <div style={{ fontSize: 12, color: '#64748b', textAlign: 'center', padding: 12 }}>이 업무에 대해 궁금한 것을 질문해보세요.</div>
+                        )}
+                        {qaMessages.map((m, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                            <div style={{
+                              maxWidth: '85%', padding: '8px 12px',
+                              borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                              background: m.role === 'user' ? '#7C3AED' : '#F1F5F9',
+                              color: m.role === 'user' ? '#fff' : '#0f172a', fontSize: 12, lineHeight: 1.6,
+                            }}>
+                              <div style={{ whiteSpace: 'pre-wrap' }}>{m.text}</div>
+                              {m.suggestedFollowUp?.length ? (
+                                <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                  {m.suggestedFollowUp.map((sq, j) => (
+                                    <button key={j} type="button" onClick={() => sendQaQuestion(sq)}
+                                      style={{ fontSize: 10, padding: '2px 8px', borderRadius: 12, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', cursor: 'pointer' }}>{sq}</button>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                        {qaLoading && <div style={{ fontSize: 12, color: '#64748b', padding: 8 }}>답변 생성 중...</div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input value={qaInput} onChange={e => setQaInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQaQuestion(); } }}
+                          placeholder="질문을 입력하세요..." style={{ flex: 1, padding: '8px 12px', border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 12, outline: 'none' }} />
+                        <button className="btn" type="button" onClick={() => sendQaQuestion()} disabled={qaLoading || !qaInput.trim()}
+                          style={{ padding: '8px 16px', fontSize: 12, background: '#7C3AED' }}>전송</button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <button className="btn btn-outline" type="button" onClick={() => setPhase(4)}>← 이전</button>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="btn btn-outline" type="button" onClick={() => { setShowSkillPanel(true); setSkillTab('overview'); }}>📋 전체 스킬 파일 보기</button>
+                        <button className="btn" type="button" onClick={newManual} style={{ padding: '8px 24px', background: '#7C3AED' }}>새 매뉴얼 작성</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Skill File이 필요합니다</div>
+                  <button className="btn" type="button" onClick={generateSkillFile} disabled={skillLoading}
+                    style={{ padding: '8px 24px', background: '#7C3AED' }}>
+                    {skillLoading ? '생성 중...' : '🧠 스킬 파일 생성'}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -1685,8 +1809,8 @@ export function WorkManualExt() {
         );
       })()}
 
-      {/* Skill File floating button */}
-      {manual && !showSkillPanel && (
+      {/* Skill File floating button (skill-plus / skill-center only) */}
+      {workMode !== 'classic' && manual && !showSkillPanel && (
         <button type="button" onClick={() => { if (skillFile) setShowSkillPanel(true); else generateSkillFile(); }}
           disabled={skillLoading}
           style={{ position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: '50%', background: skillFile ? '#0F3D73' : '#D97706', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 22, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}
