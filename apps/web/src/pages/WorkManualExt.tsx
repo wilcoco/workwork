@@ -243,13 +243,16 @@ export function WorkManualExt() {
       toast('저장 완료', 'success');
       setPhase(2);
       await loadList();
-      // procedure 타입이면 자동으로 AI STEP 변환 시작
-      if (selectedBaseType === 'procedure') {
-        setTimeout(() => void procDraftSteps(), 100);
-      }
     } catch (e: any) { toast(e?.message || '저장 실패', 'error'); }
     finally { setSaving(false); }
   }
+
+  // ─── Procedure: auto-trigger AI draft steps on Phase 2 entry
+  useEffect(() => {
+    if (phase === 2 && selectedBaseType === 'procedure' && manual?.id && stepForms.length === 0 && !draftLoading) {
+      void procDraftSteps();
+    }
+  }, [phase, selectedBaseType, manual?.id]);
 
   // ─── Procedure: AI Draft Steps (자유텍스트 → STEP 변환) ────
   async function procDraftSteps() {
