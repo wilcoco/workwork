@@ -1660,4 +1660,163 @@ ${clippedContext}`;
       aiModel,
     };
   }
+
+  // ─── Skill File → Schedule (dev_project) ─────────────────
+  @Post(':id/skill-file/to-schedule')
+  async skillFileToSchedule(@Param('id') id: string, @Body() body: { userId: string }) {
+    const uid = String(body.userId || '').trim();
+    await this.requireOwner(uid, id);
+
+    const skillFile = await (this.prisma as any).workSkillFile.findFirst({
+      where: { manualId: id }, orderBy: { version: 'desc' },
+    });
+    if (!skillFile) throw new BadRequestException('Skill File을 먼저 생성해주세요.');
+
+    const sd = skillFile.skillData as any;
+    const steps = sd.steps || [];
+    const now = new Date();
+
+    // Skill File의 steps에서 마일스톤 추출
+    const milestones = steps.map((s: any, i: number) => {
+      const daysOffset = Math.round((i / Math.max(steps.length - 1, 1)) * 90);
+      const date = new Date(now.getTime() + daysOffset * 86400000);
+      return {
+        name: `${s.id || `S${i + 1}`}. ${s.name}`,
+        date: date.toISOString().slice(0, 10),
+        done: false,
+        actor: s.actor || '',
+        duration: s.duration || '',
+      };
+    });
+
+    const endDate = new Date(now);
+    const estDuration = sd.meta?.estimatedDuration || '';
+    const monthMatch = estDuration.match(/(\d+)\s*[개]?월/);
+    endDate.setMonth(endDate.getMonth() + (monthMatch ? parseInt(monthMatch[1]) : 3));
+
+    const s = await (this.prisma as any).schedule.create({
+      data: {
+        userId: uid,
+        manualId: id,
+        title: (sd.meta?.title || skillFile.title) + ' — 일정',
+        description: `Skill File v${skillFile.version} 기반 자동 생성. ${sd.overview?.purpose || ''}`,
+        startDate: now,
+        endDate,
+        milestones,
+      },
+    });
+    return { schedule: s, source: 'skill-file' };
+  }
+
+  // ─── Skill File → KnowledgeBase (system_operation / calculation) ───
+  @Post(':id/skill-file/to-knowledge-base')
+  async skillFileToKnowledgeBase(@Param('id') id: string, @Body() body: { userId: string }) {
+    const uid = String(body.userId || '').trim();
+    await this.requireOwner(uid, id);
+
+    const skillFile = await (this.prisma as any).workSkillFile.findFirst({
+      where: { manualId: id }, orderBy: { version: 'desc' },
+    });
+    if (!skillFile) throw new BadRequestException('Skill File을 먼저 생성해주세요.');
+
+    const sd = skillFile.skillData as any;
+
+    // Skill File에서 풍부한 콘텐츠 생성 (steps + tips + faq + tacit 통합)
+    const sections: string[] = [];
+    sections.push(`# ${sd.meta?.title || skillFile.title}`);
+    if (sd.overview?.purpose) sections.push(`\n## 목적\n${sd.overview.purpose}`);
+    if (sd.overview?.scope) sections.push(`\n## 범위\n${sd.overview.scope}`);
+
+    if (sd.steps?.length) {
+      sections.push('\n## 절차');
+      for (const s of sd.steps) {
+        sections.push(`\n### ${s.id}. ${s.name}`);
+        if (s.method) sections.push(`- 방법: ${s.method}`);
+        if (s.tools?.length) sections.push(`- 도구: ${s.tools.join(', ')}`);
+        if (s.tips?.length) sections.push(`- 💡 팁: ${s.tips.join(' / ')}`);
+        if (s.commonMistakes?.length) sections.push(`- ⚠ 주의: ${s.commonMistakes.join(' / ')}`);
+      }
+    }
+
+    if (sd.faq?.length) {
+      sections.push('\n## FAQ');
+      for (const f of sd.faq) sections.push(`\n**Q.** ${f.question}\n**A.** ${f.answer}`);
+    }
+
+    if (sd.tacitKnowledge?.length) {
+      sections.push('\n## 암묵지/노하우');
+      for (const tk of sd.tacitKnowledge) sections.push(`- [${tk.category}] ${tk.content}`);
+    }
+
+    const content = sections.join('\n');
+    const baseType = sd.meta?.baseType || '';
+    const category = baseType === 'system_operation' ? 'system_operation' : baseType === 'calculation' ? 'calculation' : 'general';
+
+    const systemNames = (sd.relatedKnowledge?.systems || []).map((s: any) => s.name).filter(Boolean);
+    const terms = (sd.relatedKnowledge?.terminology || []).map((t: any) => t.term).filter(Boolean);
+    const tags = [baseType, sd.meta?.department || '', ...terms].filter(Boolean).join(',');
+
+    const kb = await (this.prisma as any).knowledgeBase.create({
+      data: {
+        userId: uid,
+        manualId: id,
+        title: (sd.meta?.title || skillFile.title) + ' — 지식베이스',
+        content,
+        category,
+        systemName: systemNames[0] || null,
+        tags,
+      },
+    });
+    return { knowledgeBase: kb, source: 'skill-file' };
+  }
+
+  // ─── Skill File → PeriodicAlarm (inspection_mgmt) ─────────
+  @Post(':id/skill-file/to-periodic-alarm')
+  async skillFileToPeriodicAlarm(@Param('id') id: string, @Body() body: { userId: string }) {
+    const uid = String(body.userId || '').trim();
+    await this.requireOwner(uid, id);
+
+    const skillFile = await (this.prisma as any).workSkillFile.findFirst({
+      where: { manualId: id }, orderBy: { version: 'desc' },
+    });
+    if (!skillFile) throw new BadRequestException('Skill File을 먼저 생성해주세요.');
+
+    const sd = skillFile.skillData as any;
+
+    // 주기 추론: meta.frequency 또는 overview.triggerConditions에서
+    const freq = String(sd.meta?.frequency || '').toLowerCase();
+    const intervalMap: Record<string, number> = { '매일': 1, '일일': 1, '매주': 7, '주간': 7, '매월': 30, '월간': 30, '분기': 90, '반기': 180, '연간': 365 };
+    let intervalDays = 30;
+    for (const [kw, days] of Object.entries(intervalMap)) {
+      if (freq.includes(kw)) { intervalDays = days; break; }
+    }
+
+    // steps에서 체크리스트 생성
+    const checkItems = (sd.steps || []).map((s: any) => ({
+      label: `${s.id || ''}. ${s.name}`,
+      detail: s.checkpoints?.join(', ') || s.method || '',
+      done: false,
+    }));
+
+    if (checkItems.length === 0) {
+      checkItems.push({ label: '점검 항목 1', detail: '', done: false });
+      checkItems.push({ label: '점검 항목 2', detail: '', done: false });
+    }
+
+    const nextRunAt = new Date();
+    nextRunAt.setDate(nextRunAt.getDate() + intervalDays);
+
+    const a = await (this.prisma as any).periodicAlarm.create({
+      data: {
+        userId: uid,
+        manualId: id,
+        title: (sd.meta?.title || skillFile.title) + ' — 주기알람',
+        description: `Skill File v${skillFile.version} 기반. ${sd.overview?.purpose || ''}`,
+        intervalDays,
+        nextRunAt,
+        checkItems,
+      },
+    });
+    return { periodicAlarm: a, source: 'skill-file' };
+  }
 }

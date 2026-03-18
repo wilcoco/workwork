@@ -157,11 +157,13 @@ export function WorkManualExt() {
   // Skill File + Q&A
   const [skillFile, setSkillFile] = useState<any>(null);
   const [skillLoading, setSkillLoading] = useState(false);
-  const [skillTab, setSkillTab] = useState<'overview' | 'steps' | 'faq' | 'qa'>('overview');
+  const [skillTab, setSkillTab] = useState<'overview' | 'steps' | 'faq' | 'modules' | 'qa'>('overview');
   const [qaMessages, setQaMessages] = useState<Array<{ role: 'user' | 'ai'; text: string; relatedSteps?: string[]; suggestedFollowUp?: string[] }>>([]);
   const [qaInput, setQaInput] = useState('');
   const [qaLoading, setQaLoading] = useState(false);
   const [showSkillPanel, setShowSkillPanel] = useState(false);
+  const [sfModLoading, setSfModLoading] = useState('');
+  const [sfModCreated, setSfModCreated] = useState<Record<string, boolean>>({});
 
   // ─── Load base types + list ─────────────────────────────
   useEffect(() => {
@@ -394,6 +396,29 @@ export function WorkManualExt() {
       if (r?.bpmnJson) { setBpmnJson(r.bpmnJson); toast('Skill File 기반 BPMN이 생성되었습니다!', 'success'); }
     } catch (e: any) { toast(e?.message || 'BPMN 변환 실패', 'error'); }
     finally { setBpmnLoading(false); }
+  }
+
+  async function createSkillModule(moduleKey: string) {
+    if (!manual?.id) return;
+    setSfModLoading(moduleKey);
+    const endpointMap: Record<string, string> = {
+      bpmn_engine: 'skill-file/to-bpmn',
+      schedule_mgmt: 'skill-file/to-schedule',
+      knowledge_base: 'skill-file/to-knowledge-base',
+      periodic_alarm_report: 'skill-file/to-periodic-alarm',
+    };
+    const ep = endpointMap[moduleKey];
+    if (!ep) { setSfModLoading(''); return; }
+    try {
+      const bodyPayload: any = { userId };
+      if (moduleKey === 'bpmn_engine') bodyPayload.aiModel = aiModel;
+      await apiJson(`/api/work-manuals/${encodeURIComponent(manual.id)}/${ep}`, {
+        method: 'POST', body: JSON.stringify(bodyPayload),
+      });
+      setSfModCreated(prev => ({ ...prev, [moduleKey]: true }));
+      toast(`Skill File → ${moduleKey} 모듈 생성 완료!`, 'success');
+    } catch (e: any) { toast(e?.message || '모듈 생성 실패', 'error'); }
+    finally { setSfModLoading(''); }
   }
 
   // ─── Phase 2: AI Questions (non-procedure) ─────────────────────
@@ -1166,6 +1191,51 @@ export function WorkManualExt() {
                 </div>
               </div>
 
+              {/* ── 생성 전략 선택 (방안 A / B / C) ── */}
+              {skillFile && (
+                <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#5B21B6', marginBottom: 8 }}>🧪 생성 전략 비교</div>
+                  <div style={{ display: 'grid', gap: 6, fontSize: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 6, padding: '8px 10px', border: '1px solid #E9D5FF' }}>
+                      <span style={{ fontWeight: 800, color: '#7C3AED', minWidth: 48 }}>방안 A</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>기존 방식 (매뉴얼 → 모듈)</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>Phase 4 산출물 + from-manual API로 모듈 생성. 아래 기존 플로우 사용.</div>
+                      </div>
+                      <span style={{ fontSize: 10, color: '#16a34a', fontWeight: 700 }}>현재 활성</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 6, padding: '8px 10px', border: '1px solid #E9D5FF' }}>
+                      <span style={{ fontWeight: 800, color: '#7C3AED', minWidth: 48 }}>방안 B</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>Skill File 기반 (Skill File → 모듈)</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>구조화된 Skill File에서 직접 모듈 생성. 정확도 높음.</div>
+                      </div>
+                      <button className="btn" type="button" onClick={() => { setShowSkillPanel(true); setSkillTab('modules'); }}
+                        style={{ fontSize: 10, padding: '3px 10px', whiteSpace: 'nowrap' }}>
+                        Skill 패널 열기
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', borderRadius: 6, padding: '8px 10px', border: '1px solid #E9D5FF' }}>
+                      <span style={{ fontWeight: 800, color: '#7C3AED', minWidth: 48 }}>방안 C</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a' }}>병행 비교 (A + B 동시 실행)</div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>두 방식으로 각각 생성한 뒤 결과 품질을 비교 검증.</div>
+                      </div>
+                      <span style={{ fontSize: 10, color: '#64748b' }}>A+B 각각 실행</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!skillFile && manual?.content && (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: 10, fontSize: 12, color: '#92400E', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>💡 Skill File을 생성하면 <strong>방안 B/C</strong>(Skill File 기반 모듈 생성 + 비교 검증)를 사용할 수 있습니다.</span>
+                  <button className="btn" type="button" onClick={generateSkillFile} disabled={skillLoading}
+                    style={{ fontSize: 11, padding: '4px 12px', whiteSpace: 'nowrap' }}>
+                    {skillLoading ? '생성 중...' : '스킬 파일 생성'}
+                  </button>
+                </div>
+              )}
+
               {/* 로딩: 매뉴얼 생성 중 */}
               {p4Loading && !p4Content && (
                 <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
@@ -1383,9 +1453,10 @@ export function WorkManualExt() {
         const sd = skillFile.skillData || {};
         const tabs: Array<{ key: typeof skillTab; label: string }> = [
           { key: 'overview', label: '개요' },
-          { key: 'steps', label: '프로세스 단계' },
+          { key: 'steps', label: '단계' },
           { key: 'faq', label: 'FAQ' },
-          { key: 'qa', label: 'Q&A 챗봇' },
+          { key: 'modules', label: '모듈 생성' },
+          { key: 'qa', label: 'Q&A' },
         ];
         return (
           <div style={{ position: 'fixed', top: 0, right: 0, width: 480, height: '100vh', background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', zIndex: 1000, display: 'flex', flexDirection: 'column', animation: 'slide-in 0.2s ease-out' }}>
@@ -1522,6 +1593,56 @@ export function WorkManualExt() {
                   )}
                 </div>
               )}
+
+              {/* Modules Tab */}
+              {skillTab === 'modules' && (() => {
+                const SF_MODULES: Array<{ key: string; icon: string; label: string; desc: string; forTypes: string[] }> = [
+                  { key: 'bpmn_engine', icon: '🔄', label: 'BPMN 프로세스', desc: 'steps+decisions → 워크플로우', forTypes: ['procedure'] },
+                  { key: 'schedule_mgmt', icon: '📅', label: '일정/마일스톤', desc: 'steps → 일정 + 마일스톤 자동 생성', forTypes: ['dev_project'] },
+                  { key: 'knowledge_base', icon: '📚', label: '지식베이스', desc: 'steps+faq+tacit → 구조화된 지식 문서', forTypes: ['system_operation', 'calculation'] },
+                  { key: 'periodic_alarm_report', icon: '⏰', label: '주기 알람/점검', desc: 'steps → 체크리스트 + 주기 알람', forTypes: ['inspection_mgmt'] },
+                ];
+                const bt = sd.meta?.baseType || manual?.baseType || '';
+                return (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ background: '#EFF6FF', borderRadius: 8, padding: 10, fontSize: 12, color: '#1e40af' }}>
+                      Skill File의 구조화된 데이터를 기반으로 각 모듈을 생성합니다.<br/>
+                      기존 방식(매뉴얼 텍스트 → 모듈)보다 <strong>정확도가 높습니다</strong>.
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      {SF_MODULES.map(mod => {
+                        const isPrimary = mod.forTypes.includes(bt);
+                        const created = sfModCreated[mod.key];
+                        return (
+                          <div key={mod.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: isPrimary ? '#F0FDF4' : '#fff', border: `1px solid ${isPrimary ? '#BBF7D0' : '#E2E8F0'}`, borderRadius: 8, padding: '10px 12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 18 }}>{mod.icon}</span>
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: 12, color: '#0f172a' }}>
+                                  {mod.label}
+                                  {isPrimary && <span style={{ marginLeft: 6, fontSize: 10, background: '#16a34a', color: '#fff', borderRadius: 4, padding: '1px 5px' }}>주 모듈</span>}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#64748b' }}>{mod.desc}</div>
+                              </div>
+                            </div>
+                            <button className="btn" type="button"
+                              disabled={created || sfModLoading === mod.key}
+                              onClick={() => createSkillModule(mod.key)}
+                              style={{ padding: '5px 14px', fontSize: 11, background: created ? '#16a34a' : undefined, whiteSpace: 'nowrap' }}>
+                              {sfModLoading === mod.key ? '생성 중...' : created ? '완료 ✓' : '생성'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: 10, fontSize: 11, color: '#92400E' }}>
+                      <strong>비교 검증 방법:</strong> Phase 4의 기존 모듈 생성(방안A)과 여기서의 Skill File 기반 생성(방안B)을 각각 실행한 뒤 결과를 비교할 수 있습니다. 두 방안 모두 독립적으로 동작합니다.
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Q&A Chat Tab */}
               {skillTab === 'qa' && (
