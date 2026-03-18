@@ -151,6 +151,9 @@ export function WorkManualExt() {
   const [modAlarmCreated, setModAlarmCreated] = useState(false);
   const [modLoading, setModLoading] = useState('');
 
+  // AI model selection: 'openai' (저가) | 'claude' (고가/고품질)
+  const [aiModel, setAiModel] = useState<'openai' | 'claude'>('openai');
+
   // ─── Load base types + list ─────────────────────────────
   useEffect(() => {
     apiJson<{ baseTypes: BaseTypeDef[]; optionGroups: OptionGroup[] }>('/api/work-manuals/ext/base-types')
@@ -266,7 +269,7 @@ export function WorkManualExt() {
       });
       const r = await apiJson<{ draftContent: string; stepCount: number; summary: string }>(
         `/api/work-manuals/${encodeURIComponent(manual.id)}/ai/draft-steps`,
-        { method: 'POST', body: JSON.stringify({ userId }) },
+        { method: 'POST', body: JSON.stringify({ userId, aiModel }) },
       );
       if (!r?.draftContent) throw new Error('AI 응답이 올바르지 않습니다.');
       const forms = parseTextToStepForms(r.draftContent);
@@ -294,7 +297,7 @@ export function WorkManualExt() {
       });
       const r = await apiJson<{ summary: string; issues: any[]; questions: any[]; score?: number }>(
         `/api/work-manuals/${encodeURIComponent(manual.id)}/ai/questions`,
-        { method: 'POST', body: JSON.stringify({ userId }) },
+        { method: 'POST', body: JSON.stringify({ userId, aiModel }) },
       );
       setProcAiResult({
         summary: String(r?.summary || ''),
@@ -317,7 +320,7 @@ export function WorkManualExt() {
       });
       const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ai/bpmn`, {
         method: 'POST',
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, aiModel }),
       });
       if (r?.bpmnJson) {
         setBpmnJson(r.bpmnJson);
@@ -648,6 +651,21 @@ export function WorkManualExt() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <h2 style={{ margin: 0 }}>업무 매뉴얼 외재화</h2>
+          {/* AI Model Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#F1F5F9', borderRadius: 8, padding: 2 }}>
+            <button type="button" onClick={() => setAiModel('openai')}
+              style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: aiModel === 'openai' ? 700 : 400, border: 'none', cursor: 'pointer',
+                background: aiModel === 'openai' ? '#fff' : 'transparent', color: aiModel === 'openai' ? '#0f172a' : '#64748b',
+                boxShadow: aiModel === 'openai' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+              GPT-4o mini
+            </button>
+            <button type="button" onClick={() => setAiModel('claude')}
+              style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: aiModel === 'claude' ? 700 : 400, border: 'none', cursor: 'pointer',
+                background: aiModel === 'claude' ? '#D97706' : 'transparent', color: aiModel === 'claude' ? '#fff' : '#64748b',
+                boxShadow: aiModel === 'claude' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none' }}>
+              Claude
+            </button>
+          </div>
           {manual && (
             <nav style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
               {phaseLabels.map((s, i) => (

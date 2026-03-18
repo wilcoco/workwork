@@ -352,6 +352,9 @@ export function WorkManuals() {
   const [layerScores, setLayerScores] = useState<Record<string, number>>({});
   const [layerDone, setLayerDone] = useState<Set<string>>(new Set());
 
+  // AI model selection: 'openai' (저가) | 'claude' (고가/고품질)
+  const [aiModel, setAiModel] = useState<'openai' | 'claude'>('openai');
+
   const selected = useMemo(() => {
     if (!editing) return null;
     return editing;
@@ -539,7 +542,7 @@ export function WorkManuals() {
     try {
       const r = await apiJson<{ draftContent: string; stepCount: number; summary: string }>(
         `/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/draft-steps`,
-        { method: 'POST', body: JSON.stringify({ userId }) },
+        { method: 'POST', body: JSON.stringify({ userId, aiModel }) },
       );
       if (!r?.draftContent) throw new Error('AI 응답이 올바르지 않습니다.');
       const ok = await toastConfirm(`AI가 ${r.stepCount}개 STEP 초안을 생성했습니다.\n\n${r.summary}\n\n구조화 편집 모드로 전환하여 초안을 확인할까요?\n(현재 메뉴얼 내용은 이 초안으로 교체됩니다)`);
@@ -633,7 +636,7 @@ export function WorkManuals() {
     }
     setAiQuestionsLoading(true);
     try {
-      const body: any = { userId };
+      const body: any = { userId, aiModel };
       if (layer) body.layer = layer;
       const r = await apiJson<AiQuestionsResult>(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/questions`, {
         method: 'POST',
@@ -753,7 +756,7 @@ export function WorkManuals() {
       // ... (rest of the code remains the same)
       const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/bpmn`, {
         method: 'POST',
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, aiModel }),
       });
       const tmplTitle = String(r?.title || '').trim();
       const bpmnJson = r?.bpmnJson;
@@ -791,6 +794,21 @@ export function WorkManuals() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' as any }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <h2 style={{ margin: 0 }}>업무 메뉴얼</h2>
+          {/* AI Model Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#F1F5F9', borderRadius: 8, padding: 2 }}>
+            <button type="button" onClick={() => setAiModel('openai')}
+              style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: aiModel === 'openai' ? 700 : 400, border: 'none', cursor: 'pointer',
+                background: aiModel === 'openai' ? '#fff' : 'transparent', color: aiModel === 'openai' ? '#0f172a' : '#64748b',
+                boxShadow: aiModel === 'openai' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+              GPT-4o mini
+            </button>
+            <button type="button" onClick={() => setAiModel('claude')}
+              style={{ padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: aiModel === 'claude' ? 700 : 400, border: 'none', cursor: 'pointer',
+                background: aiModel === 'claude' ? '#D97706' : 'transparent', color: aiModel === 'claude' ? '#fff' : '#64748b',
+                boxShadow: aiModel === 'claude' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none' }}>
+              Claude
+            </button>
+          </div>
           {selected && (
             <nav aria-label="메뉴얼 작성 단계" role="navigation" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
               {[{n:1,l:'템플릿 입력'},{n:2,l:'프로세스 단계'},{n:3,l:'검토/생성'}].map((s, i) => (

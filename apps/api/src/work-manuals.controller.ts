@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get,
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import { BASE_TYPES, BASE_TYPE_MAP, QUESTION_SETS, TACIT_KNOWLEDGE_QUESTIONS, OPTION_GROUPS, AI_SYSTEM_PROMPT, recommendOptions, detectSecurityInfo, type PhaseData } from './manual-externalization.constants';
+import { callAI, type AIModel } from './llm/ai-client';
 
 class CreateWorkManualDto {
   @IsString() @IsNotEmpty()
@@ -68,12 +69,14 @@ class UpdateWorkManualDto {
 class AiBpmnDto {
   @IsString() @IsNotEmpty()
   userId!: string;
+  aiModel?: string; // 'claude' | 'openai'
 }
 
 class AiQuestionsDto {
   @IsString() @IsNotEmpty()
   userId!: string;
   layer?: string; // skeleton | roles | io | decisions | exceptions | timing
+  aiModel?: string; // 'claude' | 'openai'
 }
 
 const LAYER_FIELDS: Record<string, string[]> = {
@@ -114,6 +117,7 @@ class ApplyAnswersDto {
 class AiDraftStepsDto {
   @IsString() @IsNotEmpty()
   userId!: string;
+  aiModel?: string; // 'claude' | 'openai'
 }
 
 class ChangeStatusDto {
@@ -479,11 +483,7 @@ export class WorkManualsController {
   async aiBpmn(@Param('id') id: string, @Body() dto: AiBpmnDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-
-    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
-    if (!apiKey) {
-      throw new BadRequestException('Missing OPENAI_API_KEY (or *_CAMS / *_IAT). Set it as a Railway env var.');
-    }
+    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -542,51 +542,46 @@ export class WorkManualsController {
   - 우변: 문자열(따옴표로 감싼 값), 숫자, true/false, null
 - 사용 가능 변수 예시: last.approval.status, startedBy.role, itemCode, moldCode, carModelCode, initiativeId`;
 
-    const user = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`;
+    const userMsg = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`;
 
-    const f: any = (globalThis as any).fetch;
-    if (!f) {
-      throw new BadRequestException('Server fetch not available. Please use Node 18+ or provide a fetch polyfill.');
-    }
-
-    const resp = await f('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+    // Claude: Tool Use schema for guaranteed JSON structure + Extended Thinking
+    const bpmnToolSchema = {
+      type: 'object' as const,
+      properties: {
+        title: { type: 'string' },
+        bpmnJson: {
+          type: 'object',
+          properties: {
+            nodes: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, type: { type: 'string', enum: ['start', 'end', 'task', 'gateway_xor', 'gateway_parallel'] }, name: { type: 'string' }, taskType: { type: 'string', enum: ['TASK', 'WORKLOG', 'COOPERATION', 'APPROVAL'] }, description: { type: 'string' }, assigneeHint: { type: 'string' } }, required: ['id', 'type', 'name'] } },
+            edges: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, source: { type: 'string' }, target: { type: 'string' }, condition: { type: 'string' } }, required: ['id', 'source', 'target'] } },
+          },
+          required: ['nodes', 'edges'],
+        },
       },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: user },
-        ],
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-      }),
-    });
+      required: ['title', 'bpmnJson'],
+    };
 
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
-    }
-
-    const data = await resp.json();
-    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    if (!raw) throw new BadRequestException('OpenAI returned empty response');
-
-    let parsed: any = null;
+    let parsed: any;
     try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new BadRequestException('OpenAI did not return valid JSON');
+      const result = await callAI({
+        system: sys,
+        user: userMsg,
+        model: aiModel,
+        temperature: 0.2,
+        maxTokens: 4096,
+        thinking: aiModel === 'claude',
+        jsonSchema: aiModel === 'claude' ? { name: 'generate_bpmn', schema: bpmnToolSchema } : undefined,
+      });
+      parsed = result.parsed;
+    } catch (e: any) {
+      throw new BadRequestException(e?.message || 'AI call failed');
     }
 
     const outTitle = String(parsed?.title || `${title} 프로세스`).trim() || `${title} 프로세스`;
     const bpmnJson = parsed?.bpmnJson;
     const nodes = Array.isArray(bpmnJson?.nodes) ? bpmnJson.nodes : null;
     const edges = Array.isArray(bpmnJson?.edges) ? bpmnJson.edges : null;
-    if (!nodes || !edges) throw new BadRequestException('OpenAI JSON missing bpmnJson.nodes/edges');
+    if (!nodes || !edges) throw new BadRequestException('AI JSON missing bpmnJson.nodes/edges');
 
     const normalizedNodes = (nodes as any[]).map((n: any) => {
       const type = String(n?.type || '').trim();
@@ -598,18 +593,14 @@ export class WorkManualsController {
       return { ...n, taskType: nextTt };
     });
 
-    return { title: outTitle, bpmnJson: { ...bpmnJson, nodes: normalizedNodes, edges } };
+    return { title: outTitle, bpmnJson: { ...bpmnJson, nodes: normalizedNodes, edges }, aiModel };
   }
 
   @Post(':id/ai/questions')
   async aiQuestions(@Param('id') id: string, @Body() dto: AiQuestionsDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-
-    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
-    if (!apiKey) {
-      throw new BadRequestException('Missing OPENAI_API_KEY (or *_CAMS / *_IAT). Set it as a Railway env var.');
-    }
+    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -667,44 +658,19 @@ targetField 가능한 값: ${allowedFields}
 - 각 질문에는 반드시 targetStepId(해당 STEP ID)와 targetField(위의 필드명 중 하나)를 포함하세요.
 `;
 
-    const user = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`;
+    const userMsg = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`;
 
-    const f: any = (globalThis as any).fetch;
-    if (!f) {
-      throw new BadRequestException('Server fetch not available. Please use Node 18+ or provide a fetch polyfill.');
-    }
-
-    const resp = await f('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: user },
-        ],
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
-    }
-
-    const data = await resp.json();
-    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    if (!raw) throw new BadRequestException('OpenAI returned empty response');
-
-    let parsed: any = null;
+    let parsed: any;
     try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new BadRequestException('OpenAI did not return valid JSON');
+      const result = await callAI({
+        system: sys,
+        user: userMsg,
+        model: aiModel,
+        temperature: 0.2,
+      });
+      parsed = result.parsed;
+    } catch (e: any) {
+      throw new BadRequestException(e?.message || 'AI call failed');
     }
 
     const summary = String(parsed?.summary || '').trim();
@@ -844,9 +810,7 @@ updatedContent는 원본 메뉴얼에 사용자 답변을 반영한 전체 메�
   async aiDraftSteps(@Param('id') id: string, @Body() dto: AiDraftStepsDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-
-    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
-    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
+    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -895,33 +859,33 @@ DSL 포맷 규칙:
 7. 제조업 업무 프로세스 전문가 관점에서 현실적인 단계로 구성 (WHO/WHAT/HOW/WITH WHAT/WHEN/CHECK)
 8. 각 단계에 작업방법, 확인사항, 연락처, 위험대응을 적극적으로 포함할 것`;
 
-    const user = `업무명: ${title}\n\n[원본 메뉴얼]\n${clipped}`;
+    const userMsg = `업무명: ${title}\n\n[원본 메뉴얼]\n${clipped}`;
 
-    const f: any = (globalThis as any).fetch;
-    if (!f) throw new BadRequestException('Server fetch not available.');
+    // Claude: Tool Use schema for draftContent output
+    const draftToolSchema = {
+      type: 'object' as const,
+      properties: {
+        draftContent: { type: 'string', description: 'STEP DSL 포맷의 전체 메뉴얼 텍스트' },
+        stepCount: { type: 'number', description: '생성된 STEP 수' },
+        summary: { type: 'string', description: '변환 요약' },
+      },
+      required: ['draftContent', 'stepCount', 'summary'],
+    };
 
-    const resp = await f('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: user }],
+    let parsed: any;
+    try {
+      const result = await callAI({
+        system: sys,
+        user: userMsg,
+        model: aiModel,
         temperature: 0.2,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
+        maxTokens: 4096,
+        jsonSchema: aiModel === 'claude' ? { name: 'draft_steps', schema: draftToolSchema } : undefined,
+      });
+      parsed = result.parsed;
+    } catch (e: any) {
+      throw new BadRequestException(e?.message || 'AI call failed');
     }
-
-    const data = await resp.json();
-    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    if (!raw) throw new BadRequestException('OpenAI returned empty response');
-
-    let parsed: any = null;
-    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('OpenAI did not return valid JSON'); }
 
     const draftContent = String(parsed?.draftContent || '').trim();
     if (!draftContent) throw new BadRequestException('AI returned empty draftContent');
@@ -930,6 +894,7 @@ DSL 포맷 규칙:
       draftContent,
       stepCount: Number(parsed?.stepCount || 0),
       summary: String(parsed?.summary || ''),
+      aiModel,
     };
   }
 
