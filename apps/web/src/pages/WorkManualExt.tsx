@@ -101,6 +101,15 @@ export function WorkManualExt() {
 
   // Work Mode: classic(기존) / skill-plus(스킬추가) / skill-center(스킬중심)
   const [workMode, setWorkMode] = useState<'classic' | 'skill-plus' | 'skill-center'>('skill-plus');
+  const [showModeConfirm, setShowModeConfirm] = useState(false);
+  const [pendingMode, setPendingMode] = useState<'classic' | 'skill-plus' | 'skill-center' | null>(null);
+  const [skillCenterDone, setSkillCenterDone] = useState(false);
+
+  // KPI Tracking
+  const [kpi, setKpi] = useState<{ startedAt: number; aiCalls: number; moduleAttempts: number; moduleSuccesses: number; rating: number | null }>({ startedAt: 0, aiCalls: 0, moduleAttempts: 0, moduleSuccesses: 0, rating: null });
+  const [showRating, setShowRating] = useState(false);
+  const bumpAiCall = useCallback(() => setKpi(prev => ({ ...prev, aiCalls: prev.aiCalls + 1 })), []);
+  const bumpModuleAttempt = useCallback((success: boolean) => setKpi(prev => ({ ...prev, moduleAttempts: prev.moduleAttempts + 1, moduleSuccesses: prev.moduleSuccesses + (success ? 1 : 0) })), []);
 
   // Phase 1
   const [selectedBaseType, setSelectedBaseType] = useState('');
@@ -225,6 +234,25 @@ export function WorkManualExt() {
     setP5Questions([]); setP5Answers({}); setP5Final(''); setP5Summary('');
     setStepForms([]); setProcAiResult(null); setProcQualityScore(null);
     setBpmnJson(null); setBpmnTemplateId('');
+    setSkillCenterDone(false);
+    setKpi({ startedAt: 0, aiCalls: 0, moduleAttempts: 0, moduleSuccesses: 0, rating: null });
+    setShowRating(false);
+  }
+
+  // ─── Mode switch with confirmation ────────────────────
+  function handleModeSwitch(next: 'classic' | 'skill-plus' | 'skill-center') {
+    if (next === workMode) return;
+    if (phase >= 4 && (p4Content || skillFile)) {
+      setPendingMode(next);
+      setShowModeConfirm(true);
+    } else {
+      setWorkMode(next);
+    }
+  }
+  function confirmModeSwitch() {
+    if (pendingMode) setWorkMode(pendingMode);
+    setPendingMode(null);
+    setShowModeConfirm(false);
   }
 
   const isProcedure = selectedBaseType === 'procedure';
@@ -238,6 +266,7 @@ export function WorkManualExt() {
     if (!freeText.trim()) { toast('업무 내용을 입력해 주세요.', 'warning'); return; }
 
     setSaving(true);
+    if (!kpi.startedAt) setKpi(prev => ({ ...prev, startedAt: Date.now() }));
     try {
       const phaseData = {
         phase1: { baseType: selectedBaseType, department, jobTitle: title, author: userName, freeText, relatedDocs: relatedDocs.filter(d => d.url.trim()) },
@@ -285,6 +314,7 @@ export function WorkManualExt() {
         `/api/work-manuals/${encodeURIComponent(manual.id)}/ai/draft-steps`,
         { method: 'POST', body: JSON.stringify({ userId, aiModel }) },
       );
+      bumpAiCall();
       if (!r?.draftContent) throw new Error('AI 응답이 올바르지 않습니다.');
       const forms = parseTextToStepForms(r.draftContent);
       setStepForms(forms.length ? forms : [makeEmptyStep(1)]);
@@ -313,6 +343,7 @@ export function WorkManualExt() {
         `/api/work-manuals/${encodeURIComponent(manual.id)}/ai/questions`,
         { method: 'POST', body: JSON.stringify({ userId, aiModel }) },
       );
+      bumpAiCall();
       setProcAiResult({
         summary: String(r?.summary || ''),
         questions: Array.isArray(r?.questions) ? r.questions : [],
@@ -336,6 +367,7 @@ export function WorkManualExt() {
         method: 'POST',
         body: JSON.stringify({ userId, aiModel }),
       });
+      bumpAiCall();
       if (r?.bpmnJson) {
         setBpmnJson(r.bpmnJson);
         toast('BPMN 프로세스가 생성되었습니다!', 'success');
@@ -354,6 +386,7 @@ export function WorkManualExt() {
       const r = await apiJson<{ skillFile: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/skill-file`, {
         method: 'POST', body: JSON.stringify({ userId, aiModel }),
       });
+      bumpAiCall();
       setSkillFile(r.skillFile);
       setShowSkillPanel(true);
       toast('업무 스킬 파일이 생성되었습니다!', 'success');
@@ -382,6 +415,7 @@ export function WorkManualExt() {
         `/api/work-manuals/${encodeURIComponent(manual.id)}/skill-qa`,
         { method: 'POST', body: JSON.stringify({ userId, question, aiModel }) },
       );
+      bumpAiCall();
       setQaMessages(prev => [...prev, { role: 'ai', text: r.answer, relatedSteps: r.relatedSteps, suggestedFollowUp: r.suggestedFollowUp }]);
     } catch (e: any) {
       setQaMessages(prev => [...prev, { role: 'ai', text: `오류: ${e?.message || 'Q&A 실패'}` }]);
@@ -419,8 +453,9 @@ export function WorkManualExt() {
         method: 'POST', body: JSON.stringify(bodyPayload),
       });
       setSfModCreated(prev => ({ ...prev, [moduleKey]: true }));
+      bumpModuleAttempt(true);
       toast(`Skill File → ${moduleKey} 모듈 생성 완료!`, 'success');
-    } catch (e: any) { toast(e?.message || '모듈 생성 실패', 'error'); }
+    } catch (e: any) { bumpModuleAttempt(false); toast(e?.message || '모듈 생성 실패', 'error'); }
     finally { setSfModLoading(''); }
   }
 
@@ -433,6 +468,7 @@ export function WorkManualExt() {
         method: 'POST',
         body: JSON.stringify({ userId, roundNum: p2Round }),
       });
+      bumpAiCall();
       setP2Questions(r.questions || []);
       setP2Answers(new Array((r.questions || []).length).fill(''));
       setP2Structured(r.structuredSoFar || '');
@@ -531,6 +567,7 @@ export function WorkManualExt() {
         method: 'POST',
         body: JSON.stringify({ userId }),
       });
+      bumpAiCall();
       setP4Content(r.manualContent || '');
       setP4Summary(r.summary || '');
       setP4Security(r.securityItems || []);
@@ -553,6 +590,7 @@ export function WorkManualExt() {
         method: 'POST',
         body: JSON.stringify({ userId }),
       });
+      bumpAiCall();
       if (r?.bpmnJson) {
         setBpmnJson(r.bpmnJson);
         toast('BPMN 프로세스 구조가 생성되었습니다.', 'success');
@@ -581,8 +619,9 @@ export function WorkManualExt() {
       const tmplId = String(created?.id || '').trim();
       if (!tmplId) throw new Error('프로세스 템플릿 생성 실패');
       setBpmnTemplateId(tmplId);
+      bumpModuleAttempt(true);
       toast('프로세스 템플릿이 생성되었습니다!', 'success');
-    } catch (e: any) { toast(e?.message || '프로세스 템플릿 생성 실패', 'error'); }
+    } catch (e: any) { bumpModuleAttempt(false); toast(e?.message || '프로세스 템플릿 생성 실패', 'error'); }
     finally { setModLoading(''); }
   }
 
@@ -616,8 +655,10 @@ export function WorkManualExt() {
         method: 'POST',
         body: JSON.stringify({ userId, answers }),
       });
+      bumpAiCall();
       setP5Final(r.finalContent || '');
       setP5Summary(r.summary || '');
+      setShowRating(true);
       toast('매뉴얼 완성!', 'success');
       await loadList();
     } catch (e: any) { toast(e?.message || '완료 실패', 'error'); }
@@ -684,9 +725,10 @@ export function WorkManualExt() {
         const tmplId = String(created?.id || '').trim();
         if (!tmplId) throw new Error('프로세스 템플릿 생성 실패');
         setModKbCreated(false); // reset
+        bumpAiCall(); bumpModuleAttempt(true);
         toast('BPMN 프로세스 템플릿이 생성되었습니다.', 'success');
         nav(`/process/templates?openId=${encodeURIComponent(tmplId)}`);
-      } catch (e: any) { toast(e?.message || 'BPMN 생성 실패', 'error'); }
+      } catch (e: any) { bumpModuleAttempt(false); toast(e?.message || 'BPMN 생성 실패', 'error'); }
       finally { setModLoading(''); }
       return;
     }
@@ -702,8 +744,9 @@ export function WorkManualExt() {
       if (moduleKey === 'knowledge_base') setModKbCreated(true);
       else if (moduleKey === 'schedule_mgmt') setModSchedCreated(true);
       else if (moduleKey === 'periodic_alarm_report') setModAlarmCreated(true);
+      bumpModuleAttempt(true);
       toast(`${mod.label} 완료!`, 'success');
-    } catch (e: any) { toast(e?.message || `${mod.label} 실패`, 'error'); }
+    } catch (e: any) { bumpModuleAttempt(false); toast(e?.message || `${mod.label} 실패`, 'error'); }
     finally { setModLoading(''); }
   }
 
@@ -784,30 +827,49 @@ export function WorkManualExt() {
         </div>
       </div>
 
-      {/* ── 모드 선택 대메뉴 ── */}
-      <div style={{ display: 'flex', gap: 0, borderRadius: 10, overflow: 'hidden', border: '2px solid #E2E8F0' }}>
-        {([
-          { key: 'classic' as const, label: '기존 방식', icon: '📄', desc: '5단계 위저드 + from-manual 모듈', color: '#475569' },
-          { key: 'skill-plus' as const, label: '스킬 추가 버전', icon: '🧠', desc: '기존 + Skill File Q&A/인수인계', color: '#0F3D73' },
-          { key: 'skill-center' as const, label: '스킬 중심 버전', icon: '⚡', desc: 'Skill File 허브 → 모든 모듈 생성', color: '#7C3AED' },
-        ]).map((m) => {
-          const active = workMode === m.key;
-          return (
-            <button key={m.key} type="button" onClick={() => setWorkMode(m.key)}
-              style={{
-                flex: 1, padding: '10px 12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s',
-                background: active ? (m.key === 'classic' ? '#F1F5F9' : m.key === 'skill-plus' ? '#EFF6FF' : '#F5F3FF') : '#fff',
-                borderBottom: active ? `3px solid ${m.color}` : '3px solid transparent',
-              }}>
-              <span style={{ fontSize: 22 }}>{m.icon}</span>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: active ? 800 : 600, fontSize: 13, color: active ? m.color : '#64748b' }}>{m.label}</div>
-                <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.3 }}>{m.desc}</div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      {/* ── 모드 선택 대메뉴 (Phase 4+ 에서만 표시) ── */}
+      {phase >= 4 && manual && (
+        <div style={{ display: 'flex', gap: 0, borderRadius: 10, overflow: 'hidden', border: '2px solid #E2E8F0' }}>
+          {([
+            { key: 'classic' as const, label: '기존 방식', icon: '📄', desc: '5단계 위저드 + from-manual 모듈', color: '#475569' },
+            { key: 'skill-plus' as const, label: '확장 모드', icon: '🧠', desc: '기존 흐름 + Q&A 챗봇, 인수인계 사이드 패널', color: '#0F3D73' },
+            { key: 'skill-center' as const, label: '스킬 중심 버전', icon: '⚡', desc: 'Skill File 허브 → 모든 모듈 생성', color: '#7C3AED' },
+          ]).map((m) => {
+            const active = workMode === m.key;
+            return (
+              <button key={m.key} type="button" onClick={() => handleModeSwitch(m.key)}
+                style={{
+                  flex: 1, padding: '10px 12px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s',
+                  background: active ? (m.key === 'classic' ? '#F1F5F9' : m.key === 'skill-plus' ? '#EFF6FF' : '#F5F3FF') : '#fff',
+                  borderBottom: active ? `3px solid ${m.color}` : '3px solid transparent',
+                }}>
+                <span style={{ fontSize: 22 }}>{m.icon}</span>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: active ? 800 : 600, fontSize: 13, color: active ? m.color : '#64748b' }}>{m.label}</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.3 }}>{m.desc}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── 모드 전환 확인 다이얼로그 ── */}
+      {showModeConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 420, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', marginBottom: 8 }}>모드 변경 확인</div>
+            <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, marginBottom: 16 }}>
+              모드를 변경하면 현재 Phase 4/5의 표시 방식이 달라집니다.<br />
+              기존에 생성된 산출물과 모듈 데이터는 <strong>유지</strong>됩니다.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-outline" type="button" onClick={() => { setShowModeConfirm(false); setPendingMode(null); }}>취소</button>
+              <button className="btn" type="button" onClick={confirmModeSwitch} style={{ padding: '8px 20px' }}>변경</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Layout ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 12, alignItems: 'start' }}>
@@ -1544,11 +1606,26 @@ export function WorkManualExt() {
                       </div>
                     </div>
 
+                    {/* 완료 상태 */}
+                    {skillCenterDone && (
+                      <div style={{ background: '#F0FDF4', border: '2px solid #86EFAC', borderRadius: 10, padding: 14, textAlign: 'center' }}>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: '#166534', marginBottom: 4 }}>스킬 파일 검증 완료</div>
+                        <div style={{ fontSize: 12, color: '#15803d' }}>인수인계 가이드와 Q&A가 확인되었습니다.</div>
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <button className="btn btn-outline" type="button" onClick={() => setPhase(4)}>← 이전</button>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button className="btn btn-outline" type="button" onClick={() => { setShowSkillPanel(true); setSkillTab('overview'); }}>📋 전체 스킬 파일 보기</button>
-                        <button className="btn" type="button" onClick={newManual} style={{ padding: '8px 24px', background: '#7C3AED' }}>새 매뉴얼 작성</button>
+                        {!skillCenterDone ? (
+                          <button className="btn" type="button" onClick={() => { setSkillCenterDone(true); setShowRating(true); }}
+                            style={{ padding: '8px 24px', background: '#7C3AED' }}>
+                            스킬 파일 검증 완료
+                          </button>
+                        ) : (
+                          <button className="btn" type="button" onClick={newManual} style={{ padding: '8px 24px' }}>새 매뉴얼 작성</button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1817,6 +1894,66 @@ export function WorkManualExt() {
           title={skillFile ? '스킬 파일 보기' : '스킬 파일 생성'}>
           {skillLoading ? '⏳' : skillFile ? '📋' : '🧠'}
         </button>
+      )}
+
+      {/* ── 만족도 평가 + KPI 대시보드 ── */}
+      {showRating && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 14, padding: 28, maxWidth: 460, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontWeight: 800, fontSize: 16, color: '#0f172a', marginBottom: 12, textAlign: 'center' }}>매뉴얼 작성 완료</div>
+
+            {/* KPI 요약 */}
+            {kpi.startedAt > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+                <div style={{ background: '#F1F5F9', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{Math.round((Date.now() - kpi.startedAt) / 60000)}분</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>소요 시간</div>
+                </div>
+                <div style={{ background: '#F1F5F9', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{kpi.aiCalls}회</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>AI 호출</div>
+                </div>
+                <div style={{ background: '#F1F5F9', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: kpi.moduleSuccesses > 0 ? '#16a34a' : '#64748b' }}>{kpi.moduleSuccesses}/{kpi.moduleAttempts}</div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>모듈 성공/시도</div>
+                </div>
+                <div style={{ background: '#F1F5F9', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#7C3AED' }}>
+                    {{ classic: '📄', 'skill-plus': '🧠', 'skill-center': '⚡' }[workMode]}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>{{ classic: '기존 방식', 'skill-plus': '확장 모드', 'skill-center': '스킬 중심' }[workMode]}</div>
+                </div>
+              </div>
+            )}
+
+            {/* 만족도 평점 */}
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, color: '#475569', marginBottom: 8 }}>이 모드의 작성 경험은 어땠나요?</div>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                {[1, 2, 3, 4, 5].map(n => (
+                  <button key={n} type="button" onClick={() => setKpi(prev => ({ ...prev, rating: n }))}
+                    style={{
+                      width: 40, height: 40, borderRadius: '50%', border: kpi.rating === n ? '2px solid #7C3AED' : '2px solid #E2E8F0',
+                      background: kpi.rating === n ? '#F5F3FF' : '#fff', cursor: 'pointer', fontSize: 16, fontWeight: 700,
+                      color: kpi.rating === n ? '#7C3AED' : '#94a3b8',
+                    }}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8', marginTop: 4, padding: '0 20px' }}>
+                <span>불만족</span><span>매우 만족</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button className="btn" type="button" onClick={() => { setShowRating(false); console.log('[KPI]', { workMode, ...kpi, completedAt: Date.now() }); }}
+                style={{ padding: '8px 28px' }}>
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <style>{`
