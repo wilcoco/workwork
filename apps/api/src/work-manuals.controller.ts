@@ -924,9 +924,6 @@ DSL 포맷 규칙:
     const qs = QUESTION_SETS[baseType];
     if (!qs) throw new BadRequestException(`no question set for baseType: ${baseType}`);
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
-    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
-
     const previousRoundsSummary = rounds.map((r: any) =>
       `[Round ${r.roundNum}]\n질문: ${(r.aiQuestions || []).join('\n')}\n답변: ${(r.userAnswers || []).join('\n')}`
     ).join('\n\n');
@@ -957,30 +954,10 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
     const userMsg = `[사용자 자유 입력]\n${freeText}\n\n[이전 대화]\n${previousRoundsSummary || '(첫 라운드)'}`;
 
-    const f: any = (globalThis as any).fetch;
-    if (!f) throw new BadRequestException('Server fetch not available.');
-
-    const resp = await f('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: userMsg }],
-        temperature: 0.3,
-        max_tokens: 600,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
-    }
-
-    const data = await resp.json();
-    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    let parsed: any = {};
-    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('AI did not return valid JSON'); }
+    console.log('[extPhase2] calling AI', { baseType, roundNum, freeTextLen: freeText.length });
+    const result = await callAI({ system: sys, user: userMsg, temperature: 0.3, maxTokens: 600, model: 'openai' });
+    const parsed = result.parsed || {};
+    console.log('[extPhase2] AI response keys', Object.keys(parsed), 'questions:', (parsed.questions || []).length);
 
     return {
       roundNum,
@@ -1017,8 +994,7 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
     const nextRound = body.roundNum + 1;
     if (nextRound <= 3 && btDef) {
       const qs = QUESTION_SETS[baseType];
-      const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
-      if (qs && apiKey) {
+      if (qs) {
         const freeText = phaseData.phase1?.freeText || String(manual.content || '');
         const allRounds = phaseData.phase2.rounds || [];
         const prevSummary = allRounds.map((r: any) =>
@@ -1028,35 +1004,21 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
         const sys = `${AI_SYSTEM_PROMPT}\n\n### 현재 기본형: ${btDef.name} (${btDef.id})\n${btDef.userDescription}\n\n### 이 기본형의 핵심 질문 가이드:\n${qs.coreQuestions.map((q: string, i: number) => `${i + 1}. ${q}`).join('\n')}\n\n### 지시사항\n- 현재 Round ${nextRound}/3 입니다.\n- 사용자가 자유 입력한 내용과 이전 대화를 분석하세요.\n- 2~3개의 구체적인 후속 질문을 생성하세요.\n- 각 질문은 기본형(${btDef.name})의 핵심 질문 가이드를 기반으로 하되, 사용자가 이미 답변한 내용은 반복하지 마세요.\n- 매 라운드마다 "지금까지 정리된 내용"을 structuredSoFar에 포함하세요.\n\n반드시 JSON만 출력하세요. 마크다운 코드펜스를 사용하지 마세요.\n출력 JSON:\n{\n  "questions": string[],\n  "structuredSoFar": string,\n  "summary": string,\n  "completionRate": number\n}`;
         const userMsg = `[사용자 자유 입력]\n${freeText}\n\n[이전 대화]\n${prevSummary}`;
         try {
-          const f: any = (globalThis as any).fetch;
-          const resp = await f('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [{ role: 'system', content: sys }, { role: 'user', content: userMsg }],
-              temperature: 0.3,
-              max_tokens: 600,
-              response_format: { type: 'json_object' },
-            }),
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-            const parsed = JSON.parse(raw);
-            return {
-              ok: true,
-              completedRounds: phaseData.phase2.completedRounds,
-              nextRound: {
-                roundNum: nextRound,
-                questions: Array.isArray(parsed.questions) ? parsed.questions : [],
-                structuredSoFar: String(parsed.structuredSoFar || ''),
-                summary: String(parsed.summary || ''),
-                completionRate: Number(parsed.completionRate || 0),
-              },
-            };
-          }
-        } catch { /* fallback: 프론트엔드가 별도 호출 */ }
+          console.log('[extPhase2Answer] generating next round', nextRound);
+          const result = await callAI({ system: sys, user: userMsg, temperature: 0.3, maxTokens: 600, model: 'openai' });
+          const parsed = result.parsed || {};
+          return {
+            ok: true,
+            completedRounds: phaseData.phase2.completedRounds,
+            nextRound: {
+              roundNum: nextRound,
+              questions: Array.isArray(parsed.questions) ? parsed.questions : [],
+              structuredSoFar: String(parsed.structuredSoFar || ''),
+              summary: String(parsed.summary || ''),
+              completionRate: Number(parsed.completionRate || 0),
+            },
+          };
+        } catch (e) { console.error('[extPhase2Answer] AI error', e); /* fallback: 프론트엔드가 별도 호출 */ }
       }
     }
 
