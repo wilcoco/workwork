@@ -126,6 +126,7 @@ export function WorkManualExt() {
   const [p2Summary, setP2Summary] = useState('');
   const [p2CompletionRate, setP2CompletionRate] = useState(0);
   const [p2Round, setP2Round] = useState(1);
+  const [p2Error, setP2Error] = useState('');
 
   // Phase 3
   const [p3Recommended, setP3Recommended] = useState<string[]>([]);
@@ -228,7 +229,7 @@ export function WorkManualExt() {
     setDepartment(teamName);
     setFreeText('');
     setRelatedDocs([]);
-    setP2Questions([]); setP2Answers([]); setP2Structured(''); setP2Round(1); setP2CompletionRate(0);
+    setP2Questions([]); setP2Answers([]); setP2Structured(''); setP2Round(1); setP2CompletionRate(0); setP2Error('');
     setP3Recommended([]); setP3Selected({});
     setP4Content(''); setP4Summary(''); setP4Security([]);
     setP5Questions([]); setP5Answers({}); setP5Final(''); setP5Summary('');
@@ -461,20 +462,29 @@ export function WorkManualExt() {
 
   // ─── Phase 2: AI Questions (non-procedure) ─────────────────────
   async function loadPhase2Questions() {
-    if (!manual?.id) return;
+    if (!manual?.id) { console.warn('[Phase2] no manual id'); return; }
     setP2Loading(true);
+    setP2Error('');
+    console.log('[Phase2] loading questions', { manualId: manual.id, roundNum: p2Round, baseType: selectedBaseType });
     try {
       const r = await apiJson<Phase2Response>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ext/phase2`, {
         method: 'POST',
         body: JSON.stringify({ userId, roundNum: p2Round }),
       });
       bumpAiCall();
+      console.log('[Phase2] response', r);
       setP2Questions(r.questions || []);
       setP2Answers(new Array((r.questions || []).length).fill(''));
       setP2Structured(r.structuredSoFar || '');
       setP2Summary(r.summary || '');
       setP2CompletionRate(r.completionRate || 0);
-    } catch (e: any) { toast(e?.message || 'AI 질문 생성 실패', 'error'); }
+      if (!(r.questions || []).length) setP2Error('AI가 질문을 생성하지 못했습니다. 다시 시도해 주세요.');
+    } catch (e: any) {
+      console.error('[Phase2] error', e);
+      const msg = e?.message || 'AI 질문 생성 실패';
+      setP2Error(msg);
+      toast(msg, 'error');
+    }
     finally { setP2Loading(false); }
   }
 
@@ -1091,6 +1101,16 @@ export function WorkManualExt() {
 
               {p2Loading && !p2Questions.length && (
                 <div style={{ textAlign: 'center', padding: 24, color: '#64748b' }}>AI가 질문을 생성하고 있습니다...</div>
+              )}
+
+              {!p2Loading && p2Error && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: 16, textAlign: 'center' }}>
+                  <div style={{ fontSize: 13, color: '#DC2626', marginBottom: 8 }}>{p2Error}</div>
+                  <button className="btn" type="button" onClick={() => { setP2Error(''); loadPhase2Questions(); }}
+                    style={{ padding: '6px 20px', fontSize: 12 }}>
+                    다시 시도
+                  </button>
+                </div>
               )}
 
               {p2Structured && (
