@@ -781,7 +781,7 @@ export function WorkManualExt() {
   }
 
   return (
-    <div className="content" style={{ display: 'grid', gap: 12 }}>
+    <div className="content" style={{ display: 'grid', gap: 12, marginRight: showSkillPanel && skillFile ? 490 : 0, transition: 'margin-right 0.2s ease-out' }}>
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
