@@ -1072,9 +1072,6 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
     const btDef = BASE_TYPE_MAP[baseType];
     if (!btDef) throw new BadRequestException(`invalid baseType: ${baseType}`);
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
-    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
-
     const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
     const p1 = phaseData.phase1;
     const freeText = p1?.freeText || String(manual.content || '');
@@ -1142,29 +1139,10 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
 
     const userMsg = `업무명: ${manual.title}\n부서: ${manual.department || manual.authorTeamName || ''}\n작성자: ${manual.authorName || ''}\n\n[사용자 입력]\n${freeText}\n\n[AI 대화 내역]\n${roundsSummary || '(없음)'}`;
 
-    const f: any = (globalThis as any).fetch;
-    if (!f) throw new BadRequestException('Server fetch not available.');
-
-    const resp = await f('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: userMsg }],
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
-    }
-
-    const data = await resp.json();
-    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    let parsed: any = {};
-    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('AI did not return valid JSON'); }
+    console.log('[extPhase4] calling AI', { baseType, optionLabels });
+    const result = await callAI({ system: sys, user: userMsg, temperature: 0.2, model: 'openai' });
+    const parsed = result.parsed || {};
+    console.log('[extPhase4] AI response keys', Object.keys(parsed));
 
     const manualContent = String(parsed.manualContent || '').trim();
     if (!manualContent) throw new BadRequestException('AI returned empty manualContent');
@@ -1203,9 +1181,6 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
     const uid = String(body.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
-    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
-
     const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
     const currentContent = String(manual.content || '');
     const answeredQAs = (body.answers || []).filter(a => a.answer && a.answer.trim());
@@ -1241,29 +1216,10 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
 
     const userMsg = `[현재 매뉴얼]\n${currentContent}\n\n[암묵지 답변]\n${qaText}`;
 
-    const f: any = (globalThis as any).fetch;
-    if (!f) throw new BadRequestException('Server fetch not available.');
-
-    const resp = await f('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: userMsg }],
-        temperature: 0.15,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
-    }
-
-    const data = await resp.json();
-    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    let parsed: any = {};
-    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('AI did not return valid JSON'); }
+    console.log('[extPhase5Complete] calling AI', { answeredQAs: answeredQAs.length });
+    const result = await callAI({ system: sys, user: userMsg, temperature: 0.15, model: 'openai' });
+    const parsed = result.parsed || {};
+    console.log('[extPhase5Complete] AI response keys', Object.keys(parsed));
 
     const finalContent = String(parsed.finalContent || currentContent).trim();
 

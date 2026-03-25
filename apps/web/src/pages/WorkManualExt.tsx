@@ -216,8 +216,13 @@ export function WorkManualExt() {
     } else {
       setStepForms([]);
     }
+    setP2Questions([]); setP2Answers([]); setP2Structured(''); setP2Round(1); setP2CompletionRate(0); setP2Error('');
+    setP3Recommended([]); setP3Selected({});
+    setP4Summary(''); setP4Security([]);
+    setP5Questions([]); setP5Answers({}); setP5Final(''); setP5Summary('');
     setProcAiResult(null); setProcQualityScore(null);
     setBpmnJson(null); setBpmnTemplateId('');
+    setSkillCenterDone(false);
   }
 
   function newManual() {
@@ -1233,7 +1238,12 @@ export function WorkManualExt() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <button className="btn btn-outline" type="button" onClick={() => setPhase(2)}>← 이전: 프로세스 단계 편집</button>
-                <button className="btn btn-outline" type="button" onClick={() => nav('/manuals')}>매뉴얼 목록으로</button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-outline" type="button" onClick={() => nav('/manuals')}>매뉴얼 목록으로</button>
+                  <button className="btn" type="button" onClick={() => setPhase(4)} style={{ padding: '8px 24px' }}>
+                    다음: 산출물 생성 →
+                  </button>
+                </div>
               </div>
             </div>
           )}
