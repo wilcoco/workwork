@@ -637,9 +637,16 @@ export function WorkManualExt() {
       });
       const tmplId = String(created?.id || '').trim();
       if (!tmplId) throw new Error('프로세스 템플릿 생성 실패');
+      // 자동 발행 — 바로 프로세스 시작 가능하도록
+      try {
+        await apiJson(`/api/process-templates/${encodeURIComponent(tmplId)}/publish`, {
+          method: 'POST',
+          body: JSON.stringify({ actorId: userId }),
+        });
+      } catch { /* publish 실패해도 DRAFT 템플릿은 유지 */ }
       setBpmnTemplateId(tmplId);
       bumpModuleAttempt(true);
-      toast('프로세스 템플릿이 생성되었습니다!', 'success');
+      toast('프로세스 템플릿이 생성·발행되었습니다!', 'success');
     } catch (e: any) { bumpModuleAttempt(false); toast(e?.message || '프로세스 템플릿 생성 실패', 'error'); }
     finally { setModLoading(''); }
   }
@@ -743,9 +750,16 @@ export function WorkManualExt() {
         });
         const tmplId = String(created?.id || '').trim();
         if (!tmplId) throw new Error('프로세스 템플릿 생성 실패');
+        // 자동 발행
+        try {
+          await apiJson(`/api/process-templates/${encodeURIComponent(tmplId)}/publish`, {
+            method: 'POST',
+            body: JSON.stringify({ actorId: userId }),
+          });
+        } catch { /* publish 실패해도 DRAFT 유지 */ }
         setModKbCreated(false); // reset
         bumpAiCall(); bumpModuleAttempt(true);
-        toast('BPMN 프로세스 템플릿이 생성되었습니다.', 'success');
+        toast('BPMN 프로세스 템플릿이 생성·발행되었습니다.', 'success');
         nav(`/process/templates?openId=${encodeURIComponent(tmplId)}`);
       } catch (e: any) { bumpModuleAttempt(false); toast(e?.message || 'BPMN 생성 실패', 'error'); }
       finally { setModLoading(''); }
