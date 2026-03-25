@@ -248,7 +248,7 @@ export function WorkManualExt() {
   // ─── Mode switch with confirmation ────────────────────
   function handleModeSwitch(next: 'classic' | 'skill-plus' | 'skill-center') {
     if (next === workMode) return;
-    if (phase >= 4 && (p4Content || skillFile)) {
+    if ((isProcedure ? phase >= 3 : phase >= 4) && (p4Content || skillFile || bpmnJson)) {
       setPendingMode(next);
       setShowModeConfirm(true);
     } else {
@@ -360,7 +360,7 @@ export function WorkManualExt() {
   }
 
   // ─── Procedure: Save steps & generate BPMN ────
-  async function procSaveAndBpmn() {
+  async function procSaveAndBpmn(autoAdvance = false) {
     if (!manual?.id || !stepForms.some(s => s.title.trim())) return;
     setBpmnLoading(true);
     try {
@@ -376,11 +376,15 @@ export function WorkManualExt() {
       bumpAiCall();
       if (r?.bpmnJson) {
         setBpmnJson(r.bpmnJson);
+        if (autoAdvance) setPhase(3);
         toast('BPMN 프로세스가 생성되었습니다!', 'success');
       } else {
         throw new Error('BPMN 응답이 올바르지 않습니다.');
       }
-    } catch (e: any) { toast(e?.message || 'BPMN 생성 실패', 'error'); }
+    } catch (e: any) {
+      if (autoAdvance) setPhase(3);
+      toast(e?.message || 'BPMN 생성 실패', 'error');
+    }
     finally { setBpmnLoading(false); }
   }
 
@@ -568,7 +572,7 @@ export function WorkManualExt() {
   }
 
   useEffect(() => {
-    if (phase === 3 && manual?.id && !p3Loading && p3Recommended.length === 0 && selectedBaseType !== 'procedure') {
+    if (phase === 3 && manual?.id && !p3Loading && p3Recommended.length === 0) {
       void loadPhase3();
     }
   }, [phase, manual?.id, selectedBaseType]);
@@ -589,8 +593,8 @@ export function WorkManualExt() {
       if (r.title) setTitle(r.title);
       toast('산출물 생성 완료!', 'success');
 
-      // 업무 절차 기본형이면 자동으로 BPMN 변환 시작
-      if (selectedBaseType === 'procedure' && r.manualContent) {
+      // 업무 절차 기본형이면 자동으로 BPMN 변환 시작 (Phase 3에서 이미 생성된 경우 스킵)
+      if (selectedBaseType === 'procedure' && r.manualContent && !bpmnJson) {
         void autoBpmnConvert();
       }
     } catch (e: any) { toast(e?.message || '산출물 생성 실패', 'error'); }
@@ -842,8 +846,8 @@ export function WorkManualExt() {
         </div>
       </div>
 
-      {/* ── 모드 선택 대메뉴 (Phase 4+ 에서만 표시) ── */}
-      {phase >= 4 && manual && (
+      {/* ── 모드 선택 대메뉴 (procedure: Phase 3+, 기타: Phase 4+) ── */}
+      {((isProcedure ? phase >= 3 : phase >= 4)) && manual && (
         <div style={{ display: 'flex', gap: 0, borderRadius: 10, overflow: 'hidden', border: '2px solid #E2E8F0' }}>
           {([
             { key: 'classic' as const, label: '기존 방식', icon: '📄', desc: '5단계 위저드 + from-manual 모듈', color: '#475569' },
@@ -1082,7 +1086,7 @@ export function WorkManualExt() {
                 <button className="btn btn-outline" type="button" onClick={() => setPhase(1)}>← 이전: 업무 입력</button>
                 <button className="btn" type="button"
                   disabled={!stepForms.some(s => s.title.trim())}
-                  onClick={() => { setPhase(3); void procSaveAndBpmn(); }}
+                  onClick={() => { void procSaveAndBpmn(true); }}
                   style={{ padding: '8px 24px' }}>다음: BPMN 프로세스 생성 →</button>
               </div>
             </div>
@@ -1230,9 +1234,42 @@ export function WorkManualExt() {
               {!bpmnLoading && !bpmnJson && (
                 <div style={{ border: '1px solid #FCD34D', borderRadius: 10, background: '#FFFBEB', padding: 16, textAlign: 'center' }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E', marginBottom: 8 }}>BPMN 변환이 아직 완료되지 않았습니다.</div>
-                  <button className="btn" type="button" onClick={procSaveAndBpmn} style={{ padding: '8px 20px', fontSize: 13 }}>
+                  <button className="btn" type="button" onClick={() => { void procSaveAndBpmn(); }} style={{ padding: '8px 20px', fontSize: 13 }}>
                     BPMN 변환 시작
                   </button>
+                </div>
+              )}
+
+              {/* 옵션 선택 (procedure도 추가 옵션 선택 가능) */}
+              {!p3Loading && optionGroups.length > 0 && (
+                <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 2 }}>추가 옵션 선택</div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>기본 BPMN 프로세스 외에 추가로 포함할 콘텐츠와 기능을 선택하세요.</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {optionGroups.map(grp => (
+                      <div key={grp.id}>
+                        <div style={{ fontWeight: 600, fontSize: 12, color: '#374151', marginBottom: 4 }}>{grp.label}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {grp.items.map(it => {
+                            const sel = (p3Selected[grp.id] || []).includes(it.id);
+                            const rec = p3Recommended.includes(it.id);
+                            return (
+                              <button key={it.id} type="button" onClick={() => toggleOption(grp.id, it.id)}
+                                style={{
+                                  padding: '4px 10px', borderRadius: 16, fontSize: 11, fontWeight: sel ? 700 : 500, cursor: 'pointer', transition: 'all 0.15s',
+                                  border: sel ? '1.5px solid #0F3D73' : '1px solid #CBD5E1',
+                                  background: sel ? '#EFF6FF' : '#fff',
+                                  color: sel ? '#0F3D73' : '#374151',
+                                }}>
+                                {it.label}
+                                {rec && !sel && <span style={{ marginLeft: 4, fontSize: 10, color: '#f59e0b' }}>추천</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1240,8 +1277,8 @@ export function WorkManualExt() {
                 <button className="btn btn-outline" type="button" onClick={() => setPhase(2)}>← 이전: 프로세스 단계 편집</button>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button className="btn btn-outline" type="button" onClick={() => nav('/manuals')}>매뉴얼 목록으로</button>
-                  <button className="btn" type="button" onClick={() => setPhase(4)} style={{ padding: '8px 24px' }}>
-                    다음: 산출물 생성 →
+                  <button className="btn" type="button" onClick={() => { void savePhase3(); }} disabled={saving} style={{ padding: '8px 24px' }}>
+                    {saving ? '저장 중...' : '다음: 산출물 생성 →'}
                   </button>
                 </div>
               </div>
