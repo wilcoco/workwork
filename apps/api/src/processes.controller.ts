@@ -1725,12 +1725,20 @@ export class ProcessesController {
 
     if (!this.evalCondition(String(tmpl.loopBackCondition), ctx)) return false;
 
-    // Check loop count limit
+    // Find the target task instance first so we can check its loopCount
+    const targetTasks0 = await tx.processTaskInstance.findMany({
+      where: { instanceId, taskTemplateId: tmpl.loopBackTargetId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!targetTasks0.length) return false;
+    const target = targetTasks0[0];
+
+    // Check loop count limit on the TARGET task (which accumulates the count)
     const maxLoop = tmpl.maxLoopCount ?? 3;
-    const currentLoopCount = taskInst?.loopCount ?? 0;
+    const currentLoopCount = target.loopCount ?? 0;
     if (currentLoopCount >= maxLoop) {
       // Exceeded max loops — send escalation notification instead of looping
-      const assigneeId = String(taskInst?.assigneeId || '').trim();
+      const assigneeId = String(target.assigneeId || taskInst?.assigneeId || '').trim();
       if (assigneeId) {
         await tx.notification.create({
           data: {
@@ -1750,15 +1758,7 @@ export class ProcessesController {
       return false; // proceed normally (no loop)
     }
 
-    // Find the target task instance to reactivate
-    const targetTasks = await tx.processTaskInstance.findMany({
-      where: { instanceId, taskTemplateId: tmpl.loopBackTargetId },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!targetTasks.length) return false;
-
-    // Reactivate the most recent target task instance
-    const target = targetTasks[0];
+    // Reactivate the most recent target task instance (already fetched above)
     await tx.processTaskInstance.update({
       where: { id: target.id },
       data: {
@@ -1771,6 +1771,9 @@ export class ProcessesController {
         loopCount: (target.loopCount ?? 0) + 1,
       },
     });
+
+    // Clear old deadline alerts so they get re-scheduled for the reactivated task
+    await tx.processDeadlineAlert.deleteMany({ where: { taskInstanceId: target.id } });
 
     // Notify the target task assignee
     const targetAssigneeId = String(target.assigneeId || '').trim();

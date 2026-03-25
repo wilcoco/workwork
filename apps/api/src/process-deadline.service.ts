@@ -53,16 +53,17 @@ export class ProcessDeadlineService implements OnModuleInit, OnModuleDestroy {
 
       let sentCount = 0;
       for (const alert of pendingAlerts) {
+        // Optimistic lock: claim alert first to prevent duplicate sends in multi-instance
+        const claimed = await this.prisma.processDeadlineAlert.updateMany({
+          where: { id: alert.id, sentAt: null },
+          data: { sentAt: now },
+        });
+        if (!claimed.count) continue; // another instance already claimed it
+
         const task = alert.taskInstance;
-        // Skip if task is already completed/skipped
+        // Skip if task is already completed/skipped (already marked sent above)
         const status = String(task?.status || '').toUpperCase();
-        if (status === 'COMPLETED' || status === 'SKIPPED') {
-          await this.prisma.processDeadlineAlert.update({
-            where: { id: alert.id },
-            data: { sentAt: now },
-          });
-          continue;
-        }
+        if (status === 'COMPLETED' || status === 'SKIPPED') continue;
 
         // Send notification
         const recipientId = String(alert.recipientId || task?.assigneeId || '').trim();
@@ -84,12 +85,6 @@ export class ProcessDeadlineService implements OnModuleInit, OnModuleDestroy {
             },
           });
         }
-
-        // Mark as sent
-        await this.prisma.processDeadlineAlert.update({
-          where: { id: alert.id },
-          data: { sentAt: now },
-        });
         sentCount++;
       }
 

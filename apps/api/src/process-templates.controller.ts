@@ -752,6 +752,12 @@ export class ProcessTemplatesController {
             deadlineOffsetDays: t.deadlineOffsetDays,
             slaHours: t.slaHours,
             allowDelayReasonRequired: t.allowDelayReasonRequired,
+            xorGroupKey: t.xorGroupKey,
+            xorCondition: t.xorCondition,
+            predecessorMode: t.predecessorMode,
+            loopBackTargetId: t.loopBackTargetId,
+            loopBackCondition: t.loopBackCondition,
+            maxLoopCount: t.maxLoopCount,
           }));
           if (dataToCreate.length) {
             await tx.processTaskTemplate.createMany({ data: dataToCreate });

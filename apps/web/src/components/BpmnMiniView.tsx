@@ -78,7 +78,7 @@ export function BpmnMiniView({ bpmn, height = 260 }: { bpmn: any; height?: numbe
           id: nid,
           type: 'default',
           position: { x: 120 + col * 180, y: 60 + level * 100 },
-          data: { label },
+          data: { label: isGw ? React.createElement('span', { style: { display: 'inline-block', transform: 'rotate(-45deg)' } }, label) : label },
           style: isGw
             ? { background: gwColor + '18', border: `2px solid ${gwColor}`, borderRadius: 4, fontWeight: 700, fontSize: 11, color: gwColor, transform: 'rotate(45deg)', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
             : isStart
