@@ -16,6 +16,7 @@ type BpmnNode = {
   emailBodyTemplate?: string;
   stageLabel?: string;
   deadlineOffsetDays?: number;
+  slaHours?: number;
   position?: { x: number; y: number };
 };
 
@@ -24,6 +25,7 @@ type BpmnEdge = {
   source: string;
   target: string;
   condition?: string; // for XOR conditions (optional)
+  isLoopBack?: boolean;
 };
 
 export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; onChangeJson: (t: string) => void }) {
@@ -50,6 +52,7 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         emailBodyTemplate: n.emailBodyTemplate || undefined,
         stageLabel: n.stageLabel || undefined,
         deadlineOffsetDays: typeof n.deadlineOffsetDays === 'number' ? n.deadlineOffsetDays : undefined,
+        slaHours: typeof n.slaHours === 'number' ? n.slaHours : undefined,
         position: (n && n.position && typeof n.position.x === 'number' && typeof n.position.y === 'number') ? { x: n.position.x, y: n.position.y } : undefined,
       })) : [];
       const ee: BpmnEdge[] = Array.isArray(j?.edges) ? j.edges.map((e: any, idx: number) => ({
@@ -57,6 +60,7 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
         source: String(e.source),
         target: String(e.target),
         condition: e.condition ? String(e.condition) : undefined,
+        isLoopBack: e.isLoopBack ? true : undefined,
       })) : [];
       setNodes(nn);
       setEdges(ee);
@@ -229,18 +233,20 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
                   메일 본문 템플릿
                   <textarea value={n.emailBodyTemplate || ''} onChange={(e) => updateNode(n.id, { emailBodyTemplate: e.target.value })} rows={6} />
                 </label>
-                {false && (
+                <label>
+                  스테이지
+                  <input value={n.stageLabel || ''} onChange={(e) => updateNode(n.id, { stageLabel: e.target.value })} placeholder="예: 1. 기획" />
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <label>
-                    스테이지
-                    <input value={n.stageLabel || ''} onChange={(e) => updateNode(n.id, { stageLabel: e.target.value })} />
+                    마감 D+일
+                    <input type="number" min={0} value={n.deadlineOffsetDays ?? ''} onChange={(e) => updateNode(n.id, { deadlineOffsetDays: e.target.value ? Number(e.target.value) : undefined })} placeholder="예: 7" />
                   </label>
-                )}
-                {false && (
                   <label>
-                    마감 오프셋(D+)
-                    <input type="number" value={n.deadlineOffsetDays ?? ''} onChange={(e) => updateNode(n.id, { deadlineOffsetDays: e.target.value ? Number(e.target.value) : undefined })} />
+                    SLA(시간)
+                    <input type="number" min={0} value={n.slaHours ?? ''} onChange={(e) => updateNode(n.id, { slaHours: e.target.value ? Number(e.target.value) : undefined })} placeholder="예: 48" />
                   </label>
-                )}
+                </div>
               </>
             )}
           </div>
@@ -298,6 +304,15 @@ export function BpmnFormEditor({ jsonText, onChangeJson }: { jsonText: string; o
                   >비우기</button>
                 </div>
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>사용 가능 변수: last.approval.status</div>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={!!e.isLoopBack}
+                  onChange={(ev) => updateEdge(e.id, { isLoopBack: ev.target.checked || undefined })}
+                />
+                <span style={{ fontWeight: 500, color: '#f97316' }}>반려 루프백</span>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>(결재 반려 시 이전 태스크로 되돌림)</span>
               </label>
             </div>
           </div>

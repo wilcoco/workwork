@@ -66,18 +66,43 @@ export function BpmnMiniView({ bpmn, height = 260 }: { bpmn: any; height?: numbe
         const nid = String(n.id);
         const level = levelMap.get(nid) ?? idx;
         const col = colMap.get(nid) ?? 0;
+        const nodeType = String(n.type || '');
+        const isGw = nodeType === 'gateway_parallel' || nodeType === 'gateway_xor';
+        const isStart = nodeType === 'start';
+        const isEnd = nodeType === 'end';
+        const gwColor = nodeType === 'gateway_parallel' ? '#3b82f6' : '#f97316';
+        const label = isGw
+          ? (nodeType === 'gateway_parallel' ? (n.name || 'AND') : (n.name || 'XOR'))
+          : (n.name || n.type || nid);
         return {
           id: nid,
           type: 'default',
           position: { x: 120 + col * 180, y: 60 + level * 100 },
-          data: { label: n.name || n.type || nid },
+          data: { label },
+          style: isGw
+            ? { background: gwColor + '18', border: `2px solid ${gwColor}`, borderRadius: 4, fontWeight: 700, fontSize: 11, color: gwColor, transform: 'rotate(45deg)', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+            : isStart
+            ? { background: '#ecfdf5', border: '2px solid #16a34a', borderRadius: '50%', width: 60, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }
+            : isEnd
+            ? { background: '#fee2e2', border: '2px solid #dc2626', borderRadius: '50%', width: 60, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }
+            : undefined,
         };
       });
-      const ee: Edge<any>[] = rawEdges.map((e: any, i: number) => ({
-        id: String(e.id || `${e.source}-${e.target}-${i}`),
-        source: String(e.source),
-        target: String(e.target),
-      }));
+      const ee: Edge<any>[] = rawEdges.map((e: any, i: number) => {
+        const isLoop = !!e.isLoopBack;
+        const labelParts: string[] = [];
+        if (e.condition) labelParts.push(String(e.condition).length > 30 ? String(e.condition).slice(0, 28) + '..' : String(e.condition));
+        if (isLoop) labelParts.push('[Loop]');
+        return {
+          id: String(e.id || `${e.source}-${e.target}-${i}`),
+          source: String(e.source),
+          target: String(e.target),
+          label: labelParts.length ? labelParts.join(' ') : undefined,
+          style: isLoop ? { stroke: '#f97316', strokeWidth: 2, strokeDasharray: '6 3' } : undefined,
+          animated: isLoop,
+          type: 'smoothstep',
+        };
+      });
       setNodes(nn);
       setEdges(ee);
     } catch {

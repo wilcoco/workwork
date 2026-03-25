@@ -51,24 +51,73 @@ export class ProcessTemplatesController {
       const s = String(t || 'TASK').toUpperCase();
       return ['TASK', 'WORKLOG', 'COOPERATION', 'APPROVAL'].includes(s) ? s : 'TASK';
     };
+    // Build loopBack map from edges with isLoopBack: true
+    const loopBackMap = new Map<string, { targetId: string; condition: string }>();
+    for (const e of bpmn.edges) {
+      if (e.isLoopBack) {
+        const src = String(e.source);
+        const tgt = String(e.target);
+        // source is a task node (e.g. approval), target is a task node to loop back to
+        const srcNode = nodes[src];
+        const tgtNode = nodes[tgt];
+        if (srcNode && tgtNode && (isTask(srcNode) || isGateway(srcNode))) {
+          loopBackMap.set(isTask(srcNode) ? src : src, { targetId: tgt, condition: String(e.condition || "last.approval.status == 'REJECTED'") });
+        }
+      }
+    }
+    const isXor = (n: any) => n && String(n.type).toLowerCase() === 'gateway_xor';
+    const isParallel = (n: any) => n && String(n.type).toLowerCase() === 'gateway_parallel';
     const taskNodes = bpmn.nodes.filter((n: any) => isTask(n));
     return taskNodes.map((n: any, idx: number) => {
       const preds = Array.from(collectUpstreamTasks(String(n.id)));
       const immPreds: string[] = incoming.get(String(n.id)) || [];
       let xorKey: string | undefined = undefined;
       let xorCond: string | undefined = undefined;
-      const anyXor = immPreds.some((pid) => {
+      let hasXorPred = false;
+      let hasParallelPred = false;
+      for (const pid of immPreds) {
         const pn = nodes[pid];
-        const hit = pn && String(pn.type).toLowerCase() === 'gateway_xor';
-        if (hit && !xorKey) {
-          xorKey = String(pn.id);
-          // capture the edge condition from XOR gateway to this task
-          const outs = outgoing.get(String(pn.id)) || [];
-          const edge = outs.find((e: any) => String(e.target) === String(n.id));
-          if (edge && edge.condition) xorCond = String(edge.condition);
+        if (isXor(pn)) {
+          hasXorPred = true;
+          if (!xorKey) {
+            xorKey = String(pn.id);
+            const outs = outgoing.get(String(pn.id)) || [];
+            const edge = outs.find((e: any) => String(e.target) === String(n.id));
+            if (edge && edge.condition) xorCond = String(edge.condition);
+          }
         }
-        return hit;
-      });
+        if (isParallel(pn)) hasParallelPred = true;
+      }
+      // predecessorMode: XOR → 'ANY', Parallel join → 'ALL' (explicit), default → undefined (=ALL)
+      const predecessorMode = hasXorPred ? 'ANY' : (hasParallelPred ? 'ALL' : undefined);
+      // LoopBack: check if this task has outgoing loopBack edges
+      let loopBackTargetId: string | undefined = undefined;
+      let loopBackCondition: string | undefined = undefined;
+      const lb = loopBackMap.get(String(n.id));
+      if (lb) {
+        loopBackTargetId = lb.targetId;
+        loopBackCondition = lb.condition;
+      }
+      // Also check gateway-mediated loopback: if this task's outgoing goes to a gateway that has loopBack
+      const taskOuts = outgoing.get(String(n.id)) || [];
+      for (const e of taskOuts) {
+        const tgtNode = nodes[String(e.target)];
+        if (tgtNode && isGateway(tgtNode)) {
+          const gwLb = loopBackMap.get(String(tgtNode.id));
+          if (gwLb && !loopBackTargetId) {
+            loopBackTargetId = gwLb.targetId;
+            loopBackCondition = gwLb.condition;
+          }
+          // Also check gateway's outgoing for loopBack edges
+          const gwOuts = outgoing.get(String(tgtNode.id)) || [];
+          for (const ge of gwOuts) {
+            if (ge.isLoopBack && !loopBackTargetId) {
+              loopBackTargetId = String(ge.target);
+              loopBackCondition = String(ge.condition || "last.approval.status == 'REJECTED'");
+            }
+          }
+        }
+      }
       return {
         id: String(n.id),
         name: String(n.name || ''),
@@ -78,7 +127,7 @@ export class ProcessTemplatesController {
         taskType: normTaskType(n.taskType),
         orderHint: typeof n.orderHint === 'number' ? n.orderHint : idx,
         predecessorIds: preds.length ? preds.join(',') : undefined,
-        predecessorMode: anyXor ? 'ANY' : undefined,
+        predecessorMode,
         xorGroupKey: xorKey,
         xorCondition: xorCond,
         expectedOutput: n.expectedOutput != null ? String(n.expectedOutput) : undefined,
@@ -95,6 +144,9 @@ export class ProcessTemplatesController {
         deadlineOffsetDays: typeof n.deadlineOffsetDays === 'number' ? n.deadlineOffsetDays : undefined,
         slaHours: typeof n.slaHours === 'number' ? n.slaHours : undefined,
         allowDelayReasonRequired: n.allowDelayReasonRequired ? Boolean(n.allowDelayReasonRequired) : false,
+        loopBackTargetId,
+        loopBackCondition,
+        maxLoopCount: typeof n.maxLoopCount === 'number' ? n.maxLoopCount : undefined,
       };
     });
   }
@@ -402,6 +454,9 @@ export class ProcessTemplatesController {
                 allowDelayReasonRequired: t.allowDelayReasonRequired,
                 xorGroupKey: t.xorGroupKey,
                 xorCondition: t.xorCondition,
+                loopBackTargetId: t.loopBackTargetId,
+                loopBackCondition: t.loopBackCondition,
+                maxLoopCount: t.maxLoopCount,
               },
             });
             createdMap.set(String(t.id), created.id);
@@ -414,9 +469,11 @@ export class ProcessTemplatesController {
               .filter(Boolean) as string[])
               .map((pid) => createdMap.get(pid))
               .filter(Boolean) as string[];
+            // Remap loopBackTargetId to the new DB-generated ID
+            const remappedLoopBack = t.loopBackTargetId ? (createdMap.get(t.loopBackTargetId) || undefined) : undefined;
             await tx.processTaskTemplate.update({
               where: { id: newId },
-              data: { predecessorIds: preds.length ? preds.join(',') : undefined, predecessorMode: t.predecessorMode },
+              data: { predecessorIds: preds.length ? preds.join(',') : undefined, predecessorMode: t.predecessorMode, loopBackTargetId: remappedLoopBack },
             });
           }
         } else if (tasks && Array.isArray(tasks)) {
@@ -637,6 +694,9 @@ export class ProcessTemplatesController {
                 allowDelayReasonRequired: t.allowDelayReasonRequired,
                 xorGroupKey: t.xorGroupKey,
                 xorCondition: t.xorCondition,
+                loopBackTargetId: t.loopBackTargetId,
+                loopBackCondition: t.loopBackCondition,
+                maxLoopCount: t.maxLoopCount,
               },
             });
             createdMap.set(String(t.id), created.id);
@@ -649,9 +709,10 @@ export class ProcessTemplatesController {
               .filter(Boolean) as string[])
               .map((pid) => createdMap.get(pid))
               .filter(Boolean) as string[];
+            const remappedLoopBack = t.loopBackTargetId ? (createdMap.get(t.loopBackTargetId) || undefined) : undefined;
             await tx.processTaskTemplate.update({
               where: { id: newId },
-              data: { predecessorIds: preds.length ? preds.join(',') : undefined, predecessorMode: t.predecessorMode },
+              data: { predecessorIds: preds.length ? preds.join(',') : undefined, predecessorMode: t.predecessorMode, loopBackTargetId: remappedLoopBack },
             });
           }
         }

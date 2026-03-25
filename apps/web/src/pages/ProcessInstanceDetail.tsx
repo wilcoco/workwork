@@ -17,6 +17,7 @@ interface ProcTask {
   assigneeId?: string;
   plannedStartAt?: string;
   plannedEndAt?: string;
+  loopCount?: number;
   emailTo?: string | null;
   emailCc?: string | null;
   emailSubject?: string | null;
@@ -468,8 +469,34 @@ export function ProcessInstanceDetail() {
               {tasks.map((t) => (
                 <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #eef2f7', borderRadius: 6, padding: 8 }}>
                   <div>
-                    <div style={{ fontWeight: 600 }}>{t.name}</div>
-                    <div style={{ fontSize: 12, color: '#6b7280' }}>{t.taskType} · {t.status}</div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontWeight: 600 }}>{t.name}</span>
+                      {(t.loopCount ?? 0) > 0 && (
+                        <span style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FDBA74', borderRadius: 999, padding: '1px 7px', fontSize: 11, fontWeight: 600 }}>
+                          Loop {t.loopCount}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span>{t.taskType} · {t.status}</span>
+                      {t.deadlineAt && (() => {
+                        const dl = new Date(t.deadlineAt);
+                        const now = new Date();
+                        const done = t.status === 'COMPLETED' || t.status === 'SKIPPED';
+                        const overdue = !done && dl.getTime() < now.getTime();
+                        const diffDays = Math.ceil((dl.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                        const approaching = !done && !overdue && diffDays <= 3;
+                        return (
+                          <span style={{
+                            color: overdue ? '#DC2626' : approaching ? '#D97706' : '#6b7280',
+                            fontWeight: overdue || approaching ? 600 : 400,
+                          }}>
+                            {overdue ? `D+${Math.abs(diffDays)}` : approaching ? `D-${diffDays}` : ''}
+                            {' '}마감: {dl.toLocaleDateString()}
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     {t.status === 'READY' && (

@@ -734,6 +734,9 @@ model ProcessTaskTemplate {
   deadlineOffsetDays     Int?
   slaHours               Int?
   allowDelayReasonRequired Boolean        @default(false)
+  loopBackTargetId       String?           // 반려 시 돌아갈 태스크 템플릿 ID (루프백)
+  loopBackCondition      String?           // 루프백 조건 (예: last.approval.status == 'REJECTED')
+  maxLoopCount           Int?              // 최대 루프 횟수 (기본 3, 무한루프 방지)
   taskInstances          ProcessTaskInstance[]
 }
 
@@ -790,9 +793,11 @@ model ProcessTaskInstance {
   assigneeId        String?
   decidedById       String?
   decisionReason    String?
+  loopCount         Int                @default(0)
   initiativeId      String?
   initiative        Initiative?        @relation(fields: [initiativeId], references: [id])
   worklogs          Worklog[]          @relation("TaskWorklogs")
+  deadlineAlerts    ProcessDeadlineAlert[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -811,6 +816,22 @@ model ProcessStopEvent {
   stopType         StopType
   reason           String
   stoppedAt        DateTime       @default(now())
+}
+
+model ProcessDeadlineAlert {
+  id              String              @id @default(cuid())
+  taskInstanceId  String
+  taskInstance    ProcessTaskInstance @relation(fields: [taskInstanceId], references: [id])
+  alertType       String              // APPROACHING | OVERDUE | ESCALATION
+  alertLevel      Int                 @default(0) // 0=담당자, 1=팀장, 2=임원
+  scheduledAt     DateTime
+  sentAt          DateTime?
+  recipientId     String
+  createdAt       DateTime            @default(now())
+
+  @@index([taskInstanceId])
+  @@index([scheduledAt])
+  @@index([sentAt])
 }
 
 model Holiday {

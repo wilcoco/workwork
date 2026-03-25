@@ -900,6 +900,9 @@ export class ProcessesController {
             .filter(Boolean);
           const chain = (overrideList && overrideList.length ? overrideList : defaultChain).filter(Boolean);
           const plan = planMap.get(String(t.id)) || {};
+          // F5: auto-calculate deadlineAt from template's deadlineOffsetDays if no explicit plan deadline
+          const autoDeadline = plan.deadlineAt
+            || ((t as any).deadlineOffsetDays ? addDays(now, (t as any).deadlineOffsetDays) : undefined);
           if (chain.length > 0) {
             chain.forEach((aid, idx) => {
               taskCreates.push({
@@ -917,7 +920,7 @@ export class ProcessesController {
                 emailBody,
                 plannedStartAt: plan.plannedStartAt,
                 plannedEndAt: plan.plannedEndAt,
-                deadlineAt: plan.deadlineAt,
+                deadlineAt: autoDeadline,
               } as any);
             });
           } else {
@@ -938,7 +941,7 @@ export class ProcessesController {
               emailBody,
               plannedStartAt: plan.plannedStartAt,
               plannedEndAt: plan.plannedEndAt,
-              deadlineAt: plan.deadlineAt,
+              deadlineAt: autoDeadline,
             } as any);
           }
         }
@@ -1618,8 +1621,14 @@ export class ProcessesController {
           }
         }
       } else {
-        await this.unlockReadyDownstreams(tx, id, task.taskTemplateId);
+        // F2: Check loopBack before unlocking downstreams
+        const loopBack = await this.tryLoopBack(tx, id, task.taskTemplateId, taskId);
+        if (!loopBack) {
+          await this.unlockReadyDownstreams(tx, id, task.taskTemplateId);
+        }
       }
+      // F3: Schedule deadline alerts for newly READY tasks
+      await this.scheduleDeadlineAlerts(tx, id);
       // Optionally, set instance completed if all tasks are done or skipped
       const remain = await tx.processTaskInstance.count({ where: { instanceId: id, status: { notIn: ['COMPLETED', 'SKIPPED'] } } });
       if (remain === 0) {
@@ -1669,8 +1678,14 @@ export class ProcessesController {
           }
         }
       } else {
-        unlockKeys.add(`${t.instanceId}::${t.taskTemplateId}`);
+        // F2: Check loopBack before queueing unlock
+        const loopBack = await this.tryLoopBack(tx, t.instanceId, t.taskTemplateId, t.id);
+        if (!loopBack) {
+          unlockKeys.add(`${t.instanceId}::${t.taskTemplateId}`);
+        }
       }
+      // F3: Schedule deadline alerts for newly READY tasks
+      await this.scheduleDeadlineAlerts(tx, t.instanceId);
       const remain = await tx.processTaskInstance.count({ where: { instanceId: t.instanceId, status: { notIn: ['COMPLETED', 'SKIPPED'] } } });
       if (remain === 0) {
         await tx.processInstance.update({ where: { id: t.instanceId }, data: { status: 'COMPLETED', endAt: new Date() } });
@@ -1681,6 +1696,145 @@ export class ProcessesController {
       const [instanceId, templateId] = key.split('::');
       if (!instanceId || !templateId) continue;
       await this.unlockReadyDownstreams(tx, instanceId, templateId);
+    }
+  }
+
+  /**
+   * F2: LoopBack — if this task's template has a loopBackTargetId and the condition is met,
+   * reactivate the target task instead of proceeding downstream.
+   * Returns true if loopBack was triggered.
+   */
+  private async tryLoopBack(tx: any, instanceId: string, taskTemplateId: string, taskInstanceId: string): Promise<boolean> {
+    const tmpl = await tx.processTaskTemplate.findUnique({ where: { id: taskTemplateId } });
+    if (!tmpl?.loopBackTargetId || !tmpl?.loopBackCondition) return false;
+
+    // Build evaluation context
+    const inst = await tx.processInstance.findUnique({ where: { id: instanceId }, include: { startedBy: true } });
+    const taskInst = await tx.processTaskInstance.findUnique({ where: { id: taskInstanceId } });
+    const lastApproval = taskInst?.approvalRequestId
+      ? await tx.approvalRequest.findUnique({ where: { id: taskInst.approvalRequestId }, select: { id: true, status: true } })
+      : null;
+    const ctx = {
+      itemCode: inst?.itemCode || null,
+      moldCode: inst?.moldCode || null,
+      carModelCode: inst?.carModelCode || null,
+      initiativeId: inst?.initiativeId || null,
+      startedBy: { id: inst?.startedById || '', role: inst?.startedBy?.role || '' },
+      last: lastApproval ? { approval: { id: lastApproval.id, status: lastApproval.status } } : {},
+    };
+
+    if (!this.evalCondition(String(tmpl.loopBackCondition), ctx)) return false;
+
+    // Check loop count limit
+    const maxLoop = tmpl.maxLoopCount ?? 3;
+    const currentLoopCount = taskInst?.loopCount ?? 0;
+    if (currentLoopCount >= maxLoop) {
+      // Exceeded max loops — send escalation notification instead of looping
+      const assigneeId = String(taskInst?.assigneeId || '').trim();
+      if (assigneeId) {
+        await tx.notification.create({
+          data: {
+            userId: assigneeId,
+            type: 'ProcessLoopEscalation',
+            subjectType: 'PROCESS',
+            subjectId: instanceId,
+            payload: {
+              taskId: taskInstanceId,
+              taskName: taskInst?.name || tmpl.name,
+              loopCount: currentLoopCount,
+              maxLoopCount: maxLoop,
+            },
+          },
+        });
+      }
+      return false; // proceed normally (no loop)
+    }
+
+    // Find the target task instance to reactivate
+    const targetTasks = await tx.processTaskInstance.findMany({
+      where: { instanceId, taskTemplateId: tmpl.loopBackTargetId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!targetTasks.length) return false;
+
+    // Reactivate the most recent target task instance
+    const target = targetTasks[0];
+    await tx.processTaskInstance.update({
+      where: { id: target.id },
+      data: {
+        status: 'READY',
+        actualStartAt: null,
+        actualEndAt: null,
+        worklogId: null,
+        cooperationId: null,
+        approvalRequestId: null,
+        loopCount: (target.loopCount ?? 0) + 1,
+      },
+    });
+
+    // Notify the target task assignee
+    const targetAssigneeId = String(target.assigneeId || '').trim();
+    if (targetAssigneeId) {
+      await tx.notification.create({
+        data: {
+          userId: targetAssigneeId,
+          type: 'ProcessTaskLoopBack',
+          subjectType: 'PROCESS',
+          subjectId: instanceId,
+          payload: {
+            taskId: target.id,
+            taskName: target.name,
+            loopCount: (target.loopCount ?? 0) + 1,
+            reason: 'loopback',
+          },
+        },
+      });
+    }
+
+    return true;
+  }
+
+  /**
+   * F3: Schedule deadline alerts for READY tasks that have a deadlineAt.
+   * Creates ProcessDeadlineAlert records for approaching/overdue notifications.
+   */
+  private async scheduleDeadlineAlerts(tx: any, instanceId: string): Promise<void> {
+    const readyTasks = await tx.processTaskInstance.findMany({
+      where: { instanceId, status: { in: ['READY', 'IN_PROGRESS'] }, deadlineAt: { not: null } },
+      select: { id: true, assigneeId: true, deadlineAt: true },
+    });
+    if (!readyTasks.length) return;
+
+    for (const task of readyTasks) {
+      if (!task.deadlineAt || !task.assigneeId) continue;
+      const deadline = new Date(task.deadlineAt);
+      const existingCount = await tx.processDeadlineAlert.count({ where: { taskInstanceId: task.id } });
+      if (existingCount > 0) continue; // already scheduled
+
+      // Schedule alerts: D-3, D-1, D+0, D+1, D+3
+      const offsets = [
+        { days: -3, type: 'APPROACHING', level: 0 },
+        { days: -1, type: 'APPROACHING', level: 0 },
+        { days: 0,  type: 'OVERDUE',     level: 0 },
+        { days: 1,  type: 'OVERDUE',     level: 1 },
+        { days: 3,  type: 'ESCALATION',  level: 2 },
+      ];
+      const now = new Date();
+      const alertsToCreate: any[] = [];
+      for (const o of offsets) {
+        const scheduledAt = addDays(deadline, o.days);
+        if (scheduledAt.getTime() < now.getTime()) continue; // skip past alerts
+        alertsToCreate.push({
+          taskInstanceId: task.id,
+          alertType: o.type,
+          alertLevel: o.level,
+          scheduledAt,
+          recipientId: task.assigneeId,
+        });
+      }
+      if (alertsToCreate.length) {
+        await tx.processDeadlineAlert.createMany({ data: alertsToCreate });
+      }
     }
   }
 }

@@ -101,10 +101,11 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         emailBodyTemplate: (n.data && (n.data as any).emailBodyTemplate) || undefined,
         stageLabel: (n.data && (n.data as any).stageLabel) || undefined,
         deadlineOffsetDays: (n.data && (n.data as any).deadlineOffsetDays) ?? undefined,
+        slaHours: (n.data && (n.data as any).slaHours) ?? undefined,
         approvalUserIds: (n.data && (n.data as any).approvalUserIds) || undefined,
         position: { x: n.position?.x ?? 0, y: n.position?.y ?? 0 },
       })),
-      edges: edges.map((e: Edge<any>) => ({ id: String(e.id), source: String(e.source), target: String(e.target), condition: (e as any).data?.condition })),
+      edges: edges.map((e: Edge<any>) => ({ id: String(e.id), source: String(e.source), target: String(e.target), condition: (e as any).data?.condition, isLoopBack: (e as any).data?.isLoopBack || undefined })),
     };
     const txt = JSON.stringify(j, null, 2);
     lastEmittedJsonTextRef.current = txt;
@@ -142,13 +143,30 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             emailBodyTemplate: n.emailBodyTemplate || undefined,
             stageLabel: n.stageLabel || undefined,
             deadlineOffsetDays: n.deadlineOffsetDays ?? undefined,
+            slaHours: n.slaHours ?? undefined,
             approvalUserIds: n.approvalUserIds || undefined,
             label,
             kind: type,
           },
         } as Node<any>;
       });
-      const ee: Edge<any>[] = (j.edges || []).map((e: any) => ({ id: String(e.id || `${e.source}-${e.target}`), source: String(e.source), target: String(e.target), data: e.condition ? { condition: String(e.condition) } : undefined, label: e.condition ? String(e.condition) : undefined }));
+      const ee: Edge<any>[] = (j.edges || []).map((e: any) => {
+        const edgeData: any = {};
+        if (e.condition) edgeData.condition = String(e.condition);
+        if (e.isLoopBack) edgeData.isLoopBack = true;
+        const labelParts: string[] = [];
+        if (e.condition) labelParts.push(String(e.condition));
+        if (e.isLoopBack) labelParts.push('[LoopBack]');
+        return {
+          id: String(e.id || `${e.source}-${e.target}`),
+          source: String(e.source),
+          target: String(e.target),
+          data: Object.keys(edgeData).length ? edgeData : undefined,
+          label: labelParts.length ? labelParts.join(' ') : undefined,
+          style: e.isLoopBack ? { stroke: '#f97316', strokeWidth: 2, strokeDasharray: '6 3' } : undefined,
+          animated: !!e.isLoopBack,
+        };
+      });
       setNodes(nn);
       setEdges(ee);
     } catch {
@@ -391,17 +409,18 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                     rows={6}
                   />
                 </label>
-                {false && (<label>스테이지<input value={(n.data as any)?.stageLabel || ''} onChange={(e) => onNodeLabelChange(n.id, 'stageLabel', e.target.value)} /></label>)}
-                {false && (<label>마감 오프셋(D+)<input type="number" value={(n.data as any)?.deadlineOffsetDays ?? ''} onChange={(e) => onNodeLabelChange(n.id, 'deadlineOffsetDays', e.target.value ? Number(e.target.value) : undefined)} /></label>)}
-                {false && (
-                  <label>담당자 순번(쉼표로 ID 나열)
-                    <input
-                      placeholder="userA,userB,userC"
-                      value={(n.data as any)?.approvalUserIds || ''}
-                      onChange={(e) => onNodeLabelChange(n.id, 'approvalUserIds', e.target.value)}
-                    />
-                  </label>
-                )}
+                <label>스테이지<input value={(n.data as any)?.stageLabel || ''} onChange={(e) => onNodeLabelChange(n.id, 'stageLabel', e.target.value)} placeholder="예: 1. 기획" /></label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <label>마감 D+일<input type="number" min={0} value={(n.data as any)?.deadlineOffsetDays ?? ''} onChange={(e) => onNodeLabelChange(n.id, 'deadlineOffsetDays', e.target.value ? Number(e.target.value) : undefined)} placeholder="예: 7" /></label>
+                  <label>SLA(시간)<input type="number" min={0} value={(n.data as any)?.slaHours ?? ''} onChange={(e) => onNodeLabelChange(n.id, 'slaHours', e.target.value ? Number(e.target.value) : undefined)} placeholder="예: 48" /></label>
+                </div>
+                <label>담당자 순번(쉼표로 ID 나열)
+                  <input
+                    placeholder="userA,userB,userC"
+                    value={(n.data as any)?.approvalUserIds || ''}
+                    onChange={(e) => onNodeLabelChange(n.id, 'approvalUserIds', e.target.value)}
+                  />
+                </label>
               </>
             )}
             {(n.type === 'gateway_parallel' || n.type === 'gateway_xor') && (
@@ -471,6 +490,31 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                   >비우기</button>
                 </div>
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>사용 가능 변수: last.approval.status</div>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={!!(e as any).data?.isLoopBack}
+                  onChange={(ev) => {
+                    const checked = ev.target.checked;
+                    setEdges((prev: Edge<any>[]) => prev.map((x) => {
+                      if (String(x.id) !== String(e.id)) return x;
+                      const newData = { ...(x as any).data, isLoopBack: checked || undefined };
+                      const labelParts: string[] = [];
+                      if (newData.condition) labelParts.push(newData.condition);
+                      if (checked) labelParts.push('[LoopBack]');
+                      return {
+                        ...x,
+                        data: newData,
+                        label: labelParts.length ? labelParts.join(' ') : undefined,
+                        style: checked ? { stroke: '#f97316', strokeWidth: 2, strokeDasharray: '6 3' } : undefined,
+                        animated: checked,
+                      };
+                    }));
+                  }}
+                />
+                <span style={{ fontWeight: 500, color: '#f97316' }}>반려 루프백</span>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>(결재 반려 시 이전 태스크로 되돌림)</span>
               </label>
             </div>
           </div>

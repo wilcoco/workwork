@@ -34,6 +34,7 @@ import { WeeklyReportsController } from './weekly-reports.controller';
 import { KnowledgeBaseController } from './knowledge-base.controller';
 import { SchedulesController } from './schedules.controller';
 import { PeriodicAlarmsController } from './periodic-alarms.controller';
+import { ProcessDeadlineService } from './process-deadline.service';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -71,6 +72,6 @@ import { PeriodicAlarmsController } from './periodic-alarms.controller';
     SchedulesController,
     PeriodicAlarmsController,
   ],
-  providers: [PrismaService, TeamsNotificationService],
+  providers: [PrismaService, TeamsNotificationService, ProcessDeadlineService],
 })
 export class AppModule {}
