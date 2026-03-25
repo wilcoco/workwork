@@ -80,62 +80,16 @@
 
 ---
 
-## 발견된 버그/이슈
+## 발견된 버그/이슈 — 전체 수정 완료 ✅
 
-### 🔴 BUG-1 (Critical): procedure 기본형 — Phase 3→4→5 전환 불가
-- **위치:** Phase 3 (procedure) 렌더링 (line ~1234)
-- **문제:** Phase 3 하단에 "← 이전: 프로세스 단계 편집"과 "매뉴얼 목록으로" 버튼만 있고, Phase 4/5로 이동하는 버튼이 없음
-- **영향:** procedure 기본형 사용자는 Phase 3에서 막힘 → Phase 4 산출물 생성, Phase 5 암묵지 보완 불가
-- **수정:** Phase 4로 이동하는 "다음: 산출물 생성 →" 버튼 추가 필요
-
-### 🔴 BUG-2 (Critical): Phase 4 extPhase4 엔드포인트가 callAI 대신 raw fetch 사용
-- **위치:** work-manuals.controller.ts line ~1145-1167
-- **문제:** extPhase4도 Phase 2처럼 `(globalThis as any).fetch`를 직접 사용 → Phase 2와 같은 이유로 실패 가능
-- **수정:** callAI 헬퍼로 리팩터링 필요
-
-### 🔴 BUG-3 (Critical): Phase 5 extPhase5Complete도 raw fetch 사용
-- **위치:** work-manuals.controller.ts line ~1244-1266
-- **문제:** 동일하게 raw fetch 사용
-- **수정:** callAI 헬퍼로 리팩터링 필요
-
-### 🟡 BUG-4 (Medium): procedure Phase 2 → Phase 3 진입 시 BPMN 자동 생성 조건
-- **위치:** procSaveAndBpmn() 호출 (line ~1070)
-- **문제:** Phase 2에서 "다음: BPMN 프로세스 생성 →" 클릭 시 `setPhase(3); void procSaveAndBpmn();` 순서로 호출
-- **잠재 이슈:** BPMN JSON이 아직 없는 상태에서 Phase 3 렌더링 → "BPMN 변환이 아직 완료되지 않았습니다" 메시지가 잠깐 깜빡임 (UX)
-
-### 🟡 BUG-5 (Medium): Phase 4 자동 생성 useEffect 조건
-- **위치:** line ~638-642
-```js
-useEffect(() => {
-    if (phase === 4 && manual?.id && !p4Content && !p4Loading) {
-      void generatePhase4();
-    }
-  }, [phase, manual?.id]);
-```
-- **문제:** procedure 기본형에서 Phase 3→4 전환 시에도 자동으로 generatePhase4() 호출됨.
-  procedure는 이미 Phase 3에서 BPMN을 생성했으므로 Phase 4에서 또 AI를 호출하는 것은 중복.
-  하지만 Phase 4의 AI는 "매뉴얼 콘텐츠"를 생성하는 것이므로, BPMN과 별개로 필요할 수 있음.
-  → procedure의 Phase 4 목적을 명확히 할 필요 있음
-
-### 🟡 BUG-6 (Medium): procedure Phase 3에서 optionGroups 건너뜀
-- **문제:** procedure 기본형은 Phase 3이 BPMN 생성이라 옵션 선택을 완전히 건너뜀
-- **영향:** "결재/승인 절차 포함", "시스템 조작법 포함" 등 추가 옵션을 선택할 기회가 없음
-- **의견:** Phase 4 산출물에 옵션이 반영되지 않을 수 있음
-
-### 🟢 BUG-7 (Low): p2Error → 매뉴얼 선택 시 리셋 안 됨
-- **위치:** selectManual 함수
-- **문제:** 다른 매뉴얼을 선택할 때 p2Error가 이전 매뉴얼의 에러를 유지할 수 있음
-
-### 🟢 BUG-8 (Low): 모드 선택 Phase 4+ 조건
-- **문제:** procedure 기본형은 Phase 3에서 이미 최종 단계(BPMN 템플릿 생성)인데, 모드 선택이 Phase 4+에서만 표시됨
-- **영향:** procedure 사용자는 모드 선택을 볼 기회가 없음 (Phase 3에서 끝나므로)
-
----
-
-## 우선순위별 수정 계획
-
-1. **BUG-1** (procedure Phase 3→4 버튼 추가) — 즉시 수정
-2. **BUG-2, BUG-3** (Phase 4, 5 callAI 리팩터링) — 즉시 수정
-3. **BUG-7** (selectManual에서 p2Error 리셋) — 빠른 수정
-4. **BUG-4~6, 8** (UX 개선) — 논의 후 수정
+| # | 심각도 | 문제 | 수정 내용 | 커밋 |
+|---|--------|------|----------|------|
+| BUG-1 | 🔴 Critical | procedure Phase 3→4 전환 불가 | "다음: 산출물 생성 →" 버튼 추가 | 1f38db9 |
+| BUG-2 | 🔴 Critical | extPhase4 raw fetch → AI 실패 | callAI 헬퍼로 리팩터링 | 1f38db9 |
+| BUG-3 | 🔴 Critical | extPhase5Complete raw fetch → AI 실패 | callAI 헬퍼로 리팩터링 | 1f38db9 |
+| BUG-4 | 🟡 Medium | Phase 2→3 BPMN "미완료" 깜빡임 | procSaveAndBpmn(autoAdvance) 패턴 | 5558a96 |
+| BUG-5 | 🟡 Medium | Phase 4에서 BPMN 중복 생성 | bpmnJson 있으면 autoBpmnConvert 스킵 | 5558a96 |
+| BUG-6 | 🟡 Medium | procedure가 옵션 선택 건너뜀 | Phase 3 BPMN 하단에 옵션 선택 UI 추가 | 5558a96 |
+| BUG-7 | 🟢 Low | selectManual 시 p2Error 잔존 | 전체 상태 리셋 추가 | 1f38db9 |
+| BUG-8 | 🟢 Low | procedure에서 모드 선택 안 보임 | procedure는 Phase 3+, 기타는 Phase 4+에서 표시 | 5558a96 |
 
