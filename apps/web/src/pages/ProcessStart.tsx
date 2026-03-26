@@ -187,8 +187,8 @@ export function ProcessStart() {
         // 검색 결과가 없으면 모든 템플릿 표시
         setAiResults(templates.slice(0, 5).map(t => ({ template: t, score: 0, reason: '전체 템플릿' })));
       }
-    } catch (e: any) {
-      console.error('AI search error:', e);
+    } catch {
+      // silently ignore
     } finally {
       setAiSearching(false);
     }
@@ -385,7 +385,10 @@ export function ProcessStart() {
   }
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <h2>새 프로세스 시작</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button className="btn btn-outline" type="button" onClick={() => nav(-1 as any)} style={{ padding: '4px 12px', fontSize: 13 }}>← 뒤로</button>
+        <h2 style={{ margin: 0 }}>새 프로세스 시작</h2>
+      </div>
       {loading && <div>불러오는 중...</div>}
 
       {/* AI 프로세스 검색 */}
@@ -596,14 +599,11 @@ export function ProcessStart() {
                 <label>
                   연결할 과제(Initiative)
                   <select value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)}>
-                    <option value="">직접 입력</option>
+                    <option value="">(선택 안함)</option>
                     {myInits.map(it => (
                       <option key={it.id} value={it.id}>{it.title}</option>
                     ))}
                   </select>
-                  {!initiativeId && (
-                    <input value={initiativeId} onChange={(e) => setInitiativeId(e.target.value)} placeholder="Initiative ID 직접 입력" />
-                  )}
                 </label>
               </div>
               <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8 }}>
@@ -649,21 +649,28 @@ export function ProcessStart() {
                       )}
                       <div style={{ marginTop: 6 }}>
                         <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>담당자(복수 선택 가능)</label>
-                        <select
-                          multiple
-                          value={(t.id && assignees[String(t.id)]) || []}
-                          onChange={(e) => {
-                            if (!t.id) return;
-                            const opts = Array.from((e.target as HTMLSelectElement).selectedOptions).map(o => o.value);
-                            setAssignees((prev) => ({ ...prev, [String(t.id)]: opts }));
-                          }}
-                          disabled={t.__source === 'bpmn'}
-                          style={{ minHeight: 64 }}
-                        >
-                          {users.map((u) => (
-                            <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
-                          ))}
-                        </select>
+                        {t.__source === 'bpmn' ? (
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>템플릿 저장 후 지정 가능</div>
+                        ) : (
+                          <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6, padding: 4 }}>
+                            {users.map((u) => {
+                              const sel = (t.id && (assignees[String(t.id)] || []).includes(u.id)) || false;
+                              return (
+                                <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', cursor: 'pointer', borderRadius: 4, background: sel ? '#EFF6FF' : 'transparent', fontSize: 12 }}>
+                                  <input type="checkbox" checked={sel} onChange={() => {
+                                    if (!t.id) return;
+                                    setAssignees((prev) => {
+                                      const cur = prev[String(t.id)] || [];
+                                      const next = sel ? cur.filter(x => x !== u.id) : [...cur, u.id];
+                                      return { ...prev, [String(t.id)]: next };
+                                    });
+                                  }} />
+                                  <span>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                       <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
                         <label>

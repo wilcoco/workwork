@@ -319,7 +319,9 @@ export function ProcessInstanceDetail() {
 
   const canExec = () => {
     const role = String(me?.role || '').toUpperCase();
-    return role === 'CEO' || role === 'EXEC';
+    if (role === 'CEO' || role === 'EXEC') return true;
+    if (me && inst?.startedBy?.id === me.id) return true;
+    return false;
   };
 
   const notStarted = useMemo(() => (inst?.tasks || []).filter((t) => t.status === 'NOT_STARTED'), [inst]);

@@ -65,18 +65,18 @@ export function ProcessMy() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [worklogPopup, setWorklogPopup] = useState<TaskWorklog | null>(null);
 
-  useEffect(() => {
+  async function loadList() {
     if (!userId) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const arr = await apiJson<MyProcess[]>(`/api/processes/my?userId=${encodeURIComponent(userId)}`);
-        setItems(arr || []);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [userId]);
+    setLoading(true);
+    try {
+      const arr = await apiJson<MyProcess[]>(`/api/processes/my?userId=${encodeURIComponent(userId)}`);
+      setItems(arr || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadList(); }, [userId]);
 
   const openDetail = async (id: string) => {
     setSelectedId(id);
@@ -115,8 +115,12 @@ export function ProcessMy() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>내 프로세스</h2>
+        <button className="btn" onClick={loadList} disabled={loading}>{loading ? '불러오는 중...' : '새로고침'}</button>
+      </div>
       {!userId && <div style={{ color: '#DC2626' }}>로그인이 필요합니다.</div>}
-      {loading && <div>불러오는 중...</div>}
+      {loading && !items.length && <div>불러오는 중...</div>}
       <div style={{ display: 'grid', gap: 8 }}>
         {items.map((p) => (
           <div

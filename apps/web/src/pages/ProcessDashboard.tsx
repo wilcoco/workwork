@@ -159,10 +159,9 @@ export function ProcessDashboard() {
         apiJson<any>(`/api/processes/${encodeURIComponent(id)}`),
         apiJson<{ tasks: any[] }>(`/api/processes/${encodeURIComponent(id)}/timeline`).catch(() => ({ tasks: [] } as any)),
       ]);
-      console.log('ensureDetail response:', id, d);
       setDetailMap((prev) => ({ ...prev, [id]: { ...d, _timeline: Array.isArray((tl as any)?.tasks) ? (tl as any).tasks : [] } }));
-    } catch (err) {
-      console.error('ensureDetail error:', id, err);
+    } catch {
+      // silently ignore
     }
     finally {
       setDetailLoading((prev) => ({ ...prev, [id]: false }));
@@ -175,8 +174,7 @@ export function ProcessDashboard() {
     try {
       const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(worklogId)}`);
       setDocModal({ kind: 'WORKLOG', worklog: wl });
-    } catch (e) {
-      console.error('openWorklog error:', e);
+    } catch {
       nav(`/worklogs/${encodeURIComponent(worklogId)}`);
     } finally {
       setDocModalLoading(false);
@@ -199,8 +197,8 @@ export function ProcessDashboard() {
         if (resId) responseWl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(resId)}`);
       } catch {}
       setDocModal({ kind: 'COOP', ticket, requestWl, responseWl });
-    } catch (e) {
-      console.error('openCoop error:', e);
+    } catch {
+      // silently ignore
     } finally {
       setDocModalLoading(false);
     }
@@ -226,8 +224,8 @@ export function ProcessDashboard() {
         } catch {}
       }
       setDocModal({ kind: 'APPROVAL', approval: a, subjectTypeNorm: st, subjectDoc });
-    } catch (e) {
-      console.error('openApproval error:', e);
+    } catch {
+      // silently ignore
     } finally {
       setDocModalLoading(false);
     }
@@ -418,8 +416,8 @@ export function ProcessDashboard() {
         </label>
       </div>
 
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1.6fr 2fr 1fr', gap: 0, fontWeight: 700, background: '#f8fafc', padding: '8px 10px' }}>
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'auto' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1.6fr 2fr 1fr', gap: 0, fontWeight: 700, background: '#f8fafc', padding: '8px 10px', minWidth: 1100 }}>
           <div>프로세스</div>
           <div>템플릿</div>
           <div>시작자</div>
@@ -431,7 +429,7 @@ export function ProcessDashboard() {
           <div>액션</div>
         </div>
         {filtered.map((it) => (
-          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1.6fr 2fr 1fr', gap: 0, padding: '8px 10px', borderTop: '1px solid #eef2f7', alignItems: 'center' }}>
+          <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1.6fr 2fr 1fr', gap: 0, padding: '8px 10px', borderTop: '1px solid #eef2f7', alignItems: 'center', minWidth: 1100 }}>
             <div>
               <div style={{ fontWeight: 600 }}>{it.title}</div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>{it.status}</div>

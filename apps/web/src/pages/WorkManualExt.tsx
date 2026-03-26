@@ -471,17 +471,15 @@ export function WorkManualExt() {
 
   // ─── Phase 2: AI Questions (non-procedure) ─────────────────────
   async function loadPhase2Questions() {
-    if (!manual?.id) { console.warn('[Phase2] no manual id'); return; }
+    if (!manual?.id) return;
     setP2Loading(true);
     setP2Error('');
-    console.log('[Phase2] loading questions', { manualId: manual.id, roundNum: p2Round, baseType: selectedBaseType });
     try {
       const r = await apiJson<Phase2Response>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ext/phase2`, {
         method: 'POST',
         body: JSON.stringify({ userId, roundNum: p2Round }),
       });
       bumpAiCall();
-      console.log('[Phase2] response', r);
       setP2Questions(r.questions || []);
       setP2Answers(new Array((r.questions || []).length).fill(''));
       setP2Structured(r.structuredSoFar || '');
@@ -489,7 +487,6 @@ export function WorkManualExt() {
       setP2CompletionRate(r.completionRate || 0);
       if (!(r.questions || []).length) setP2Error('AI가 질문을 생성하지 못했습니다. 다시 시도해 주세요.');
     } catch (e: any) {
-      console.error('[Phase2] error', e);
       const msg = e?.message || 'AI 질문 생성 실패';
       setP2Error(msg);
       toast(msg, 'error');
@@ -1234,11 +1231,18 @@ export function WorkManualExt() {
                       <div style={{ background: '#DCFCE7', border: '1px solid #86EFAC', borderRadius: 8, padding: 10, textAlign: 'center', fontWeight: 700, fontSize: 13, color: '#166534' }}>
                         프로세스 템플릿이 생성되었습니다!
                       </div>
-                      <button className="btn" type="button"
-                        onClick={() => nav(`/process/templates?openId=${encodeURIComponent(bpmnTemplateId)}`)}
-                        style={{ width: '100%', padding: '12px 24px', fontSize: 14, fontWeight: 800 }}>
-                        프로세스 편집기에서 확인/수정 →
-                      </button>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <button className="btn btn-outline" type="button"
+                          onClick={() => window.open(`/process/templates?openId=${encodeURIComponent(bpmnTemplateId)}`, '_blank')}
+                          style={{ padding: '10px 16px', fontSize: 13, fontWeight: 700 }}>
+                          프로세스 편집기 (새 탭)
+                        </button>
+                        <button className="btn" type="button"
+                          onClick={() => nav(`/process/templates?openId=${encodeURIComponent(bpmnTemplateId)}`)}
+                          style={{ padding: '10px 16px', fontSize: 13, fontWeight: 700 }}>
+                          프로세스 편집기로 이동 →
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2028,7 +2032,7 @@ export function WorkManualExt() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <button className="btn" type="button" onClick={() => { setShowRating(false); console.log('[KPI]', { workMode, ...kpi, completedAt: Date.now() }); }}
+              <button className="btn" type="button" onClick={() => { setShowRating(false); }}
                 style={{ padding: '8px 28px' }}>
                 확인
               </button>
