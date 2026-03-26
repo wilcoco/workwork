@@ -2,7 +2,9 @@ import { Controller, Get } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
+import { Public } from './jwt-auth.guard';
 
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(private prisma: PrismaService, private config: ConfigService) {}

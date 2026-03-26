@@ -5,7 +5,9 @@ import { extname } from 'path';
 import type { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { PrismaService } from './prisma.service';
+import { Public } from './jwt-auth.guard';
 
+@Public()
 @Controller()
 export class UploadsController {
   constructor(private prisma: PrismaService) {}

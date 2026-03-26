@@ -1,6 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Public } from './jwt-auth.guard';
 
+@Public()
 @Controller('brand')
 export class BrandController {
   constructor(private config: ConfigService) {}

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { apiJson } from './lib/api';
 import { ToastContainer } from './components/Toast';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Home } from './pages/Home';
 import { WorklogNew } from './pages/WorklogNew';
 import { WorklogDetail } from './pages/WorklogDetail';
@@ -45,6 +46,7 @@ import { ProcessTemplates } from './pages/ProcessTemplates';
 import { ProcessDashboard } from './pages/ProcessDashboard';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
+import { AuthPending } from './pages/AuthPending';
 import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 import { WorkManuals } from './pages/WorkManuals';
 import { WorkManualExt } from './pages/WorkManualExt';
@@ -108,10 +110,12 @@ export function App() {
   const SHOW_APPROVALS = (import.meta.env.VITE_SHOW_APPROVALS ?? 'true') === 'true';
   const SHOW_COOPS = (import.meta.env.VITE_SHOW_COOPS ?? 'true') === 'true';
   return (
-    <BrowserRouter>
-      <AppShell SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
-      <ToastContainer />
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppShell SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} />
+        <ToastContainer />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
@@ -267,6 +271,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/auth/entra/complete" element={<AuthEntraComplete />} />
+          <Route path="/auth/pending" element={<AuthPending />} />
           <Route path="/worklogs/new" element={<WorklogNew />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
           <Route path="/manuals" element={<WorkManuals />} />
@@ -357,11 +362,6 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
   const isCams = norm.includes('캠스') || norm.includes('cams');
   const isIat = norm.includes('아이앤테크');
   const envLogo = isCams ? '/camslogo.jpg' : isIat ? '/logo.png' : '/logo.png';
-  console.log('VITE_COMPANY_NAME(raw):', (import.meta as any)?.env?.VITE_COMPANY_NAME);
-  console.log('companyName:', companyName);
-  console.log('norm:', norm);
-  console.log('isCams:', isCams);
-  console.log('initial logoSrc:', envLogo);
   const [logoSrc, setLogoSrc] = useState(envLogo);
   const [brandLabel, setBrandLabel] = useState(companyName || '회사');
 
@@ -425,7 +425,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
             <Link to="/approvals/new">결재올리기</Link>
             <Link to="/approvals/inbox">결재하기</Link>
             <Link to="/approvals/mine">올린 결재</Link>
-            <Link to="/approvals/status">결제 통계</Link>
+            <Link to="/approvals/status">결재 통계</Link>
           </NavDropdown>
         )}
         {SHOW_COOPS && (
@@ -450,7 +450,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
         <NavDropdown label="매뉴얼" active={location.pathname.startsWith('/manuals')}>
           <Link to="/manuals">업무 메뉴얼</Link>
         </NavDropdown>
-        <a href="https://apps.powerapps.com/play/e/e6d2c7be-41f5-e499-abb9-1107d4194381/a/7630894f-816a-46a0-a334-d81de0ca19c5?tenantId=c0cb4e4b-345c-43eb-859b-eb9397bfbbde" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>내부결재</a>
+{(() => { const url = String((import.meta as any)?.env?.VITE_POWERAPPS_APPROVAL_URL || '').trim(); return url ? <a href={url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>내부결재</a> : null; })()}
         {/* 품의전표: Power Apps 스크린 딥링크 해결 후 활성화 */}
         {/* <a href="https://apps.powerapps.com/play/e/e6d2c7be-41f5-e499-abb9-1107d4194381/a/bb3e1bf6-70d1-4192-844e-a04c3e7d1916?tenantId=c0cb4e4b-345c-43eb-859b-eb9397bfbbde&hint=68fbe35f-6a7e-449f-84cf-86b0f2625178&screen=oracle" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>품의전표</a> */}
         {isCeo && (
@@ -609,7 +609,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/approvals/new', label: '결재올리기' },
         { to: '/approvals/inbox', label: '결재하기' },
         { to: '/approvals/mine', label: '올린 결재' },
-        { to: '/approvals/status', label: '결제 통계' },
+        { to: '/approvals/status', label: '결재 통계' },
       ];
     }
     if (SHOW_COOPS && path.startsWith('/coops')) {

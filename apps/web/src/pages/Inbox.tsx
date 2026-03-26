@@ -3,7 +3,9 @@ import { apiFetch } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
 
 export function Inbox() {
-  const [userId, setUserId] = useState('');
+  const [userId, setUserId] = useState<string>(() => {
+    return typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+  });
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +47,10 @@ export function Inbox() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (userId) void load();
+  }, [userId]);
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>

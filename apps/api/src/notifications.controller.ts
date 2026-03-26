@@ -25,7 +25,7 @@ export class NotificationsController {
   @Get('inbox')
   async inbox(@Query() q: InboxQueryDto) {
     const where = { userId: q.userId, ...(q.onlyUnread === 'true' ? { readAt: null } : {}) } as any;
-    const items = await this.prisma.notification.findMany({ where, orderBy: { createdAt: 'desc' } });
+    const items = await this.prisma.notification.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 });
     return { items };
   }
 

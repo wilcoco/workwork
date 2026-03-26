@@ -33,27 +33,23 @@ export function ApprovalsInbox() {
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
       const res = await apiJson<{ items: any[] }>(`/api/approvals?${params.toString()}`);
       const base = (res.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      const enriched = await Promise.all(base.map(async (a: any) => {
-        let doc: any = null;
-        const stRaw = a.subjectType;
-        const st = String(stRaw || '');
-        const stNorm = st.toUpperCase();
-        const sid = a.subjectId;
-        if ((stNorm === 'WORKLOG' || stNorm === 'WORKLOGS') && sid) {
-          try { doc = await apiJson<any>(`/api/worklogs/${encodeURIComponent(sid)}`); } catch {}
-        } else if (stNorm === 'CAR_DISPATCH' && sid) {
-          try { doc = await apiJson<any>(`/api/car-dispatch/${encodeURIComponent(sid)}`); } catch {}
-        } else if (stNorm === 'ATTENDANCE' && sid) {
-          try { doc = await apiJson<any>(`/api/attendance/${encodeURIComponent(sid)}`); } catch {}
-        } else if (stNorm === 'PROCESS' && sid) {
-          try {
-            const inst = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}`);
-            const sum = await apiJson<any>(`/api/processes/${encodeURIComponent(sid)}/approval-summary`);
-            doc = { process: inst, summaryTasks: sum?.tasks || [], pendingTask: sum?.pendingTask || null };
-          } catch {}
-        }
-        return { ...a, _doc: doc, _stNorm: stNorm };
-      }));
+      // Batch fetch all subject docs in one call to avoid N+1
+      let docMap: Record<string, any> = {};
+      try {
+        const batchItems = base.map((a: any) => ({ subjectType: String(a.subjectType || ''), subjectId: String(a.subjectId || '') }));
+        const batchRes = await apiJson<{ results: Record<string, any> }>(`/api/approvals/batch-subjects`, {
+          method: 'POST',
+          body: JSON.stringify({ items: batchItems }),
+        });
+        docMap = batchRes.results || {};
+      } catch {}
+      const enriched = base.map((a: any) => {
+        const stNorm = String(a.subjectType || '').toUpperCase();
+        const key = `${a.subjectType}::${a.subjectId}`;
+        const doc = docMap[key] ?? null;
+        const finalDoc = stNorm === 'PROCESS' && doc ? { process: doc, summaryTasks: [], pendingTask: null } : doc;
+        return { ...a, _doc: finalDoc, _stNorm: stNorm };
+      });
       setItems(enriched);
     } catch (e: any) {
       setError(e?.message || '로드 실패');

@@ -3,7 +3,9 @@ import { PrismaService } from './prisma.service';
 import * as jwt from 'jsonwebtoken';
 import type { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
+import { Public } from './jwt-auth.guard';
 
+@Public()
 @Controller('auth')
 export class EntraAuthController {
   constructor(private prisma: PrismaService) {}
@@ -220,8 +222,7 @@ export class EntraAuthController {
           role: 'INDIVIDUAL',
           entraTenantId: entraTid || tenantId,
           entraOid,
-          status: 'ACTIVE',
-          activatedAt: new Date(),
+          status: 'PENDING',
         },
       });
     } else {
@@ -238,7 +239,10 @@ export class EntraAuthController {
       } catch {}
     }
 
-    // Entra SSO users are considered verified; no manual approval gating.
+    // Gate: PENDING users must wait for CEO/admin approval
+    if (String(user?.status || '') === 'PENDING') {
+      return res.redirect(`${webBase}/auth/pending`);
+    }
 
     const team = user?.orgUnitId
       ? await (this.prisma as any).orgUnit.findUnique({ where: { id: user.orgUnitId } }).catch(() => null)

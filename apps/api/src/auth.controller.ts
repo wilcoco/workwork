@@ -3,6 +3,7 @@ import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
+import { Public } from './jwt-auth.guard';
 
 class SignupDto {
   @IsString() @IsNotEmpty() username!: string; // stored in User.email
@@ -21,6 +22,7 @@ class LoginDto {
   @IsString() @IsNotEmpty() password!: string;
 }
 
+@Public()
 @Controller('auth')
 export class AuthController {
   constructor(private prisma: PrismaService) {}

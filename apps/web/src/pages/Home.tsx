@@ -146,6 +146,14 @@ export function Home() {
     })();
   }, []);
 
+  if (loading && !worklogs.length) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200, color: '#64748b', fontWeight: 600 }}>
+        불러오는 중…
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>

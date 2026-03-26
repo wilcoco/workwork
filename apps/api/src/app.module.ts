@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD, Reflector } from '@nestjs/core';
+import { JwtAuthGuard } from './jwt-auth.guard';
 import { HealthController } from './health.controller';
 import { PrismaService } from './prisma.service';
 import { ApprovalsController } from './approvals.controller';
@@ -72,6 +74,12 @@ import { ProcessDeadlineService } from './process-deadline.service';
     SchedulesController,
     PeriodicAlarmsController,
   ],
-  providers: [PrismaService, TeamsNotificationService, ProcessDeadlineService],
+  providers: [
+    PrismaService,
+    TeamsNotificationService,
+    ProcessDeadlineService,
+    Reflector,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+  ],
 })
 export class AppModule {}

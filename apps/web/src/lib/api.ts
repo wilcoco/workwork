@@ -22,8 +22,6 @@ function resolveApiBase(): string {
     base = base.replace(/\/+$/, '');
     if (base.endsWith('/api')) base = base.slice(0, -4);
     base = base.replace(/\/+$/, '');
-    // eslint-disable-next-line no-console
-    console.log('[api] API_BASE', { override: !!override, base });
     return base;
   } catch (e) {
     throw e;
@@ -84,6 +82,17 @@ export async function apiJson<T = any>(input: string, init?: RequestInit): Promi
     err.status = res.status;
     err.body = text;
     throw err;
+  }
+  if (res.status === 401) {
+    const path = typeof window !== 'undefined' ? window.location.pathname : '';
+    if (path !== '/login' && path !== '/auth/pending' && !path.startsWith('/auth/entra')) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('token');
+      }
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    }
   }
   if (!res.ok) {
     const rawMsg = data?.message ?? text ?? `${res.status}`;

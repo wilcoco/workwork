@@ -90,7 +90,12 @@ export class ApprovalsController {
     const where: any = {};
     if (q.status) where.status = q.status;
     if (q.requestedById) where.requestedById = q.requestedById;
-    if (q.approverId) where.approverId = q.approverId;
+    if (q.approverId) {
+      where.OR = [
+        { approverId: q.approverId },
+        { steps: { some: { approverId: q.approverId } } },
+      ];
+    }
     const term = String(q.query || '').trim();
     if (term) {
       where.OR = [
@@ -152,7 +157,12 @@ export class ApprovalsController {
   async summary(@Query() q: ListApprovalsQueryDto) {
     const where: any = {};
     if (q.requestedById) where.requestedById = q.requestedById;
-    if (q.approverId) where.approverId = q.approverId;
+    if (q.approverId) {
+      where.OR = [
+        { approverId: q.approverId },
+        { steps: { some: { approverId: q.approverId } } },
+      ];
+    }
     const term = String(q.query || '').trim();
     if (term) {
       where.OR = [
@@ -232,6 +242,34 @@ export class ApprovalsController {
       },
     });
     return req;
+  }
+
+  @Post('batch-subjects')
+  async batchSubjects(@Body() body: { items: Array<{ subjectType: string; subjectId: string }> }) {
+    const list = Array.isArray(body?.items) ? body.items.slice(0, 50) : [];
+    const results: Record<string, any> = {};
+    for (const item of list) {
+      const key = `${item.subjectType}::${item.subjectId}`;
+      if (results[key] !== undefined) continue;
+      const st = String(item.subjectType || '').toUpperCase();
+      const sid = item.subjectId;
+      try {
+        if ((st === 'WORKLOG' || st === 'WORKLOGS') && sid) {
+          results[key] = await this.prisma.worklog.findUnique({ where: { id: sid }, include: { createdBy: { select: { id: true, name: true } } } });
+        } else if (st === 'CAR_DISPATCH' && sid) {
+          results[key] = await this.prisma.carDispatchRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } } } });
+        } else if (st === 'ATTENDANCE' && sid) {
+          results[key] = await this.prisma.attendanceRequest.findUnique({ where: { id: sid } });
+        } else if (st === 'PROCESS' && sid) {
+          results[key] = await this.prisma.processInstance.findUnique({ where: { id: sid }, include: { startedBy: { select: { id: true, name: true } } } });
+        } else {
+          results[key] = null;
+        }
+      } catch {
+        results[key] = null;
+      }
+    }
+    return { results };
   }
 
   @Get(':id')
