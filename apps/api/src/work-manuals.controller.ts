@@ -954,7 +954,7 @@ DSL 포맷 규칙:
   }
 
   @Post(':id/ext/phase2')
-  async extPhase2(@Param('id') id: string, @Body() body: { userId: string; roundNum?: number }) {
+  async extPhase2(@Param('id') id: string, @Body() body: { userId: string; roundNum?: number; aiModel?: string }) {
     const uid = String(body.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
     const baseType = String(manual.baseType || '').trim();
@@ -1000,8 +1000,9 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
     const userMsg = `[사용자 자유 입력]\n${freeText}\n\n[이전 대화]\n${previousRoundsSummary || '(첫 라운드)'}`;
 
-    console.log('[extPhase2] calling AI', { baseType, roundNum, freeTextLen: freeText.length });
-    const result = await callAI({ system: sys, user: userMsg, temperature: 0.3, maxTokens: 600, model: 'openai' });
+    const model = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    console.log('[extPhase2] calling AI', { baseType, roundNum, freeTextLen: freeText.length, model });
+    const result = await callAI({ system: sys, user: userMsg, temperature: 0.3, maxTokens: 600, model });
     const parsed = result.parsed || {};
     console.log('[extPhase2] AI response keys', Object.keys(parsed), 'questions:', (parsed.questions || []).length);
 
@@ -1015,7 +1016,7 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
   }
 
   @Post(':id/ext/phase2/answer')
-  async extPhase2Answer(@Param('id') id: string, @Body() body: { userId: string; roundNum: number; answers: string[] }) {
+  async extPhase2Answer(@Param('id') id: string, @Body() body: { userId: string; roundNum: number; answers: string[]; aiQuestions?: string[]; aiModel?: string }) {
     const uid = String(body.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
     const baseType = String(manual.baseType || '').trim();
@@ -1023,11 +1024,12 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
     const phaseData: PhaseData = manual.phaseData ? (typeof manual.phaseData === 'string' ? JSON.parse(manual.phaseData) : manual.phaseData) : {};
 
     if (!phaseData.phase2) phaseData.phase2 = { rounds: [], completedRounds: 0 };
-    const existing = phaseData.phase2.rounds.findIndex((r: any) => r.roundNum === body.roundNum);
-    if (existing >= 0) {
-      phaseData.phase2.rounds[existing].userAnswers = body.answers || [];
+    const existingIdx = phaseData.phase2.rounds.findIndex((r: any) => r.roundNum === body.roundNum);
+    if (existingIdx >= 0) {
+      phaseData.phase2.rounds[existingIdx].userAnswers = body.answers || [];
+      if (body.aiQuestions?.length) phaseData.phase2.rounds[existingIdx].aiQuestions = body.aiQuestions;
     } else {
-      phaseData.phase2.rounds.push({ roundNum: body.roundNum, aiQuestions: [], userAnswers: body.answers || [] });
+      phaseData.phase2.rounds.push({ roundNum: body.roundNum, aiQuestions: body.aiQuestions || [], userAnswers: body.answers || [] });
     }
     phaseData.phase2.completedRounds = phaseData.phase2.rounds.filter((r: any) => r.userAnswers?.length > 0).length;
 
@@ -1050,8 +1052,9 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
         const sys = `${AI_SYSTEM_PROMPT}\n\n### 현재 기본형: ${btDef.name} (${btDef.id})\n${btDef.userDescription}\n\n### 이 기본형의 핵심 질문 가이드:\n${qs.coreQuestions.map((q: string, i: number) => `${i + 1}. ${q}`).join('\n')}\n\n### 지시사항\n- 현재 Round ${nextRound}/3 입니다.\n- 사용자가 자유 입력한 내용과 이전 대화를 분석하세요.\n- 2~3개의 구체적인 후속 질문을 생성하세요.\n- 각 질문은 기본형(${btDef.name})의 핵심 질문 가이드를 기반으로 하되, 사용자가 이미 답변한 내용은 반복하지 마세요.\n- 매 라운드마다 "지금까지 정리된 내용"을 structuredSoFar에 포함하세요.\n\n반드시 JSON만 출력하세요. 마크다운 코드펜스를 사용하지 마세요.\n출력 JSON:\n{\n  "questions": string[],\n  "structuredSoFar": string,\n  "summary": string,\n  "completionRate": number\n}`;
         const userMsg = `[사용자 자유 입력]\n${freeText}\n\n[이전 대화]\n${prevSummary}`;
         try {
-          console.log('[extPhase2Answer] generating next round', nextRound);
-          const result = await callAI({ system: sys, user: userMsg, temperature: 0.3, maxTokens: 600, model: 'openai' });
+          const nextModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+          console.log('[extPhase2Answer] generating next round', nextRound, 'model:', nextModel);
+          const result = await callAI({ system: sys, user: userMsg, temperature: 0.3, maxTokens: 600, model: nextModel });
           const parsed = result.parsed || {};
           return {
             ok: true,
@@ -1084,6 +1087,14 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
     const recommended = recommendOptions(baseType, fullText);
 
+    // Save recommended options to phaseData for later reference
+    if (!phaseData.phase3) phaseData.phase3 = { selectedOptions: {}, recommendedOptions: [] };
+    phaseData.phase3.recommendedOptions = recommended;
+    await (this.prisma as any).workManual.update({
+      where: { id },
+      data: { phaseData },
+    });
+
     return {
       baseType,
       optionGroups: OPTION_GROUPS,
@@ -1111,7 +1122,7 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
   }
 
   @Post(':id/ext/phase4')
-  async extPhase4(@Param('id') id: string, @Body() body: { userId: string }) {
+  async extPhase4(@Param('id') id: string, @Body() body: { userId: string; aiModel?: string }) {
     const uid = String(body.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
     const baseType = String(manual.baseType || '').trim();
@@ -1185,8 +1196,9 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
 
     const userMsg = `업무명: ${manual.title}\n부서: ${manual.department || manual.authorTeamName || ''}\n작성자: ${manual.authorName || ''}\n\n[사용자 입력]\n${freeText}\n\n[AI 대화 내역]\n${roundsSummary || '(없음)'}`;
 
-    console.log('[extPhase4] calling AI', { baseType, optionLabels });
-    const result = await callAI({ system: sys, user: userMsg, temperature: 0.2, model: 'openai' });
+    const aiModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    console.log('[extPhase4] calling AI', { baseType, optionLabels, aiModel });
+    const result = await callAI({ system: sys, user: userMsg, temperature: 0.2, model: aiModel });
     const parsed = result.parsed || {};
     console.log('[extPhase4] AI response keys', Object.keys(parsed));
 
@@ -1223,7 +1235,7 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
   }
 
   @Post(':id/ext/phase5/complete')
-  async extPhase5Complete(@Param('id') id: string, @Body() body: { userId: string; answers: Array<{ question: string; answer: string }> }) {
+  async extPhase5Complete(@Param('id') id: string, @Body() body: { userId: string; answers: Array<{ question: string; answer: string }>; aiModel?: string }) {
     const uid = String(body.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
 
@@ -1262,8 +1274,9 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
 
     const userMsg = `[현재 매뉴얼]\n${currentContent}\n\n[암묵지 답변]\n${qaText}`;
 
-    console.log('[extPhase5Complete] calling AI', { answeredQAs: answeredQAs.length });
-    const result = await callAI({ system: sys, user: userMsg, temperature: 0.15, model: 'openai' });
+    const aiModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    console.log('[extPhase5Complete] calling AI', { answeredQAs: answeredQAs.length, aiModel });
+    const result = await callAI({ system: sys, user: userMsg, temperature: 0.15, model: aiModel });
     const parsed = result.parsed || {};
     console.log('[extPhase5Complete] AI response keys', Object.keys(parsed));
 

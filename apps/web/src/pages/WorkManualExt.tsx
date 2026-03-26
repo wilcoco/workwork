@@ -477,7 +477,7 @@ export function WorkManualExt() {
     try {
       const r = await apiJson<Phase2Response>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ext/phase2`, {
         method: 'POST',
-        body: JSON.stringify({ userId, roundNum: p2Round }),
+        body: JSON.stringify({ userId, roundNum: p2Round, aiModel }),
       });
       bumpAiCall();
       setP2Questions(r.questions || []);
@@ -503,7 +503,7 @@ export function WorkManualExt() {
       const r = await apiJson<{ ok: boolean; completedRounds: number; nextRound?: { roundNum: number; questions: string[]; structuredSoFar: string; summary: string; completionRate: number } }>(
         `/api/work-manuals/${encodeURIComponent(manual.id)}/ext/phase2/answer`, {
           method: 'POST',
-          body: JSON.stringify({ userId, roundNum: p2Round, answers: p2Answers }),
+          body: JSON.stringify({ userId, roundNum: p2Round, answers: p2Answers, aiQuestions: p2Questions, aiModel }),
         });
       if (p2Round < 3) {
         setP2Round(prev => prev + 1);
@@ -518,6 +518,7 @@ export function WorkManualExt() {
           toast(`Round ${p2Round} 완료`, 'success');
           return;
         }
+        setP2Questions([]); setP2Answers([]);
         toast(`Round ${p2Round} 완료. 다음 질문을 생성합니다.`, 'success');
       } else {
         toast('AI 구조화 질문 완료!', 'success');
@@ -581,7 +582,7 @@ export function WorkManualExt() {
     try {
       const r = await apiJson<Phase4Response>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ext/phase4`, {
         method: 'POST',
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, aiModel }),
       });
       bumpAiCall();
       setP4Content(r.manualContent || '');
@@ -676,7 +677,7 @@ export function WorkManualExt() {
     try {
       const r = await apiJson<{ finalContent: string; summary: string }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ext/phase5/complete`, {
         method: 'POST',
-        body: JSON.stringify({ userId, answers }),
+        body: JSON.stringify({ userId, answers, aiModel }),
       });
       bumpAiCall();
       setP5Final(r.finalContent || '');
