@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { toast } from '../components/Toast';
 import { toSafeHtml } from '../lib/richText';
 import { UserPicker, type PickedUser } from '../components/UserPicker';
 import { WorklogDocument } from '../components/WorklogDocument';
@@ -77,6 +78,28 @@ type TimelineItem = {
   } | null;
 };
 
+const STATUS_KO: Record<string, string> = {
+  ACTIVE: '진행중',
+  COMPLETED: '완료',
+  SUSPENDED: '일시중단',
+  ABORTED: '중단',
+  NOT_STARTED: '미시작',
+  IN_PROGRESS: '진행중',
+  READY: '대기',
+  SKIPPED: '건너뜀',
+  CHAIN_WAIT: '선행 대기',
+};
+const statusKo = (s: string) => STATUS_KO[s?.toUpperCase()] || s;
+const statusColor = (s: string): { bg: string; fg: string } => {
+  const u = s?.toUpperCase();
+  if (u === 'ACTIVE' || u === 'IN_PROGRESS') return { bg: '#DBEAFE', fg: '#1E3A8A' };
+  if (u === 'COMPLETED') return { bg: '#DCFCE7', fg: '#166534' };
+  if (u === 'SUSPENDED') return { bg: '#FEF3C7', fg: '#92400E' };
+  if (u === 'ABORTED') return { bg: '#FEE2E2', fg: '#991B1B' };
+  if (u === 'READY') return { bg: '#E0F2FE', fg: '#075985' };
+  return { bg: '#F1F5F9', fg: '#334155' };
+};
+
 export function ProcessInstanceDetail() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
@@ -100,6 +123,8 @@ export function ProcessInstanceDetail() {
   }>>({});
   const [modHistory, setModHistory] = useState<ModEntry[]>([]);
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [reasonModal, setReasonModal] = useState<{ action: string; label: string; required: boolean; onSubmit: (reason: string) => void } | null>(null);
+  const [reasonText, setReasonText] = useState('');
 
   useEffect(() => {
     if (!id || id === 'undefined' || id === 'null') { setInst(null); setError('잘못된 프로세스 ID 입니다.'); return; }
@@ -387,47 +412,77 @@ export function ProcessInstanceDetail() {
     await reload();
   };
 
-  const onStop = async () => {
+  function openReasonModal(action: string, label: string, required: boolean, onSubmit: (reason: string) => void) {
+    setReasonText('');
+    setReasonModal({ action, label, required, onSubmit });
+  }
+
+  const onStop = () => {
     if (!inst || !me) return;
-    const reason = window.prompt('중단 사유를 입력하세요 (필수)');
-    if (!reason) return;
-    const abort = window.confirm('완전 중단(ABORTED)?\n확인: ABORTED (재개 불가) / 취소: SUSPENDED (일시 중단)');
-    const stopType = abort ? 'ABORTED' : 'SUSPENDED';
-    await apiJson(`/api/processes/${encodeURIComponent(inst.id)}/stop`, { method: 'POST', body: JSON.stringify({ actorId: me.id, stopType, reason }) });
-    await reload();
+    openReasonModal('stop', '중단 사유를 입력하세요', true, async (reason) => {
+      const abort = window.confirm('완전 중단(ABORTED)?\n확인: ABORTED (재개 불가) / 취소: SUSPENDED (일시 중단)');
+      const stopType = abort ? 'ABORTED' : 'SUSPENDED';
+      try {
+        await apiJson(`/api/processes/${encodeURIComponent(inst.id)}/stop`, { method: 'POST', body: JSON.stringify({ actorId: me.id, stopType, reason }) });
+        toast(stopType === 'ABORTED' ? '프로세스가 중단되었습니다.' : '프로세스가 일시 중단되었습니다.', 'success');
+        await reload();
+      } catch (e: any) { toast(e?.message || '중단 실패', 'error'); }
+    });
   };
 
-  const onResume = async () => {
+  const onResume = () => {
     if (!inst || !me) return;
-    const reason = window.prompt('재개 사유를 입력하세요 (선택)') || '';
-    await apiJson(`/api/processes/${encodeURIComponent(inst.id)}/resume`, { method: 'POST', body: JSON.stringify({ actorId: me.id, reason }) });
-    await reload();
+    openReasonModal('resume', '재개 사유를 입력하세요 (선택)', false, async (reason) => {
+      try {
+        await apiJson(`/api/processes/${encodeURIComponent(inst.id)}/resume`, { method: 'POST', body: JSON.stringify({ actorId: me.id, reason }) });
+        toast('프로세스가 재개되었습니다.', 'success');
+        await reload();
+      } catch (e: any) { toast(e?.message || '재개 실패', 'error'); }
+    });
   };
 
-  const onForceComplete = async (t: ProcTask) => {
+  const onForceComplete = (t: ProcTask) => {
     if (!inst || !me) return;
-    const reason = window.prompt('강제 완료 사유를 입력하세요 (선택)') || '';
-    await apiJson(`/api/processes/${encodeURIComponent(inst.id)}/tasks/${encodeURIComponent(t.id)}/force-complete`, { method: 'POST', body: JSON.stringify({ actorId: me.id, reason }) });
-    await reload();
+    openReasonModal('forceComplete', '강제 완료 사유를 입력하세요 (선택)', false, async (reason) => {
+      try {
+        await apiJson(`/api/processes/${encodeURIComponent(inst.id)}/tasks/${encodeURIComponent(t.id)}/force-complete`, { method: 'POST', body: JSON.stringify({ actorId: me.id, reason }) });
+        toast('과제가 강제 완료되었습니다.', 'success');
+        await reload();
+      } catch (e: any) { toast(e?.message || '강제 완료 실패', 'error'); }
+    });
   };
 
-  const onRollback = async (t: ProcTask) => {
+  const onRollback = (t: ProcTask) => {
     if (!inst || !me) return;
-    const reason = window.prompt('되돌리기 사유를 입력하세요 (선택)') || '';
-    await apiJson(`/api/processes/${encodeURIComponent(inst.id)}/tasks/${encodeURIComponent(t.id)}/rollback`, { method: 'POST', body: JSON.stringify({ actorId: me.id, reason }) });
-    await reload();
+    openReasonModal('rollback', '되돌리기 사유를 입력하세요 (선택)', false, async (reason) => {
+      try {
+        await apiJson(`/api/processes/${encodeURIComponent(inst.id)}/tasks/${encodeURIComponent(t.id)}/rollback`, { method: 'POST', body: JSON.stringify({ actorId: me.id, reason }) });
+        toast('과제가 되돌려졌습니다.', 'success');
+        await reload();
+      } catch (e: any) { toast(e?.message || '되돌리기 실패', 'error'); }
+    });
   };
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <h2>프로세스 상세</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button className="btn btn-outline" type="button" onClick={() => nav(-1 as any)} style={{ padding: '4px 12px', fontSize: 13 }}>← 뒤로</button>
+        <h2 style={{ margin: 0 }}>프로세스 상세</h2>
+      </div>
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontWeight: 800 }}>{inst.title}</div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>{inst.template?.title || ''}</div>
           </div>
-          <div style={{ fontSize: 12, color: '#6b7280' }}>{inst.status}</div>
+          <span style={{
+            fontSize: 12,
+            padding: '2px 10px',
+            borderRadius: 999,
+            background: statusColor(inst.status).bg,
+            color: statusColor(inst.status).fg,
+            fontWeight: 600,
+          }}>{statusKo(inst.status)}</span>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {inst.status === 'ACTIVE' && canExec() && (
               <button className="btn btn-warning" onClick={onStop}>중단</button>
@@ -480,7 +535,7 @@ export function ProcessInstanceDetail() {
                       )}
                     </div>
                     <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span>{t.taskType} · {t.status}</span>
+                      <span>{t.taskType} · {statusKo(t.status)}</span>
                       {t.deadlineAt && (() => {
                         const dl = new Date(t.deadlineAt);
                         const now = new Date();
@@ -666,7 +721,7 @@ export function ProcessInstanceDetail() {
             <div key={it.id} style={{ border: '1px solid #EEF2F7', borderRadius: 8, padding: 8, display: 'grid', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ fontWeight: 700 }}>{it.name}{it.stageLabel ? ` · ${it.stageLabel}` : ''}</div>
-                <div style={{ fontSize: 12, color: '#6b7280' }}>{it.taskType} · {it.status}</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>{it.taskType} · {statusKo(it.status)}</div>
               </div>
               {it.worklog && (
                 <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8 }}>
@@ -720,6 +775,37 @@ export function ProcessInstanceDetail() {
           {!timeline.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>진행된 세부 내역이 없습니다.</div>}
         </div>
       </div>
+
+      {reasonModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 70 }} onClick={() => setReasonModal(null)}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: 16, width: 'min(420px, 90vw)', display: 'grid', gap: 12 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 800 }}>{reasonModal.label}</div>
+            <input
+              value={reasonText}
+              onChange={(e) => setReasonText(e.target.value)}
+              placeholder={reasonModal.required ? '사유를 입력하세요 (필수)' : '사유를 입력하세요 (선택)'}
+              autoFocus
+              style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (!reasonModal.required || reasonText.trim())) {
+                  reasonModal.onSubmit(reasonText.trim());
+                  setReasonModal(null);
+                }
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn" onClick={() => setReasonModal(null)}>취소</button>
+              <button
+                className="btn btn-primary"
+                disabled={reasonModal.required && !reasonText.trim()}
+                onClick={() => { reasonModal.onSubmit(reasonText.trim()); setReasonModal(null); }}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

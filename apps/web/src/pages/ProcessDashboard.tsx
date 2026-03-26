@@ -49,6 +49,20 @@ interface ProcInstLite {
   assignees?: AssigneeAgg[];
 }
 
+const STATUS_KO: Record<string, string> = {
+  ACTIVE: '진행중',
+  COMPLETED: '완료',
+  SUSPENDED: '일시중단',
+  ABORTED: '중단',
+  NOT_STARTED: '미시작',
+  IN_PROGRESS: '진행중',
+  READY: '대기',
+  SKIPPED: '건너뜀',
+  CHAIN_WAIT: '선행 대기',
+  ALL: '전체',
+};
+const statusKo = (s: string) => STATUS_KO[s?.toUpperCase()] || s;
+
 export function ProcessDashboard() {
   const nav = useNavigate();
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -384,11 +398,11 @@ export function ProcessDashboard() {
         <label>
           상태
           <select value={status} onChange={(e) => setStatus(e.target.value as any)}>
-            <option value="ALL">ALL</option>
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="SUSPENDED">SUSPENDED</option>
-            <option value="ABORTED">ABORTED</option>
-            <option value="COMPLETED">COMPLETED</option>
+            <option value="ALL">전체</option>
+            <option value="ACTIVE">진행중</option>
+            <option value="SUSPENDED">일시중단</option>
+            <option value="ABORTED">중단</option>
+            <option value="COMPLETED">완료</option>
           </select>
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -432,7 +446,7 @@ export function ProcessDashboard() {
           <div key={it.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.2fr 1fr 1fr 0.6fr 1.6fr 2fr 1fr', gap: 0, padding: '8px 10px', borderTop: '1px solid #eef2f7', alignItems: 'center', minWidth: 1100 }}>
             <div>
               <div style={{ fontWeight: 600 }}>{it.title}</div>
-              <div style={{ fontSize: 12, color: '#6b7280' }}>{it.status}</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>{statusKo(it.status)}</div>
               {it.initiative?.title && <div style={{ fontSize: 12, color: '#6b7280' }}>과제: {it.initiative.title}</div>}
             </div>
             <div>{it.template?.title || ''}</div>

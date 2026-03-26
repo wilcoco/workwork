@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { toast, toastConfirm } from '../components/Toast';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { WorklogDocument } from '../components/WorklogDocument';
@@ -56,7 +58,20 @@ interface ProcessDetail {
   }>;
 }
 
+const STATUS_KO: Record<string, string> = {
+  ACTIVE: '진행중',
+  COMPLETED: '완료',
+  SUSPENDED: '일시중단',
+  ABORTED: '중단',
+  NOT_STARTED: '미시작',
+  IN_PROGRESS: '진행중',
+  READY: '대기',
+  SKIPPED: '건너뜀',
+};
+const statusKo = (s: string) => STATUS_KO[s?.toUpperCase()] || s;
+
 export function ProcessMy() {
+  const nav = useNavigate();
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [items, setItems] = useState<MyProcess[]>([]);
   const [loading, setLoading] = useState(false);
@@ -97,16 +112,17 @@ export function ProcessMy() {
   };
 
   const completeTask = async (processId: string, taskId: string) => {
-    if (!window.confirm('이 과제를 완료 처리하시겠습니까?')) return;
+    const ok = await toastConfirm('이 과제를 완료 처리하시겠습니까?');
+    if (!ok) return;
     try {
       await apiJson(`/api/processes/${encodeURIComponent(processId)}/tasks/${encodeURIComponent(taskId)}/complete`, {
         method: 'POST',
         body: JSON.stringify({}),
       });
-      // Refresh detail
+      toast('과제가 완료 처리되었습니다.', 'success');
       openDetail(processId);
     } catch (err: any) {
-      alert(err?.message || '완료 처리 실패');
+      toast(err?.message || '완료 처리 실패', 'error');
     }
   };
 
@@ -136,7 +152,7 @@ export function ProcessMy() {
                 borderRadius: 999,
                 background: p.status === 'COMPLETED' ? '#DCFCE7' : p.status === 'ACTIVE' ? '#DBEAFE' : '#F1F5F9',
                 color: p.status === 'COMPLETED' ? '#166534' : p.status === 'ACTIVE' ? '#1E3A8A' : '#334155',
-              }}>{p.status}</span>
+              }}>{statusKo(p.status)}</span>
             </div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>
               {p.template?.title || ''}
@@ -157,7 +173,12 @@ export function ProcessMy() {
             )}
           </div>
         ))}
-        {!items.length && !loading && <div style={{ fontSize: 12, color: '#9ca3af' }}>참여 중인 프로세스가 없습니다.</div>}
+        {!items.length && !loading && (
+          <div style={{ fontSize: 13, color: '#64748b', padding: 16, textAlign: 'center', border: '1px dashed #e5e7eb', borderRadius: 8 }}>
+            <div>참여 중인 프로세스가 없습니다.</div>
+            <button className="btn btn-primary" style={{ marginTop: 8, fontSize: 13 }} onClick={() => nav('/process/start')}>새 프로세스 시작</button>
+          </div>
+        )}
       </div>
 
       {selectedId && (
@@ -165,7 +186,10 @@ export function ProcessMy() {
           <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 'min(900px, 95vw)', maxHeight: '90vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ margin: 0 }}>프로세스 상세</h3>
-              <button className="btn" onClick={closeDetail}>닫기</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {selectedId && <button className="btn btn-outline" onClick={() => { closeDetail(); nav(`/process/instances/${selectedId}`); }}>전체 상세 보기 →</button>}
+                <button className="btn" onClick={closeDetail}>닫기</button>
+              </div>
             </div>
             {detailLoading && <div>불러오는 중...</div>}
             {!detailLoading && detail && (
@@ -173,7 +197,7 @@ export function ProcessMy() {
                 <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontWeight: 700, fontSize: 18 }}>{detail.title}</div>
                   <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
-                    {detail.template?.title || ''} · {detail.status}
+                    {detail.template?.title || ''} · {statusKo(detail.status)}
                   </div>
                   <div style={{ fontSize: 12, color: '#6b7280' }}>
                     시작: {fmtTime(detail.startAt)}{detail.endAt ? ` · 완료: ${fmtTime(detail.endAt)}` : ''}
@@ -253,7 +277,7 @@ export function ProcessMy() {
                                       borderRadius: 999,
                                       background: t.status === 'COMPLETED' ? '#DCFCE7' : t.status === 'IN_PROGRESS' ? '#DBEAFE' : t.status === 'READY' ? '#E0F2FE' : '#F1F5F9',
                                       color: t.status === 'COMPLETED' ? '#166534' : t.status === 'IN_PROGRESS' ? '#1E3A8A' : t.status === 'READY' ? '#075985' : '#334155',
-                                    }}>{t.status}</span>
+                                    }}>{statusKo(t.status)}</span>
                                   </div>
                                   {(t.worklogs || []).length > 0 && (
                                     <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eef2f7' }}>

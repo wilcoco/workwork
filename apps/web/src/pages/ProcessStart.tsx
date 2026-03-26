@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { toast } from '../components/Toast';
 import { toSafeHtml } from '../lib/richText';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 
@@ -270,9 +271,9 @@ export function ProcessStart() {
   }, [userId]);
 
   async function start() {
-    if (!userId) { alert('로그인이 필요합니다.'); return; }
-    if (!tplId) { alert('템플릿을 선택하세요.'); return; }
-    if (!startTitle.trim()) { alert('세부 제목을 입력하세요.'); return; }
+    if (!userId) { toast('로그인이 필요합니다.', 'warning'); return; }
+    if (!tplId) { toast('템플릿을 선택하세요.', 'warning'); return; }
+    if (!startTitle.trim()) { toast('세부 제목을 입력하세요.', 'warning'); return; }
     const finalTitle = selected ? `${selected.title} - ${startTitle}` : startTitle;
 
     const missingEmail: string[] = [];
@@ -291,7 +292,7 @@ export function ProcessStart() {
       if (miss.length) missingEmail.push(`${String(t?.name || taskTemplateId)}: ${miss.join(', ')}`);
     }
     if (missingEmail.length) {
-      alert(`메일 정보를 입력하세요.\n\n${missingEmail.join('\n')}`);
+      toast(`메일 정보를 입력하세요: ${missingEmail.join(', ')}`, 'warning');
       return;
     }
 
@@ -337,23 +338,23 @@ export function ProcessStart() {
       setStarting(true);
       const inst = await apiJson<any>(`/api/processes`, { method: 'POST', body: JSON.stringify(body) });
       if (inst?.id) {
-        alert('프로세스가 시작되었습니다. 목록으로 돌아갑니다.');
+        toast('프로세스가 시작되었습니다!', 'success');
         const r = String(returnToParam || '').trim();
         if (r && r.startsWith('/')) nav(r);
         else nav('/process/instances');
       }
     } catch (e: any) {
-      alert(e?.message || '프로세스 시작 중 오류가 발생했습니다.');
+      toast(e?.message || '프로세스 시작 중 오류가 발생했습니다.', 'error');
     } finally {
       setStarting(false);
     }
   }
 
   async function cloneTemplateForStart() {
-    if (!userId) { alert('로그인이 필요합니다.'); return; }
-    if (!selectedFull?.id) { alert('템플릿을 선택하세요.'); return; }
+    if (!userId) { toast('로그인이 필요합니다.', 'warning'); return; }
+    if (!selectedFull?.id) { toast('템플릿을 선택하세요.', 'warning'); return; }
     const title = (cloneTitle || '').trim();
-    if (!title) { alert('새 템플릿 제목을 입력하세요.'); return; }
+    if (!title) { toast('새 템플릿 제목을 입력하세요.', 'warning'); return; }
     let bpmn: any = (selectedFull as any)?.bpmnJson;
     try { if (typeof bpmn === 'string' && bpmn.trim().startsWith('{')) bpmn = JSON.parse(bpmn); } catch {}
     try {
@@ -377,10 +378,10 @@ export function ProcessStart() {
         setTplId(finalTmpl.id || '');
         setSelectedFull(finalTmpl);
         setCloneTitle(`${finalTmpl.title} (사본)`);
-        alert('사본 템플릿이 생성되었습니다. 이 템플릿으로 시작 정보를 입력하세요.');
+        toast('사본 템플릿이 생성되었습니다. 이 템플릿으로 시작 정보를 입력하세요.', 'success');
       }
     } catch (e: any) {
-      alert(e?.message || '사본 템플릿 생성 중 오류가 발생했습니다.');
+      toast(e?.message || '사본 템플릿 생성 중 오류가 발생했습니다.', 'error');
     }
   }
   return (
