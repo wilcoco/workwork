@@ -44,6 +44,7 @@ import { ProcessMy } from './pages/ProcessMy';
 import { ProcessStart } from './pages/ProcessStart';
 import { ProcessTemplates } from './pages/ProcessTemplates';
 import { ProcessDashboard } from './pages/ProcessDashboard';
+import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
 import { AuthPending } from './pages/AuthPending';
@@ -172,6 +173,7 @@ function getPageGuide(path: string, SHOW_APPROVALS: boolean, SHOW_COOPS: boolean
       items: [
         '프로세스 템플릿에서 업무 흐름(템플릿)을 만들고 수정합니다.',
         '새 프로세스 시작에서 템플릿을 선택해 실제 프로세스를 시작합니다.',
+        '내 할 일에서 나에게 배정된 프로세스 과제를 확인하고 실행합니다.',
         '참여 프로세스에서 내가 참여 중인 프로세스 목록/상태를 확인합니다.',
         '프로세스 대시보드에서 전체 진행 현황을 한눈에 확인합니다.',
       ],
@@ -324,6 +326,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
           <Route path="/process/dashboard" element={<ProcessDashboard />} />
           <Route path="/process/my" element={<ProcessMy />} />
+          <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
           <Route path="/process/templates" element={<ProcessTemplates />} />
           {SHOW_APPROVALS && (
@@ -443,6 +446,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
         </NavDropdown>
         <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
           <Link to={`/process/start?return=${encodeURIComponent(location.pathname + location.search)}`}>새 프로세스 시작</Link>
+          <Link to="/process/inbox">내 할 일</Link>
           <Link to="/process/my">참여 프로세스</Link>
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
@@ -632,12 +636,15 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/admin/orgs', label: '조직관리' },
         { to: '/admin/members', label: '구성원' },
         { to: '/admin/holidays', label: '휴일 캘린더' },
+        { to: '/admin/cars', label: '차량 관리' },
+        { to: '/admin/masters', label: '기준정보 관리' },
         { to: '/admin/tools', label: '시스템 도구' },
       ];
     }
     if (path.startsWith('/process')) {
       return [
         { to: '/process/start', label: '새 프로세스 시작' },
+        { to: '/process/inbox', label: '내 할 일' },
         { to: '/process/my', label: '참여 프로세스' },
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         { to: '/process/templates', label: '프로세스 템플릿' },

@@ -237,9 +237,9 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>1. 금일 수행 업무</div>
                 {sd.todayTasks.map((t: any, i: number) => (
                   <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#334155', padding: '3px 0' }}>
-                    <span style={{ background: statusColor(t.status), color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>{statusLabel(t.status)}</span>
-                    <span style={{ fontWeight: 600 }}>{t.name}</span>
-                    {t.detail && <span style={{ color: '#64748b' }}>— {t.detail}</span>}
+                    <span style={{ background: statusColor(String(t.status ?? '')), color: '#fff', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>{statusLabel(String(t.status ?? ''))}</span>
+                    <span style={{ fontWeight: 600 }}>{String(t.name ?? '')}</span>
+                    {t.detail && <span style={{ color: '#64748b' }}>— {String(t.detail ?? '')}</span>}
                   </div>
                 ))}
               </div>
@@ -249,9 +249,9 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>2. 진행 중 업무</div>
                 {sd.ongoingTasks.map((t: any, i: number) => (
                   <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#334155', padding: '3px 0' }}>
-                    <span style={{ background: '#EFF6FF', color: '#1e40af', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>{t.progressPct ?? 0}%</span>
-                    <span style={{ fontWeight: 600 }}>{t.name}</span>
-                    {t.nextAction && <span style={{ color: '#64748b' }}>→ {t.nextAction}</span>}
+                    <span style={{ background: '#EFF6FF', color: '#1e40af', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>{Number(t.progressPct) || 0}%</span>
+                    <span style={{ fontWeight: 600 }}>{String(t.name ?? '')}</span>
+                    {t.nextAction && <span style={{ color: '#64748b' }}>→ {String(t.nextAction ?? '')}</span>}
                   </div>
                 ))}
               </div>
@@ -261,9 +261,9 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#b91c1c', marginBottom: 6 }}>3. 이슈 / 문제</div>
                 {sd.issues.map((t: any, i: number) => (
                   <div key={i} style={{ fontSize: 13, color: '#334155', padding: '3px 0', borderLeft: '3px solid #fca5a5', paddingLeft: 8 }}>
-                    <div><b>문제:</b> {t.problem}</div>
-                    {t.cause && <div style={{ color: '#64748b' }}><b>원인:</b> {t.cause}</div>}
-                    {t.support && <div style={{ color: '#64748b' }}><b>지원:</b> {t.support}</div>}
+                    <div><b>문제:</b> {String(t.problem ?? '')}</div>
+                    {t.cause && <div style={{ color: '#64748b' }}><b>원인:</b> {String(t.cause ?? '')}</div>}
+                    {t.support && <div style={{ color: '#64748b' }}><b>지원:</b> {String(t.support ?? '')}</div>}
                   </div>
                 ))}
               </div>
@@ -273,8 +273,8 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
                 <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', marginBottom: 6 }}>4. 익일 계획</div>
                 {sd.tomorrowPlan.map((t: any, i: number) => (
                   <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#334155', padding: '3px 0' }}>
-                    <span style={{ fontWeight: 600 }}>{t.task}</span>
-                    {t.goal && <span style={{ color: '#64748b' }}>(목표: {t.goal})</span>}
+                    <span style={{ fontWeight: 600 }}>{String(t.task ?? '')}</span>
+                    {t.goal && <span style={{ color: '#64748b' }}>(목표: {String(t.goal ?? '')})</span>}
                   </div>
                 ))}
               </div>

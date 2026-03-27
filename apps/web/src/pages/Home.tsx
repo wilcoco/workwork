@@ -172,7 +172,7 @@ export function Home() {
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {overdueError && <div style={{ color: 'red' }}>{overdueError}</div>}
-      {(() => {
+      {(() => { try {
         const total = Number(overdue?.counts?.total || 0);
         const items = Array.isArray(overdue?.items) ? overdue.items : [];
         const kindKey = (it: any) => String(it?.kind || '').toUpperCase();
@@ -278,7 +278,7 @@ export function Home() {
             )}
           </div>
         );
-      })()}
+      } catch { return <div style={{ color: '#b91c1c', fontSize: 12 }}>마감 초과 표시 오류</div>; } })()}
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.8fr) minmax(0, 1fr)', alignItems: 'start' }}>
         {isMobile ? (
           <>
@@ -307,7 +307,7 @@ export function Home() {
                       const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
                       const firstImg = getWorklogFirstImage(anyW);
-                      const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
+                      const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                       const snippet = (snippetSrc || '').trim();
@@ -377,7 +377,7 @@ export function Home() {
                       const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
                       const firstImg = getWorklogFirstImage(anyW);
-                      const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
+                      const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                       const thumbSize = viewMode==='summary' ? 120 : 84;
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
@@ -439,7 +439,7 @@ export function Home() {
                       const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
                       const firstImg = getWorklogFirstImage(anyW);
-                      const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
+                      const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                       const thumbSize = viewMode==='summary' ? 120 : 84;
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
@@ -503,7 +503,7 @@ export function Home() {
                       const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
                       const attachments = anyW.attachments || {};
                       const firstImg = getWorklogFirstImage(anyW);
-                      const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
+                      const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                       const snippet = (snippetSrc || '').trim();
@@ -599,7 +599,7 @@ export function Home() {
               const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
               const attachments = anyW.attachments || {};
               const firstImg = getWorklogFirstImage(anyW);
-              const contentHtml = anyW.contentHtml || attachments.contentHtml || '';
+              const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
               const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
               const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
               const snippet = (snippetSrc || '').trim();

@@ -695,11 +695,11 @@ export function ProcessInstanceDetail() {
             {modHistory.map((h, idx) => (
               <div key={idx} style={{ border: '1px solid #EEF2F7', borderRadius: 8, padding: 8 }}>
                 <div style={{ fontSize: 12, color: '#6b7280' }}>{new Date(h.ts).toLocaleString()} · by {h.userId}</div>
-                <div style={{ marginTop: 4 }}>{h.reason}</div>
+                <div style={{ marginTop: 4 }}>{String(h.reason ?? '')}</div>
                 {h.changes?.length ? (
                   <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
                     {h.changes.map((c, i) => (
-                      <div key={i}>{c.type.toUpperCase()}: {c.name || c.taskId}</div>
+                      <div key={i}>{String(c.type ?? '').toUpperCase()}: {String(c.name || c.taskId || '')}</div>
                     ))}
                   </div>
                 ) : null}

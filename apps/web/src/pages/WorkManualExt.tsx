@@ -1647,8 +1647,8 @@ export function WorkManualExt() {
                         <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E', marginBottom: 8 }}>💡 암묵지 / 노하우</div>
                         {sd.tacitKnowledge.map((tk: any, i: number) => (
                           <div key={i} style={{ fontSize: 12, color: '#78350F', marginBottom: 4 }}>
-                            <span style={{ fontWeight: 600 }}>[{tk.category}]</span> {tk.content}
-                            {tk.context && <span style={{ color: '#92400E' }}> — {tk.context}</span>}
+                            <span style={{ fontWeight: 600 }}>[{String(tk.category ?? '')}]</span> {String(tk.content ?? '')}
+                            {tk.context && <span style={{ color: '#92400E' }}> — {String(tk.context ?? '')}</span>}
                           </div>
                         ))}
                       </div>
@@ -1872,8 +1872,8 @@ export function WorkManualExt() {
                       <div style={{ fontWeight: 700, fontSize: 12, color: '#0f172a', marginBottom: 4 }}>암묵지 / 노하우</div>
                       {sd.tacitKnowledge.map((tk: any, i: number) => (
                         <div key={i} style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 6, padding: 8, marginBottom: 4, fontSize: 12 }}>
-                          <span style={{ fontWeight: 600 }}>[{tk.category}]</span> {tk.content}
-                          {tk.context && <div style={{ color: '#92400E', fontSize: 11 }}>상황: {tk.context}</div>}
+                          <span style={{ fontWeight: 600 }}>[{String(tk.category ?? '')}]</span> {String(tk.content ?? '')}
+                          {tk.context && <div style={{ color: '#92400E', fontSize: 11 }}>상황: {String(tk.context ?? '')}</div>}
                         </div>
                       ))}
                     </div>

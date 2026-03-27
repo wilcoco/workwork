@@ -341,7 +341,7 @@ export function ProcessStart() {
         toast('프로세스가 시작되었습니다!', 'success');
         const r = String(returnToParam || '').trim();
         if (r && r.startsWith('/')) nav(r);
-        else nav('/process/instances');
+        else nav('/process/my');
       }
     } catch (e: any) {
       toast(e?.message || '프로세스 시작 중 오류가 발생했습니다.', 'error');
