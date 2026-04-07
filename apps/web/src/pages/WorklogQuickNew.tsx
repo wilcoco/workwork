@@ -234,7 +234,11 @@ export function WorklogQuickNew() {
   }, [myUserId, processInstanceId, taskInstanceId]);
 
   useEffect(() => {
-    if (plainMode) return; // don't init in plain mode
+    if (plainMode || structuredMode) {
+      // leaving rich mode — detach old Quill so it re-inits when we come back
+      quillRef.current = null;
+      return;
+    }
     if (!editorEl.current) return;
     if (quillRef.current) return; // already initialized
     const toolbar = [
@@ -333,7 +337,7 @@ export function WorklogQuickNew() {
     (q.root as HTMLElement)?.addEventListener('drop', onDrop as any);
     (q.root as HTMLElement)?.addEventListener('dragover', onDragOver as any);
     quillRef.current = q;
-  }, [plainMode]);
+  }, [plainMode, structuredMode]);
 
   function stripHtml(html: string) {
     const el = document.createElement('div');
@@ -658,7 +662,7 @@ export function WorklogQuickNew() {
               setKrValue('');
               setKrAchieved(false);
             }} style={{ ...input, appearance: 'auto' as any }} required>
-              <option value="new:1">수동 입력 (신규 과제)</option>
+              <option value="new:1">수동입력 (키워드 입력)</option>
               {myProcTasks.length > 0 && (
                 <optgroup label="프로세스 과제">
                   {myProcTasks.map((t) => (
