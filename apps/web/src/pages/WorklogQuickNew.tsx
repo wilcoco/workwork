@@ -718,42 +718,14 @@ export function WorklogQuickNew() {
             </select>
             {selection === 'new:1' && (
               <div style={{ border: '2px solid #3b82f6', borderRadius: 10, padding: 14, background: '#EFF6FF', display: 'grid', gap: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>업무 분류 (키워드 / 자유 태그)</div>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>키워드</div>
-                  <input
-                    value={keywords}
-                    onChange={e => setKeywords(e.target.value)}
-                    placeholder="쉼표로 구분 (예: 사출, 금형, 품질점검, ERP)"
-                    style={{ border: '1px solid #93C5FD', borderRadius: 8, padding: '6px 10px', fontSize: 13, outline: 'none', background: '#fff' }}
-                  />
-                  <div style={{ fontSize: 11, color: '#64748b' }}>검색 시 참조되는 키워드를 쉼표(,)로 구분하여 입력하세요.</div>
-                </div>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>#️⃣ 자유 태그</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {hashTags.map((ht, i) => (
-                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#DBEAFE', color: '#1e40af', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>
-                        #{ht}
-                        <button type="button" onClick={() => setHashTags(p => p.filter((_, j) => j !== i))}
-                          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#1e40af', fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button>
-                      </span>
-                    ))}
-                    <input value={hashTagInput}
-                      onChange={e => setHashTagInput(e.target.value.replace(/\s+/g, ''))}
-                      onKeyDown={e => {
-                        if ((e.key === 'Enter' || e.key === ' ' || e.key === ',') && hashTagInput.trim()) {
-                          e.preventDefault();
-                          const tag = hashTagInput.replace(/^#/, '').trim();
-                          if (tag && !hashTags.includes(tag)) setHashTags(p => [...p, tag]);
-                          setHashTagInput('');
-                        }
-                      }}
-                      placeholder="#사출 #ERP #설비점검 (Enter로 추가)"
-                      style={{ border: '1px solid #93C5FD', borderRadius: 8, padding: '4px 8px', fontSize: 12, outline: 'none', minWidth: 180, background: '#fff' }} />
-                  </div>
-                  <div style={{ fontSize: 11, color: '#64748b' }}>태그를 입력하고 Enter를 누르세요. OKR/KPI 과제 대신 자유 태그로 업무를 분류합니다.</div>
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>업무 분류 키워드</div>
+                <input
+                  value={keywords}
+                  onChange={e => setKeywords(e.target.value)}
+                  placeholder="쉼표로 구분 (예: 사출, 금형, 품질점검, ERP)"
+                  style={{ border: '1px solid #93C5FD', borderRadius: 8, padding: '8px 12px', fontSize: 14, outline: 'none', background: '#fff' }}
+                />
+                <div style={{ fontSize: 11, color: '#64748b' }}>검색 시 참조되는 키워드를 쉼표(,)로 구분하여 입력하세요.</div>
               </div>
             )}
             {(selection.startsWith('proc:') || taskInstanceId) && (() => {
@@ -1042,7 +1014,6 @@ export function WorklogQuickNew() {
           </div>
           <DocumentTags value={tags} onChange={setTags} />
           {selection !== 'new:1' && (
-          <>
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>키워드</div>
             <input
@@ -1053,32 +1024,6 @@ export function WorklogQuickNew() {
             />
             <div style={{ fontSize: 11, color: '#94a3b8' }}>검색 시 참조되는 키워드를 쉼표(,)로 구분하여 입력하세요.</div>
           </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>#️⃣ 자유 태그</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              {hashTags.map((ht, i) => (
-                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#EFF6FF', color: '#1e40af', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>
-                  #{ht}
-                  <button type="button" onClick={() => setHashTags(p => p.filter((_, j) => j !== i))}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#1e40af', fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button>
-                </span>
-              ))}
-              <input value={hashTagInput}
-                onChange={e => setHashTagInput(e.target.value.replace(/\s+/g, ''))}
-                onKeyDown={e => {
-                  if ((e.key === 'Enter' || e.key === ' ' || e.key === ',') && hashTagInput.trim()) {
-                    e.preventDefault();
-                    const tag = hashTagInput.replace(/^#/, '').trim();
-                    if (tag && !hashTags.includes(tag)) setHashTags(p => [...p, tag]);
-                    setHashTagInput('');
-                  }
-                }}
-                placeholder="#사출 #ERP #설비점검 (Enter로 추가)"
-                style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', fontSize: 12, outline: 'none', minWidth: 180 }} />
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>태그를 입력하고 Enter를 누르세요. 예: 사출프로세스, ERP, 품질이슈</div>
-          </div>
-          </>
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setStructuredMode(false); setSections({ todayTasks: [{ name: '', detail: '', status: 'in_progress' }], ongoingTasks: [], issues: [], tomorrowPlan: [{ task: '', goal: '' }], remarks: '' }); setAttachments([]); setPhotos([]); setTags({}); setHashTags([]); setHashTagInput(''); setKeywords(''); setSelection('new:1'); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>

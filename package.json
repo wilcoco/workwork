@@ -1,7 +1,10 @@
 {
   "name": "workwork",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run -w @workwork/api build && npm run -w @workwork/web build",
     "dev": "concurrently \"npm run -w @workwork/api dev\" \"npm run -w @workwork/web dev\"",
