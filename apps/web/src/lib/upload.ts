@@ -181,6 +181,9 @@ export async function uploadFile(file: File): Promise<UploadResp> {
   const data = text ? JSON.parse(text) : null;
   if (!(status >= 200 && status < 300)) throw new Error((data?.message as any) || text || `${status}`);
   const out = data as UploadResp;
+  // Always use the local File.name (correct UTF-8) instead of server's parsed name
+  // which may be corrupted by Multer's latin1 encoding
+  if (file.name) out.name = file.name;
   if (out && out.url && !/^https?:\/\//i.test(out.url)) {
     // If server gave '/files/...' without global prefix, fix to '/api/files/...'
     const path = out.url.startsWith('/files/') ? `/api${out.url}` : out.url;
