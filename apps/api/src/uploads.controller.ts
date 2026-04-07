@@ -23,13 +23,16 @@ export class UploadsController {
     const rid = String((req as any)?.headers?.['x-railway-request-id'] || (req as any)?.headers?.['x-request-id'] || '');
     const started = Date.now();
     if (!file) throw new BadRequestException('file is required');
-    const ext = extname(file.originalname || '');
+    // Multer decodes originalname as latin1 — re-decode to UTF-8 for Korean/CJK filenames
+    let origName = file.originalname || '';
+    try { origName = Buffer.from(origName, 'latin1').toString('utf8'); } catch {}
+    const ext = extname(origName);
     const filename = `${randomUUID()}${ext}`;
 
     try {
       console.log('[uploads] handler start', {
         rid,
-        originalName: file.originalname,
+        originalName: origName,
         contentType: file.mimetype,
         size: file.size,
       });
@@ -45,7 +48,7 @@ export class UploadsController {
       rec = await this.prisma.upload.create({
         data: {
           filename,
-          originalName: file.originalname || null,
+          originalName: origName || null,
           contentType: file.mimetype || null,
           size: file.size,
           data,
@@ -57,7 +60,7 @@ export class UploadsController {
           message: (e as any)?.message,
           code: (e as any)?.code,
           rid,
-          originalName: file.originalname,
+          originalName: origName,
           contentType: file.mimetype,
           size: file.size,
         });
@@ -74,7 +77,7 @@ export class UploadsController {
     } catch {}
     return {
       url: dbUrl,
-      name: file.originalname,
+      name: origName,
       size: file.size,
       type: file.mimetype,
       filename,
@@ -86,6 +89,10 @@ export class UploadsController {
     const f = await this.prisma.upload.findUnique({ where: { id } });
     if (!f) return res.status(404).json({ message: 'Not Found' });
     if (f.contentType) res.setHeader('Content-Type', f.contentType);
+    if ((f as any).originalName) {
+      const encoded = encodeURIComponent(String((f as any).originalName));
+      res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encoded}`);
+    }
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.send(Buffer.from(f.data as any));
   }
