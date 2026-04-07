@@ -28,7 +28,7 @@ export function WorklogQuickNew() {
   const [teamKpis, setTeamKpis] = useState<Array<{ id: string; title: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [helpTickets, setHelpTickets] = useState<Array<{ id: string; label: string }>>([]);
   const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
-  const [selection, setSelection] = useState<string>(''); // 'init:<id>'
+  const [selection, setSelection] = useState<string>('new:1'); // default: 수동 입력(신규 과제)
   const [krValue, setKrValue] = useState<string>('');
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
   const [krAchieved, setKrAchieved] = useState<boolean>(false);
@@ -53,6 +53,7 @@ export function WorklogQuickNew() {
   const [tags, setTags] = useState<DocumentTagsValue>({});
   const [hashTags, setHashTags] = useState<string[]>([]);
   const [hashTagInput, setHashTagInput] = useState('');
+  const [keywords, setKeywords] = useState('');
   const [structuredMode, setStructuredMode] = useState(false);
   const [sections, setSections] = useState<{
     todayTasks: Array<{ name: string; detail: string; status: 'completed' | 'in_progress' | 'waiting' }>;
@@ -207,7 +208,7 @@ export function WorklogQuickNew() {
                 tickets.unshift({ id: String(t.id), label: `업무 요청: ${cat}${titlePart} · ${who}` });
               } catch {}
             }
-            setSelection((prev) => (prev ? prev : `help:${helpTicketIdParam}`));
+            setSelection((prev) => (!prev || prev === 'new:1') ? `help:${helpTicketIdParam}` : prev);
           }
           setHelpTickets(tickets);
         } catch {}
@@ -224,7 +225,7 @@ export function WorklogQuickNew() {
         const onlyWorklog = (tasks || []).filter((t) => String(t.taskType).toUpperCase() === 'WORKLOG');
         const filtered = processInstanceId ? onlyWorklog.filter((t) => t.instance?.id === processInstanceId) : onlyWorklog;
         setMyProcTasks(filtered as any);
-        if (taskInstanceId && (!selection || selection === '')) {
+        if (taskInstanceId && (!selection || selection === '' || selection === 'new:1')) {
           const exists = filtered.some((t) => t.id === taskInstanceId);
           if (exists) setSelection(`proc:${taskInstanceId}`);
         }
@@ -410,6 +411,7 @@ export function WorklogQuickNew() {
             visibility,
             tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode || hashTags.length) ? { ...tags, hashTags: hashTags.length ? hashTags : undefined } : undefined,
             structuredData: structuredMode ? sections : undefined,
+            keywords: keywords.trim() || undefined,
           }),
         }
       );
@@ -645,9 +647,9 @@ export function WorklogQuickNew() {
             <div />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>OKR 과제 / KPI 과제 / 업무 요청 / 신규 과제</label>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>과제 분류 (기본: 수동 입력)</label>
             <div style={{ fontSize: 12, color: '#6b7280' }}>
-              과제 선택은 목표관리(OKR/KPI)와 연동됩니다. 여기서 선택한 OKR/KPI 과제는 목표관리에서 등록된 과제/지표(KR) 목록입니다.
+              기본은 수동 입력(신규 과제)입니다. OKR/KPI 과제와 연동하려면 아래에서 선택하세요.
             </div>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
@@ -655,12 +657,8 @@ export function WorklogQuickNew() {
               setError(null);
               setKrValue('');
               setKrAchieved(false);
-              // Keep current date as-is (default is today in KST)
             }} style={{ ...input, appearance: 'auto' as any }} required>
-              <option value="" disabled>대상을 선택하세요</option>
-              <optgroup label="신규 과제">
-                <option value="new:1">신규 과제</option>
-              </optgroup>
+              <option value="new:1">수동 입력 (신규 과제)</option>
               {myProcTasks.length > 0 && (
                 <optgroup label="프로세스 과제">
                   {myProcTasks.map((t) => (
@@ -718,6 +716,46 @@ export function WorklogQuickNew() {
                 </optgroup>
               )}
             </select>
+            {selection === 'new:1' && (
+              <div style={{ border: '2px solid #3b82f6', borderRadius: 10, padding: 14, background: '#EFF6FF', display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>업무 분류 (키워드 / 자유 태그)</div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>키워드</div>
+                  <input
+                    value={keywords}
+                    onChange={e => setKeywords(e.target.value)}
+                    placeholder="쉼표로 구분 (예: 사출, 금형, 품질점검, ERP)"
+                    style={{ border: '1px solid #93C5FD', borderRadius: 8, padding: '6px 10px', fontSize: 13, outline: 'none', background: '#fff' }}
+                  />
+                  <div style={{ fontSize: 11, color: '#64748b' }}>검색 시 참조되는 키워드를 쉼표(,)로 구분하여 입력하세요.</div>
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>#️⃣ 자유 태그</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {hashTags.map((ht, i) => (
+                      <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#DBEAFE', color: '#1e40af', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600 }}>
+                        #{ht}
+                        <button type="button" onClick={() => setHashTags(p => p.filter((_, j) => j !== i))}
+                          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#1e40af', fontSize: 12, padding: 0, lineHeight: 1 }}>✕</button>
+                      </span>
+                    ))}
+                    <input value={hashTagInput}
+                      onChange={e => setHashTagInput(e.target.value.replace(/\s+/g, ''))}
+                      onKeyDown={e => {
+                        if ((e.key === 'Enter' || e.key === ' ' || e.key === ',') && hashTagInput.trim()) {
+                          e.preventDefault();
+                          const tag = hashTagInput.replace(/^#/, '').trim();
+                          if (tag && !hashTags.includes(tag)) setHashTags(p => [...p, tag]);
+                          setHashTagInput('');
+                        }
+                      }}
+                      placeholder="#사출 #ERP #설비점검 (Enter로 추가)"
+                      style={{ border: '1px solid #93C5FD', borderRadius: 8, padding: '4px 8px', fontSize: 12, outline: 'none', minWidth: 180, background: '#fff' }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>태그를 입력하고 Enter를 누르세요. OKR/KPI 과제 대신 자유 태그로 업무를 분류합니다.</div>
+                </div>
+              </div>
+            )}
             {(selection.startsWith('proc:') || taskInstanceId) && (() => {
               const tid = selection.startsWith('proc:') ? selection.substring(5) : taskInstanceId;
               const selectedTask = myProcTasks.find((t) => t.id === tid);
@@ -1003,6 +1041,18 @@ export function WorklogQuickNew() {
             )}
           </div>
           <DocumentTags value={tags} onChange={setTags} />
+          {selection !== 'new:1' && (
+          <>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>키워드</div>
+            <input
+              value={keywords}
+              onChange={e => setKeywords(e.target.value)}
+              placeholder="쉼표로 구분 (예: 사출, 금형, 품질점검, ERP)"
+              style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '6px 10px', fontSize: 13, outline: 'none' }}
+            />
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>검색 시 참조되는 키워드를 쉼표(,)로 구분하여 입력하세요.</div>
+          </div>
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>#️⃣ 자유 태그</div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1028,8 +1078,10 @@ export function WorklogQuickNew() {
             </div>
             <div style={{ fontSize: 11, color: '#94a3b8' }}>태그를 입력하고 Enter를 누르세요. 예: 사출프로세스, ERP, 품질이슈</div>
           </div>
+          </>
+          )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setStructuredMode(false); setSections({ todayTasks: [{ name: '', detail: '', status: 'in_progress' }], ongoingTasks: [], issues: [], tomorrowPlan: [{ task: '', goal: '' }], remarks: '' }); setAttachments([]); setPhotos([]); setTags({}); setHashTags([]); setHashTagInput(''); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
+            <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setStructuredMode(false); setSections({ todayTasks: [{ name: '', detail: '', status: 'in_progress' }], ongoingTasks: [], issues: [], tomorrowPlan: [{ task: '', goal: '' }], remarks: '' }); setAttachments([]); setPhotos([]); setTags({}); setHashTags([]); setHashTagInput(''); setKeywords(''); setSelection('new:1'); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
               초기화
             </button>
             <button className="btn btn-primary" disabled={loading}>

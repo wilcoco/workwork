@@ -18,6 +18,7 @@ type Item = {
   attachments?: any;
   note?: string;
   urgent?: boolean;
+  keywords?: string;
 };
 
 const VISIBILITY_LABEL: Record<string, string> = {

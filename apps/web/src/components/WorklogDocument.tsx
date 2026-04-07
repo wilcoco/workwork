@@ -226,6 +226,15 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
         </div>
       )}
 
+      {showBody && worklog?.keywords && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>키워드:</span>
+          {String(worklog.keywords).split(',').map((kw: string) => kw.trim()).filter(Boolean).map((kw: string, i: number) => (
+            <span key={i} style={{ display: 'inline-block', background: '#F0FDF4', color: '#166534', borderRadius: 999, padding: '2px 10px', fontSize: 12, fontWeight: 600, border: '1px solid #BBF7D0' }}>{kw}</span>
+          ))}
+        </div>
+      )}
+
       {showBody && worklog?.structuredData && (() => {
         const sd = worklog.structuredData;
         const statusLabel = (s: string) => s === 'completed' ? '완료' : s === 'in_progress' ? '진행' : '대기';

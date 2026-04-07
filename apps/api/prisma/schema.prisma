@@ -264,6 +264,7 @@ model Worklog {
   tags                  Json?
   createdAt             DateTime  @default(now())
   urgent                Boolean   @default(false)
+  keywords              String?
   progressEntries       ProgressEntry[]
   visibility            WorklogVisibility @default(ALL)
   processTaskInstanceId String?

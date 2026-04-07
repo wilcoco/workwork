@@ -140,6 +140,10 @@ class CreateWorklogDto {
   @IsOptional()
   @IsString()
   taskInstanceId?: string;
+
+  @IsOptional()
+  @IsString()
+  keywords?: string;
 }
 
 class CreateSimpleWorklogDto {
@@ -160,6 +164,7 @@ class CreateSimpleWorklogDto {
   @IsOptional() @IsEnum({ ALL: 'ALL', MANAGER_PLUS: 'MANAGER_PLUS', EXEC_PLUS: 'EXEC_PLUS', CEO_ONLY: 'CEO_ONLY' } as any)
   visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY';
   @IsOptional() structuredData?: any;
+  @IsOptional() @IsString() keywords?: string;
 }
 
 @Controller('worklogs')
@@ -743,6 +748,7 @@ export class WorklogsController {
         date: dateVal,
         urgent: !!dto.urgent,
         visibility: (dto.visibility as any) ?? 'ALL',
+        keywords: dto.keywords || undefined,
       },
     });
 
@@ -1072,6 +1078,7 @@ export class WorklogsController {
         date: dateValSimple,
         urgent: !!dto.urgent,
         visibility: (dto.visibility as any) ?? 'ALL',
+        keywords: (dto as any).keywords || undefined,
       },
     });
     await this.prisma.event.create({ data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { simple: true } } });
@@ -1101,7 +1108,15 @@ export class WorklogsController {
       if (from) (where.date as any).gte = new Date(from);
       if (to) (where.date as any).lte = new Date(to);
     }
-    if (q) where.note = { contains: q, mode: 'insensitive' as any };
+    if (q) {
+      where.AND = [
+        ...(where.AND || []),
+        { OR: [
+          { note: { contains: q, mode: 'insensitive' as any } },
+          { keywords: { contains: q, mode: 'insensitive' as any } },
+        ] },
+      ];
+    }
     if (teamName) where.createdBy = { orgUnit: { name: teamName } };
     if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
     if (tagFilter) {
@@ -1174,6 +1189,7 @@ export class WorklogsController {
         urgent: (it as any).urgent ?? false,
         structuredData: (it as any).structuredData ?? undefined,
         tags: (it as any).tags ?? undefined,
+        keywords: (it as any).keywords ?? undefined,
       };
     });
     return { items: mapped, nextCursor };
