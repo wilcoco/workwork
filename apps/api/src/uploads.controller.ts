@@ -23,9 +23,13 @@ export class UploadsController {
     const rid = String((req as any)?.headers?.['x-railway-request-id'] || (req as any)?.headers?.['x-request-id'] || '');
     const started = Date.now();
     if (!file) throw new BadRequestException('file is required');
-    // Multer decodes originalname as latin1 — re-decode to UTF-8 for Korean/CJK filenames
-    let origName = file.originalname || '';
-    try { origName = Buffer.from(origName, 'latin1').toString('utf8'); } catch {}
+    // Prefer explicit originalName field from frontend (always correct UTF-8)
+    // Fallback: Multer decodes originalname as latin1 — re-decode to UTF-8
+    const bodyName = String((req.body as any)?.originalName || '').trim();
+    let origName = bodyName || file.originalname || '';
+    if (!bodyName && origName) {
+      try { origName = Buffer.from(origName, 'latin1').toString('utf8'); } catch {}
+    }
     const ext = extname(origName);
     const filename = `${randomUUID()}${ext}`;
 

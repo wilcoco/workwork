@@ -127,6 +127,8 @@ export async function uploadFile(file: File): Promise<UploadResp> {
   }
   const fd = new FormData();
   fd.append('file', file);
+  // Send filename separately to avoid Multer latin1 encoding corruption for Korean/CJK
+  if (file.name) fd.append('originalName', file.name);
 
   const isChromeDesktop = (() => {
     try {
