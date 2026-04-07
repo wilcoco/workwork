@@ -648,7 +648,7 @@ function absLink(url: string): string {
 
 function absolutizeUploads(html: string): string {
   if (!html) return html;
-  return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => {
+  return html.replace(/(src|href)=["'](\/(api\/)?(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => {
     const path = String(p || '');
     const fixed = path.startsWith('/files/') ? `/api${path}` : path;
     return `${attr}="${apiUrl(fixed)}"`;

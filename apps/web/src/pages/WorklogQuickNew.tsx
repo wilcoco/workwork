@@ -81,6 +81,9 @@ export function WorklogQuickNew() {
       input.type = 'file';
       input.accept = 'image/*';
       input.multiple = true;
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      document.body.appendChild(input);
       input.onchange = async () => {
         try {
           const list = input.files ? Array.from(input.files) : [];
@@ -91,11 +94,41 @@ export function WorklogQuickNew() {
           }
         } catch (e: any) {
           setError(e?.message || '사진 업로드 실패');
+        } finally {
+          try { document.body.removeChild(input); } catch {}
         }
       };
       input.click();
     } catch (e: any) {
       setError(e?.message || '사진 업로드 실패');
+    }
+  }
+
+  async function addFile() {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      document.body.appendChild(input);
+      input.onchange = async () => {
+        try {
+          const list = input.files ? Array.from(input.files) : [];
+          if (!list.length) return;
+          for (const file of list) {
+            const up = await uploadFile(file);
+            setAttachments((prev) => [...prev, { url: up.url, name: up.name || file.name, filename: up.filename }]);
+          }
+        } catch (e: any) {
+          setError(e?.message || '파일 업로드 실패');
+        } finally {
+          try { document.body.removeChild(input); } catch {}
+        }
+      };
+      input.click();
+    } catch (e: any) {
+      setError(e?.message || '파일 업로드 실패');
     }
   }
 
@@ -524,6 +557,9 @@ export function WorklogQuickNew() {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
+      input.style.position = 'fixed';
+      input.style.left = '-9999px';
+      document.body.appendChild(input);
       input.onchange = async () => {
         try {
           const file = input.files?.[0];
@@ -541,6 +577,8 @@ export function WorklogQuickNew() {
           }
         } catch (e: any) {
           setError(e?.message || '이미지 업로드 실패');
+        } finally {
+          try { document.body.removeChild(input); } catch {}
         }
       };
       input.click();
@@ -985,26 +1023,20 @@ export function WorklogQuickNew() {
               파일 첨부: Teams/OneDrive에 있는 파일은 업로드하지 않고, 공유 링크를 붙여넣어 첨부합니다.
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-sm" onClick={addFile}>
+                파일 업로드
+              </button>
               <input
                 value={attachUrl}
                 onChange={(e) => setAttachUrl(e.target.value)}
-                placeholder="Teams/OneDrive 공유 링크를 붙여넣으세요"
-                style={{ ...input, flex: 1, minWidth: 240 }}
+                placeholder="또는 Teams/OneDrive 공유 링크"
+                style={{ ...input, flex: 1, minWidth: 180 }}
               />
               <button type="button" className="btn btn-sm" onClick={addAttachmentLink} disabled={!String(attachUrl || '').trim()}>
                 링크 추가
               </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost"
-                onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
-              >OneDrive 열기</button>
             </div>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
-              <input type="checkbox" checked={attachOneDriveOk} onChange={(e) => setAttachOneDriveOk(e.target.checked)} />
-              원드라이브/Teams 링크만 첨부합니다
-            </label>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>원드라이브/Teams 공유 링크만 첨부해 주세요.</div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>파일을 직접 업로드하거나, OneDrive/Teams 공유 링크를 붙여넣을 수 있습니다.</div>
             {attachments.length > 0 && (
               <div className="attachments">
                 {attachments.map((f, i) => (

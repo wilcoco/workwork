@@ -713,7 +713,9 @@ export class UsersController {
         });
         updated++;
       } catch (e: any) {
-        failed.push({ id: String(u.id), error: String(e?.message || 'failed') });
+        const msg = String(e?.message || 'failed');
+        console.error(`[sync-teams-photos] ${upn} failed: ${msg}`);
+        failed.push({ id: String(u.id), upn, error: msg });
       }
     }
     return { ok: true, take, updated, skipped, failed };

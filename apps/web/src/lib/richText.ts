@@ -2,7 +2,7 @@ import { apiUrl } from './api';
 
 function absolutizeUploads(html: string): string {
   if (!html) return html;
-  return html.replace(/(src|href)=["'](\/(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
+  return html.replace(/(src|href)=["'](\/(api\/)?(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
 }
 
 function sanitizeRichHtml(html: string): string {
