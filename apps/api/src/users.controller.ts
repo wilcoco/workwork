@@ -284,6 +284,70 @@ export class UsersController {
     };
   }
 
+  @Get('graph-diag')
+  async graphDiag(@Query('actorId') actorId?: string) {
+    await this.requireCeo(actorId);
+    const result: any = { steps: [] };
+
+    // Step 1: Check credentials
+    try {
+      const cfg = this.getGraphConfig();
+      result.steps.push({ step: 'credentials', ok: true, tenantId: cfg.tenantId.slice(0, 8) + '...', clientId: cfg.clientId.slice(0, 8) + '...' });
+    } catch (e: any) {
+      result.steps.push({ step: 'credentials', ok: false, error: e.message });
+      return result;
+    }
+
+    // Step 2: Get token
+    let token = '';
+    try {
+      this.graphTokenCache = null;
+      token = await this.getGraphToken();
+      result.steps.push({ step: 'token', ok: true, tokenLength: token.length });
+    } catch (e: any) {
+      result.steps.push({ step: 'token', ok: false, error: e.message?.slice(0, 300) });
+      return result;
+    }
+
+    // Step 3: List a user
+    let testUpn = '';
+    try {
+      const r = await fetch('https://graph.microsoft.com/v1.0/users?$top=1&$select=userPrincipalName,displayName', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        result.steps.push({ step: 'list_users', ok: false, status: r.status, error: j?.error?.code + ': ' + j?.error?.message });
+        return result;
+      }
+      testUpn = j.value?.[0]?.userPrincipalName || '';
+      result.steps.push({ step: 'list_users', ok: true, firstUser: j.value?.[0]?.displayName, upn: testUpn });
+    } catch (e: any) {
+      result.steps.push({ step: 'list_users', ok: false, error: e.message?.slice(0, 200) });
+      return result;
+    }
+
+    // Step 4: Fetch photo
+    if (testUpn) {
+      try {
+        const r = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(testUpn)}/photo/$value`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (r.ok) {
+          const ab = await r.arrayBuffer();
+          result.steps.push({ step: 'photo', ok: true, bytes: ab.byteLength, contentType: r.headers.get('content-type') });
+        } else {
+          const t = await r.text().catch(() => '');
+          result.steps.push({ step: 'photo', ok: false, status: r.status, error: t.slice(0, 200) });
+        }
+      } catch (e: any) {
+        result.steps.push({ step: 'photo', ok: false, error: e.message?.slice(0, 200) });
+      }
+    }
+
+    return result;
+  }
+
   @Get('overdue')
   async overdue(@Query('userId') userId?: string) {
     if (!userId) throw new BadRequestException('userId required');
