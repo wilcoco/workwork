@@ -287,8 +287,7 @@ export class UsersController {
 
   @Public()
   @Get('graph-diag')
-  async graphDiag(@Query('actorId') actorId?: string) {
-    await this.requireCeo(actorId);
+  async graphDiag() {
     const result: any = { steps: [] };
 
     // Step 1: Check credentials
