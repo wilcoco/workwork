@@ -740,6 +740,7 @@ export class UsersController {
     return { now: now.toISOString(), counts, items: sliced };
   }
 
+  @Public()
   @Get(':id/photo')
   async photo(@Param('id') id: string, @Res() res: Response) {
     const user = await (this.prisma as any).user.findUnique({ where: { id: String(id) } });
