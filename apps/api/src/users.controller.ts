@@ -693,7 +693,7 @@ export class UsersController {
 
     let updated = 0;
     let skipped = 0;
-    const failed: Array<{ id: string; error: string }> = [];
+    const failed: Array<{ id: string; upn?: string; error: string }> = [];
 
     for (const u of users || []) {
       const upn = String(u.teamsUpn || u.email || '').trim();
