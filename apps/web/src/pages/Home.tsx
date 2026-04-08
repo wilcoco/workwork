@@ -27,8 +27,8 @@ export function Home() {
   const [comments, setComments] = useState<FB[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [overdue, setOverdue] = useState<any | null>(null);
-  const [overdueError, setOverdueError] = useState<string | null>(null);
+  // const [overdue, setOverdue] = useState<any | null>(null);
+  // const [overdueError, setOverdueError] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
   const [urgentOpen, setUrgentOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -120,20 +120,21 @@ export function Home() {
     })();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
-        if (!viewerId) return;
-        setOverdueError(null);
-        const r = await apiJson<any>(`/api/users/overdue?userId=${encodeURIComponent(viewerId)}`);
-        setOverdue(r || null);
-      } catch (e: any) {
-        setOverdue(null);
-        setOverdueError(e?.message || '오버듀 로드 실패');
-      }
-    })();
-  }, []);
+  // 마감 초과 섹션 일시 숨김 — overdue fetch 비활성화
+  // useEffect(() => {
+  //   (async () => {
+  //     try {
+  //       const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+  //       if (!viewerId) return;
+  //       setOverdueError(null);
+  //       const r = await apiJson<any>(`/api/users/overdue?userId=${encodeURIComponent(viewerId)}`);
+  //       setOverdue(r || null);
+  //     } catch (e: any) {
+  //       setOverdue(null);
+  //       setOverdueError(e?.message || '오버듀 로드 실패');
+  //     }
+  //   })();
+  // }, []);
 
   useEffect(() => {
     (async () => {
@@ -171,114 +172,7 @@ export function Home() {
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      {overdueError && <div style={{ color: 'red' }}>{overdueError}</div>}
-      {(() => { try {
-        const total = Number(overdue?.counts?.total || 0);
-        const items = Array.isArray(overdue?.items) ? overdue.items : [];
-        const kindKey = (it: any) => String(it?.kind || '').toUpperCase();
-        const procCount = Number(overdue?.counts?.processInstances || 0) + Number(overdue?.counts?.processTasks || 0);
-        const approvalCount = Number(overdue?.counts?.approvals || 0);
-        const helpCount = Number(overdue?.counts?.helpTickets || 0);
-        const delegationCount = Number(overdue?.counts?.delegations || 0);
-        const initiativeCount = Number(overdue?.counts?.initiatives || 0);
-        const preview = (() => {
-          const byKind = new Map<string, any[]>();
-          for (const it of items) {
-            const k = kindKey(it);
-            const arr = byKind.get(k) || [];
-            arr.push(it);
-            byKind.set(k, arr);
-          }
-          const preferred = ['PROCESS_TASK', 'PROCESS_INSTANCE', 'HELP_TICKET', 'APPROVAL', 'DELEGATION', 'INITIATIVE'];
-          const seen = new Set<string>();
-          const out: any[] = [];
-          for (const k of preferred) {
-            const arr = byKind.get(k) || [];
-            if (!arr.length) continue;
-            const it = arr[0];
-            const key = `${kindKey(it)}-${String(it?.id || '')}`;
-            if (seen.has(key)) continue;
-            out.push(it);
-            seen.add(key);
-            if (out.length >= 5) return out;
-          }
-          for (const it of items) {
-            const key = `${kindKey(it)}-${String(it?.id || '')}`;
-            if (seen.has(key)) continue;
-            out.push(it);
-            seen.add(key);
-            if (out.length >= 5) break;
-          }
-          return out;
-        })();
-        const label = (k: any) => {
-          const key = String(k || '').toUpperCase();
-          if (key === 'PROCESS_TASK') return '프로세스';
-          if (key === 'PROCESS_INSTANCE') return '프로세스';
-          if (key === 'APPROVAL') return '결재';
-          if (key === 'HELP_TICKET') return '업무요청';
-          if (key === 'DELEGATION') return '위임';
-          if (key === 'INITIATIVE') return '과제';
-          return key || '기타';
-        };
-        if (!overdue) return null;
-        return (
-          <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontWeight: 900, color: '#0f172a' }}>마감 초과</div>
-              <div style={{ marginLeft: 'auto', fontSize: 12, color: total ? '#b91c1c' : '#64748b', fontWeight: 800 }}>
-                {total ? `총 ${total}건` : '없음'}
-              </div>
-            </div>
-            <div style={{ marginTop: 6, fontSize: 12, color: '#64748b', fontWeight: 700 }}>
-              {procCount ? `프로세스 ${procCount} · ` : ''}
-              {helpCount ? `업무요청 ${helpCount} · ` : ''}
-              {approvalCount ? `결재 ${approvalCount} · ` : ''}
-              {delegationCount ? `위임 ${delegationCount} · ` : ''}
-              {initiativeCount ? `과제 ${initiativeCount}` : ''}
-            </div>
-            {total ? (
-              <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
-                {preview.map((it: any) => {
-                  const key = `${String(it?.kind || '')}-${String(it?.id || '')}`;
-                  const due = it?.dueAt ? formatKstYmd(it.dueAt) : '';
-                  const href = String(it?.link || '').trim();
-                  const title = String(it?.title || '').trim() || '(제목 없음)';
-                  const assignee = String(it?.assigneeName || '').trim();
-                  const overdueDays = Number(it?.overdueDays || 0) || 0;
-                  return (
-                    <div key={key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#991b1b', minWidth: 64 }}>{label(it?.kind)}</div>
-                      {href ? (
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          style={{ padding: 0, height: 'auto', lineHeight: 1.2, fontSize: 13, color: '#0f172a', textDecoration: 'underline', textAlign: 'left' as any }}
-                          onClick={() => nav(href)}
-                        >
-                          {title}
-                        </button>
-                      ) : (
-                        <div style={{ fontSize: 13, color: '#0f172a' }}>{title}</div>
-                      )}
-                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-                        {assignee ? <div style={{ fontSize: 12, color: '#64748b' }}>{assignee}</div> : null}
-                        <div style={{ fontSize: 12, color: '#64748b' }}>{due}</div>
-                        {overdueDays ? <div style={{ fontSize: 12, color: '#b91c1c', fontWeight: 800 }}>{`초과 ${overdueDays}일`}</div> : null}
-                      </div>
-                    </div>
-                  );
-                })}
-                {total > 5 ? (
-                  <div style={{ fontSize: 12, color: '#64748b' }}>외 {total - 5}건</div>
-                ) : null}
-              </div>
-            ) : (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#64748b' }}>마감 초과 항목 없음</div>
-            )}
-          </div>
-        );
-      } catch { return <div style={{ color: '#b91c1c', fontSize: 12 }}>마감 초과 표시 오류</div>; } })()}
+      {/* 마감 초과 섹션 — 일시 숨김 */}
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.8fr) minmax(0, 1fr)', alignItems: 'start' }}>
         {isMobile ? (
           <>
