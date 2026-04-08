@@ -349,6 +349,38 @@ export class UsersController {
     return result;
   }
 
+  @Public()
+  @Get('sync-all-photos')
+  async syncAllPhotosPublic(@Query('limit') limit?: string) {
+    if (!this.hasGraphConfig()) return { ok: false, error: 'Graph credentials not configured' };
+    const take = Math.max(1, Math.min(500, parseInt(String(limit || '100'), 10) || 100));
+    const users = await (this.prisma as any).user.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true, email: true, teamsUpn: true, name: true },
+      orderBy: { name: 'asc' },
+      take,
+    });
+    let updated = 0;
+    let skipped = 0;
+    const failed: Array<{ name: string; upn: string; error: string }> = [];
+    for (const u of users || []) {
+      const upn = String(u.teamsUpn || u.email || '').trim();
+      if (!upn) { skipped++; continue; }
+      try {
+        const photo = await this.fetchUserPhotoByUpn(upn);
+        if (!photo) { skipped++; continue; }
+        await (this.prisma as any).user.update({
+          where: { id: String(u.id) },
+          data: { teamsPhotoBytes: photo.bytes, teamsPhotoContentType: photo.contentType, teamsPhotoUpdatedAt: new Date() },
+        });
+        updated++;
+      } catch (e: any) {
+        failed.push({ name: u.name || '', upn, error: String(e?.message || '').slice(0, 150) });
+      }
+    }
+    return { ok: true, total: users.length, updated, skipped, failedCount: failed.length, failed };
+  }
+
   @Get('overdue')
   async overdue(@Query('userId') userId?: string) {
     if (!userId) throw new BadRequestException('userId required');
