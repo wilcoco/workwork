@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Put, Query, BadRequestException, NotFound
 import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import { Delete } from '@nestjs/common';
+import { Public } from './jwt-auth.guard';
 import type { Response } from 'express';
 
 class UpdateRoleDto {
@@ -284,6 +285,7 @@ export class UsersController {
     };
   }
 
+  @Public()
   @Get('graph-diag')
   async graphDiag(@Query('actorId') actorId?: string) {
     await this.requireCeo(actorId);
