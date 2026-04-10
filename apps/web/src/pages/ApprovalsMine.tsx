@@ -99,24 +99,13 @@ export function ApprovalsMine() {
             return `결재선: ${parts.join(', ')}`;
           })();
           return (
-            <div key={it.id} style={card} onClick={() => setActive(it)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b>{it.docTitle || '문서 정보 없음'}</b>
+            <div key={it.id} style={compactCard} onClick={() => setActive(it)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28 }}>
                 <span style={chip}>{statusLabel(it.status)}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.docTitle || '문서 정보 없음'}</span>
+                <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>{currentApproverName ? `결재자: ${currentApproverName}` : ''}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{new Date(it.createdAt).toLocaleDateString()}</span>
               </div>
-              <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
-              {stepSummary && <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>{stepSummary}</div>}
-              {it.subjectType === 'Worklog' && it._doc && (
-                <div style={{ marginTop: 6 }}>
-                  <WorklogDocument worklog={it._doc} variant="compact" />
-                </div>
-              )}
-              {it.subjectType === 'PROCESS' && it._doc ? (
-                <div style={{ marginTop: 6 }}>
-                  <ProcessDocument processDoc={it._doc} variant="content" />
-                </div>
-              ) : null}
             </div>
           );
         })}
@@ -193,6 +182,14 @@ const card: React.CSSProperties = {
   borderRadius: 10,
   padding: 12,
   boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
+};
+
+const compactCard: React.CSSProperties = {
+  background: '#FFFFFF',
+  border: '1px solid #E5E7EB',
+  borderRadius: 8,
+  padding: '8px 12px',
+  cursor: 'pointer',
 };
 
 const chip: React.CSSProperties = {

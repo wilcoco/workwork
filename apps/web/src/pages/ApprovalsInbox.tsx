@@ -162,29 +162,19 @@ export function ApprovalsInbox() {
             when = inst?.createdAt || when;
           }
           return (
-            <div key={a.id} style={card} onClick={() => setActive(a)}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b>{title}</b>
+            <div key={a.id} style={compactCard} onClick={() => setActive(a)}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28 }}>
                 <span style={chip}>{statusLabel(a.status)}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+                <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>{typeof meta === 'string' ? meta : meta}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{when ? new Date(when).toLocaleDateString() : ''}</span>
+                {a.status === 'PENDING' && (
+                  <>
+                    <button onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={compactPrimaryBtn}>승인</button>
+                    <button onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={compactGhostBtn}>반려</button>
+                  </>
+                )}
               </div>
-              <div style={{ fontSize: 12, color: '#334155' }}>{meta as any}</div>
-              {stNorm === 'WORKLOG' && doc && (
-                <div style={{ marginTop: 6 }}>
-                  <WorklogDocument worklog={doc} variant="compact" />
-                </div>
-              )}
-              {stNorm === 'PROCESS' && doc && (
-                <div style={{ marginTop: 6 }}>
-                  <ProcessDocument processDoc={doc} variant="content" onOpenWorklog={(wl) => setWorklogPopup(wl)} />
-                </div>
-              )}
-              {a.status === 'PENDING' && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <button onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={primaryBtn}>승인</button>
-                  <button onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={ghostBtn}>반려</button>
-                </div>
-              )}
             </div>
           );
         })}
@@ -367,6 +357,36 @@ const card: React.CSSProperties = {
   borderRadius: 10,
   padding: 12,
   boxShadow: '0 2px 10px rgba(16, 24, 40, 0.04)'
+};
+
+const compactCard: React.CSSProperties = {
+  background: '#FFFFFF',
+  border: '1px solid #E5E7EB',
+  borderRadius: 8,
+  padding: '8px 12px',
+  cursor: 'pointer',
+};
+
+const compactPrimaryBtn: React.CSSProperties = {
+  background: '#0F3D73',
+  color: '#FFFFFF',
+  border: 'none',
+  borderRadius: 6,
+  padding: '4px 12px',
+  fontSize: 12,
+  fontWeight: 600,
+  flexShrink: 0,
+};
+
+const compactGhostBtn: React.CSSProperties = {
+  background: 'transparent',
+  color: '#0F3D73',
+  border: '1px solid #CBD5E1',
+  borderRadius: 6,
+  padding: '4px 12px',
+  fontSize: 12,
+  fontWeight: 600,
+  flexShrink: 0,
 };
 
 const modalOverlay: React.CSSProperties = {
