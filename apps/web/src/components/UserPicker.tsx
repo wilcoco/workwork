@@ -59,11 +59,12 @@ export function UserPicker({ onSelect, onClose }: { onSelect: (u: PickedUser) =>
         <input placeholder="검색(이름/이메일/ID)" value={q} onChange={(e) => setQ(e.target.value)} style={input} />
         <div style={{ display: 'grid', gap: 6, maxHeight: 280, overflow: 'auto' }}>
           {loading ? <div>로딩…</div> : filtered.map((m) => (
-            <button key={m.id} style={itemBtn} onClick={() => onSelect(m)}>
+            <div key={m.id} style={itemRow}>
               <span style={{ fontWeight: 600 }}>{m.name}</span>
-              <span style={{ color: '#64748b' }}> · {m.email || m.id}</span>
-              <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 12 }}>{m.role || ''}</span>
-            </button>
+              <span style={{ color: '#64748b', fontSize: 13 }}>{m.email || m.id}</span>
+              {m.role && <span style={{ color: '#94a3b8', fontSize: 12 }}>{m.role}</span>}
+              <button type="button" style={selectBtn} onClick={() => onSelect(m)}>선택</button>
+            </div>
           ))}
           {!loading && !filtered.length && <div>멤버 없음</div>}
         </div>
@@ -82,4 +83,5 @@ const head: React.CSSProperties = { display: 'flex', alignItems: 'center', margi
 const input: React.CSSProperties = { border: '1px solid #CBD5E1', background: '#FFFFFF', borderRadius: 10, padding: '8px 10px', outline: 'none' };
 const select: React.CSSProperties = { border: '1px solid #CBD5E1', background: '#FFFFFF', borderRadius: 10, padding: '8px 10px', outline: 'none' };
 const ghostBtn: React.CSSProperties = { background: 'transparent', color: '#0F3D73', border: '1px solid #CBD5E1', borderRadius: 10, padding: '6px 10px', fontWeight: 600, marginLeft: 'auto' };
-const itemBtn: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left' as const, background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 10, padding: '8px 10px' };
+const itemRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 10, padding: '8px 10px' };
+const selectBtn: React.CSSProperties = { marginLeft: 'auto', background: '#0F3D73', color: '#FFFFFF', border: 'none', borderRadius: 6, padding: '4px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 };
