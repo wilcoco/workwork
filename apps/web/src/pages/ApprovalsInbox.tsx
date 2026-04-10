@@ -161,12 +161,15 @@ export function ApprovalsInbox() {
             ) as any;
             when = inst?.createdAt || when;
           }
+          const reqName = String(a.requestedBy?.name || '');
+          const reqId = String(a.requestedBy?.id || '');
           return (
             <div key={a.id} style={compactCard} onClick={() => setActive(a)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28 }}>
                 <span style={chip}>{statusLabel(a.status)}</span>
+                {reqId && <UserAvatar userId={reqId} name={reqName} size={22} />}
+                {reqName && <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, flexShrink: 0 }}>{reqName}</span>}
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-                <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>{typeof meta === 'string' ? meta : meta}</span>
                 <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{when ? new Date(when).toLocaleDateString() : ''}</span>
                 {a.status === 'PENDING' && (
                   <>

@@ -102,8 +102,10 @@ export function ApprovalsMine() {
             <div key={it.id} style={compactCard} onClick={() => setActive(it)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 28 }}>
                 <span style={chip}>{statusLabel(it.status)}</span>
+                {requestedById && <UserAvatar userId={requestedById} name={requestedByName} size={22} />}
+                {requestedByName && requestedByName !== '-' && <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, flexShrink: 0 }}>{requestedByName}</span>}
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.docTitle || '문서 정보 없음'}</span>
-                <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>{currentApproverName ? `결재자: ${currentApproverName}` : ''}</span>
+                {currentApproverName && <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>결재자: {currentApproverName}</span>}
                 <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{new Date(it.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
