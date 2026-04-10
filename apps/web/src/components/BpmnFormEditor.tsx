@@ -477,9 +477,12 @@ function NodeDescEditor(props: { nodeId: string; initialHtml: string; onChangeHt
       e.preventDefault();
       e.stopPropagation();
     };
-    (q.root as HTMLElement)?.addEventListener('paste', onPaste as any);
-    (q.root as HTMLElement)?.addEventListener('drop', onDrop as any);
-    (q.root as HTMLElement)?.addEventListener('dragover', onDragOver as any);
+    const ctr = ((q as any).container || q.root.parentElement) as HTMLElement | null;
+    if (ctr) {
+      ctr.addEventListener('paste', onPaste as any, true);
+      ctr.addEventListener('drop', onDrop as any, true);
+      ctr.addEventListener('dragover', onDragOver as any, true);
+    }
     (async () => {
       try {
         applyingRef.current = true;
