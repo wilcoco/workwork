@@ -89,14 +89,26 @@ export class UploadsController {
   }
 
   @Get('files/:id')
-  async getFile(@Param('id') id: string, @Res() res: Response) {
+  async getFile(@Param('id') id: string, @Req() req: Request, @Res() res: Response) {
     const f = await this.prisma.upload.findUnique({ where: { id } });
     if (!f) return res.status(404).json({ message: 'Not Found' });
-    if (f.contentType) res.setHeader('Content-Type', f.contentType);
-    if ((f as any).originalName) {
-      const encoded = encodeURIComponent(String((f as any).originalName));
-      res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encoded}`);
-    }
+
+    // Explicit CORS headers (safety: @Res() can bypass middleware headers)
+    const origin = req.headers?.origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+
+    const ct = f.contentType || 'application/octet-stream';
+    res.setHeader('Content-Type', ct);
+
+    // Determine inline vs attachment: browsers can display images, PDFs, text, video, audio
+    const inlineTypes = /^(image\/|text\/|video\/|audio\/|application\/pdf)/i;
+    const forceDownload = String((req.query as any)?.download || '') === '1';
+    const disposition = (!forceDownload && inlineTypes.test(ct)) ? 'inline' : 'attachment';
+    const origName = String((f as any).originalName || f.filename || 'file');
+    const encoded = encodeURIComponent(origName);
+    res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encoded}`);
+
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.send(Buffer.from(f.data as any));
   }

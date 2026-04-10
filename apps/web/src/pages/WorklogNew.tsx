@@ -680,7 +680,7 @@ export function WorklogNew() {
         <div style={{ display: 'grid', gap: 6 }}>
           {attachments.map((a, i) => (
             <div key={`${a.url}-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <a href={a.url} target="_blank" rel="noreferrer">{a.name || a.url}</a>
+              <a className="file-link" href={a.url} target="_blank" rel="noreferrer" download={a.name || undefined}>{a.name || a.url}</a>
               <button type="button" className="btn btn-danger" onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}>삭제</button>
             </div>
           ))}

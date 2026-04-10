@@ -438,7 +438,7 @@ export function ApprovalsSubmit() {
           <div className="attachments">
             {attachments.map((f, i) => (
               <div key={`${f.url}-${i}`} className="attachment-item" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <a className="file-link" href={f.url} target="_blank" rel="noreferrer">{f.name || f.url}</a>
+                <a className="file-link" href={f.url} target="_blank" rel="noreferrer" download={f.name || undefined}>{f.name || f.url}</a>
                 <button type="button" className="btn btn-sm btn-danger" onClick={() => removeAttachment(i)}>삭제</button>
               </div>
             ))}

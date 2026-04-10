@@ -352,7 +352,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
                   {isImg ? (
                     <img src={url} alt={name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 12, cursor: 'zoom-in' }} onClick={(e) => { e.stopPropagation(); setZoomSrc(url); }} />
                   ) : (
-                    <a className="file-link" href={url} target="_blank" rel="noreferrer">{name}</a>
+                    <a className="file-link" href={url} target="_blank" rel="noreferrer" download={name}>{name}</a>
                   )}
                 </div>
               );
