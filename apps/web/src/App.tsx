@@ -52,6 +52,7 @@ import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 import { WorkManuals } from './pages/WorkManuals';
 import { WorkManualExt } from './pages/WorkManualExt';
 import { WeeklyReport } from './pages/WeeklyReport';
+import { MeetingMinutes } from './pages/MeetingMinutes';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -337,6 +338,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
               <Route path="/approvals/status" element={<ApprovalsStatus />} />
             </>
           )}
+          <Route path="/meetings" element={<MeetingMinutes />} />
           {SHOW_COOPS && (
             <>
               <Route path="/coops/request" element={<CoopsRequest />} />
@@ -453,6 +455,9 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
         </NavDropdown>
         <NavDropdown label="매뉴얼" active={location.pathname.startsWith('/manuals')}>
           <Link to="/manuals">업무 메뉴얼</Link>
+        </NavDropdown>
+        <NavDropdown label="회의록" active={location.pathname.startsWith('/meetings')}>
+          <Link to="/meetings">회의록</Link>
         </NavDropdown>
 {(() => { const url = String((import.meta as any)?.env?.VITE_POWERAPPS_APPROVAL_URL || '').trim(); return url ? <a href={url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>내부결재</a> : null; })()}
         {/* 품의전표: Power Apps 스크린 딥링크 해결 후 활성화 */}
@@ -653,6 +658,11 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
     if (path.startsWith('/manuals')) {
       return [
         { to: '/manuals', label: '업무 메뉴얼' },
+      ];
+    }
+    if (path.startsWith('/meetings')) {
+      return [
+        { to: '/meetings', label: '회의록' },
       ];
     }
     if (path.startsWith('/inbox')) {

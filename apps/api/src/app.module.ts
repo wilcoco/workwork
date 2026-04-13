@@ -36,6 +36,7 @@ import { WeeklyReportsController } from './weekly-reports.controller';
 import { KnowledgeBaseController } from './knowledge-base.controller';
 import { SchedulesController } from './schedules.controller';
 import { PeriodicAlarmsController } from './periodic-alarms.controller';
+import { MeetingMinutesController } from './meeting-minutes.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 
 @Module({
@@ -73,6 +74,7 @@ import { ProcessDeadlineService } from './process-deadline.service';
     KnowledgeBaseController,
     SchedulesController,
     PeriodicAlarmsController,
+    MeetingMinutesController,
   ],
   providers: [
     PrismaService,
