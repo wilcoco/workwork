@@ -110,7 +110,7 @@ export class EntraAuthController {
       response_type: 'code',
       redirect_uri: redirectUri,
       response_mode: 'query',
-      scope: 'openid profile email',
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All',
       state,
       nonce,
       prompt: 'select_account',
@@ -172,7 +172,7 @@ export class EntraAuthController {
       grant_type: 'authorization_code',
       code: String(code),
       redirect_uri: redirectUri,
-      scope: 'openid profile email',
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All',
     });
     const tokenRes = await fetch(tokenUrl, {
       method: 'POST',
@@ -234,6 +234,23 @@ export class EntraAuthController {
             entraTenantId: user.entraTenantId || (entraTid || tenantId),
             entraOid: user.entraOid || entraOid,
             ...(String(user?.status || 'ACTIVE') === 'ACTIVE' ? {} : { status: 'ACTIVE', activatedAt: new Date() }),
+          },
+        });
+      } catch {}
+    }
+
+    // Store Graph API tokens for Planner/Tasks integration
+    const graphAccessToken = String(tokenJson?.access_token || '').trim();
+    const graphRefreshToken = String(tokenJson?.refresh_token || '').trim();
+    const expiresIn = Number(tokenJson?.expires_in) || 3600;
+    if (graphAccessToken && user?.id) {
+      try {
+        await userModel.update({
+          where: { id: user.id },
+          data: {
+            graphAccessToken,
+            graphRefreshToken: graphRefreshToken || undefined,
+            graphTokenExpiry: new Date(Date.now() + expiresIn * 1000),
           },
         });
       } catch {}

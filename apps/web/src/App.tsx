@@ -53,6 +53,7 @@ import { WorkManuals } from './pages/WorkManuals';
 import { WorkManualExt } from './pages/WorkManualExt';
 import { WeeklyReport } from './pages/WeeklyReport';
 import { MeetingMinutes } from './pages/MeetingMinutes';
+import { PlannerTasks } from './pages/PlannerTasks';
 
 function DeployBanner() {
   const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
@@ -339,6 +340,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
             </>
           )}
           <Route path="/meetings" element={<MeetingMinutes />} />
+          <Route path="/worklogs/planner" element={<PlannerTasks />} />
           {SHOW_COOPS && (
             <>
               <Route path="/coops/request" element={<CoopsRequest />} />
@@ -600,6 +602,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/worklogs/weekly', label: '주간 리포트' },
         { to: '/worklogs/stats', label: '업무 현황' },
         { to: '/worklogs/ai', label: 'AI 분석' },
+        { to: '/worklogs/planner', label: 'Planner 태스크' },
       ];
       return canEvaluate
         ? [...base.slice(0, 4), { to: '/worklogs/eval-monthly', label: '업무 평가 리포트' }, ...base.slice(4)]

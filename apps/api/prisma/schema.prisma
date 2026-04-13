@@ -157,6 +157,10 @@ model User {
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
   teamsPhotoUpdatedAt DateTime?
+
+  graphAccessToken  String?  @db.Text
+  graphRefreshToken String?  @db.Text
+  graphTokenExpiry  DateTime?
 }
 
 model Objective {
