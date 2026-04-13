@@ -21,6 +21,7 @@ class UpdateMeetingDto {
   @IsOptional() actionItems?: any;
   @IsOptional() @IsString() status?: string;
   @IsOptional() duration?: number;
+  @IsOptional() attachments?: any;
 }
 
 @Controller('meeting-minutes')
@@ -78,6 +79,7 @@ export class MeetingMinutesController {
     if (dto.actionItems !== undefined) data.actionItems = dto.actionItems;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.duration !== undefined) data.duration = dto.duration;
+    if (dto.attachments !== undefined) data.attachments = dto.attachments;
     const m = await this.prisma.meetingMinutes.update({ where: { id }, data });
     return m;
   }
@@ -86,6 +88,52 @@ export class MeetingMinutesController {
   async remove(@Param('id') id: string) {
     await this.prisma.meetingMinutes.delete({ where: { id } });
     return { ok: true };
+  }
+
+  // ─── File Attachment Upload ──────────────────────────────────
+
+  @Post(':id/attach')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }))
+  async uploadAttachment(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+
+    const meeting = await this.prisma.meetingMinutes.findUnique({ where: { id } });
+    if (!meeting) throw new BadRequestException('Meeting not found');
+
+    const { randomUUID } = await import('crypto');
+    const { extname } = await import('path');
+    const ext = extname(file.originalname || '.bin');
+    const filename = `${randomUUID()}${ext}`;
+    const rec = await this.prisma.upload.create({
+      data: {
+        filename,
+        originalName: file.originalname || 'file',
+        contentType: file.mimetype || 'application/octet-stream',
+        size: file.size,
+        data: file.buffer,
+      } as any,
+    });
+
+    const url = `/api/uploads/files/${rec.id}`;
+    const newAttachment = {
+      url,
+      name: file.originalname || filename,
+      size: file.size,
+      contentType: file.mimetype || 'application/octet-stream',
+      uploadId: rec.id,
+    };
+
+    const existing = Array.isArray((meeting as any).attachments) ? (meeting as any).attachments : [];
+    existing.push(newAttachment);
+    await this.prisma.meetingMinutes.update({
+      where: { id },
+      data: { attachments: existing as any },
+    });
+
+    return newAttachment;
   }
 
   // ─── Audio Upload (chunk) ──────────────────────────────────

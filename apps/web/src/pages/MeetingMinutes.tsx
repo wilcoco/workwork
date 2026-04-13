@@ -13,6 +13,7 @@ interface Meeting {
   status: string;
   duration: number | null;
   audioChunks: any[] | null;
+  attachments: any[] | null;
   createdBy: { id: string; name: string };
   createdAt: string;
 }
@@ -197,6 +198,8 @@ export function MeetingMinutes() {
   const [summarizing, setSummarizing] = useState(false);
   const [editTranscript, setEditTranscript] = useState('');
   const [editing, setEditing] = useState(false);
+  const [attachUploading, setAttachUploading] = useState(false);
+  const attachInputRef = useRef<HTMLInputElement | null>(null);
 
   const recorder = useAudioRecorder(active?.id || null);
 
@@ -314,6 +317,46 @@ export function MeetingMinutes() {
       await load();
     } catch (e: any) {
       setError(e?.message || '확정 실패');
+    }
+  }
+
+  async function handleAttachUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !active) return;
+    setAttachUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const token = localStorage.getItem('token') || '';
+      const resp = await fetch(apiUrl(`/api/meeting-minutes/${active.id}/attach`), {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!resp.ok) throw new Error('Upload failed');
+      const att = await resp.json();
+      const prev = Array.isArray(active.attachments) ? active.attachments : [];
+      setActive({ ...active, attachments: [...prev, att] });
+    } catch (err: any) {
+      setError(err?.message || '첨부 업로드 실패');
+    } finally {
+      setAttachUploading(false);
+      if (attachInputRef.current) attachInputRef.current.value = '';
+    }
+  }
+
+  async function handleRemoveAttachment(idx: number) {
+    if (!active) return;
+    const prev = Array.isArray(active.attachments) ? [...active.attachments] : [];
+    prev.splice(idx, 1);
+    try {
+      await apiJson(`/api/meeting-minutes/${active.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ attachments: prev }),
+      });
+      setActive({ ...active, attachments: prev });
+    } catch (err: any) {
+      setError(err?.message || '삭제 실패');
     }
   }
 
@@ -521,6 +564,36 @@ export function MeetingMinutes() {
                 </div>
               </div>
             )}
+
+            {/* Attachments Section */}
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>첨부파일</h3>
+                <input ref={attachInputRef} type="file" style={{ display: 'none' }} onChange={handleAttachUpload} />
+                <button style={ghostBtn} onClick={() => attachInputRef.current?.click()} disabled={attachUploading}>
+                  {attachUploading ? '업로드중…' : '+ 파일 추가'}
+                </button>
+              </div>
+              {active.attachments && (active.attachments as any[]).length > 0 ? (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {(active.attachments as any[]).map((att: any, i: number) => {
+                    const absUrl = att.url?.startsWith('/') ? apiUrl(att.url) : att.url;
+                    const sizeStr = att.size ? `(${(att.size / 1024).toFixed(1)} KB)` : '';
+                    return (
+                      <div key={`${att.url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#f8fafc', borderRadius: 8 }}>
+                        <a className="file-link" href={absUrl} target="_blank" rel="noreferrer" download={att.name || undefined} style={{ flex: 1, fontSize: 14, color: '#0F3D73', textDecoration: 'underline', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {att.name || att.url}
+                        </a>
+                        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{sizeStr}</span>
+                        <button type="button" style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', fontSize: 13, fontWeight: 700, padding: '2px 6px' }} onClick={() => handleRemoveAttachment(i)}>삭제</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>첨부된 파일이 없습니다.</div>
+              )}
+            </div>
 
             {/* Actions */}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

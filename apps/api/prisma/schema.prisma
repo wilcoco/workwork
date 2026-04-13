@@ -978,6 +978,7 @@ model MeetingMinutes {
   transcript    String?  @db.Text
   summary       String?  @db.Text
   actionItems   Json?    // Array of { text, assignee?, dueDate? }
+  attachments   Json?    // Array of { url, name, size?, contentType? }
   status        String   @default("draft") // draft | recording | transcribing | summarized | finalized
   duration      Int?     // total duration in seconds
   createdById   String
