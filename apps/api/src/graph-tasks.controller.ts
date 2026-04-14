@@ -248,6 +248,74 @@ export class GraphTasksController {
   }
 
   /**
+   * POST /api/graph-tasks/:taskId/sync-worklog
+   * Append worklog content to a Planner task's description.
+   * Also optionally update progress.
+   * Body: { userId, title, content, date, percentComplete? }
+   */
+  @Post(':taskId/sync-worklog')
+  async syncWorklog(
+    @Param('taskId') taskId: string,
+    @Body() body: { userId: string; title: string; content: string; date?: string; percentComplete?: number },
+  ) {
+    if (!body.userId) throw new BadRequestException('userId required');
+    const token = await this.getGraphToken(body.userId);
+
+    // Fetch current task details to get etag + existing description
+    let details: any;
+    try {
+      details = await this.graphGet(token, `/planner/tasks/${taskId}/details`);
+    } catch {
+      throw new BadRequestException('Planner 태스크 상세 정보를 가져올 수 없습니다.');
+    }
+    const detailsEtag = details?.['@odata.etag'] || '';
+    if (!detailsEtag) throw new BadRequestException('태스크 etag를 가져올 수 없습니다.');
+
+    const existing = String(details?.description || '').trim();
+    const dateStr = body.date || new Date().toISOString().slice(0, 10);
+    const newEntry = `\n\n--- 업무일지 (${dateStr}) ---\n제목: ${body.title || '(제목 없음)'}\n${body.content || ''}`.trim();
+    const merged = existing ? `${existing}\n${newEntry}` : newEntry;
+
+    // Update description (max 32KB for Planner description)
+    const desc = merged.length > 30000 ? merged.slice(-30000) : merged;
+
+    const patchRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'If-Match': detailsEtag,
+      },
+      body: JSON.stringify({ description: desc }),
+    });
+    if (!patchRes.ok) {
+      const text = await patchRes.text().catch(() => '');
+      throw new BadRequestException(`업무일지 동기화 실패 (${patchRes.status}): ${text.slice(0, 300)}`);
+    }
+
+    // Optionally update progress
+    if (body.percentComplete !== undefined && body.percentComplete !== null) {
+      try {
+        const taskData: any = await this.graphGet(token, `/planner/tasks/${taskId}`);
+        const taskEtag = taskData?.['@odata.etag'] || '';
+        if (taskEtag) {
+          await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'If-Match': taskEtag,
+            },
+            body: JSON.stringify({ percentComplete: body.percentComplete }),
+          });
+        }
+      } catch {}
+    }
+
+    return { ok: true };
+  }
+
+  /**
    * GET /api/graph-tasks/plans?userId=xxx
    * List all plans the user has access to.
    */

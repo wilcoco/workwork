@@ -47,7 +47,9 @@ export function WorklogQuickNew() {
   const [error, setError] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'>('ALL');
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
-  const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; description?: string; instance: { id: string; title: string } }>>([]);
+  const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; description?: string; instance: { id: string; title: string } }>>([])
+  const [plannerTasks, setPlannerTasks] = useState<Array<{ id: string; title: string; planName: string; percentComplete: number; dueDateTime: string | null }>>([])
+  const [plannerSyncing, setPlannerSyncing] = useState(false);
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
   const [tags, setTags] = useState<DocumentTagsValue>({});
@@ -266,6 +268,19 @@ export function WorklogQuickNew() {
     })();
   }, [myUserId, processInstanceId, taskInstanceId]);
 
+  // Load Planner tasks for selection
+  useEffect(() => {
+    (async () => {
+      if (!myUserId) return;
+      try {
+        const res = await apiJson<{ tasks: Array<{ id: string; title: string; planName: string; percentComplete: number; dueDateTime: string | null }> }>(`/api/graph-tasks/my-tasks?userId=${encodeURIComponent(myUserId)}`);
+        setPlannerTasks((res.tasks || []).filter(t => t.percentComplete < 100));
+      } catch {
+        // Planner 연동 안 되어 있으면 무시
+      }
+    })();
+  }, [myUserId]);
+
   useEffect(() => {
     if (plainMode || structuredMode) {
       // leaving rich mode — detach old Quill so it re-inits when we come back
@@ -388,7 +403,7 @@ export function WorklogQuickNew() {
     try {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
-      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:') || selection.startsWith('new:'))) throw new Error('대상을 선택하세요');
+      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:') || selection.startsWith('new:') || selection.startsWith('planner:'))) throw new Error('대상을 선택하세요');
       if (Number(timeSpentHours) < 0) throw new Error('업무 소요 시간(시간)은 0 이상이어야 합니다');
       if (![0, 10, 20, 30, 40, 50].includes(Number(timeSpentMinutes10))) throw new Error('업무 소요 시간(분)은 10분 단위로 선택해 주세요');
       const computedMinutes = (Number(timeSpentHours) || 0) * 60 + (Number(timeSpentMinutes10) || 0);
@@ -408,8 +423,8 @@ export function WorklogQuickNew() {
               ? (title || 'KPI 보고')
               : (selection.startsWith('proc:')
                 ? (title || '프로세스 업무')
-                : (selection.startsWith('new:')
-                  ? (title || '신규 과제')
+                : (selection.startsWith('new:') || selection.startsWith('planner:')
+                  ? (title || (selection.startsWith('planner:') ? 'Planner 태스크' : '신규 과제'))
                   : undefined)),
             title,
             content: structuredMode
@@ -460,6 +475,7 @@ export function WorklogQuickNew() {
       const isHelp = selection.startsWith('help:');
       const isProc = selection.startsWith('proc:');
       const isNew = selection.startsWith('new:');
+      const isPlanner = selection.startsWith('planner:');
       const createdInitId = String((wl as any)?.initiativeId || '');
       const selectedId = isKR
         ? selection.substring(3)
@@ -469,7 +485,9 @@ export function WorklogQuickNew() {
             ? selection.substring(5)
             : (isProc
               ? selection.substring(5)
-              : '')));
+              : (isPlanner
+                ? selection.substring(8)
+                : ''))));
       const selected = isInit ? [...teamTasks, ...myTasks].find((x) => x.id === selectedId) : undefined;
       // Progress: initiative done (help 선택 시에는 제외)
       if ((isInit || isNew) && initiativeDone) {
@@ -546,6 +564,40 @@ export function WorklogQuickNew() {
             }
           }
         } catch {}
+      }
+      // Planner: 업무일지 내용을 Planner 태스크 설명에 동기화
+      if (isPlanner && selectedId) {
+        try {
+          const plainContent = structuredMode
+            ? (() => {
+                const lines: string[] = [];
+                sections.todayTasks.filter(t => t.name.trim()).forEach(t => {
+                  const st = t.status === 'completed' ? '완료' : t.status === 'in_progress' ? '진행' : '대기';
+                  lines.push(`- ${t.name} [${st}]${t.detail ? ': ' + t.detail : ''}`);
+                });
+                if (sections.ongoingTasks.some(t => t.name.trim())) {
+                  lines.push('');
+                  sections.ongoingTasks.filter(t => t.name.trim()).forEach(t => {
+                    lines.push(`- ${t.name} (${t.progressPct}%)${t.nextAction ? ' → ' + t.nextAction : ''}`);
+                  });
+                }
+                if (sections.remarks.trim()) lines.push('', sections.remarks.trim());
+                return lines.join('\n');
+              })()
+            : (plainMode ? contentPlain : stripHtml(contentHtml));
+          await apiJson(`/api/graph-tasks/${encodeURIComponent(selectedId)}/sync-worklog`, {
+            method: 'POST',
+            body: JSON.stringify({
+              userId,
+              title: title || '(제목 없음)',
+              content: plainContent || '',
+              date,
+              percentComplete: initiativeDone ? 100 : 50,
+            }),
+          });
+        } catch {
+          // Planner 동기화 실패해도 업무일지 저장은 완료됨
+        }
       }
       nav('/search?mode=list');
     } catch (err: any) {
@@ -760,6 +812,15 @@ export function WorklogQuickNew() {
                   ))}
                 </optgroup>
               )}
+              {plannerTasks.length > 0 && (
+                <optgroup label="Teams Planner 태스크">
+                  {plannerTasks.map((t) => (
+                    <option key={`planner-${t.id}`} value={`planner:${t.id}`}>
+                      {t.planName ? `[${t.planName}] ` : ''}{t.title}{t.dueDateTime ? ` (기한: ${new Date(t.dueDateTime).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             {selection === 'new:1' && (
               <div style={{ border: '2px solid #3b82f6', borderRadius: 10, padding: 14, background: '#EFF6FF', display: 'grid', gap: 10 }}>
@@ -773,6 +834,19 @@ export function WorklogQuickNew() {
                 <div style={{ fontSize: 11, color: '#64748b' }}>검색 시 참조되는 키워드를 쉼표(,)로 구분하여 입력하세요.</div>
               </div>
             )}
+            {selection.startsWith('planner:') && (() => {
+              const pt = plannerTasks.find(t => t.id === selection.substring(8));
+              if (!pt) return null;
+              const overdue = pt.dueDateTime && new Date(pt.dueDateTime) < new Date();
+              return (
+                <div style={{ border: '2px solid #6366f1', borderRadius: 8, padding: 12, marginTop: 8, background: '#eef2ff' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#4338ca', marginBottom: 4 }}>Teams Planner 연동 태스크</div>
+                  <div style={{ fontSize: 13, color: '#312e81' }}>{pt.planName ? `플랜: ${pt.planName}` : ''}</div>
+                  {pt.dueDateTime && <div style={{ fontSize: 12, color: overdue ? '#DC2626' : '#64748b', fontWeight: overdue ? 700 : 400, marginTop: 2 }}>기한: {new Date(pt.dueDateTime).toLocaleDateString('ko-KR')}{overdue ? ' (기한 초과)' : ''}</div>}
+                  <div style={{ fontSize: 11, color: '#6366f1', marginTop: 6 }}>업무일지 제출 시 내용이 Planner 태스크 설명에 자동 동기화됩니다. "과제 완료" 체크 시 태스크도 완료 처리됩니다.</div>
+                </div>
+              );
+            })()}
             {(selection.startsWith('proc:') || taskInstanceId) && (() => {
               const tid = selection.startsWith('proc:') ? selection.substring(5) : taskInstanceId;
               const selectedTask = myProcTasks.find((t) => t.id === tid);
