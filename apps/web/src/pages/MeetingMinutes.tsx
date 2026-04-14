@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, CSSProperties } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
+import { MemberSearchPicker, SingleMemberPicker } from '../components/MemberSearchPicker';
 
 // ─── Types ───────────────────────────────────────────────────
 interface Meeting {
@@ -190,7 +191,8 @@ export function MeetingMinutes() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
-  const [newParticipants, setNewParticipants] = useState('');
+  const [newParticipantNames, setNewParticipantNames] = useState<string[]>([]);
+  const [newParticipantMeta, setNewParticipantMeta] = useState<{ name: string; email: string; teamsUpn: string }[]>([]);
 
   // Detail view
   const [active, setActive] = useState<Meeting | null>(null);
@@ -200,6 +202,12 @@ export function MeetingMinutes() {
   const [editing, setEditing] = useState(false);
   const [attachUploading, setAttachUploading] = useState(false);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Action items assignee + Planner integration
+  const [actionAssignees, setActionAssignees] = useState<Record<number, { name: string; email: string; teamsUpn: string }>>({});
+  const [plans, setPlans] = useState<{ id: string; title: string }[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [creatingTasks, setCreatingTasks] = useState(false);
 
   const recorder = useAudioRecorder(active?.id || null);
 
@@ -220,18 +228,18 @@ export function MeetingMinutes() {
   async function create() {
     if (!newTitle.trim()) return;
     try {
-      const participants = newParticipants.split(',').map((s) => s.trim()).filter(Boolean);
       await apiJson('/api/meeting-minutes', {
         method: 'POST',
         body: JSON.stringify({
           title: newTitle,
           createdById: userId,
           date: newDate ? `${newDate}T00:00:00+09:00` : undefined,
-          participants,
+          participants: newParticipantNames,
         }),
       });
       setNewTitle('');
-      setNewParticipants('');
+      setNewParticipantNames([]);
+      setNewParticipantMeta([]);
       setShowCreate(false);
       await load();
     } catch (e: any) {
@@ -245,8 +253,44 @@ export function MeetingMinutes() {
       setActive(m);
       setEditTranscript(m.transcript || '');
       setEditing(false);
+      setActionAssignees({});
+      // Load Planner plans for task creation
+      try {
+        const res = await apiJson<{ plans: { id: string; title: string }[] }>(`/api/graph-tasks/plans?userId=${userId}`);
+        setPlans(res.plans || []);
+        if (res.plans?.length) setSelectedPlanId(res.plans[0].id);
+      } catch { setPlans([]); }
     } catch (e: any) {
       setError(e?.message || '로드 실패');
+    }
+  }
+
+  async function createPlannerTasks() {
+    if (!active?.actionItems?.length || !selectedPlanId) return;
+    setCreatingTasks(true);
+    let created = 0;
+    try {
+      for (let i = 0; i < active.actionItems.length; i++) {
+        const item = (active.actionItems as any[])[i];
+        const assignee = actionAssignees[i];
+        await apiJson('/api/graph-tasks/create-task', {
+          method: 'POST',
+          body: JSON.stringify({
+            userId,
+            planId: selectedPlanId,
+            title: item.text || `회의 할일 ${i + 1}`,
+            assigneeUpn: assignee?.teamsUpn || undefined,
+            dueDate: item.dueDate || undefined,
+            description: `[회의록: ${active.title}]\n${item.text}${assignee ? `\n담당: ${assignee.name}` : ''}`,
+          }),
+        });
+        created++;
+      }
+      alert(`${created}개 Planner 태스크가 생성되었습니다.`);
+    } catch (e: any) {
+      alert(`${created}개 생성 후 오류: ${e?.message || '알 수 없는 오류'}`);
+    } finally {
+      setCreatingTasks(false);
     }
   }
 
@@ -313,7 +357,7 @@ export function MeetingMinutes() {
         method: 'PUT',
         body: JSON.stringify({ status: 'finalized' }),
       });
-      setActive({ ...active, status: 'finalized' });
+      setActive(null);
       await load();
     } catch (e: any) {
       setError(e?.message || '확정 실패');
@@ -393,8 +437,20 @@ export function MeetingMinutes() {
             <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} style={input} />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>참석자 (쉼표로 구분)</label>
-            <input value={newParticipants} onChange={(e) => setNewParticipants(e.target.value)} style={input} placeholder="홍길동, 김철수, 이영희" />
+            <MemberSearchPicker
+              label="참석자"
+              selected={newParticipantNames}
+              onAdd={(m) => {
+                setNewParticipantNames((prev) => [...prev, m.name]);
+                setNewParticipantMeta((prev) => [...prev, m]);
+              }}
+              onRemove={(idx) => {
+                setNewParticipantNames((prev) => prev.filter((_, i) => i !== idx));
+                setNewParticipantMeta((prev) => prev.filter((_, i) => i !== idx));
+              }}
+              allowManual
+              placeholder="이름 검색 또는 외부인 직접 입력 후 Enter"
+            />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button style={primaryBtn} onClick={create} disabled={!newTitle.trim()}>만들기</button>
@@ -434,9 +490,13 @@ export function MeetingMinutes() {
         <div style={modalOverlay} onClick={() => { if (!recorder.recording) setActive(null); }}>
           <div style={modalBody} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <h2 style={{ margin: 0, flex: 1 }}>{active.title}</h2>
+              <h2 style={{ margin: 0, flex: 1, fontSize: 18 }}>{active.title}</h2>
               <span style={statusColors[active.status] || statusColors.draft}>{statusLabel[active.status] || active.status}</span>
-              <button style={ghostBtn} onClick={() => { if (!recorder.recording) setActive(null); }}>닫기</button>
+              <button
+                onClick={() => { if (!recorder.recording) setActive(null); }}
+                style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 36, height: 36, cursor: 'pointer', fontSize: 18, fontWeight: 700, color: '#475569', display: 'grid', placeItems: 'center', flexShrink: 0 }}
+                title="닫기"
+              >✕</button>
             </div>
 
             <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#475569', marginBottom: 16 }}>
@@ -544,24 +604,63 @@ export function MeetingMinutes() {
             {/* Action Items */}
             {active.actionItems && (active.actionItems as any[]).length > 0 && (
               <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>할 일 목록</h3>
-                <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>할 일 목록</h3>
+                  {plans.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <select
+                        value={selectedPlanId}
+                        onChange={(e) => setSelectedPlanId(e.target.value)}
+                        style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                      >
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>{p.title}</option>
+                        ))}
+                      </select>
+                      <button
+                        style={{ ...primaryBtn, padding: '6px 14px', fontSize: 12 }}
+                        onClick={createPlannerTasks}
+                        disabled={creatingTasks || !selectedPlanId}
+                      >
+                        {creatingTasks ? '생성중…' : 'Planner 과제 생성'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gap: 10 }}>
                   {(active.actionItems as any[]).map((item: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: 8, background: '#f8fafc', borderRadius: 8 }}>
-                      <span style={{ fontWeight: 700, color: '#0F3D73', minWidth: 24 }}>{i + 1}.</span>
-                      <div>
-                        <div style={{ fontSize: 14 }}>{item.text}</div>
-                        {(item.assignee || item.dueDate) && (
-                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                            {item.assignee && `담당: ${item.assignee}`}
-                            {item.assignee && item.dueDate && ' · '}
-                            {item.dueDate && `기한: ${item.dueDate}`}
+                    <div key={i} style={{ padding: 10, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <span style={{ fontWeight: 700, color: '#0F3D73', minWidth: 24 }}>{i + 1}.</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, marginBottom: 6 }}>{item.text}</div>
+                          {item.dueDate && (
+                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>기한: {item.dueDate}</div>
+                          )}
+                          <div style={{ marginTop: 4 }}>
+                            <SingleMemberPicker
+                              value={actionAssignees[i]?.name || item.assignee || ''}
+                              onChange={(m) => {
+                                setActionAssignees((prev) => {
+                                  const next = { ...prev };
+                                  if (m) next[i] = m;
+                                  else delete next[i];
+                                  return next;
+                                });
+                              }}
+                              placeholder="담당자 지정 (검색)"
+                            />
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
+                {!plans.length && (
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
+                    Planner 연동이 필요합니다. Entra SSO 로그인 후 Planner 과제를 생성할 수 있습니다.
+                  </div>
+                )}
               </div>
             )}
 
@@ -596,11 +695,12 @@ export function MeetingMinutes() {
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               {active.summary && active.status !== 'finalized' && (
                 <button style={{ ...primaryBtn, background: '#059669' }} onClick={handleFinalize}>확정</button>
               )}
               <button style={dangerBtn} onClick={() => handleDelete(active.id)}>삭제</button>
+              <button style={ghostBtn} onClick={() => { if (!recorder.recording) setActive(null); }}>닫기</button>
             </div>
           </div>
         </div>

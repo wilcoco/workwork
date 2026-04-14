@@ -378,6 +378,97 @@ export class GraphTasksController {
     return { plans };
   }
 
+  // ─── Planner task creation ─────────────────────────────────
+
+  /**
+   * POST /api/graph-tasks/create-task
+   * Create a new Planner task and assign it to a user.
+   * Body: { userId, planId, title, assigneeUpn?, dueDate?, description? }
+   */
+  @Post('create-task')
+  async createTask(
+    @Body() body: {
+      userId: string;
+      planId: string;
+      title: string;
+      assigneeUpn?: string;
+      dueDate?: string;
+      description?: string;
+    },
+  ) {
+    if (!body.userId || !body.planId || !body.title) {
+      throw new BadRequestException('userId, planId, title required');
+    }
+    const token = await this.getGraphToken(body.userId);
+
+    // Look up assignee's Azure AD user ID by UPN/email
+    let assigneeAadId: string | null = null;
+    if (body.assigneeUpn) {
+      try {
+        const userInfo: any = await this.graphGet(token, `/users/${encodeURIComponent(body.assigneeUpn)}?$select=id`);
+        assigneeAadId = userInfo?.id || null;
+      } catch {
+        console.warn(`[create-task] Could not resolve UPN: ${body.assigneeUpn}`);
+      }
+    }
+
+    // Build task payload
+    const taskBody: any = {
+      planId: body.planId,
+      title: body.title,
+    };
+    if (body.dueDate) {
+      taskBody.dueDateTime = new Date(body.dueDate).toISOString();
+    }
+    if (assigneeAadId) {
+      taskBody.assignments = {
+        [assigneeAadId]: {
+          '@odata.type': '#microsoft.graph.plannerAssignment',
+          orderHint: ' !',
+        },
+      };
+    }
+
+    // Create task
+    const resp = await fetch('https://graph.microsoft.com/v1.0/planner/tasks', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(taskBody),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new BadRequestException(`태스크 생성 실패 (${resp.status}): ${errText.slice(0, 300)}`);
+    }
+    const task: any = await resp.json();
+
+    // If description provided, update task details
+    if (body.description && task.id) {
+      try {
+        await new Promise(r => setTimeout(r, 500));
+        const details: any = await this.graphGet(token, `/planner/tasks/${task.id}/details`);
+        const detailsEtag = details?.['@odata.etag'] || '';
+        if (detailsEtag) {
+          await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${task.id}/details`, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'If-Match': detailsEtag,
+            },
+            body: JSON.stringify({ description: body.description }),
+          });
+        }
+      } catch (e: any) {
+        console.warn(`[create-task] description update failed: ${e?.message}`);
+      }
+    }
+
+    return { ok: true, taskId: task.id, title: task.title };
+  }
+
   // ─── OneDrive file browsing ─────────────────────────────────
 
   /**
