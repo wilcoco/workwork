@@ -624,11 +624,6 @@ export function WorklogQuickNew() {
 
   return (
     <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto' }}>
-      <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px' }}>
-        <div style={{ fontSize: 13, color: '#92400e', fontWeight: 700, lineHeight: 1.45 }}>
-          이 업무일지는 테스트 중인 상태이며 주된 업무일지는 기존 업무일지 앱에 작성해주세요.
-        </div>
-      </div>
       <div className="card elevated accent">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, color: '#475569' }}>
           <div style={{ width: 36, height: 36, borderRadius: 999, background: '#f3f4f6', display: 'grid', placeItems: 'center', fontWeight: 700 }}>🙂</div>
@@ -636,6 +631,7 @@ export function WorklogQuickNew() {
         </div>
         {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         <form onSubmit={submit} style={{ display: 'grid', gap: 10 }}>
+          <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
           <div className="resp-2">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} required />
             <input placeholder="팀명" value={teamName} onChange={(e) => setTeamName(e.target.value)} style={input} required />
@@ -667,10 +663,7 @@ export function WorklogQuickNew() {
             <div />
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
-            <label style={{ fontSize: 13, color: '#6b7280' }}>과제 분류 (기본: 수동 입력)</label>
-            <div style={{ fontSize: 12, color: '#6b7280' }}>
-              기본은 수동 입력(신규 과제)입니다. OKR/KPI 과제와 연동하려면 아래에서 선택하세요.
-            </div>
+            <label style={{ fontSize: 13, color: '#6b7280' }}>과제선택 (미선택시 키워드 입력 필수)</label>
             <select value={selection} onChange={(e) => {
               const v = e.target.value;
               setSelection(v);
@@ -678,7 +671,7 @@ export function WorklogQuickNew() {
               setKrValue('');
               setKrAchieved(false);
             }} style={{ ...input, appearance: 'auto' as any }} required>
-              <option value="new:1">수동입력 (키워드 입력)</option>
+              <option value="new:1">-- 과제 미선택 (키워드 직접 입력) --</option>
               {myProcTasks.length > 0 && (
                 <optgroup label="프로세스 과제">
                   {myProcTasks.map((t) => (
@@ -788,7 +781,6 @@ export function WorklogQuickNew() {
               );
             })()}
           </div>
-          <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
               <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} style={{ width: 16, height: 16 }} /> 긴급 보고

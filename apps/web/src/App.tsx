@@ -31,7 +31,7 @@ import { CoopsRequest } from './pages/CoopsRequest';
 import { CoopsInbox } from './pages/CoopsInbox';
 import { CoopsMine } from './pages/CoopsMine';
 import { CoopsStatus } from './pages/CoopsStatus';
-import { DEPLOY_TITLE, DEPLOY_DESC } from './deployInfo';
+// deployInfo import removed — version now derived from git env vars
 import { AdminMembers } from './pages/AdminMembers';
 import { AdminTools } from './pages/AdminTools';
 import { CarAdmin } from './pages/CarAdmin';
@@ -56,54 +56,22 @@ import { MeetingMinutes } from './pages/MeetingMinutes';
 import { PlannerTasks } from './pages/PlannerTasks';
 
 function DeployBanner() {
-  const codeTitle = String((DEPLOY_TITLE ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
-  const codeDesc = String((DEPLOY_DESC ?? '')).trim().replace(/^['"]+|['"]+$/g, '');
-  const gitTitle = String(import.meta.env.VITE_GIT_TITLE ?? '')
-    .trim()
-    .replace(/^['"]+|['"]+$/g, '');
-  const gitCommit = String(import.meta.env.VITE_GIT_COMMIT ?? '')
-    .trim()
-    .replace(/^['"]+|['"]+$/g, '');
-  const gitDate = String(import.meta.env.VITE_GIT_DATE ?? '')
-    .trim()
-    .replace(/^['"]+|['"]+$/g, '');
-  const envTitle = String(import.meta.env.VITE_DEPLOY_TITLE ?? '')
-    .trim()
-    .replace(/^['"]+|['"]+$/g, '');
-  const envDesc = String((import.meta.env.VITE_DEPLOY_DESC ?? import.meta.env.VITE_DEPLOY_NOTE ?? '') as any)
-    .trim()
-    .replace(/^['"]+|['"]+$/g, '');
-  const repo = String(import.meta.env.VITE_GIT_REPO ?? '').trim();
-  const fullSha = String(import.meta.env.VITE_GIT_COMMIT_FULL ?? '').trim();
-
-  const [dynTitle, setDynTitle] = useState<string>('');
-  const [dynDesc, setDynDesc] = useState<string>('');
-
-  useEffect(() => {
-    const initialTitle = gitTitle || codeTitle || envTitle;
-    const shouldFetch = (!gitTitle || gitTitle === codeTitle || gitTitle === envTitle) && repo && fullSha;
-    if (!shouldFetch) return;
-    const url = `https://api.github.com/repos/${repo}/commits/${fullSha}`;
-    fetch(url)
-      .then(r => r.ok ? r.json() : null)
-      .then(j => {
-        if (!j) return;
-        const message = String(j?.commit?.message || '').split('\n')[0];
-        const when = String(j?.commit?.committer?.date || j?.commit?.author?.date || '');
-        if (message) setDynTitle(message);
-        const short = fullSha.slice(0, 7);
-        const info = [short || gitCommit, when || gitDate].filter(Boolean).join(' · ');
-        if (info) setDynDesc(info);
-      })
-      .catch(() => {});
-  }, [gitTitle, codeTitle, envTitle, repo, fullSha, gitCommit, gitDate]);
-  const title = dynTitle || gitTitle || codeTitle || envTitle || 'WorkWork Deploy';
-  const gitInfo = dynDesc || [gitCommit, gitDate].filter(Boolean).join(' · ');
-  const desc = gitInfo || codeDesc || envDesc || '';
+  const gitDate = String(import.meta.env.VITE_GIT_DATE ?? '').trim().replace(/^['"]+|['"]+$/g, '');
+  const gitCommit = String(import.meta.env.VITE_GIT_COMMIT ?? '').trim().replace(/^['"]+|['"]+$/g, '');
+  let ver = 'v.2026';
+  if (gitDate) {
+    try {
+      const d = new Date(gitDate);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      ver = `v.${d.getFullYear()}_${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+    } catch {}
+  } else if (gitCommit) {
+    ver = `v.2026_${gitCommit.slice(0, 7)}`;
+  }
   return (
     <div className="deploy-banner">
-      <div className="container">
-        <b>{title}</b>{desc ? ` · ${desc}` : ''}
+      <div className="container" style={{ fontSize: 11, color: '#94a3b8', textAlign: 'right' }}>
+        {ver}
       </div>
     </div>
   );
