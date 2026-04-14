@@ -597,8 +597,9 @@ export function WorklogQuickNew() {
               percentComplete: initiativeDone ? 100 : 50,
             }),
           });
-        } catch {
-          // Planner 동기화 실패해도 업무일지 저장은 완료됨
+        } catch (syncErr: any) {
+          // 업무일지는 저장되었지만 Planner 동기화 실패 → 사용자에게 알림
+          alert(`업무일지는 저장되었습니다.\n\nPlanner 태스크 동기화 실패: ${syncErr?.message || '알 수 없는 오류'}\n\n(Teams에서 직접 업데이트해주세요)`);
         }
       }
       nav('/search?mode=list');
