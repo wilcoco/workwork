@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson, apiFetch } from '../lib/api';
-import { uploadFile } from '../lib/upload';
+// uploadFile removed — cloud link only
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import '../styles/editor.css';
@@ -77,62 +77,18 @@ export function WorklogQuickNew() {
     return !!(t.krOwnerId && t.krOwnerId === myUserId);
   }
 
-  async function addPhoto() {
-    try {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.multiple = true;
-      input.style.position = 'fixed';
-      input.style.left = '-9999px';
-      document.body.appendChild(input);
-      input.onchange = async () => {
-        try {
-          const list = input.files ? Array.from(input.files) : [];
-          if (!list.length) return;
-          for (const file of list) {
-            const up = await uploadFile(file);
-            setPhotos((prev) => [...prev, { url: up.url, name: up.name, filename: up.filename, type: up.type }]);
-          }
-        } catch (e: any) {
-          setError(e?.message || '사진 업로드 실패');
-        } finally {
-          try { document.body.removeChild(input); } catch {}
-        }
-      };
-      input.click();
-    } catch (e: any) {
-      setError(e?.message || '사진 업로드 실패');
+  function addPhoto() {
+    const url = window.prompt('사진 URL을 입력하세요 (OneDrive/Teams 공유 링크)');
+    if (!url || !url.trim()) return;
+    const raw = url.trim();
+    if (!/^https?:\/\//i.test(raw)) {
+      setError('http(s)로 시작하는 URL을 입력해주세요.');
+      return;
     }
+    setPhotos((prev) => [...prev, { url: raw, name: raw }]);
   }
 
-  async function addFile() {
-    try {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.multiple = true;
-      input.style.position = 'fixed';
-      input.style.left = '-9999px';
-      document.body.appendChild(input);
-      input.onchange = async () => {
-        try {
-          const list = input.files ? Array.from(input.files) : [];
-          if (!list.length) return;
-          for (const file of list) {
-            const up = await uploadFile(file);
-            setAttachments((prev) => [...prev, { url: up.url, name: up.name || file.name, filename: up.filename }]);
-          }
-        } catch (e: any) {
-          setError(e?.message || '파일 업로드 실패');
-        } finally {
-          try { document.body.removeChild(input); } catch {}
-        }
-      };
-      input.click();
-    } catch (e: any) {
-      setError(e?.message || '파일 업로드 실패');
-    }
-  }
+  // addFile removed — cloud link only (use addAttachmentLink)
 
   function removePhoto(idx: number) {
     setPhotos((prev) => prev.filter((_, i) => i !== idx));
@@ -316,70 +272,40 @@ export function WorklogQuickNew() {
     q.on('text-change', () => {
       setContentHtml(q.root.innerHTML);
     });
-    // robust paste/drop handlers on editor root
-    const onPaste = async (e: ClipboardEvent) => {
-      try {
-        const items = e.clipboardData?.items as DataTransferItemList | undefined;
-        if (!items) return;
-        const imgs = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
-        const html = e.clipboardData?.getData('text/html') || '';
-        if (imgs.length) {
-          e.preventDefault();
-          e.stopPropagation();
-          for (const it of imgs) {
-            const f = it.getAsFile();
-            if (!f) continue;
-            const up = await uploadFile(f);
-            const range = (q as any).getSelection?.(true);
-            if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-            else (q as any).insertEmbed(0, 'image', up.url, 'user');
-          }
-          return;
-        }
-        if (html && (html.includes('src="data:') || html.includes("src='data:"))) {
-          e.preventDefault();
-          e.stopPropagation();
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          const imgsEl = Array.from(doc.images || []).filter((im) => im.src.startsWith('data:'));
-          for (const im of imgsEl) {
-            try {
-              const res = await fetch(im.src);
-              const blob = await res.blob();
-              const f = new File([blob], 'pasted.' + (blob.type.includes('png') ? 'png' : 'jpg'), { type: blob.type });
-              const up = await uploadFile(f);
-              im.src = up.url;
-            } catch {
-              im.remove();
-            }
-          }
-          const range = (q as any).getSelection?.(true);
-          const sane = doc.body.innerHTML;
-          if (range) (q as any).clipboard.dangerouslyPasteHTML(range.index, sane, 'user');
-          else (q as any).clipboard.dangerouslyPasteHTML(0, sane, 'user');
-          return;
-        }
-      } catch (err: any) {
-        setError(err?.message || '이미지 업로드 실패');
+    // Block image file paste/drop — cloud links only
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items as DataTransferItemList | undefined;
+      if (!items) return;
+      const imgs = Array.from(items).filter((i: DataTransferItem) => i.type.startsWith('image/'));
+      const html = e.clipboardData?.getData('text/html') || '';
+      // Block pasted image files
+      if (imgs.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        setError('이미지 파일 붙여넣기는 지원하지 않습니다. 툴바의 이미지 버튼으로 URL을 입력해주세요.');
+        return;
+      }
+      // Strip base64 images from pasted HTML
+      if (html && (html.includes('src="data:') || html.includes("src='data:"))) {
+        e.preventDefault();
+        e.stopPropagation();
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        Array.from(doc.images || []).filter((im) => im.src.startsWith('data:')).forEach((im) => im.remove());
+        const range = (q as any).getSelection?.(true);
+        const sane = doc.body.innerHTML;
+        if (range) (q as any).clipboard.dangerouslyPasteHTML(range.index, sane, 'user');
+        else (q as any).clipboard.dangerouslyPasteHTML(0, sane, 'user');
+        return;
       }
     };
-    const onDrop = async (e: DragEvent) => {
-      try {
-        const files = e.dataTransfer?.files as FileList | undefined;
-        if (!files || !files.length) return;
-        const imgs = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
-        if (imgs.length) {
-          e.preventDefault();
-          e.stopPropagation();
-          for (const f of imgs) {
-            const up = await uploadFile(f);
-            const range = (q as any).getSelection?.(true);
-            if (range) (q as any).insertEmbed(range.index, 'image', up.url, 'user');
-            else (q as any).insertEmbed(0, 'image', up.url, 'user');
-          }
-          return;
-        }
-      } catch (err: any) {
-        setError(err?.message || '이미지 업로드 실패');
+    const onDrop = (e: DragEvent) => {
+      const files = e.dataTransfer?.files as FileList | undefined;
+      if (!files || !files.length) return;
+      const imgs = Array.from(files).filter((f: File) => f.type.startsWith('image/'));
+      if (imgs.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        setError('이미지 파일 드롭은 지원하지 않습니다. 툴바의 이미지 버튼으로 URL을 입력해주세요.');
       }
     };
     const onDragOver = (e: DragEvent) => { e.preventDefault(); e.stopPropagation(); };
@@ -618,38 +544,23 @@ export function WorklogQuickNew() {
     }
   }
 
-  async function onImageUpload() {
-    try {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.style.position = 'fixed';
-      input.style.left = '-9999px';
-      document.body.appendChild(input);
-      input.onchange = async () => {
-        try {
-          const file = input.files?.[0];
-          if (!file) return;
-          const up = await uploadFile(file);
-          const editor = !plainMode ? quillRef.current : null;
-          const range = editor?.getSelection?.(true);
-          if (editor && range) {
-            editor.insertEmbed(range.index, 'image', up.url, 'user');
-            editor.setSelection(range.index + 1, 0, 'user');
-          } else if (editor) {
-            editor.insertEmbed(0, 'image', up.url, 'user');
-          } else {
-            setContentPlain((prev) => (prev ? prev + '\n' + up.url : up.url));
-          }
-        } catch (e: any) {
-          setError(e?.message || '이미지 업로드 실패');
-        } finally {
-          try { document.body.removeChild(input); } catch {}
-        }
-      };
-      input.click();
-    } catch (e: any) {
-      setError(e?.message || '이미지 업로드 실패');
+  function onImageUpload() {
+    const url = window.prompt('이미지 URL을 입력하세요 (OneDrive/Teams 공유 링크)');
+    if (!url || !url.trim()) return;
+    const raw = url.trim();
+    if (!/^https?:\/\//i.test(raw)) {
+      setError('http(s)로 시작하는 URL을 입력해주세요.');
+      return;
+    }
+    const editor = !plainMode ? quillRef.current : null;
+    const range = editor?.getSelection?.(true);
+    if (editor && range) {
+      editor.insertEmbed(range.index, 'image', raw, 'user');
+      editor.setSelection(range.index + 1, 0, 'user');
+    } else if (editor) {
+      editor.insertEmbed(0, 'image', raw, 'user');
+    } else {
+      setContentPlain((prev) => (prev ? prev + '\n' + raw : raw));
     }
   }
 
@@ -1081,11 +992,11 @@ export function WorklogQuickNew() {
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>사진 추가</label>
             <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
-              사진은 본문 아래에 별도로 표시됩니다. (업로드 후 저장하면 모든 사용자가 볼 수 있습니다)
+              OneDrive/Teams에서 사진 공유 링크를 추가합니다.
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <button type="button" className="btn btn-sm" onClick={addPhoto}>
-                사진 추가
+                사진 링크 추가
               </button>
             </div>
             {photos.length > 0 && (
@@ -1108,23 +1019,21 @@ export function WorklogQuickNew() {
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
             <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
-              파일 첨부: Teams/OneDrive에 있는 파일은 업로드하지 않고, 공유 링크를 붙여넣어 첨부합니다.
+              Teams/OneDrive 공유 링크를 붙여넣어 첨부합니다. (파일 직접 업로드 불가)
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn-sm" onClick={addFile}>
-                파일 업로드
-              </button>
               <input
                 value={attachUrl}
                 onChange={(e) => setAttachUrl(e.target.value)}
-                placeholder="또는 Teams/OneDrive 공유 링크"
+                placeholder="Teams/OneDrive 공유 링크"
                 style={{ ...input, flex: 1, minWidth: 180 }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAttachmentLink(); } }}
               />
               <button type="button" className="btn btn-sm" onClick={addAttachmentLink} disabled={!String(attachUrl || '').trim()}>
                 링크 추가
               </button>
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>파일을 직접 업로드하거나, OneDrive/Teams 공유 링크를 붙여넣을 수 있습니다.</div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>OneDrive/Teams에서 파일 → 공유 → 링크 복사 후 붙여넣으세요.</div>
             {attachments.length > 0 && (
               <div className="attachments">
                 {attachments.map((f, i) => (
