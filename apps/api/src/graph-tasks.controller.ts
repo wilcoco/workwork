@@ -289,26 +289,30 @@ export class GraphTasksController {
     // Build patch body: description + optional file references
     const patchBody: any = { description: desc };
 
-    // Add attachments as external references (Planner uses URL keys)
+    // Add attachments as external references (only NEW ones — do NOT re-send existing refs)
     if (body.attachments?.length) {
-      const refs: Record<string, any> = { ...(details?.references || {}) };
+      const existingRefs = details?.references || {};
+      const newRefs: Record<string, any> = {};
       for (const att of body.attachments) {
         if (!att.url) continue;
-        // Planner reference key: URL with special chars encoded (. → %2E, : → %3A, # → %23, @ → %40)
+        // Planner reference key: URL with special chars percent-encoded
         const encodedUrl = att.url
           .replace(/%/g, '%25')
           .replace(/\./g, '%2E')
           .replace(/:/g, '%3A')
           .replace(/#/g, '%23')
           .replace(/@/g, '%40');
-        refs[encodedUrl] = {
+        // Skip if already exists
+        if (existingRefs[encodedUrl]) continue;
+        newRefs[encodedUrl] = {
           '@odata.type': '#microsoft.graph.plannerExternalReference',
           alias: att.name || '첨부파일',
           type: 'Other',
-          previewPriority: ' !',
         };
       }
-      patchBody.references = refs;
+      if (Object.keys(newRefs).length > 0) {
+        patchBody.references = newRefs;
+      }
     }
 
     const patchRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`, {
