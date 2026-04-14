@@ -424,7 +424,8 @@ export class GraphTasksController {
 
   /**
    * POST /api/graph-tasks/onedrive/share-link
-   * Create a sharing link for a OneDrive file and return it.
+   * Get the webUrl for a OneDrive file (same-org users can access).
+   * Falls back to webUrl from file metadata (no write permission needed).
    */
   @Post('onedrive/share-link')
   async onedriveShareLink(
@@ -433,29 +434,15 @@ export class GraphTasksController {
     if (!body.userId || !body.fileId) throw new BadRequestException('userId and fileId required');
     const token = await this.getGraphToken(body.userId);
 
-    const resp = await fetch(
-      `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(body.fileId)}/createLink`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'view',
-          scope: 'organization',
-        }),
-      },
+    // Get file metadata (webUrl) — read-only, no Files.ReadWrite needed
+    const file: any = await this.graphGet(
+      token,
+      `/me/drive/items/${encodeURIComponent(body.fileId)}?$select=id,name,webUrl`,
     );
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '');
-      throw new BadRequestException(`공유 링크 생성 실패 (${resp.status}): ${errText.slice(0, 300)}`);
-    }
-    const linkData: any = await resp.json().catch(() => ({}));
-    const shareUrl = linkData?.link?.webUrl || '';
+    const shareUrl = file?.webUrl || '';
     if (!shareUrl) {
-      throw new BadRequestException('공유 링크를 가져올 수 없습니다.');
+      throw new BadRequestException('파일 URL을 가져올 수 없습니다.');
     }
-    return { url: shareUrl, name: body.fileName || '' };
+    return { url: shareUrl, name: body.fileName || file?.name || '' };
   }
 }
