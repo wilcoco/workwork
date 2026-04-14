@@ -53,7 +53,7 @@ export class GraphTasksController {
       client_secret: clientSecret,
       grant_type: 'refresh_token',
       refresh_token: user.graphRefreshToken,
-      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All',
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.Read.All',
     });
 
     const resp = await fetch(tokenUrl, {
@@ -376,5 +376,86 @@ export class GraphTasksController {
       owner: p.owner,
     }));
     return { plans };
+  }
+
+  // ─── OneDrive file browsing ─────────────────────────────────
+
+  /**
+   * GET /api/graph-tasks/onedrive/files?userId=xxx&folderId=root&search=keyword
+   * Browse OneDrive files. folderId defaults to 'root'.
+   */
+  @Get('onedrive/files')
+  async onedriveFiles(
+    @Query('userId') userId: string,
+    @Query('folderId') folderId?: string,
+    @Query('search') search?: string,
+  ) {
+    if (!userId) throw new BadRequestException('userId required');
+    const token = await this.getGraphToken(userId);
+
+    let data: any;
+    if (search && search.trim()) {
+      // Search across all OneDrive files
+      data = await this.graphGet(
+        token,
+        `/me/drive/root/search(q='${encodeURIComponent(search.trim())}')?$top=50&$select=id,name,size,lastModifiedDateTime,webUrl,folder,file&$orderby=lastModifiedDateTime desc`,
+      );
+    } else {
+      // List children of a folder
+      const folder = folderId && folderId !== 'root' ? `/me/drive/items/${encodeURIComponent(folderId)}` : '/me/drive/root';
+      data = await this.graphGet(
+        token,
+        `${folder}/children?$top=100&$select=id,name,size,lastModifiedDateTime,webUrl,folder,file&$orderby=name asc`,
+      );
+    }
+
+    const items = (data?.value || []).map((f: any) => ({
+      id: f.id,
+      name: f.name,
+      size: f.size,
+      lastModified: f.lastModifiedDateTime,
+      webUrl: f.webUrl,
+      isFolder: !!f.folder,
+      childCount: f.folder?.childCount,
+      mimeType: f.file?.mimeType,
+    }));
+    return { items };
+  }
+
+  /**
+   * POST /api/graph-tasks/onedrive/share-link
+   * Create a sharing link for a OneDrive file and return it.
+   */
+  @Post('onedrive/share-link')
+  async onedriveShareLink(
+    @Body() body: { userId: string; fileId: string; fileName?: string },
+  ) {
+    if (!body.userId || !body.fileId) throw new BadRequestException('userId and fileId required');
+    const token = await this.getGraphToken(body.userId);
+
+    const resp = await fetch(
+      `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(body.fileId)}/createLink`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'view',
+          scope: 'organization',
+        }),
+      },
+    );
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw new BadRequestException(`공유 링크 생성 실패 (${resp.status}): ${errText.slice(0, 300)}`);
+    }
+    const linkData: any = await resp.json().catch(() => ({}));
+    const shareUrl = linkData?.link?.webUrl || '';
+    if (!shareUrl) {
+      throw new BadRequestException('공유 링크를 가져올 수 없습니다.');
+    }
+    return { url: shareUrl, name: body.fileName || '' };
   }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson, apiFetch } from '../lib/api';
-// uploadFile removed — cloud link only
+import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import '../styles/editor.css';
@@ -38,6 +38,7 @@ export function WorklogQuickNew() {
   const [attachments, setAttachments] = useState<Array<{ url: string; name?: string; filename?: string }>>([]);
   const [photos, setPhotos] = useState<Array<{ url: string; name?: string; filename?: string; type?: string }>>([]);
   const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
+  const [showFilePicker, setShowFilePicker] = useState<'attach' | 'photo' | null>(null);
   const [attachUrl, setAttachUrl] = useState<string>('');
   const quillRef = useRef<Quill | null>(null);
   const editorEl = useRef<HTMLDivElement | null>(null);
@@ -992,11 +993,14 @@ export function WorklogQuickNew() {
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>사진 추가</label>
             <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
-              OneDrive/Teams에서 사진 공유 링크를 추가합니다.
+              OneDrive에서 사진을 선택하거나 URL을 직접 입력할 수 있습니다.
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-sm" onClick={() => setShowFilePicker('photo')} style={{ background: '#0078d4', color: '#fff', border: 'none' }}>
+                OneDrive에서 선택
+              </button>
               <button type="button" className="btn btn-sm" onClick={addPhoto}>
-                사진 링크 추가
+                URL 직접 입력
               </button>
             </div>
             {photos.length > 0 && (
@@ -1019,21 +1023,24 @@ export function WorklogQuickNew() {
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>첨부 파일</label>
             <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
-              Teams/OneDrive 공유 링크를 붙여넣어 첨부합니다. (파일 직접 업로드 불가)
+              OneDrive에서 파일을 선택하거나 공유 링크를 직접 입력할 수 있습니다.
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-sm" onClick={() => setShowFilePicker('attach')} style={{ background: '#0078d4', color: '#fff', border: 'none' }}>
+                OneDrive에서 선택
+              </button>
               <input
                 value={attachUrl}
                 onChange={(e) => setAttachUrl(e.target.value)}
-                placeholder="Teams/OneDrive 공유 링크"
-                style={{ ...input, flex: 1, minWidth: 180 }}
+                placeholder="또는 공유 링크 직접 입력"
+                style={{ ...input, flex: 1, minWidth: 140 }}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAttachmentLink(); } }}
               />
               <button type="button" className="btn btn-sm" onClick={addAttachmentLink} disabled={!String(attachUrl || '').trim()}>
                 링크 추가
               </button>
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8' }}>OneDrive/Teams에서 파일 → 공유 → 링크 복사 후 붙여넣으세요.</div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>파일 선택 버튼을 누르면 OneDrive 파일을 탐색하고 자동으로 공유 링크가 생성됩니다.</div>
             {attachments.length > 0 && (
               <div className="attachments">
                 {attachments.map((f, i) => (
@@ -1207,6 +1214,21 @@ export function WorklogQuickNew() {
             </div>
           </div>
         </div>
+      )}
+
+      {showFilePicker && (
+        <OneDriveFilePicker
+          userId={myUserId}
+          multiple
+          onSelect={(files) => {
+            if (showFilePicker === 'photo') {
+              setPhotos((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name }))]);
+            } else {
+              setAttachments((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name }))]);
+            }
+          }}
+          onClose={() => setShowFilePicker(null)}
+        />
       )}
     </div>
   );

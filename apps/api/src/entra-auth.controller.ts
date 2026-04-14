@@ -110,7 +110,7 @@ export class EntraAuthController {
       response_type: 'code',
       redirect_uri: redirectUri,
       response_mode: 'query',
-      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All',
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.Read.All',
       state,
       nonce,
       prompt: 'select_account',
@@ -172,7 +172,7 @@ export class EntraAuthController {
       grant_type: 'authorization_code',
       code: String(code),
       redirect_uri: redirectUri,
-      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All',
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.Read.All',
     });
     const tokenRes = await fetch(tokenUrl, {
       method: 'POST',
