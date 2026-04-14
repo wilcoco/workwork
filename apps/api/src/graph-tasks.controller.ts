@@ -256,7 +256,14 @@ export class GraphTasksController {
   @Post(':taskId/sync-worklog')
   async syncWorklog(
     @Param('taskId') taskId: string,
-    @Body() body: { userId: string; title: string; content: string; date?: string; percentComplete?: number },
+    @Body() body: {
+      userId: string;
+      title: string;
+      content: string;
+      date?: string;
+      percentComplete?: number;
+      attachments?: Array<{ url: string; name: string }>;
+    },
   ) {
     if (!body.userId) throw new BadRequestException('userId required');
     const token = await this.getGraphToken(body.userId);
@@ -279,6 +286,31 @@ export class GraphTasksController {
     // Update description (max 32KB for Planner description)
     const desc = merged.length > 30000 ? merged.slice(-30000) : merged;
 
+    // Build patch body: description + optional file references
+    const patchBody: any = { description: desc };
+
+    // Add attachments as external references (Planner uses URL keys)
+    if (body.attachments?.length) {
+      const refs: Record<string, any> = { ...(details?.references || {}) };
+      for (const att of body.attachments) {
+        if (!att.url) continue;
+        // Planner reference key: URL with special chars encoded (. → %2E, : → %3A, # → %23, @ → %40)
+        const encodedUrl = att.url
+          .replace(/%/g, '%25')
+          .replace(/\./g, '%2E')
+          .replace(/:/g, '%3A')
+          .replace(/#/g, '%23')
+          .replace(/@/g, '%40');
+        refs[encodedUrl] = {
+          '@odata.type': '#microsoft.graph.plannerExternalReference',
+          alias: att.name || '첨부파일',
+          type: 'Other',
+          previewPriority: ' !',
+        };
+      }
+      patchBody.references = refs;
+    }
+
     const patchRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`, {
       method: 'PATCH',
       headers: {
@@ -286,7 +318,7 @@ export class GraphTasksController {
         'Content-Type': 'application/json',
         'If-Match': detailsEtag,
       },
-      body: JSON.stringify({ description: desc }),
+      body: JSON.stringify(patchBody),
     });
     if (!patchRes.ok) {
       const text = await patchRes.text().catch(() => '');

@@ -587,6 +587,11 @@ export function WorklogQuickNew() {
                 return lines.join('\n');
               })()
             : (plainMode ? contentPlain : stripHtml(contentHtml));
+          // 첨부파일 + 사진을 Planner 태스크에 외부 참조로 추가
+          const allFiles = [
+            ...attachments.map(a => ({ url: a.url, name: a.name || a.filename || '첨부파일' })),
+            ...photos.map(p => ({ url: p.url, name: p.name || p.filename || '사진' })),
+          ].filter(f => f.url);
           await apiJson(`/api/graph-tasks/${encodeURIComponent(selectedId)}/sync-worklog`, {
             method: 'POST',
             body: JSON.stringify({
@@ -595,6 +600,7 @@ export function WorklogQuickNew() {
               content: plainContent || '',
               date,
               percentComplete: initiativeDone ? 100 : 50,
+              attachments: allFiles.length ? allFiles : undefined,
             }),
           });
         } catch (syncErr: any) {
