@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiJson } from '../lib/api';
+import { apiJson, apiFetch } from '../lib/api';
 import { uploadFile } from '../lib/upload';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
@@ -268,15 +268,17 @@ export function WorklogQuickNew() {
     })();
   }, [myUserId, processInstanceId, taskInstanceId]);
 
-  // Load Planner tasks for selection
+  // Load Planner tasks for selection (silently skip if not connected)
   useEffect(() => {
     (async () => {
       if (!myUserId) return;
       try {
-        const res = await apiJson<{ tasks: Array<{ id: string; title: string; planName: string; percentComplete: number; dueDateTime: string | null }> }>(`/api/graph-tasks/my-tasks?userId=${encodeURIComponent(myUserId)}`);
-        setPlannerTasks((res.tasks || []).filter(t => t.percentComplete < 100));
+        const resp = await apiFetch(`/api/graph-tasks/my-tasks?userId=${encodeURIComponent(myUserId)}`);
+        if (!resp.ok) return; // Planner 연동 안 되어 있으면 조용히 무시
+        const data = await resp.json().catch(() => null);
+        if (data?.tasks) setPlannerTasks(data.tasks.filter((t: any) => t.percentComplete < 100));
       } catch {
-        // Planner 연동 안 되어 있으면 무시
+        // network error 등 무시
       }
     })();
   }, [myUserId]);
