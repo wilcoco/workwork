@@ -325,26 +325,35 @@ export class GraphTasksController {
       throw new BadRequestException(`업무일지 동기화 실패 (${patchRes.status}): ${text.slice(0, 300)}`);
     }
 
-    // Optionally update progress
+    // Update progress (percentComplete)
+    let progressUpdated = false;
     if (body.percentComplete !== undefined && body.percentComplete !== null) {
-      try {
-        const taskData: any = await this.graphGet(token, `/planner/tasks/${taskId}`);
-        const taskEtag = taskData?.['@odata.etag'] || '';
-        if (taskEtag) {
-          await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
-            method: 'PATCH',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-              'If-Match': taskEtag,
-            },
-            body: JSON.stringify({ percentComplete: body.percentComplete }),
-          });
+      // Small delay to let Graph API settle after description patch (etag conflict prevention)
+      await new Promise(r => setTimeout(r, 1000));
+      const taskData: any = await this.graphGet(token, `/planner/tasks/${taskId}`);
+      const taskEtag = taskData?.['@odata.etag'] || '';
+      if (!taskEtag) {
+        console.error('[sync-worklog] progress update failed: no etag from task');
+      } else {
+        const progressRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'If-Match': taskEtag,
+          },
+          body: JSON.stringify({ percentComplete: body.percentComplete }),
+        });
+        if (!progressRes.ok) {
+          const errText = await progressRes.text().catch(() => '');
+          console.error(`[sync-worklog] progress update failed (${progressRes.status}): ${errText.slice(0, 300)}`);
+        } else {
+          progressUpdated = true;
         }
-      } catch {}
+      }
     }
 
-    return { ok: true };
+    return { ok: true, progressUpdated };
   }
 
   /**

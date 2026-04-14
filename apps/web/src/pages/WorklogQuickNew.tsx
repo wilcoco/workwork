@@ -568,10 +568,6 @@ export function WorklogQuickNew() {
         } catch {}
       }
       // Planner: 업무일지 내용을 Planner 태스크 설명에 동기화
-      // DEBUG: 임시 디버깅 (확인 후 제거)
-      if (isPlanner) {
-        alert(`[DEBUG] Planner 동기화 시작\nselection: ${selection}\nselectedId: ${selectedId}\ninitiativeDone: ${initiativeDone}`);
-      }
       if (isPlanner && selectedId) {
         try {
           const plainContent = structuredMode
@@ -596,7 +592,7 @@ export function WorklogQuickNew() {
             ...attachments.map(a => ({ url: a.url, name: a.name || a.filename || '첨부파일' })),
             ...photos.map(p => ({ url: p.url, name: p.name || p.filename || '사진' })),
           ].filter(f => f.url);
-          await apiJson(`/api/graph-tasks/${encodeURIComponent(selectedId)}/sync-worklog`, {
+          const syncResult = await apiJson<{ ok: boolean; progressUpdated?: boolean }>(`/api/graph-tasks/${encodeURIComponent(selectedId)}/sync-worklog`, {
             method: 'POST',
             body: JSON.stringify({
               userId,
@@ -607,8 +603,10 @@ export function WorklogQuickNew() {
               attachments: allFiles.length ? allFiles : undefined,
             }),
           });
+          if (initiativeDone && !syncResult.progressUpdated) {
+            alert('업무일지 → Planner 내용 동기화 완료.\n\n⚠️ 진행률(완료) 업데이트가 실패했습니다.\nTeams Planner에서 직접 완료 처리해주세요.');
+          }
         } catch (syncErr: any) {
-          // 업무일지는 저장되었지만 Planner 동기화 실패 → 사용자에게 알림
           alert(`업무일지는 저장되었습니다.\n\nPlanner 태스크 동기화 실패: ${syncErr?.message || '알 수 없는 오류'}\n\n(Teams에서 직접 업데이트해주세요)`);
         }
       }
