@@ -568,6 +568,10 @@ export function WorklogQuickNew() {
         } catch {}
       }
       // Planner: 업무일지 내용을 Planner 태스크 설명에 동기화
+      // DEBUG: 임시 디버깅 (확인 후 제거)
+      if (isPlanner) {
+        alert(`[DEBUG] Planner 동기화 시작\nselection: ${selection}\nselectedId: ${selectedId}\ninitiativeDone: ${initiativeDone}`);
+      }
       if (isPlanner && selectedId) {
         try {
           const plainContent = structuredMode
