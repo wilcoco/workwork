@@ -41,8 +41,8 @@ const statusLabel: Record<string, string> = {
   summarized: '요약완료',
   finalized: '확정',
 };
-const modalOverlay: CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 };
-const modalBody: CSSProperties = { background: '#fff', borderRadius: 16, padding: 24, width: 'min(900px, 95vw)', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' };
+const modalOverlay: CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2100 };
+const modalBody: CSSProperties = { background: '#fff', borderRadius: 16, padding: '20px 16px 24px', width: 'min(900px, 95vw)', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', marginTop: 'env(safe-area-inset-top, 0px)' };
 
 // ─── Audio Recorder Hook ─────────────────────────────────────
 const CHUNK_DURATION_MS = 5 * 60 * 1000; // 5 min per chunk

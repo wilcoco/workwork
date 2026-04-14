@@ -257,28 +257,42 @@ export class MeetingMinutesController {
     if (!meeting) throw new BadRequestException('Meeting not found');
     if (!meeting.transcript) throw new BadRequestException('No transcript to summarize');
 
+    // Guard: transcript must have meaningful content (at least 20 chars)
+    const transcript = String(meeting.transcript || '').trim();
+    if (transcript.length < 20) {
+      throw new BadRequestException('녹취록 내용이 너무 짧아 요약할 수 없습니다. 녹음 후 AI 음성 전사를 먼저 진행해주세요.');
+    }
+
     const { callAI } = await import('./llm/ai-client');
 
-    const system = `당신은 회의록 정리 전문가입니다. 회의 녹취록을 분석하여 체계적인 요약을 작성합니다.
+    const system = `당신은 회의록 정리 전문가입니다.
+
+**절대 규칙:**
+- 오직 제공된 녹취록 텍스트에 포함된 내용만 요약하세요.
+- 녹취록에 없는 내용을 추측하거나 지어내지 마세요.
+- 녹취록에서 직접 확인 가능한 사실만 포함하세요.
+- 녹취록 내용이 불충분하면 "녹취록 내용이 부족하여 해당 항목을 작성할 수 없습니다"라고 적어주세요.
+- 담당자나 기한이 녹취록에 명시되지 않았으면 빈 문자열로 두세요.
+
 반드시 JSON으로 응답하세요.`;
 
-    const user = `다음 회의 녹취록을 분석하여 요약해주세요.
+    const user = `다음 회의 녹취록을 **있는 그대로** 분석하여 요약해주세요. 녹취록에 없는 내용은 절대 포함하지 마세요.
 
 회의 제목: ${meeting.title}
 회의 일시: ${meeting.date ? new Date(meeting.date).toLocaleString('ko-KR') : '미정'}
 
 녹취록:
-${meeting.transcript}
+${transcript}
 
-다음 JSON 형식으로 응답하세요:
+다음 JSON 형식으로 응답하세요 (녹취록에 근거한 내용만 작성):
 {
-  "summary": "회의 전체 요약 (3-5문장)",
-  "keyPoints": ["핵심 논의 사항 1", "핵심 논의 사항 2", ...],
-  "decisions": ["결정 사항 1", "결정 사항 2", ...],
+  "summary": "회의 전체 요약 (녹취록 기반 3-5문장)",
+  "keyPoints": ["녹취록에서 확인된 핵심 논의 사항 1", ...],
+  "decisions": ["녹취록에서 확인된 결정 사항 1", ...],
   "actionItems": [
-    { "text": "할 일 내용", "assignee": "담당자 (있으면)", "dueDate": "기한 (있으면)" }
+    { "text": "녹취록에서 확인된 할 일", "assignee": "녹취록에 명시된 담당자 또는 빈값", "dueDate": "녹취록에 명시된 기한 또는 빈값" }
   ],
-  "nextSteps": "후속 조치 요약"
+  "nextSteps": "녹취록에서 확인된 후속 조치"
 }`;
 
     const result = await callAI({ system, user, model: 'openai', maxTokens: 4096 });
