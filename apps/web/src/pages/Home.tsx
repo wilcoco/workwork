@@ -30,6 +30,7 @@ export function Home() {
   const [overdueTasks, setOverdueTasks] = useState<any[]>([]);
   const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
   const [overdueLoading, setOverdueLoading] = useState(false);
+  const [expandedOverdueUser, setExpandedOverdueUser] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
   const [urgentOpen, setUrgentOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -210,23 +211,19 @@ export function Home() {
           <div style={{ color: '#64748b', fontSize: 13 }}>불러오는 중…</div>
         ) : overdueTasks.length === 0 ? (
           <div style={{ color: '#94a3b8', fontSize: 13 }}>{overdueScope === 'mine' ? '기한 경과된 과제가 없습니다.' : '전사 기한 경과 과제가 없습니다.'}</div>
-        ) : (
+        ) : overdueScope === 'mine' ? (
+          /* ── 내 과제: 플랫 리스트 ── */
           <div style={{ display: 'grid', gap: 6 }}>
             {overdueTasks.map((t: any) => {
               const daysOver = Math.floor((Date.now() - new Date(t.dueDateTime).getTime()) / (24 * 60 * 60 * 1000));
               const priorityLabel: Record<number, string> = { 1: '긴급', 3: '중요', 5: '보통', 9: '낮음' };
               const priorityColor: Record<number, string> = { 1: '#dc2626', 3: '#ea580c', 5: '#64748b', 9: '#94a3b8' };
               return (
-                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid #fecaca', fontSize: 13, flexWrap: 'wrap' }}>
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid #fecaca', fontSize: 13 }}>
                   <span style={{ color: priorityColor[t.priority] || '#64748b', fontWeight: 700, fontSize: 11, minWidth: 32 }}>
                     {priorityLabel[t.priority] || ''}
                   </span>
                   <span style={{ flex: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 100 }}>{t.title}</span>
-                  {overdueScope === 'all' && (
-                    <span style={{ fontSize: 11, color: '#475569', whiteSpace: 'nowrap' }}>
-                      {t.assigneeName || '미배정'}{t.planName ? ` · ${t.planName}` : ''}{t.groupName ? ` (${t.groupName})` : ''}
-                    </span>
-                  )}
                   <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, whiteSpace: 'nowrap' }}>
                     {daysOver}일 초과
                   </span>
@@ -237,6 +234,67 @@ export function Home() {
               );
             })}
           </div>
+        ) : (
+          /* ── 전사 과제: 개인별 그룹 아코디언 ── */
+          (() => {
+            const grouped: Record<string, { name: string; team: string; tasks: any[] }> = {};
+            overdueTasks.forEach((t: any) => {
+              const key = t.assigneeName || '미배정';
+              if (!grouped[key]) grouped[key] = { name: key, team: t.assigneeTeam || '', tasks: [] };
+              grouped[key].tasks.push(t);
+            });
+            const people = Object.values(grouped).sort((a, b) => b.tasks.length - a.tasks.length);
+            return (
+              <div style={{ display: 'grid', gap: 4 }}>
+                {people.map((p) => {
+                  const isOpen = expandedOverdueUser === p.name;
+                  const maxDaysOver = Math.max(...p.tasks.map((t: any) => Math.floor((Date.now() - new Date(t.dueDateTime).getTime()) / (24 * 60 * 60 * 1000))));
+                  return (
+                    <div key={p.name}>
+                      <div
+                        onClick={() => setExpandedOverdueUser(isOpen ? null : p.name)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid #fecaca', fontSize: 13, cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <span style={{ fontSize: 12, color: '#64748b', width: 16, textAlign: 'center' }}>{isOpen ? '▾' : '▸'}</span>
+                        <span style={{ fontWeight: 700, minWidth: 60 }}>{p.name}</span>
+                        {p.team && <span style={{ fontSize: 11, color: '#94a3b8' }}>{p.team}</span>}
+                        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#dc2626', fontWeight: 700 }}>
+                          {p.tasks.length}건
+                        </span>
+                        <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                          최대 {maxDaysOver}일 초과
+                        </span>
+                      </div>
+                      {isOpen && (
+                        <div style={{ display: 'grid', gap: 4, paddingLeft: 24, paddingTop: 4 }}>
+                          {p.tasks.map((t: any) => {
+                            const daysOver = Math.floor((Date.now() - new Date(t.dueDateTime).getTime()) / (24 * 60 * 60 * 1000));
+                            const priorityLabel: Record<number, string> = { 1: '긴급', 3: '중요', 5: '보통', 9: '낮음' };
+                            const priorityColor: Record<number, string> = { 1: '#dc2626', 3: '#ea580c', 5: '#64748b', 9: '#94a3b8' };
+                            return (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fff7f7', borderRadius: 6, border: '1px solid #fee2e2', fontSize: 12 }}>
+                                <span style={{ color: priorityColor[t.priority] || '#64748b', fontWeight: 700, fontSize: 11, minWidth: 32 }}>
+                                  {priorityLabel[t.priority] || ''}
+                                </span>
+                                <span style={{ flex: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                                {t.planName && <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>{t.planName}</span>}
+                                <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                                  {daysOver}일
+                                </span>
+                                <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                  {new Date(t.dueDateTime).toLocaleDateString('ko-KR')}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()
         )}
       </div>
 
