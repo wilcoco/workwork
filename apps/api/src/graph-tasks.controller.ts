@@ -132,38 +132,87 @@ export class GraphTasksController {
     const now = new Date();
 
     if (scope === 'all') {
-      // Get all users with Graph tokens
-      const users = await (this.prisma as any).user.findMany({
-        where: { graphAccessToken: { not: null }, status: 'ACTIVE' },
-        select: { id: true, name: true, graphAccessToken: true, graphRefreshToken: true, graphTokenExpiry: true, entraTenantId: true, orgUnit: { select: { name: true } } },
-      });
+      const token = await this.getGraphToken(userId);
 
+      // 1. Get all Microsoft 365 groups (Teams)
+      let groups: any[] = [];
+      try {
+        let url = `/groups?$filter=groupTypes/any(c:c eq 'Unified')&$select=id,displayName&$top=200`;
+        while (url) {
+          const data = await this.graphGet(token, url);
+          groups = groups.concat(data?.value || []);
+          const next = data?.['@odata.nextLink'] || '';
+          url = next ? next.replace('https://graph.microsoft.com/v1.0', '') : '';
+        }
+      } catch (e: any) {
+        console.warn('[overdue-all] groups fetch failed:', e?.message);
+      }
+
+      // 2. For each group → get plans → get tasks
       const allOverdue: any[] = [];
-      for (const u of users) {
+      const seenTaskIds = new Set<string>();
+      const userNameCache: Record<string, string> = {};
+
+      for (const g of groups) {
+        let plans: any[] = [];
         try {
-          const token = await this.getGraphToken(u.id);
-          const data = await this.graphGet(token, '/me/planner/tasks?$filter=percentComplete ne 100');
-          const tasks: any[] = data?.value || [];
-          const overdue = tasks.filter((t: any) => t.dueDateTime && new Date(t.dueDateTime) < now && t.percentComplete < 100);
-          for (const t of overdue) {
+          const pd = await this.graphGet(token, `/groups/${g.id}/planner/plans?$select=id,title`);
+          plans = pd?.value || [];
+        } catch { continue; }
+
+        for (const plan of plans) {
+          let tasks: any[] = [];
+          try {
+            let tUrl = `/planner/plans/${plan.id}/tasks?$select=id,title,dueDateTime,percentComplete,priority,assignments,createdDateTime`;
+            while (tUrl) {
+              const td = await this.graphGet(token, tUrl);
+              tasks = tasks.concat(td?.value || []);
+              const next = td?.['@odata.nextLink'] || '';
+              tUrl = next ? next.replace('https://graph.microsoft.com/v1.0', '') : '';
+            }
+          } catch { continue; }
+
+          for (const t of tasks) {
+            if (seenTaskIds.has(t.id)) continue;
+            if (!t.dueDateTime || new Date(t.dueDateTime) >= now || t.percentComplete >= 100) continue;
+            seenTaskIds.add(t.id);
+
+            // Resolve assignee names from assignments
+            const assigneeIds = Object.keys(t.assignments || {});
+            const assigneeNames: string[] = [];
+            for (const aadId of assigneeIds) {
+              if (userNameCache[aadId]) {
+                assigneeNames.push(userNameCache[aadId]);
+              } else {
+                try {
+                  const u = await this.graphGet(token, `/users/${aadId}?$select=displayName`);
+                  const name = u?.displayName || aadId;
+                  userNameCache[aadId] = name;
+                  assigneeNames.push(name);
+                } catch {
+                  userNameCache[aadId] = aadId;
+                  assigneeNames.push(aadId);
+                }
+              }
+            }
+
             allOverdue.push({
               id: t.id,
               title: t.title,
               dueDateTime: t.dueDateTime,
               percentComplete: t.percentComplete,
               priority: t.priority,
-              assigneeName: u.name,
-              assigneeTeam: u.orgUnit?.name || '',
-              assigneeId: u.id,
+              assigneeName: assigneeNames.join(', ') || '미배정',
+              assigneeTeam: '',
+              planName: plan.title || '',
+              groupName: g.displayName || '',
             });
           }
-        } catch {
-          // Skip users with expired/invalid tokens
         }
       }
 
       allOverdue.sort((a, b) => new Date(a.dueDateTime).getTime() - new Date(b.dueDateTime).getTime());
-      return { tasks: allOverdue };
+      return { tasks: allOverdue, groupCount: groups.length };
     }
 
     // scope=mine (default)

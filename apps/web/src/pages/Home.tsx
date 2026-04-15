@@ -204,14 +204,14 @@ export function Home() {
               const priorityLabel: Record<number, string> = { 1: '긴급', 3: '중요', 5: '보통', 9: '낮음' };
               const priorityColor: Record<number, string> = { 1: '#dc2626', 3: '#ea580c', 5: '#64748b', 9: '#94a3b8' };
               return (
-                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid #fecaca', fontSize: 13 }}>
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid #fecaca', fontSize: 13, flexWrap: 'wrap' }}>
                   <span style={{ color: priorityColor[t.priority] || '#64748b', fontWeight: 700, fontSize: 11, minWidth: 32 }}>
                     {priorityLabel[t.priority] || ''}
                   </span>
-                  <span style={{ flex: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
-                  {overdueScope === 'all' && t.assigneeName && (
+                  <span style={{ flex: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 100 }}>{t.title}</span>
+                  {overdueScope === 'all' && (
                     <span style={{ fontSize: 11, color: '#475569', whiteSpace: 'nowrap' }}>
-                      {t.assigneeName}{t.assigneeTeam ? ` · ${t.assigneeTeam}` : ''}
+                      {t.assigneeName || '미배정'}{t.planName ? ` · ${t.planName}` : ''}{t.groupName ? ` (${t.groupName})` : ''}
                     </span>
                   )}
                   <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, whiteSpace: 'nowrap' }}>
