@@ -154,6 +154,8 @@ model User {
   workSkillFiles WorkSkillFile[]
   meetingMinutes MeetingMinutes[] @relation("MeetingMinutesCreatedBy")
   plannerTaskCache PlannerTaskCache[]
+  companyDataUploads CompanyData[] @relation("CompanyDataUploader")
+  companyDataChats CompanyDataChat[] @relation("CompanyDataChatUser")
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -1013,4 +1015,31 @@ model PlannerTaskCache {
   @@index([userId])
   @@index([dueDateTime])
   @@index([percentComplete])
+}
+
+model CompanyData {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  fileUrl     String
+  fileName    String
+  content     String?  @db.Text
+  uploadedById String
+  uploadedBy  User     @relation("CompanyDataUploader", fields: [uploadedById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([uploadedById])
+}
+
+model CompanyDataChat {
+  id        String   @id @default(cuid())
+  question  String   @db.Text
+  answer    String   @db.Text
+  dataIds   String[]
+  userId    String
+  user      User     @relation("CompanyDataChatUser", fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
