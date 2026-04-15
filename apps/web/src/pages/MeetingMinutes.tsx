@@ -613,67 +613,111 @@ export function MeetingMinutes() {
             </div>
 
             {/* Action Items */}
-            {active.actionItems && (active.actionItems as any[]).length > 0 && (
-              <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>할 일 목록</h3>
-                  {plans.length > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <select
-                        value={selectedPlanId}
-                        onChange={(e) => setSelectedPlanId(e.target.value)}
-                        style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                      >
-                        {plans.map((p) => (
-                          <option key={p.id} value={p.id}>{p.title}</option>
-                        ))}
-                      </select>
-                      <button
-                        style={{ ...primaryBtn, padding: '6px 14px', fontSize: 12 }}
-                        onClick={createPlannerTasks}
-                        disabled={creatingTasks || !selectedPlanId}
-                      >
-                        {creatingTasks ? '생성중…' : 'Planner 과제 생성'}
-                      </button>
-                    </div>
-                  )}
-                </div>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>할 일 목록</h3>
+                <button style={ghostBtn} onClick={() => {
+                  const items = Array.isArray(active.actionItems) ? [...active.actionItems] : [];
+                  items.push({ text: '', assignee: '', dueDate: '' });
+                  setActive({ ...active, actionItems: items });
+                }}>+ 할 일 추가</button>
+                {plans.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <select
+                      value={selectedPlanId}
+                      onChange={(e) => setSelectedPlanId(e.target.value)}
+                      style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                    >
+                      {plans.map((p) => (
+                        <option key={p.id} value={p.id}>{p.title}</option>
+                      ))}
+                    </select>
+                    <button
+                      style={{ ...primaryBtn, padding: '6px 14px', fontSize: 12 }}
+                      onClick={createPlannerTasks}
+                      disabled={creatingTasks || !selectedPlanId}
+                    >
+                      {creatingTasks ? '생성중…' : 'Planner 과제 생성'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {active.actionItems && (active.actionItems as any[]).length > 0 ? (
                 <div style={{ display: 'grid', gap: 10 }}>
                   {(active.actionItems as any[]).map((item: any, i: number) => (
                     <div key={i} style={{ padding: 10, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <span style={{ fontWeight: 700, color: '#0F3D73', minWidth: 24 }}>{i + 1}.</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 14, marginBottom: 6 }}>{item.text}</div>
-                          {item.dueDate && (
-                            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>기한: {item.dueDate}</div>
-                          )}
-                          <div style={{ marginTop: 4 }}>
-                            <SingleMemberPicker
-                              value={actionAssignees[i]?.name || item.assignee || ''}
-                              onChange={(m) => {
+                        <span style={{ fontWeight: 700, color: '#0F3D73', minWidth: 24, paddingTop: 6 }}>{i + 1}.</span>
+                        <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+                          <input
+                            type="text"
+                            value={item.text || ''}
+                            onChange={(e) => {
+                              const items = [...(active.actionItems as any[])];
+                              items[i] = { ...items[i], text: e.target.value };
+                              setActive({ ...active, actionItems: items });
+                            }}
+                            placeholder="할 일 내용"
+                            style={{ ...input, fontSize: 14, fontWeight: 600 }}
+                          />
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: 160 }}>
+                              <SingleMemberPicker
+                                value={actionAssignees[i]?.name || item.assignee || ''}
+                                onChange={(m) => {
+                                  setActionAssignees((prev) => {
+                                    const next = { ...prev };
+                                    if (m) next[i] = m;
+                                    else delete next[i];
+                                    return next;
+                                  });
+                                }}
+                                placeholder="담당자 지정 (검색)"
+                              />
+                            </div>
+                            <input
+                              type="date"
+                              value={item.dueDate || ''}
+                              onChange={(e) => {
+                                const items = [...(active.actionItems as any[])];
+                                items[i] = { ...items[i], dueDate: e.target.value };
+                                setActive({ ...active, actionItems: items });
+                              }}
+                              style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #cbd5e1', color: '#475569' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const items = [...(active.actionItems as any[])];
+                                items.splice(i, 1);
+                                setActive({ ...active, actionItems: items });
                                 setActionAssignees((prev) => {
-                                  const next = { ...prev };
-                                  if (m) next[i] = m;
-                                  else delete next[i];
+                                  const next: Record<number, any> = {};
+                                  Object.entries(prev).forEach(([k, v]) => {
+                                    const idx = Number(k);
+                                    if (idx < i) next[idx] = v;
+                                    else if (idx > i) next[idx - 1] = v;
+                                  });
                                   return next;
                                 });
                               }}
-                              placeholder="담당자 지정 (검색)"
-                            />
+                              style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', fontSize: 13, fontWeight: 700, padding: '2px 6px', whiteSpace: 'nowrap' }}
+                            >삭제</button>
                           </div>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
-                {!plans.length && (
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
-                    Planner 연동이 필요합니다. Entra SSO 로그인 후 Planner 과제를 생성할 수 있습니다.
-                  </div>
-                )}
-              </div>
-            )}
+              ) : (
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>할 일이 없습니다. AI 요약 생성 후 자동 추출되거나 직접 추가하세요.</div>
+              )}
+              {!plans.length && (active.actionItems as any[])?.length > 0 && (
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
+                  Planner 연동이 필요합니다. Entra SSO 로그인 후 Planner 과제를 생성할 수 있습니다.
+                </div>
+              )}
+            </div>
 
             {/* Attachments Section */}
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
