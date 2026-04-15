@@ -118,10 +118,94 @@ export class GraphTasksController {
   // ─── Endpoints ──────────────────────────────────────────────
 
   /**
+   * POST /api/graph-tasks/sync-my-tasks
+   * Fetches user's own Planner tasks from Graph and upserts them into PlannerTaskCache.
+   * Called on SSO login and when visiting the home page.
+   * Body: { userId }
+   */
+  @Post('sync-my-tasks')
+  async syncMyTasks(@Body() body: { userId: string }) {
+    if (!body.userId) throw new BadRequestException('userId required');
+    const token = await this.getGraphToken(body.userId);
+
+    // Fetch all tasks assigned to this user from Graph
+    const data = await this.graphGet(token, '/me/planner/tasks');
+    const tasks: any[] = data?.value || [];
+
+    // Resolve plan names (batch)
+    const planIds = [...new Set(tasks.map((t: any) => t.planId).filter(Boolean))];
+    const planMeta: Record<string, { title: string; groupName: string }> = {};
+    for (const pid of planIds) {
+      try {
+        const plan = await this.graphGet(token, `/planner/plans/${pid}?$select=title,owner`);
+        let groupName = '';
+        if (plan?.owner) {
+          try {
+            const grp = await this.graphGet(token, `/groups/${plan.owner}?$select=displayName`);
+            groupName = grp?.displayName || '';
+          } catch {}
+        }
+        planMeta[pid] = { title: plan?.title || '', groupName };
+      } catch {
+        planMeta[pid] = { title: '', groupName: '' };
+      }
+    }
+
+    // Upsert each task into cache
+    const now = new Date();
+    let synced = 0;
+    for (const t of tasks) {
+      try {
+        await (this.prisma as any).plannerTaskCache.upsert({
+          where: {
+            graphTaskId_userId: { graphTaskId: t.id, userId: body.userId },
+          },
+          update: {
+            title: t.title || '',
+            dueDateTime: t.dueDateTime ? new Date(t.dueDateTime) : null,
+            percentComplete: t.percentComplete ?? 0,
+            priority: t.priority ?? 5,
+            planName: planMeta[t.planId]?.title || null,
+            groupName: planMeta[t.planId]?.groupName || null,
+            syncedAt: now,
+          },
+          create: {
+            graphTaskId: t.id,
+            userId: body.userId,
+            title: t.title || '',
+            dueDateTime: t.dueDateTime ? new Date(t.dueDateTime) : null,
+            percentComplete: t.percentComplete ?? 0,
+            priority: t.priority ?? 5,
+            planName: planMeta[t.planId]?.title || null,
+            groupName: planMeta[t.planId]?.groupName || null,
+            syncedAt: now,
+          },
+        });
+        synced++;
+      } catch (e: any) {
+        console.warn(`[sync-my-tasks] upsert failed for task ${t.id}:`, e?.message);
+      }
+    }
+
+    // Remove tasks from cache that no longer exist in Graph for this user
+    const graphTaskIds = tasks.map((t: any) => t.id);
+    if (graphTaskIds.length > 0) {
+      await (this.prisma as any).plannerTaskCache.deleteMany({
+        where: {
+          userId: body.userId,
+          graphTaskId: { notIn: graphTaskIds },
+        },
+      });
+    }
+
+    return { ok: true, synced, total: tasks.length };
+  }
+
+  /**
    * GET /api/graph-tasks/overdue-tasks?userId=xxx&scope=mine|all
-   * Returns overdue Planner tasks (dueDate < today, not completed).
-   * scope=mine (default): only current user's tasks
-   * scope=all: all users who have Graph tokens (company-wide)
+   * Returns overdue Planner tasks from the PlannerTaskCache DB table.
+   * scope=mine (default): only current user's cached tasks
+   * scope=all: all users' cached tasks (company-wide)
    */
   @Get('overdue-tasks')
   async getOverdueTasks(
@@ -131,106 +215,37 @@ export class GraphTasksController {
     if (!userId) throw new BadRequestException('userId required');
     const now = new Date();
 
-    if (scope === 'all') {
-      const token = await this.getGraphToken(userId);
-
-      // 1. Get all Microsoft 365 groups (Teams)
-      let groups: any[] = [];
-      try {
-        let url = `/groups?$filter=groupTypes/any(c:c eq 'Unified')&$select=id,displayName&$top=200`;
-        while (url) {
-          const data = await this.graphGet(token, url);
-          groups = groups.concat(data?.value || []);
-          const next = data?.['@odata.nextLink'] || '';
-          url = next ? next.replace('https://graph.microsoft.com/v1.0', '') : '';
-        }
-      } catch (e: any) {
-        console.warn('[overdue-all] groups fetch failed:', e?.message);
-      }
-
-      // 2. For each group → get plans → get tasks
-      const allOverdue: any[] = [];
-      const seenTaskIds = new Set<string>();
-      const userNameCache: Record<string, string> = {};
-
-      for (const g of groups) {
-        let plans: any[] = [];
-        try {
-          const pd = await this.graphGet(token, `/groups/${g.id}/planner/plans?$select=id,title`);
-          plans = pd?.value || [];
-        } catch { continue; }
-
-        for (const plan of plans) {
-          let tasks: any[] = [];
-          try {
-            let tUrl = `/planner/plans/${plan.id}/tasks?$select=id,title,dueDateTime,percentComplete,priority,assignments,createdDateTime`;
-            while (tUrl) {
-              const td = await this.graphGet(token, tUrl);
-              tasks = tasks.concat(td?.value || []);
-              const next = td?.['@odata.nextLink'] || '';
-              tUrl = next ? next.replace('https://graph.microsoft.com/v1.0', '') : '';
-            }
-          } catch { continue; }
-
-          for (const t of tasks) {
-            if (seenTaskIds.has(t.id)) continue;
-            if (!t.dueDateTime || new Date(t.dueDateTime) >= now || t.percentComplete >= 100) continue;
-            seenTaskIds.add(t.id);
-
-            // Resolve assignee names from assignments
-            const assigneeIds = Object.keys(t.assignments || {});
-            const assigneeNames: string[] = [];
-            for (const aadId of assigneeIds) {
-              if (userNameCache[aadId]) {
-                assigneeNames.push(userNameCache[aadId]);
-              } else {
-                try {
-                  const u = await this.graphGet(token, `/users/${aadId}?$select=displayName`);
-                  const name = u?.displayName || aadId;
-                  userNameCache[aadId] = name;
-                  assigneeNames.push(name);
-                } catch {
-                  userNameCache[aadId] = aadId;
-                  assigneeNames.push(aadId);
-                }
-              }
-            }
-
-            allOverdue.push({
-              id: t.id,
-              title: t.title,
-              dueDateTime: t.dueDateTime,
-              percentComplete: t.percentComplete,
-              priority: t.priority,
-              assigneeName: assigneeNames.join(', ') || '미배정',
-              assigneeTeam: '',
-              planName: plan.title || '',
-              groupName: g.displayName || '',
-            });
-          }
-        }
-      }
-
-      allOverdue.sort((a, b) => new Date(a.dueDateTime).getTime() - new Date(b.dueDateTime).getTime());
-      return { tasks: allOverdue, groupCount: groups.length };
+    const where: any = {
+      dueDateTime: { lt: now },
+      percentComplete: { lt: 100 },
+    };
+    if (scope !== 'all') {
+      where.userId = userId;
     }
 
-    // scope=mine (default)
-    const token = await this.getGraphToken(userId);
-    const data = await this.graphGet(token, '/me/planner/tasks');
-    const tasks: any[] = data?.value || [];
-    const overdue = tasks
-      .filter((t: any) => t.dueDateTime && new Date(t.dueDateTime) < now && t.percentComplete < 100)
-      .map((t: any) => ({
-        id: t.id,
-        title: t.title,
-        dueDateTime: t.dueDateTime,
-        percentComplete: t.percentComplete,
-        priority: t.priority,
-      }))
-      .sort((a: any, b: any) => new Date(a.dueDateTime).getTime() - new Date(b.dueDateTime).getTime());
+    const rows = await (this.prisma as any).plannerTaskCache.findMany({
+      where,
+      orderBy: { dueDateTime: 'asc' },
+      include: {
+        user: { select: { name: true, orgUnit: { select: { name: true } } } },
+      },
+      take: 200,
+    });
 
-    return { tasks: overdue };
+    const tasks = rows.map((r: any) => ({
+      id: r.graphTaskId,
+      title: r.title,
+      dueDateTime: r.dueDateTime,
+      percentComplete: r.percentComplete,
+      priority: r.priority,
+      planName: r.planName || '',
+      groupName: r.groupName || '',
+      assigneeName: r.user?.name || '',
+      assigneeTeam: r.user?.orgUnit?.name || '',
+      syncedAt: r.syncedAt,
+    }));
+
+    return { tasks };
   }
 
   /**

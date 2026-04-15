@@ -153,6 +153,7 @@ model User {
   periodicAlarms PeriodicAlarm[]
   workSkillFiles WorkSkillFile[]
   meetingMinutes MeetingMinutes[] @relation("MeetingMinutesCreatedBy")
+  plannerTaskCache PlannerTaskCache[]
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -993,4 +994,23 @@ model MeetingMinutes {
   @@index([createdById])
   @@index([date])
   @@index([status])
+}
+
+model PlannerTaskCache {
+  id              String   @id @default(cuid())
+  graphTaskId     String
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  title           String
+  dueDateTime     DateTime?
+  percentComplete Int      @default(0)
+  priority        Int      @default(5)
+  planName        String?
+  groupName       String?
+  syncedAt        DateTime @default(now())
+
+  @@unique([graphTaskId, userId])
+  @@index([userId])
+  @@index([dueDateTime])
+  @@index([percentComplete])
 }

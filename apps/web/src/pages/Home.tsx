@@ -121,10 +121,23 @@ export function Home() {
     })();
   }, []);
 
+  // Sync user's Planner tasks to DB cache on first load, then fetch overdue from cache
+  const [tasksSynced, setTasksSynced] = useState(false);
   useEffect(() => {
     (async () => {
       const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
       if (!viewerId) return;
+      // Sync own tasks to cache (once per page load)
+      if (!tasksSynced) {
+        try {
+          await apiJson('/api/graph-tasks/sync-my-tasks', {
+            method: 'POST',
+            body: JSON.stringify({ userId: viewerId }),
+          });
+        } catch {}
+        setTasksSynced(true);
+      }
+      // Then fetch overdue tasks from DB cache
       setOverdueLoading(true);
       try {
         const res = await apiJson<{ tasks: any[] }>(`/api/graph-tasks/overdue-tasks?userId=${encodeURIComponent(viewerId)}&scope=${overdueScope}`);
@@ -135,7 +148,7 @@ export function Home() {
         setOverdueLoading(false);
       }
     })();
-  }, [overdueScope]);
+  }, [overdueScope, tasksSynced]);
 
   useEffect(() => {
     (async () => {
