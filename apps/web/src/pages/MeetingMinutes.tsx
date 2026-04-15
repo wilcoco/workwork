@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, CSSProperties } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
+import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 import { MemberSearchPicker, SingleMemberPicker } from '../components/MemberSearchPicker';
 
 // ─── Types ───────────────────────────────────────────────────
@@ -200,8 +201,7 @@ export function MeetingMinutes() {
   const [summarizing, setSummarizing] = useState(false);
   const [editTranscript, setEditTranscript] = useState('');
   const [editing, setEditing] = useState(false);
-  const [attachUploading, setAttachUploading] = useState(false);
-  const attachInputRef = useRef<HTMLInputElement | null>(null);
+  const [showFilePicker, setShowFilePicker] = useState(false);
 
   // Action items assignee + Planner integration
   const [actionAssignees, setActionAssignees] = useState<Record<number, { name: string; email: string; teamsUpn: string }>>({});
@@ -385,28 +385,18 @@ export function MeetingMinutes() {
     }
   }
 
-  async function handleAttachUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !active) return;
-    setAttachUploading(true);
+  async function handleAddOneDriveFiles(files: { url: string; name: string }[]) {
+    if (!active) return;
+    const prev = Array.isArray(active.attachments) ? active.attachments : [];
+    const updated = [...prev, ...files.map(f => ({ url: f.url, name: f.name }))];
     try {
-      const form = new FormData();
-      form.append('file', file);
-      const token = localStorage.getItem('token') || '';
-      const resp = await fetch(apiUrl(`/api/meeting-minutes/${active.id}/attach`), {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
+      await apiJson(`/api/meeting-minutes/${active.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ attachments: updated }),
       });
-      if (!resp.ok) throw new Error('Upload failed');
-      const att = await resp.json();
-      const prev = Array.isArray(active.attachments) ? active.attachments : [];
-      setActive({ ...active, attachments: [...prev, att] });
+      setActive({ ...active, attachments: updated });
     } catch (err: any) {
-      setError(err?.message || '첨부 업로드 실패');
-    } finally {
-      setAttachUploading(false);
-      if (attachInputRef.current) attachInputRef.current.value = '';
+      setError(err?.message || '첨부 추가 실패');
     }
   }
 
@@ -689,9 +679,8 @@ export function MeetingMinutes() {
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>첨부파일</h3>
-                <input ref={attachInputRef} type="file" style={{ display: 'none' }} onChange={handleAttachUpload} />
-                <button style={ghostBtn} onClick={() => attachInputRef.current?.click()} disabled={attachUploading}>
-                  {attachUploading ? '업로드중…' : '+ 파일 추가'}
+                <button style={ghostBtn} onClick={() => setShowFilePicker(true)}>
+                  + OneDrive에서 추가
                 </button>
               </div>
               {active.attachments && (active.attachments as any[]).length > 0 ? (
@@ -726,6 +715,17 @@ export function MeetingMinutes() {
             </div>
           </div>
         </div>
+      )}
+
+      {showFilePicker && (
+        <OneDriveFilePicker
+          userId={userId}
+          multiple
+          onSelect={(files) => {
+            handleAddOneDriveFiles(files);
+          }}
+          onClose={() => setShowFilePicker(false)}
+        />
       )}
 
       {/* Pulse animation for recording indicator */}

@@ -75,7 +75,7 @@ workwork/
 
 | 환경 | Web | API |
 |------|-----|-----|
-| **Production** | https://cworks.icams.co.kr | Railway |
+| **Production** | https://worklog.icams.co.kr | Railway |
 | **Local Dev** | http://localhost:5173 | http://localhost:3000 |
 
 ## 핵심 설계 결정
