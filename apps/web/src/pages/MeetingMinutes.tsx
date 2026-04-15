@@ -265,6 +265,27 @@ export function MeetingMinutes() {
     }
   }
 
+  async function handleSave() {
+    if (!active) return;
+    try {
+      // Merge assignees into action items
+      const updatedItems = active.actionItems
+        ? (active.actionItems as any[]).map((item: any, i: number) => {
+            const a = actionAssignees[i];
+            return a ? { ...item, assignee: a.name, assigneeUpn: a.teamsUpn } : item;
+          })
+        : [];
+      await apiJson(`/api/meeting-minutes/${active.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ actionItems: updatedItems }),
+      });
+      setActive({ ...active, actionItems: updatedItems });
+      alert('저장되었습니다.');
+    } catch (e: any) {
+      setError(e?.message || '저장 실패');
+    }
+  }
+
   async function createPlannerTasks() {
     if (!active?.actionItems?.length || !selectedPlanId) return;
     setCreatingTasks(true);
@@ -357,7 +378,7 @@ export function MeetingMinutes() {
         method: 'PUT',
         body: JSON.stringify({ status: 'finalized' }),
       });
-      setActive(null);
+      setActive({ ...active, status: 'finalized' });
       await load();
     } catch (e: any) {
       setError(e?.message || '확정 실패');
@@ -696,6 +717,7 @@ export function MeetingMinutes() {
 
             {/* Actions */}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button style={primaryBtn} onClick={handleSave}>저장</button>
               {active.summary && active.status !== 'finalized' && (
                 <button style={{ ...primaryBtn, background: '#059669' }} onClick={handleFinalize}>확정</button>
               )}
