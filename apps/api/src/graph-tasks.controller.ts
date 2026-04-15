@@ -118,6 +118,73 @@ export class GraphTasksController {
   // ─── Endpoints ──────────────────────────────────────────────
 
   /**
+   * GET /api/graph-tasks/overdue-tasks?userId=xxx&scope=mine|all
+   * Returns overdue Planner tasks (dueDate < today, not completed).
+   * scope=mine (default): only current user's tasks
+   * scope=all: all users who have Graph tokens (company-wide)
+   */
+  @Get('overdue-tasks')
+  async getOverdueTasks(
+    @Query('userId') userId: string,
+    @Query('scope') scope?: string,
+  ) {
+    if (!userId) throw new BadRequestException('userId required');
+    const now = new Date();
+
+    if (scope === 'all') {
+      // Get all users with Graph tokens
+      const users = await (this.prisma as any).user.findMany({
+        where: { graphAccessToken: { not: null }, status: 'ACTIVE' },
+        select: { id: true, name: true, graphAccessToken: true, graphRefreshToken: true, graphTokenExpiry: true, entraTenantId: true, orgUnit: { select: { name: true } } },
+      });
+
+      const allOverdue: any[] = [];
+      for (const u of users) {
+        try {
+          const token = await this.getGraphToken(u.id);
+          const data = await this.graphGet(token, '/me/planner/tasks?$filter=percentComplete ne 100');
+          const tasks: any[] = data?.value || [];
+          const overdue = tasks.filter((t: any) => t.dueDateTime && new Date(t.dueDateTime) < now && t.percentComplete < 100);
+          for (const t of overdue) {
+            allOverdue.push({
+              id: t.id,
+              title: t.title,
+              dueDateTime: t.dueDateTime,
+              percentComplete: t.percentComplete,
+              priority: t.priority,
+              assigneeName: u.name,
+              assigneeTeam: u.orgUnit?.name || '',
+              assigneeId: u.id,
+            });
+          }
+        } catch {
+          // Skip users with expired/invalid tokens
+        }
+      }
+
+      allOverdue.sort((a, b) => new Date(a.dueDateTime).getTime() - new Date(b.dueDateTime).getTime());
+      return { tasks: allOverdue };
+    }
+
+    // scope=mine (default)
+    const token = await this.getGraphToken(userId);
+    const data = await this.graphGet(token, '/me/planner/tasks');
+    const tasks: any[] = data?.value || [];
+    const overdue = tasks
+      .filter((t: any) => t.dueDateTime && new Date(t.dueDateTime) < now && t.percentComplete < 100)
+      .map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        dueDateTime: t.dueDateTime,
+        percentComplete: t.percentComplete,
+        priority: t.priority,
+      }))
+      .sort((a: any, b: any) => new Date(a.dueDateTime).getTime() - new Date(b.dueDateTime).getTime());
+
+    return { tasks: overdue };
+  }
+
+  /**
    * GET /api/graph-tasks/my-tasks?userId=xxx
    * Returns all Planner tasks assigned to the current user across all plans.
    */

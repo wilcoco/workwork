@@ -27,8 +27,9 @@ export function Home() {
   const [comments, setComments] = useState<FB[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // const [overdue, setOverdue] = useState<any | null>(null);
-  // const [overdueError, setOverdueError] = useState<string | null>(null);
+  const [overdueTasks, setOverdueTasks] = useState<any[]>([]);
+  const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
+  const [overdueLoading, setOverdueLoading] = useState(false);
   const [detail, setDetail] = useState<any | null>(null);
   const [urgentOpen, setUrgentOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -120,21 +121,21 @@ export function Home() {
     })();
   }, []);
 
-  // 마감 초과 섹션 일시 숨김 — overdue fetch 비활성화
-  // useEffect(() => {
-  //   (async () => {
-  //     try {
-  //       const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
-  //       if (!viewerId) return;
-  //       setOverdueError(null);
-  //       const r = await apiJson<any>(`/api/users/overdue?userId=${encodeURIComponent(viewerId)}`);
-  //       setOverdue(r || null);
-  //     } catch (e: any) {
-  //       setOverdue(null);
-  //       setOverdueError(e?.message || '오버듀 로드 실패');
-  //     }
-  //   })();
-  // }, []);
+  useEffect(() => {
+    (async () => {
+      const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+      if (!viewerId) return;
+      setOverdueLoading(true);
+      try {
+        const res = await apiJson<{ tasks: any[] }>(`/api/graph-tasks/overdue-tasks?userId=${encodeURIComponent(viewerId)}&scope=${overdueScope}`);
+        setOverdueTasks(res.tasks || []);
+      } catch {
+        setOverdueTasks([]);
+      } finally {
+        setOverdueLoading(false);
+      }
+    })();
+  }, [overdueScope]);
 
   useEffect(() => {
     (async () => {
@@ -172,7 +173,60 @@ export function Home() {
         </div>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      {/* 마감 초과 섹션 — 일시 숨김 */}
+
+      {/* 기한 경과 과제 섹션 */}
+      <div style={{ background: overdueTasks.length ? '#fef2f2' : '#f8fafc', border: `1px solid ${overdueTasks.length ? '#fca5a5' : '#CBD5E1'}`, borderRadius: 12, padding: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: overdueTasks.length || overdueLoading ? 10 : 0, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 800, color: overdueTasks.length ? '#dc2626' : '#334155', fontSize: 15 }}>
+            기한 경과 과제 {overdueTasks.length > 0 && <span style={{ fontSize: 13, fontWeight: 600 }}>({overdueTasks.length}건)</span>}
+          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+            <button
+              className={overdueScope === 'mine' ? 'btn btn-primary' : 'btn'}
+              onClick={() => setOverdueScope('mine')}
+              style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}
+            >내 과제</button>
+            <button
+              className={overdueScope === 'all' ? 'btn btn-primary' : 'btn'}
+              onClick={() => setOverdueScope('all')}
+              style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}
+            >전사 과제</button>
+          </div>
+        </div>
+        {overdueLoading ? (
+          <div style={{ color: '#64748b', fontSize: 13 }}>불러오는 중…</div>
+        ) : overdueTasks.length === 0 ? (
+          <div style={{ color: '#94a3b8', fontSize: 13 }}>{overdueScope === 'mine' ? '기한 경과된 과제가 없습니다.' : '전사 기한 경과 과제가 없습니다.'}</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 6 }}>
+            {overdueTasks.map((t: any) => {
+              const daysOver = Math.floor((Date.now() - new Date(t.dueDateTime).getTime()) / (24 * 60 * 60 * 1000));
+              const priorityLabel: Record<number, string> = { 1: '긴급', 3: '중요', 5: '보통', 9: '낮음' };
+              const priorityColor: Record<number, string> = { 1: '#dc2626', 3: '#ea580c', 5: '#64748b', 9: '#94a3b8' };
+              return (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid #fecaca', fontSize: 13 }}>
+                  <span style={{ color: priorityColor[t.priority] || '#64748b', fontWeight: 700, fontSize: 11, minWidth: 32 }}>
+                    {priorityLabel[t.priority] || ''}
+                  </span>
+                  <span style={{ flex: 1, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                  {overdueScope === 'all' && t.assigneeName && (
+                    <span style={{ fontSize: 11, color: '#475569', whiteSpace: 'nowrap' }}>
+                      {t.assigneeName}{t.assigneeTeam ? ` · ${t.assigneeTeam}` : ''}
+                    </span>
+                  )}
+                  <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {daysOver}일 초과
+                  </span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                    {new Date(t.dueDateTime).toLocaleDateString('ko-KR')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.8fr) minmax(0, 1fr)', alignItems: 'start' }}>
         {isMobile ? (
           <>
