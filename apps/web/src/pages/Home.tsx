@@ -334,11 +334,11 @@ export function Home() {
                         <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {viewMode === 'full' ? (
-                              <UserAvatar userId={authorId} name={authorName || w.title} size={84} style={{ borderRadius: 8 }} />
+                              <UserAvatar userId={authorId} name={authorName || w.title} size={40} style={{ borderRadius: 8 }} />
                             ) : firstImg ? (
-                              <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                              <img src={firstImg} alt="thumb" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                             ) : (
-                              <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
@@ -398,7 +398,7 @@ export function Home() {
                       const firstImg = getWorklogFirstImage(anyW);
                       const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
-                      const thumbSize = viewMode==='summary' ? 120 : 84;
+                      const thumbSize = 40;
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                       const snippet = (snippetSrc || '').trim();
                       return (
@@ -460,7 +460,7 @@ export function Home() {
                       const firstImg = getWorklogFirstImage(anyW);
                       const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
                       const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
-                      const thumbSize = viewMode==='summary' ? 120 : 84;
+                      const thumbSize = 40;
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                       const snippet = (snippetSrc || '').trim();
                       return (
@@ -530,11 +530,11 @@ export function Home() {
                         <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {viewMode === 'full' ? (
-                              <UserAvatar userId={authorId} name={authorName || w.title} size={84} style={{ borderRadius: 8 }} />
+                              <UserAvatar userId={authorId} name={authorName || w.title} size={40} style={{ borderRadius: 8 }} />
                             ) : firstImg ? (
-                              <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                              <img src={firstImg} alt="thumb" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                             ) : (
-                              <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                             )}
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
@@ -626,11 +626,11 @@ export function Home() {
                 <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {viewMode === 'full' ? (
-                      <UserAvatar userId={authorId} name={authorName || w.title} size={84} style={{ borderRadius: 8 }} />
+                      <UserAvatar userId={authorId} name={authorName || w.title} size={40} style={{ borderRadius: 8 }} />
                     ) : firstImg ? (
-                      <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+                      <img src={firstImg} alt="thumb" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
                     ) : (
-                      <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+                      <div style={{ width: 40, height: 40, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
                     )}
                     <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'grid', gap: 2 }}>
@@ -782,9 +782,9 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
     <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {firstImg ? (
-          <img src={firstImg} alt="thumb" style={{ width: 84, height: 84, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
+          <img src={firstImg} alt="thumb" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
         ) : (
-          <div style={{ width: 84, height: 84, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
+          <div style={{ width: 40, height: 40, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
         )}
         <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
           <div style={{ display: 'grid', gap: 2 }}>
