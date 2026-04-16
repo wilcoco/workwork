@@ -1,11 +1,12 @@
 -- CreateTable
-CREATE TABLE "CompanyData" (
+CREATE TABLE IF NOT EXISTS "CompanyData" (
     "id" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT,
     "fileUrl" TEXT NOT NULL,
     "fileName" TEXT NOT NULL,
     "content" TEXT,
+    "openaiFileId" TEXT,
     "uploadedById" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -14,7 +15,7 @@ CREATE TABLE "CompanyData" (
 );
 
 -- CreateTable
-CREATE TABLE "CompanyDataChat" (
+CREATE TABLE IF NOT EXISTS "CompanyDataChat" (
     "id" TEXT NOT NULL,
     "question" TEXT NOT NULL,
     "answer" TEXT NOT NULL,
@@ -25,14 +26,24 @@ CREATE TABLE "CompanyDataChat" (
     CONSTRAINT "CompanyDataChat_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "CompanyData_uploadedById_idx" ON "CompanyData"("uploadedById");
+-- Add openaiFileId column if missing (idempotent)
+ALTER TABLE "CompanyData" ADD COLUMN IF NOT EXISTS "openaiFileId" TEXT;
 
 -- CreateIndex
-CREATE INDEX "CompanyDataChat_userId_idx" ON "CompanyDataChat"("userId");
+CREATE INDEX IF NOT EXISTS "CompanyData_uploadedById_idx" ON "CompanyData"("uploadedById");
 
--- AddForeignKey
-ALTER TABLE "CompanyData" ADD CONSTRAINT "CompanyData_uploadedById_fkey" FOREIGN KEY ("uploadedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- CreateIndex
+CREATE INDEX IF NOT EXISTS "CompanyDataChat_userId_idx" ON "CompanyDataChat"("userId");
 
--- AddForeignKey
-ALTER TABLE "CompanyDataChat" ADD CONSTRAINT "CompanyDataChat_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+-- AddForeignKey (idempotent)
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CompanyData_uploadedById_fkey') THEN
+    ALTER TABLE "CompanyData" ADD CONSTRAINT "CompanyData_uploadedById_fkey" FOREIGN KEY ("uploadedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CompanyDataChat_userId_fkey') THEN
+    ALTER TABLE "CompanyDataChat" ADD CONSTRAINT "CompanyDataChat_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
