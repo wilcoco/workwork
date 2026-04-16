@@ -9,6 +9,7 @@ interface DataSource {
   fileUrl: string;
   fileName: string;
   content: string | null;
+  openaiFileId: string | null;
   uploadedBy: { id: string; name: string };
   createdAt: string;
 }
@@ -36,6 +37,7 @@ export function CompanyDataAI() {
   const [addFileUrl, setAddFileUrl] = useState('');
   const [addFileName, setAddFileName] = useState('');
   const [showFilePicker, setShowFilePicker] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Edit
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -45,7 +47,6 @@ export function CompanyDataAI() {
   const [question, setQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
   const [asking, setAsking] = useState(false);
-  const [selectedDataIds, setSelectedDataIds] = useState<string[]>([]);
 
   // Tab
   const [tab, setTab] = useState<'data' | 'chat'>('chat');
@@ -73,17 +74,23 @@ export function CompanyDataAI() {
   }
 
   async function handleAdd() {
-    if (!addTitle.trim() || !addFileUrl.trim()) {
-      setError('제목과 파일을 선택해주세요.');
+    if (!addTitle.trim()) {
+      setError('제목을 입력해주세요.');
       return;
     }
+    if (!addContent.trim() && !addFileUrl.trim()) {
+      setError('내용을 입력하거나 OneDrive 파일을 선택해주세요.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
     try {
       await apiJson('/api/company-data', {
         method: 'POST',
         body: JSON.stringify({
           title: addTitle.trim(),
           description: addDesc.trim() || undefined,
-          fileUrl: addFileUrl,
+          fileUrl: addFileUrl || '',
           fileName: addFileName || addTitle.trim(),
           content: addContent.trim() || undefined,
           uploadedById: userId,
@@ -94,6 +101,8 @@ export function CompanyDataAI() {
       await loadData();
     } catch (e: any) {
       setError(e?.message || '등록 실패');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -108,6 +117,8 @@ export function CompanyDataAI() {
   }
 
   async function handleSaveContent(id: string) {
+    setSaving(true);
+    setError(null);
     try {
       await apiJson(`/api/company-data/${id}`, {
         method: 'PUT',
@@ -117,6 +128,8 @@ export function CompanyDataAI() {
       await loadData();
     } catch (e: any) {
       setError(e?.message || '저장 실패');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -127,11 +140,7 @@ export function CompanyDataAI() {
     try {
       const res = await apiJson<{ answer: string; chatId: string }>('/api/company-data/ask', {
         method: 'POST',
-        body: JSON.stringify({
-          question: question.trim(),
-          dataIds: selectedDataIds.length ? selectedDataIds : undefined,
-          userId,
-        }),
+        body: JSON.stringify({ question: question.trim(), userId }),
       });
       setChatHistory((prev) => [
         { id: res.chatId, question: question.trim(), answer: res.answer, createdAt: new Date().toISOString() },
@@ -145,9 +154,8 @@ export function CompanyDataAI() {
     }
   }
 
-  function toggleDataSelect(id: string) {
-    setSelectedDataIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  }
+  const oaiCount = dataSources.filter((d) => d.openaiFileId).length;
+  const contentCount = dataSources.filter((d) => d.content?.trim()).length;
 
   const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14, outline: 'none' };
   const btnPrimary: React.CSSProperties = { background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 14 };
@@ -175,20 +183,16 @@ export function CompanyDataAI() {
 
       {tab === 'chat' && (
         <div>
-          {/* Data source selector */}
-          {dataSources.length > 0 && (
-            <div style={{ marginBottom: 12, padding: 12, background: '#f8fafc', borderRadius: 10, border: '1px solid #e5e7eb' }}>
-              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6, fontWeight: 600 }}>참조 자료 선택 (미선택 시 전체 참조)</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {dataSources.map((d) => (
-                  <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, cursor: 'pointer', padding: '4px 8px', background: selectedDataIds.includes(d.id) ? '#dbeafe' : '#fff', borderRadius: 6, border: `1px solid ${selectedDataIds.includes(d.id) ? '#3b82f6' : '#e5e7eb'}` }}>
-                    <input type="checkbox" checked={selectedDataIds.includes(d.id)} onChange={() => toggleDataSelect(d.id)} style={{ accentColor: '#3b82f6' }} />
-                    {d.title}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Status indicator */}
+          <div style={{ marginBottom: 12, padding: 10, background: '#f8fafc', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 13, color: '#64748b' }}>
+            {oaiCount > 0 ? (
+              <span style={{ color: '#16a34a' }}>AI에 {oaiCount}개 자료 등록됨 — 질문하면 자동으로 모든 자료를 검색합니다</span>
+            ) : contentCount > 0 ? (
+              <span style={{ color: '#d97706' }}>DB에 {contentCount}개 자료 내용 있음 (텍스트 기반 분석)</span>
+            ) : (
+              <span style={{ color: '#94a3b8' }}>등록된 자료가 없습니다. "자료 관리" 탭에서 먼저 등록하세요.</span>
+            )}
+          </div>
 
           {/* Question input */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
@@ -205,12 +209,6 @@ export function CompanyDataAI() {
               {asking ? '분석중…' : '질문'}
             </button>
           </div>
-
-          {dataSources.length === 0 && (
-            <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 14, background: '#f8fafc', borderRadius: 12, border: '1px solid #e5e7eb' }}>
-              아직 등록된 자료가 없습니다. "자료 관리" 탭에서 회사 통계 자료를 먼저 등록하세요.
-            </div>
-          )}
 
           {/* Chat history */}
           <div style={{ display: 'grid', gap: 16 }}>
@@ -245,24 +243,26 @@ export function CompanyDataAI() {
                 <input type="text" value={addTitle} onChange={(e) => setAddTitle(e.target.value)} placeholder="자료 제목 (예: 2026년 1분기 매출현황)" style={inputStyle} />
                 <input type="text" value={addDesc} onChange={(e) => setAddDesc(e.target.value)} placeholder="설명 (선택)" style={inputStyle} />
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button style={btnGhost} onClick={() => setShowFilePicker(true)}>OneDrive에서 파일 선택</button>
+                  <button style={btnGhost} onClick={() => setShowFilePicker(true)}>OneDrive에서 파일 선택 (선택)</button>
                   {addFileName && <span style={{ fontSize: 13, color: '#475569' }}>{addFileName}</span>}
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                    자료 내용 (텍스트로 붙여넣기 — AI가 이 내용을 참조합니다)
+                    자료 내용 (텍스트) — 이 내용이 OpenAI에 업로드되어 AI가 참조합니다
                   </label>
                   <textarea
                     value={addContent}
                     onChange={(e) => setAddContent(e.target.value)}
-                    placeholder="Excel/문서 내용을 여기에 복사·붙여넣기 하세요.&#10;예: 월별 매출, 부서별 실적, KPI 현황 등"
-                    rows={8}
+                    placeholder="Excel/문서 내용을 여기에 복사·붙여넣기 하세요.&#10;예: 월별 매출, 부서별 실적, KPI 현황 등&#10;&#10;내용을 입력하면 OpenAI에 자동 업로드됩니다."
+                    rows={10}
                     style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: 13 }}
                   />
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button style={btnGhost} onClick={() => setShowAdd(false)}>취소</button>
-                  <button style={btnPrimary} onClick={handleAdd}>등록</button>
+                  <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={handleAdd} disabled={saving}>
+                    {saving ? 'OpenAI 업로드 중…' : '등록'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -280,13 +280,22 @@ export function CompanyDataAI() {
                 <div key={d.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 14, background: '#fff' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                     <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>{d.title}</span>
+                    {d.openaiFileId ? (
+                      <span style={{ fontSize: 11, color: '#16a34a', background: '#f0fdf4', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>AI 등록됨</span>
+                    ) : d.content?.trim() ? (
+                      <span style={{ fontSize: 11, color: '#d97706', background: '#fffbeb', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>텍스트만</span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: '#94a3b8', background: '#f8fafc', padding: '2px 8px', borderRadius: 6 }}>내용 없음</span>
+                    )}
                     <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(d.createdAt).toLocaleDateString('ko-KR')}</span>
                     <span style={{ fontSize: 11, color: '#94a3b8' }}>{d.uploadedBy?.name}</span>
                   </div>
                   {d.description && <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>{d.description}</div>}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <a href={d.fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: '#0F3D73', textDecoration: 'underline' }}>{d.fileName}</a>
-                  </div>
+                  {d.fileUrl && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <a href={d.fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 13, color: '#0F3D73', textDecoration: 'underline' }}>{d.fileName}</a>
+                    </div>
+                  )}
 
                   {editingId === d.id ? (
                     <div style={{ marginTop: 8 }}>
@@ -298,7 +307,9 @@ export function CompanyDataAI() {
                       />
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
                         <button style={btnGhost} onClick={() => setEditingId(null)}>취소</button>
-                        <button style={btnPrimary} onClick={() => handleSaveContent(d.id)}>저장</button>
+                        <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={() => handleSaveContent(d.id)} disabled={saving}>
+                          {saving ? '업로드 중…' : '저장 (OpenAI 재업로드)'}
+                        </button>
                       </div>
                     </div>
                   ) : (
@@ -308,7 +319,7 @@ export function CompanyDataAI() {
                           {d.content.slice(0, 500)}{d.content.length > 500 ? '…' : ''}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>⚠ 내용 미입력 — AI 질의에 활용하려면 내용을 입력하세요</div>
+                        <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>내용 미입력 — 내용을 입력하면 OpenAI에 업로드되어 AI 질의에 활용됩니다</div>
                       )}
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button style={{ ...btnGhost, fontSize: 12, padding: '4px 12px' }} onClick={() => { setEditingId(d.id); setEditContent(d.content || ''); }}>
