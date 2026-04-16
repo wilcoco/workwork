@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE IF NOT EXISTS "CompanyData" (
+CREATE TABLE "CompanyData" (
     "id" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT,
@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS "CompanyData" (
     CONSTRAINT "CompanyData_pkey" PRIMARY KEY ("id")
 );
 
-CREATE TABLE IF NOT EXISTS "CompanyDataChat" (
+-- CreateTable
+CREATE TABLE "CompanyDataChat" (
     "id" TEXT NOT NULL,
     "question" TEXT NOT NULL,
     "answer" TEXT NOT NULL,
@@ -25,18 +26,13 @@ CREATE TABLE IF NOT EXISTS "CompanyDataChat" (
 );
 
 -- CreateIndex
-CREATE INDEX IF NOT EXISTS "CompanyData_uploadedById_idx" ON "CompanyData"("uploadedById");
-CREATE INDEX IF NOT EXISTS "CompanyDataChat_userId_idx" ON "CompanyDataChat"("userId");
+CREATE INDEX "CompanyData_uploadedById_idx" ON "CompanyData"("uploadedById");
+
+-- CreateIndex
+CREATE INDEX "CompanyDataChat_userId_idx" ON "CompanyDataChat"("userId");
 
 -- AddForeignKey
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CompanyData_uploadedById_fkey') THEN
-    ALTER TABLE "CompanyData" ADD CONSTRAINT "CompanyData_uploadedById_fkey" FOREIGN KEY ("uploadedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
-END $$;
+ALTER TABLE "CompanyData" ADD CONSTRAINT "CompanyData_uploadedById_fkey" FOREIGN KEY ("uploadedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CompanyDataChat_userId_fkey') THEN
-    ALTER TABLE "CompanyDataChat" ADD CONSTRAINT "CompanyDataChat_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-  END IF;
-END $$;
+-- AddForeignKey
+ALTER TABLE "CompanyDataChat" ADD CONSTRAINT "CompanyDataChat_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
