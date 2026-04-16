@@ -646,8 +646,8 @@ export class GraphTasksController {
 
   /**
    * POST /api/graph-tasks/onedrive/share-link
-   * Get the webUrl for a OneDrive file (same-org users can access).
-   * Falls back to webUrl from file metadata (no write permission needed).
+   * Create an organization-scoped sharing link so any colleague in the same
+   * M365 tenant can open the file. Falls back to webUrl if createLink fails.
    */
   @Post('onedrive/share-link')
   async onedriveShareLink(
@@ -655,11 +655,34 @@ export class GraphTasksController {
   ) {
     if (!body.userId || !body.fileId) throw new BadRequestException('userId and fileId required');
     const token = await this.getGraphToken(body.userId);
+    const fileId = encodeURIComponent(body.fileId);
 
-    // Get file metadata (webUrl) — read-only, no Files.ReadWrite needed
+    // Try createLink with organization scope (requires Files.ReadWrite.All)
+    try {
+      const f: any = (globalThis as any).fetch;
+      const resp = await f(`https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/createLink`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ type: 'view', scope: 'organization' }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        const shareUrl = data?.link?.webUrl || '';
+        if (shareUrl) {
+          return { url: shareUrl, name: body.fileName || '' };
+        }
+      }
+    } catch {
+      // fall through to webUrl fallback
+    }
+
+    // Fallback: return file webUrl (owner-only access)
     const file: any = await this.graphGet(
       token,
-      `/me/drive/items/${encodeURIComponent(body.fileId)}?$select=id,name,webUrl`,
+      `/me/drive/items/${fileId}?$select=id,name,webUrl`,
     );
     const shareUrl = file?.webUrl || '';
     if (!shareUrl) {
