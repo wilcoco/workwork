@@ -516,9 +516,30 @@ export class GraphTasksController {
    */
   @Public()
   @Get('test-write')
-  async testWrite(@Query('userId') userId: string, @Query('taskId') taskId: string) {
-    if (!userId || !taskId) throw new BadRequestException('userId and taskId required');
-    const token = await this.getGraphToken(userId);
+  async testWrite(
+    @Query('userId') userId: string,
+    @Query('upn') upn: string,
+    @Query('email') email: string,
+    @Query('taskId') taskId: string,
+  ) {
+    if (!taskId) throw new BadRequestException('taskId required');
+    let resolvedUserId = userId;
+    if (!resolvedUserId && (upn || email)) {
+      const key = (upn || email).trim().toLowerCase();
+      const user = await (this.prisma as any).user.findFirst({
+        where: {
+          OR: [
+            { upn: { equals: key, mode: 'insensitive' } },
+            { email: { equals: key, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true, upn: true, email: true, name: true },
+      });
+      if (!user) return { ok: false, error: `User not found for upn/email: ${key}` };
+      resolvedUserId = user.id;
+    }
+    if (!resolvedUserId) throw new BadRequestException('userId or upn or email required');
+    const token = await this.getGraphToken(resolvedUserId);
     const scopes = this.decodeTokenScopes(token);
 
     // Try GET task
