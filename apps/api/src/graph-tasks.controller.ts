@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { Public } from './jwt-auth.guard';
 
 /**
  * Microsoft Graph API proxy for Teams Planner / To-Do Tasks.
@@ -513,6 +514,7 @@ export class GraphTasksController {
    * GET /api/graph-tasks/test-write?userId=xxx&taskId=xxx
    * Diagnostic: test if token can PATCH a Planner task (no-op update).
    */
+  @Public()
   @Get('test-write')
   async testWrite(@Query('userId') userId: string, @Query('taskId') taskId: string) {
     if (!userId || !taskId) throw new BadRequestException('userId and taskId required');
