@@ -53,7 +53,7 @@ export class GraphTasksController {
       client_secret: clientSecret,
       grant_type: 'refresh_token',
       refresh_token: user.graphRefreshToken,
-      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.Read.All',
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.ReadWrite.All',
     });
 
     const resp = await fetch(tokenUrl, {
@@ -457,6 +457,9 @@ export class GraphTasksController {
     });
     if (!patchRes.ok) {
       const text = await patchRes.text().catch(() => '');
+      if (patchRes.status === 403) {
+        throw new BadRequestException(`Planner 태스크 수정 권한이 없습니다. Entra SSO로 다시 로그인 후 시도해주세요. (403): ${text.slice(0, 200)}`);
+      }
       throw new BadRequestException(`업무일지 동기화 실패 (${patchRes.status}): ${text.slice(0, 300)}`);
     }
 
