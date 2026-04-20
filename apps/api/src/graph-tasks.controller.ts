@@ -529,11 +529,11 @@ export class GraphTasksController {
       const user = await (this.prisma as any).user.findFirst({
         where: {
           OR: [
-            { upn: { equals: key, mode: 'insensitive' } },
+            { teamsUpn: { equals: key, mode: 'insensitive' } },
             { email: { equals: key, mode: 'insensitive' } },
           ],
         },
-        select: { id: true, upn: true, email: true, name: true },
+        select: { id: true, teamsUpn: true, email: true, name: true },
       });
       if (!user) return { ok: false, error: `User not found for upn/email: ${key}` };
       resolvedUserId = user.id;
