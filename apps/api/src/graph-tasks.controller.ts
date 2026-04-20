@@ -13,6 +13,19 @@ import { PrismaService } from './prisma.service';
 export class GraphTasksController {
   constructor(private prisma: PrismaService) {}
 
+  // ─── Helper: decode JWT to inspect scopes ─────────────────
+
+  private decodeTokenScopes(token: string): string {
+    try {
+      const parts = token.split('.');
+      if (parts.length < 2) return '(invalid token)';
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      return String(payload.scp || payload.scope || '(no scp claim)');
+    } catch {
+      return '(decode failed)';
+    }
+  }
+
   // ─── Helper: get a valid Graph access token ─────────────────
 
   private async getGraphToken(userId: string): Promise<string> {
@@ -457,8 +470,10 @@ export class GraphTasksController {
     });
     if (!patchRes.ok) {
       const text = await patchRes.text().catch(() => '');
+      const scopes = this.decodeTokenScopes(token);
+      console.error(`[sync-worklog] PATCH failed: status=${patchRes.status}, scopes=${scopes}, body=${text.slice(0, 500)}`);
       if (patchRes.status === 403) {
-        throw new BadRequestException(`Planner 태스크 수정 권한이 없습니다. Entra SSO로 다시 로그인 후 시도해주세요. (403): ${text.slice(0, 200)}`);
+        throw new BadRequestException(`Planner PATCH 403. 토큰 스코프: [${scopes}]. 응답: ${text.slice(0, 200)}`);
       }
       throw new BadRequestException(`업무일지 동기화 실패 (${patchRes.status}): ${text.slice(0, 300)}`);
     }
@@ -492,6 +507,55 @@ export class GraphTasksController {
     }
 
     return { ok: true, progressUpdated };
+  }
+
+  /**
+   * GET /api/graph-tasks/test-write?userId=xxx&taskId=xxx
+   * Diagnostic: test if token can PATCH a Planner task (no-op update).
+   */
+  @Get('test-write')
+  async testWrite(@Query('userId') userId: string, @Query('taskId') taskId: string) {
+    if (!userId || !taskId) throw new BadRequestException('userId and taskId required');
+    const token = await this.getGraphToken(userId);
+    const scopes = this.decodeTokenScopes(token);
+
+    // Try GET task
+    let task: any;
+    try {
+      task = await this.graphGet(token, `/planner/tasks/${taskId}`);
+    } catch (e: any) {
+      return { ok: false, step: 'GET task', error: e?.message, scopes };
+    }
+
+    // Try GET task details
+    let details: any;
+    try {
+      details = await this.graphGet(token, `/planner/tasks/${taskId}/details`);
+    } catch (e: any) {
+      return { ok: false, step: 'GET task/details', error: e?.message, scopes };
+    }
+
+    const etag = details?.['@odata.etag'] || '';
+    const desc = String(details?.description || '');
+
+    // Try PATCH task details (append a space then trim — effectively no-op)
+    const testDesc = desc.endsWith(' ') ? desc.trimEnd() : desc + ' ';
+    const patchRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'If-Match': etag,
+      },
+      body: JSON.stringify({ description: testDesc }),
+    });
+
+    if (!patchRes.ok) {
+      const text = await patchRes.text().catch(() => '');
+      return { ok: false, step: 'PATCH task/details', status: patchRes.status, error: text.slice(0, 500), scopes, etag: etag.slice(0, 30) };
+    }
+
+    return { ok: true, scopes, taskTitle: task?.title };
   }
 
   /**
