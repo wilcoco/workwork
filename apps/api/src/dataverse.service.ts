@@ -256,25 +256,20 @@ export class DataverseService {
 
   /**
    * Create a PSS operation set. Returns the OperationSet ID (string GUID).
+   * Signature: ProjectId (string, required), Description (string, required)
    */
-  async createOperationSet(description: string, projectId?: string): Promise<string> {
-    const body: any = { Description: description };
-    if (projectId) {
-      // Most PSS V1 Create signatures take Project as EntityReference
-      body.Project = {
-        '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_project',
-        msdyn_projectid: projectId,
-      };
-    }
-    const resp = await this.post('/api/data/v9.2/msdyn_CreateOperationSetV1', body);
-    // Response fields are tenant-dependent; try common shapes
+  async createOperationSet(projectId: string, description: string): Promise<string> {
+    const resp = await this.post('/api/data/v9.2/msdyn_CreateOperationSetV1', {
+      ProjectId: projectId,
+      Description: description,
+    });
     return String(
       resp?.OperationSetId ||
         resp?.operationSetId ||
         resp?.Id ||
         resp?.id ||
         resp?.msdyn_operationsetid ||
-        resp,
+        (typeof resp === 'string' ? resp : ''),
     );
   }
 
@@ -317,7 +312,7 @@ export class DataverseService {
     if (fields.progress !== undefined) entity.msdyn_progress = fields.progress;
     if (fields.subject !== undefined) entity.msdyn_subject = fields.subject;
 
-    const opsetId = await this.createOperationSet('WorkWork sync-worklog', projectId);
+    const opsetId = await this.createOperationSet(projectId, 'WorkWork sync-worklog');
     if (!opsetId) throw new BadRequestException('Failed to create operation set');
     const pssResp = await this.pssUpdate(opsetId, [entity]);
     const execResp = await this.executeOperationSet(opsetId);
