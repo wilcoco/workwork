@@ -277,12 +277,10 @@ export class DataverseService {
    * Queue an update into a PSS operation set via msdyn_PssUpdateV2.
    */
   async pssUpdate(operationSetId: string, entities: any[]): Promise<any> {
+    // EntityCollection param expects an array (resource set)
     return this.post('/api/data/v9.2/msdyn_PssUpdateV2', {
       OperationSetId: operationSetId,
-      EntityCollection: {
-        EntityName: 'msdyn_projecttask',
-        Entities: entities,
-      },
+      EntityCollection: entities,
     });
   }
 
