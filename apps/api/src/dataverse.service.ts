@@ -211,7 +211,7 @@ export class DataverseService {
     }
   }
 
-  /** PATCH msdyn_projecttask by its Dataverse GUID. */
+  /** PATCH msdyn_projecttask by its Dataverse GUID (direct — blocked by PSS plugin). */
   async patchProjectTask(
     projectTaskId: string,
     fields: { description?: string; progress?: number; subject?: string },
@@ -224,5 +224,53 @@ export class DataverseService {
       `/api/data/v9.2/msdyn_projecttasks(${projectTaskId})`,
       body,
     );
+  }
+
+  /** POST to Dataverse Web API (for custom actions). */
+  async post(path: string, body: any): Promise<any> {
+    const token = await this.getToken();
+    const url = `${this.getEnvUrl()}${path}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'OData-MaxVersion': '4.0',
+        'OData-Version': '4.0',
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new BadRequestException(
+        `Dataverse POST ${path} failed (${res.status}): ${text.slice(0, 400)}`,
+      );
+    }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+
+  /**
+   * Update a Project for the Web task via PSS (Project Scheduling Service).
+   * Uses msdyn_UpdateProjectTaskV1 unbound action because direct PATCH is blocked.
+   */
+  async updateProjectTaskViaPss(
+    projectTaskId: string,
+    fields: { description?: string; progress?: number; subject?: string },
+  ): Promise<any> {
+    const projectTask: any = {
+      '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_projecttask',
+      msdyn_projecttaskid: projectTaskId,
+    };
+    if (fields.description !== undefined) projectTask.msdyn_description = fields.description;
+    if (fields.progress !== undefined) projectTask.msdyn_progress = fields.progress;
+    if (fields.subject !== undefined) projectTask.msdyn_subject = fields.subject;
+    return this.post('/api/data/v9.2/msdyn_UpdateProjectTaskV1', {
+      ProjectTask: projectTask,
+    });
   }
 }
