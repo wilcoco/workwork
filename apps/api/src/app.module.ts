@@ -40,6 +40,7 @@ import { MeetingMinutesController } from './meeting-minutes.controller';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
+import { DataverseService } from './dataverse.service';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -84,6 +85,7 @@ import { ProcessDeadlineService } from './process-deadline.service';
     PrismaService,
     TeamsNotificationService,
     ProcessDeadlineService,
+    DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],

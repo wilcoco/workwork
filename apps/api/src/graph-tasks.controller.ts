@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
+import { DataverseService } from './dataverse.service';
 
 /**
  * Microsoft Graph API proxy for Teams Planner / To-Do Tasks.
@@ -12,7 +13,49 @@ import { Public } from './jwt-auth.guard';
 
 @Controller('graph-tasks')
 export class GraphTasksController {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private dataverse: DataverseService) {}
+
+  /**
+   * GET /api/graph-tasks/dataverse-test?plannerTaskId=xxx
+   * Diagnostic: connect to Dataverse, look up the matching msdyn_projecttask for a Planner task ID.
+   * Tries multiple candidate fields to find the mapping.
+   */
+  @Public()
+  @Get('dataverse-test')
+  async dataverseTest(@Query('plannerTaskId') plannerTaskId: string) {
+    if (!this.dataverse.isConfigured()) {
+      return { ok: false, error: 'Dataverse not configured. Set DATAVERSE_* env vars on the server.' };
+    }
+    try {
+      const token = await this.dataverse.getToken();
+      const tokenInfo = { ok: true, tokenLength: token.length };
+
+      // Always fetch a small sample of msdyn_projecttask to inspect schema
+      let sample: any = null;
+      try {
+        sample = await this.dataverse.get('/api/data/v9.2/msdyn_projecttasks?$top=1');
+      } catch (e: any) {
+        return { ...tokenInfo, step: 'list projecttasks', error: e?.message };
+      }
+      const sampleRecord = sample?.value?.[0] || null;
+      const schemaFields = sampleRecord ? Object.keys(sampleRecord).filter(k => !k.startsWith('@')) : [];
+
+      let matched: any = null;
+      if (plannerTaskId) {
+        matched = await this.dataverse.findProjectTaskByPlannerId(plannerTaskId);
+      }
+
+      return {
+        ...tokenInfo,
+        envUrl: this.dataverse.getEnvUrl(),
+        sampleRecordFields: schemaFields,
+        sampleRecordId: sampleRecord?.msdyn_projecttaskid || null,
+        matched,
+      };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
 
   // ─── Helper: decode JWT to inspect scopes ─────────────────
 
