@@ -300,14 +300,17 @@ export class DataverseService {
 
   /**
    * Update a Project for the Web task via PSS operation set (full 3-step flow).
-   * Direct PATCH is blocked; PssUpdateV2 requires OperationSet.
-   * If callerSystemUserId is provided, requests impersonate that user (needed for Project Plan license).
+   *
+   * callers:
+   *   - creatorCallerId: impersonation user for Create + PssUpdate (needs prvCreatemsdyn_operationset)
+   *   - executorCallerId: impersonation user for Execute (needs Project Plan license)
+   *   Either can be undefined → runs as the Application User directly.
    */
   async updateProjectTaskViaOperationSet(
     projectTaskId: string,
     projectId: string,
     fields: { description?: string; progress?: number; subject?: string },
-    callerSystemUserId?: string,
+    callers: { creatorCallerId?: string; executorCallerId?: string } = {},
   ): Promise<{ opsetId: string; pssUpdate: any; execute: any }> {
     const entity: any = {
       '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_projecttask',
@@ -317,10 +320,10 @@ export class DataverseService {
     if (fields.progress !== undefined) entity.msdyn_progress = fields.progress;
     if (fields.subject !== undefined) entity.msdyn_subject = fields.subject;
 
-    const opsetId = await this.createOperationSet(projectId, 'WorkWork sync-worklog', callerSystemUserId);
+    const opsetId = await this.createOperationSet(projectId, 'WorkWork sync-worklog', callers.creatorCallerId);
     if (!opsetId) throw new BadRequestException('Failed to create operation set');
-    const pssResp = await this.pssUpdate(opsetId, [entity], callerSystemUserId);
-    const execResp = await this.executeOperationSet(opsetId, callerSystemUserId);
+    const pssResp = await this.pssUpdate(opsetId, [entity], callers.creatorCallerId);
+    const execResp = await this.executeOperationSet(opsetId, callers.executorCallerId);
     return { opsetId, pssUpdate: pssResp, execute: execResp };
   }
 }

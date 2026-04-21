@@ -283,19 +283,19 @@ export class GraphTasksController {
               task.msdyn_projecttaskid,
               task._msdyn_project_value,
               { description: newDesc },
-              callerSystemUserId,
+              { executorCallerId: callerSystemUserId },
             );
             result.writeTest = {
               ok: true,
-              method: 'OperationSet + MSCRMCallerID impersonation',
-              callerSystemUserId,
+              method: 'Mixed mode (Create/Update=AppUser, Execute impersonated)',
+              executorCallerSystemUserId: callerSystemUserId,
               response: res,
             };
           } catch (e: any) {
             result.writeTest = {
               ok: false,
-              method: 'OperationSet + MSCRMCallerID impersonation',
-              callerSystemUserId,
+              method: 'Mixed mode (Create/Update=AppUser, Execute impersonated)',
+              executorCallerSystemUserId: callerSystemUserId,
               error: e?.message || String(e),
             };
           }
