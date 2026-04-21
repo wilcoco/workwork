@@ -215,7 +215,28 @@ export class GraphTasksController {
           })),
         };
 
-        // Step 7: If exactly one match, attempt a no-op write via OperationSet 3-step flow
+        // Step 7: Look up systemuserid for impersonation (PSS requires Project license)
+        let callerSystemUserId: string | undefined;
+        if (email) {
+          try {
+            const sysuser = await this.dataverse.findSystemUserByEmail(email);
+            if (sysuser) {
+              callerSystemUserId = sysuser.systemuserid;
+              result.caller = {
+                systemuserid: sysuser.systemuserid,
+                fullname: sysuser.fullname,
+                email: sysuser.internalemailaddress,
+                isdisabled: sysuser.isdisabled,
+              };
+            } else {
+              result.callerLookupError = `No systemuser found for email ${email}`;
+            }
+          } catch (e: any) {
+            result.callerLookupError = e?.message || String(e);
+          }
+        }
+
+        // Step 8: If exactly one match, attempt a no-op write via OperationSet 3-step flow
         if (matches.length === 1) {
           const task = matches[0];
           const currentDesc = String(task.msdyn_description || '');
@@ -225,10 +246,21 @@ export class GraphTasksController {
               task.msdyn_projecttaskid,
               task._msdyn_project_value,
               { description: newDesc },
+              callerSystemUserId,
             );
-            result.writeTest = { ok: true, method: 'OperationSet (Create→PssUpdateV2→Execute)', response: res };
+            result.writeTest = {
+              ok: true,
+              method: 'OperationSet + MSCRMCallerID impersonation',
+              callerSystemUserId,
+              response: res,
+            };
           } catch (e: any) {
-            result.writeTest = { ok: false, method: 'OperationSet (Create→PssUpdateV2→Execute)', error: e?.message || String(e) };
+            result.writeTest = {
+              ok: false,
+              method: 'OperationSet + MSCRMCallerID impersonation',
+              callerSystemUserId,
+              error: e?.message || String(e),
+            };
           }
         }
       } catch (e: any) {
