@@ -16,6 +16,58 @@ export class GraphTasksController {
   constructor(private prisma: PrismaService, private dataverse: DataverseService) {}
 
   /**
+   * GET /api/graph-tasks/dataverse-action-params?name=msdyn_PssUpdateV2
+   * Inspect the parameter signature of an SDK message (action).
+   */
+  @Public()
+  @Get('dataverse-action-params')
+  async dataverseActionParams(@Query('name') name: string) {
+    if (!this.dataverse.isConfigured()) return { ok: false, error: 'Dataverse not configured.' };
+    if (!name) return { ok: false, error: 'name required' };
+    try {
+      const nameEsc = name.replace(/'/g, "''");
+      // Step 1: find sdkmessage
+      const msgs = await this.dataverse.get(
+        `/api/data/v9.2/sdkmessages?$filter=name eq '${nameEsc}'&$select=sdkmessageid,name&$top=1`,
+      );
+      const msg = msgs?.value?.[0];
+      if (!msg) return { ok: false, error: `SDK message not found: ${name}` };
+
+      // Step 2: find sdkmessagepair for this message
+      const pairs = await this.dataverse.get(
+        `/api/data/v9.2/sdkmessagepairs?$filter=_sdkmessageid_value eq ${msg.sdkmessageid}&$select=sdkmessagepairid`,
+      );
+      const pair = pairs?.value?.[0];
+      if (!pair) return { ok: true, sdkmessageid: msg.sdkmessageid, note: 'No sdkmessagepair' };
+
+      // Step 3: find sdkmessagerequest
+      const requests = await this.dataverse.get(
+        `/api/data/v9.2/sdkmessagerequests?$filter=_sdkmessagepairid_value eq ${pair.sdkmessagepairid}&$select=sdkmessagerequestid,name`,
+      );
+      const request = requests?.value?.[0];
+      if (!request) return { ok: true, sdkmessagepairid: pair.sdkmessagepairid, note: 'No sdkmessagerequest' };
+
+      // Step 4: find fields
+      const fields = await this.dataverse.get(
+        `/api/data/v9.2/sdkmessagerequestfields?$filter=_sdkmessagerequestid_value eq ${request.sdkmessagerequestid}&$select=name,clrparser,optional,position&$orderby=position`,
+      );
+      return {
+        ok: true,
+        action: name,
+        requestName: request.name,
+        parameters: (fields?.value || []).map((f: any) => ({
+          position: f.position,
+          name: f.name,
+          optional: f.optional,
+          type: f.clrparser,
+        })),
+      };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  /**
    * GET /api/graph-tasks/dataverse-actions?filter=Pss
    * List available SDK messages (actions) containing the filter string.
    */
