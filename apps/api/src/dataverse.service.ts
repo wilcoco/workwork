@@ -256,21 +256,25 @@ export class DataverseService {
 
   /**
    * Update a Project for the Web task via PSS (Project Scheduling Service).
-   * Uses msdyn_UpdateProjectTaskV1 unbound action because direct PATCH is blocked.
+   * Uses msdyn_PssUpdateV2 unbound action because direct PATCH is blocked.
+   *
+   * Action signature (guessed - will be refined based on actual error):
+   *   Entity: Entity (with logical name + id + fields to update)
+   *   OperationSetId: (optional) operation set for batching
    */
   async updateProjectTaskViaPss(
     projectTaskId: string,
     fields: { description?: string; progress?: number; subject?: string },
   ): Promise<any> {
-    const projectTask: any = {
+    const entity: any = {
       '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_projecttask',
       msdyn_projecttaskid: projectTaskId,
     };
-    if (fields.description !== undefined) projectTask.msdyn_description = fields.description;
-    if (fields.progress !== undefined) projectTask.msdyn_progress = fields.progress;
-    if (fields.subject !== undefined) projectTask.msdyn_subject = fields.subject;
-    return this.post('/api/data/v9.2/msdyn_UpdateProjectTaskV1', {
-      ProjectTask: projectTask,
+    if (fields.description !== undefined) entity.msdyn_description = fields.description;
+    if (fields.progress !== undefined) entity.msdyn_progress = fields.progress;
+    if (fields.subject !== undefined) entity.msdyn_subject = fields.subject;
+    return this.post('/api/data/v9.2/msdyn_PssUpdateV2', {
+      Entity: entity,
     });
   }
 }
