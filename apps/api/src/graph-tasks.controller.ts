@@ -16,6 +16,28 @@ export class GraphTasksController {
   constructor(private prisma: PrismaService, private dataverse: DataverseService) {}
 
   /**
+   * GET /api/graph-tasks/dataverse-actions?filter=Pss
+   * List available SDK messages (actions) containing the filter string.
+   */
+  @Public()
+  @Get('dataverse-actions')
+  async dataverseActions(@Query('filter') filter: string) {
+    if (!this.dataverse.isConfigured()) {
+      return { ok: false, error: 'Dataverse not configured.' };
+    }
+    try {
+      const q = (filter || 'msdyn').replace(/'/g, "''");
+      const resp = await this.dataverse.get(
+        `/api/data/v9.2/sdkmessages?$filter=contains(name,'${q}')&$select=name,isprivate&$top=200&$orderby=name`,
+      );
+      const items = (resp?.value || []).map((r: any) => ({ name: r.name, isprivate: r.isprivate }));
+      return { ok: true, filter: q, count: items.length, items };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  /**
    * GET /api/graph-tasks/dataverse-test?plannerTaskId=xxx&email=xxx&subject=xxx
    * Diagnostic: full flow — Graph API GET task (by email) → Dataverse search by subject.
    */
