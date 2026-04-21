@@ -767,6 +767,19 @@ export class GraphTasksController {
       const text = await patchRes.text().catch(() => '');
       const scopes = this.decodeTokenScopes(token);
       console.error(`[sync-worklog] PATCH failed: status=${patchRes.status}, scopes=${scopes}, body=${text.slice(0, 500)}`);
+
+      // Planner Premium: Graph API PATCH is blocked. Fall back to Dataverse.
+      if (patchRes.status === 403 && this.dataverse.isConfigured()) {
+        try {
+          const dvResult = await this.syncViaDataverse(taskId, body, token);
+          return { ok: true, method: 'dataverse', ...dvResult };
+        } catch (dvErr: any) {
+          console.error(`[sync-worklog] Dataverse fallback failed: ${dvErr?.message}`);
+          throw new BadRequestException(
+            `Planner Premium 업무 동기화 실패 (Graph 403 + Dataverse fallback): ${dvErr?.message || String(dvErr)}`,
+          );
+        }
+      }
       if (patchRes.status === 403) {
         throw new BadRequestException(`Planner PATCH 403. 토큰 스코프: [${scopes}]. 응답: ${text.slice(0, 200)}`);
       }
@@ -802,6 +815,113 @@ export class GraphTasksController {
     }
 
     return { ok: true, progressUpdated };
+  }
+
+  /**
+   * Dataverse fallback for Planner Premium tasks (Graph PATCH returns 403).
+   * Flow: Graph task/plan titles → Dataverse project/task match → OperationSet update.
+   */
+  private async syncViaDataverse(
+    taskId: string,
+    body: {
+      userId: string;
+      title: string;
+      content: string;
+      date?: string;
+      percentComplete?: number;
+      attachments?: Array<{ url: string; name: string }>;
+    },
+    graphToken: string,
+  ): Promise<{ dvTaskId: string; dvProjectId: string; opsetId: string; progressUpdated: boolean }> {
+    // 1. Look up user's email for impersonation
+    const user = await (this.prisma as any).user.findUnique({
+      where: { id: body.userId },
+      select: { teamsUpn: true, email: true },
+    });
+    const email: string | undefined = user?.teamsUpn || user?.email;
+    if (!email) throw new Error('사용자 이메일/UPN을 찾을 수 없음 (impersonation 불가)');
+
+    // 2. Graph: fetch task to get title + planId
+    const task: any = await this.graphGet(graphToken, `/planner/tasks/${taskId}`);
+    const subject = String(task?.title || '').trim();
+    const planId = String(task?.planId || '').trim();
+    if (!subject) throw new Error('Planner 태스크 제목을 가져올 수 없음');
+    if (!planId) throw new Error('Planner 태스크 planId를 가져올 수 없음');
+
+    // 3. Graph: fetch plan title
+    const plan: any = await this.graphGet(graphToken, `/planner/plans/${planId}`);
+    const planTitle = String(plan?.title || '').trim();
+    if (!planTitle) throw new Error('Planner plan 제목을 가져올 수 없음');
+
+    // 4. Dataverse: match project by plan title
+    const projects = await this.dataverse.findProjectsBySubject(planTitle);
+    if (projects.length === 0) {
+      throw new Error(`Dataverse에서 플랜과 일치하는 프로젝트 없음: "${planTitle}"`);
+    }
+    if (projects.length > 1) {
+      throw new Error(
+        `동일한 제목의 Dataverse 프로젝트가 ${projects.length}개 존재: "${planTitle}" — 식별 불가`,
+      );
+    }
+    const projectId: string = projects[0].msdyn_projectid;
+
+    // 5. Dataverse: match task by subject + projectId
+    const dvTasks = await this.dataverse.findProjectTasksBySubject(subject, projectId);
+    if (dvTasks.length === 0) {
+      throw new Error(`Dataverse에서 일치하는 태스크 없음: "${subject}" (프로젝트: "${planTitle}")`);
+    }
+    if (dvTasks.length > 1) {
+      throw new Error(
+        `Dataverse 태스크가 ${dvTasks.length}개 매칭: "${subject}" — 식별 불가`,
+      );
+    }
+    const dvTask: any = dvTasks[0];
+    const dvTaskId: string = dvTask.msdyn_projecttaskid;
+
+    // 6. Build description: use existing Dataverse description + new entry (consistent with Planner behavior)
+    const existing = String(dvTask.msdyn_description || '').trim();
+    const dateStr = body.date || new Date().toISOString().slice(0, 10);
+    const attachmentLines = (body.attachments || [])
+      .filter(a => a?.url)
+      .map(a => `📎 ${a.name || '첨부파일'}: ${a.url}`)
+      .join('\n');
+    const newEntry = [
+      `\n\n--- 업무일지 (${dateStr}) ---`,
+      `제목: ${body.title || '(제목 없음)'}`,
+      body.content || '',
+      attachmentLines,
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    const merged = existing ? `${existing}\n${newEntry}` : newEntry;
+    const desc = merged.length > 30000 ? merged.slice(-30000) : merged;
+
+    // 7. Look up systemuser for Execute impersonation (needs Project license)
+    const sysuser = await this.dataverse.findSystemUserByEmail(email);
+    const executorCallerId: string | undefined = sysuser?.systemuserid;
+    if (!executorCallerId) {
+      throw new Error(`Dataverse systemuser를 찾을 수 없음: ${email}`);
+    }
+
+    // 8. Build update fields (description + optional progress)
+    const fields: { description?: string; progress?: number } = { description: desc };
+    let progressUpdated = false;
+    if (body.percentComplete !== undefined && body.percentComplete !== null) {
+      // Planner percentComplete (0-100) → Dataverse msdyn_progress (0-1 decimal)
+      fields.progress = Math.max(0, Math.min(1, Number(body.percentComplete) / 100));
+      progressUpdated = true;
+    }
+
+    // 9. Execute OperationSet mixed-mode flow
+    const res = await this.dataverse.updateProjectTaskViaOperationSet(
+      dvTaskId,
+      projectId,
+      fields,
+      { executorCallerId },
+    );
+
+    return { dvTaskId, dvProjectId: projectId, opsetId: res.opsetId, progressUpdated };
   }
 
   /**
