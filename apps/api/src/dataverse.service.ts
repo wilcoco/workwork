@@ -187,6 +187,30 @@ export class DataverseService {
     }
   }
 
+  /** Find msdyn_project records by subject (project name). */
+  async findProjectsBySubject(subject: string): Promise<any[]> {
+    const escaped = subject.replace(/'/g, "''");
+    const filter = `msdyn_subject eq '${escaped}'`;
+    const resp = await this.get(
+      `/api/data/v9.2/msdyn_projects?$filter=${encodeURIComponent(filter)}&$top=10&$select=msdyn_projectid,msdyn_subject,msdyn_plannerlastsavedrevisiontoken,msdyn_plannerreplicationstate`,
+    );
+    return resp?.value || [];
+  }
+
+  /**
+   * Get a msdyn_project by ID, returning only selected Planner-integration fields.
+   */
+  async getProjectPlannerInfo(projectId: string): Promise<any | null> {
+    try {
+      const resp = await this.get(
+        `/api/data/v9.2/msdyn_projects(${projectId})?$select=msdyn_projectid,msdyn_subject,msdyn_plannerlastsavedrevisiontoken,msdyn_plannerreplicationstate`,
+      );
+      return resp;
+    } catch {
+      return null;
+    }
+  }
+
   /** PATCH msdyn_projecttask by its Dataverse GUID. */
   async patchProjectTask(
     projectTaskId: string,

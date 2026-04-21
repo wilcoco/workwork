@@ -84,12 +84,54 @@ export class GraphTasksController {
       }
     }
 
-    // Step 4: Search Dataverse by subject
+    // Step 4: Fetch Graph plan title (to filter Dataverse project)
+    let planTitle = '';
+    if (result.graphPlanId && email) {
+      try {
+        const user = await (this.prisma as any).user.findFirst({
+          where: {
+            OR: [
+              { teamsUpn: { equals: email, mode: 'insensitive' } },
+              { email: { equals: email, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (user) {
+          const graphToken = await this.getGraphToken(user.id);
+          const plan: any = await this.graphGet(graphToken, `/planner/plans/${result.graphPlanId}`);
+          planTitle = String(plan?.title || '');
+          result.graphPlanTitle = planTitle;
+        }
+      } catch (e: any) {
+        result.graphPlanError = e?.message || String(e);
+      }
+    }
+
+    // Step 5: Find Dataverse project matching the plan title
+    let projectMatchId: string | null = null;
+    if (planTitle) {
+      try {
+        const projects = await this.dataverse.findProjectsBySubject(planTitle);
+        result.projectMatches = projects.map((p: any) => ({
+          id: p.msdyn_projectid,
+          subject: p.msdyn_subject,
+        }));
+        if (projects.length === 1) {
+          projectMatchId = projects[0].msdyn_projectid;
+        }
+      } catch (e: any) {
+        result.projectMatchError = e?.message || String(e);
+      }
+    }
+
+    // Step 6: Search Dataverse tasks by subject, filtered by project if possible
     if (subject) {
       try {
-        const matches = await this.dataverse.findProjectTasksBySubject(subject);
+        const matches = await this.dataverse.findProjectTasksBySubject(subject, projectMatchId || undefined);
         result.subjectSearch = {
           subject,
+          filteredByProjectId: projectMatchId,
           count: matches.length,
           matches: matches.map((m: any) => ({
             id: m.msdyn_projecttaskid,
@@ -98,6 +140,19 @@ export class GraphTasksController {
             projectId: m._msdyn_project_value,
           })),
         };
+
+        // Step 7: If exactly one match, attempt a no-op PATCH as write test
+        if (matches.length === 1) {
+          const task = matches[0];
+          const currentDesc = String(task.msdyn_description || '');
+          const newDesc = currentDesc.endsWith(' ') ? currentDesc.trimEnd() : currentDesc + ' ';
+          try {
+            await this.dataverse.patchProjectTask(task.msdyn_projecttaskid, { description: newDesc });
+            result.writeTest = { ok: true, message: 'PATCH success — Dataverse write confirmed' };
+          } catch (e: any) {
+            result.writeTest = { ok: false, error: e?.message || String(e) };
+          }
+        }
       } catch (e: any) {
         result.subjectSearchError = e?.message || String(e);
       }
