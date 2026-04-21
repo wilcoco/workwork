@@ -897,11 +897,13 @@ export class GraphTasksController {
     const merged = existing ? `${existing}\n${newEntry}` : newEntry;
     const desc = merged.length > 30000 ? merged.slice(-30000) : merged;
 
-    // 7. Look up systemuser for Execute impersonation (needs Project license)
-    const sysuser = await this.dataverse.findSystemUserByEmail(email);
+    // 7. Look up systemuser for Execute impersonation (needs Project license + Write on msdyn_operationset).
+    // If DATAVERSE_EXECUTOR_EMAIL is set, use that (single service user). Otherwise use the requesting user.
+    const executorEmail = (process.env.DATAVERSE_EXECUTOR_EMAIL || email).trim();
+    const sysuser = await this.dataverse.findSystemUserByEmail(executorEmail);
     const executorCallerId: string | undefined = sysuser?.systemuserid;
     if (!executorCallerId) {
-      throw new Error(`Dataverse systemuser를 찾을 수 없음: ${email}`);
+      throw new Error(`Dataverse systemuser를 찾을 수 없음: ${executorEmail}`);
     }
 
     // 8. Build update fields (description + optional progress)

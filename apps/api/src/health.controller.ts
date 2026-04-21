@@ -11,7 +11,7 @@ export class HealthController {
 
   @Get()
   get() {
-    return { ok: true, v: '2026-04-20a' };
+    return { ok: true, v: '2026_0422_0750' };
   }
 
   @Get('db')
