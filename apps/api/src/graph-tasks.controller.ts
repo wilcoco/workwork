@@ -16,6 +16,43 @@ export class GraphTasksController {
   constructor(private prisma: PrismaService, private dataverse: DataverseService) {}
 
   /**
+   * GET /api/graph-tasks/dataverse-user-roles?email=xxx
+   * Inspect security roles assigned to a Dataverse systemuser.
+   */
+  @Public()
+  @Get('dataverse-user-roles')
+  async dataverseUserRoles(@Query('email') email: string) {
+    if (!this.dataverse.isConfigured()) return { ok: false, error: 'Dataverse not configured.' };
+    if (!email) return { ok: false, error: 'email required' };
+    try {
+      const sysuser = await this.dataverse.findSystemUserByEmail(email);
+      if (!sysuser) return { ok: false, error: `No systemuser for ${email}` };
+      // Expand roles via systemuserroles_association
+      const resp = await this.dataverse.get(
+        `/api/data/v9.2/systemusers(${sysuser.systemuserid})?$expand=systemuserroles_association($select=roleid,name,_businessunitid_value)`,
+      );
+      const roles = (resp?.systemuserroles_association || []).map((r: any) => ({
+        roleid: r.roleid,
+        name: r.name,
+        businessUnitId: r._businessunitid_value,
+      }));
+      // Also check if any has prvCreatemsdyn_operationset privilege directly
+      return {
+        ok: true,
+        systemuserid: sysuser.systemuserid,
+        fullname: sysuser.fullname,
+        email: sysuser.internalemailaddress,
+        isdisabled: sysuser.isdisabled,
+        azureObjectId: sysuser.azureactivedirectoryobjectid,
+        roleCount: roles.length,
+        roles,
+      };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  /**
    * GET /api/graph-tasks/dataverse-action-params?name=msdyn_PssUpdateV2
    * Inspect the parameter signature of an SDK message (action).
    */
