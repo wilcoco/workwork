@@ -255,17 +255,60 @@ export class DataverseService {
   }
 
   /**
-   * Update a Project for the Web task via PSS (Project Scheduling Service).
-   * Uses msdyn_PssUpdateV2 unbound action because direct PATCH is blocked.
-   *
-   * Action signature (guessed - will be refined based on actual error):
-   *   Entity: Entity (with logical name + id + fields to update)
-   *   OperationSetId: (optional) operation set for batching
+   * Create a PSS operation set. Returns the OperationSet ID (string GUID).
    */
-  async updateProjectTaskViaPss(
+  async createOperationSet(description: string, projectId?: string): Promise<string> {
+    const body: any = { Description: description };
+    if (projectId) {
+      // Most PSS V1 Create signatures take Project as EntityReference
+      body.Project = {
+        '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_project',
+        msdyn_projectid: projectId,
+      };
+    }
+    const resp = await this.post('/api/data/v9.2/msdyn_CreateOperationSetV1', body);
+    // Response fields are tenant-dependent; try common shapes
+    return String(
+      resp?.OperationSetId ||
+        resp?.operationSetId ||
+        resp?.Id ||
+        resp?.id ||
+        resp?.msdyn_operationsetid ||
+        resp,
+    );
+  }
+
+  /**
+   * Queue an update into a PSS operation set via msdyn_PssUpdateV2.
+   */
+  async pssUpdate(operationSetId: string, entities: any[]): Promise<any> {
+    return this.post('/api/data/v9.2/msdyn_PssUpdateV2', {
+      OperationSetId: operationSetId,
+      EntityCollection: {
+        EntityName: 'msdyn_projecttask',
+        Entities: entities,
+      },
+    });
+  }
+
+  /**
+   * Execute all queued operations in the operation set.
+   */
+  async executeOperationSet(operationSetId: string): Promise<any> {
+    return this.post('/api/data/v9.2/msdyn_ExecuteOperationSetV1', {
+      OperationSetId: operationSetId,
+    });
+  }
+
+  /**
+   * Update a Project for the Web task via PSS operation set (full 3-step flow).
+   * Direct PATCH is blocked; direct PssUpdateV2 requires OperationSet.
+   */
+  async updateProjectTaskViaOperationSet(
     projectTaskId: string,
+    projectId: string,
     fields: { description?: string; progress?: number; subject?: string },
-  ): Promise<any> {
+  ): Promise<{ opsetId: string; pssUpdate: any; execute: any }> {
     const entity: any = {
       '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_projecttask',
       msdyn_projecttaskid: projectTaskId,
@@ -273,8 +316,11 @@ export class DataverseService {
     if (fields.description !== undefined) entity.msdyn_description = fields.description;
     if (fields.progress !== undefined) entity.msdyn_progress = fields.progress;
     if (fields.subject !== undefined) entity.msdyn_subject = fields.subject;
-    return this.post('/api/data/v9.2/msdyn_PssUpdateV2', {
-      Entity: entity,
-    });
+
+    const opsetId = await this.createOperationSet('WorkWork sync-worklog', projectId);
+    if (!opsetId) throw new BadRequestException('Failed to create operation set');
+    const pssResp = await this.pssUpdate(opsetId, [entity]);
+    const execResp = await this.executeOperationSet(opsetId);
+    return { opsetId, pssUpdate: pssResp, execute: execResp };
   }
 }

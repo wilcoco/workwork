@@ -215,16 +215,20 @@ export class GraphTasksController {
           })),
         };
 
-        // Step 7: If exactly one match, attempt a no-op write via PSS custom action
+        // Step 7: If exactly one match, attempt a no-op write via OperationSet 3-step flow
         if (matches.length === 1) {
           const task = matches[0];
           const currentDesc = String(task.msdyn_description || '');
           const newDesc = currentDesc.endsWith(' ') ? currentDesc.trimEnd() : currentDesc + ' ';
           try {
-            const res = await this.dataverse.updateProjectTaskViaPss(task.msdyn_projecttaskid, { description: newDesc });
-            result.writeTest = { ok: true, method: 'PSS msdyn_UpdateProjectTaskV1', response: res };
+            const res = await this.dataverse.updateProjectTaskViaOperationSet(
+              task.msdyn_projecttaskid,
+              task._msdyn_project_value,
+              { description: newDesc },
+            );
+            result.writeTest = { ok: true, method: 'OperationSet (Create→PssUpdateV2→Execute)', response: res };
           } catch (e: any) {
-            result.writeTest = { ok: false, method: 'PSS msdyn_UpdateProjectTaskV1', error: e?.message || String(e) };
+            result.writeTest = { ok: false, method: 'OperationSet (Create→PssUpdateV2→Execute)', error: e?.message || String(e) };
           }
         }
       } catch (e: any) {
