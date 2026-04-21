@@ -16,45 +16,94 @@ export class GraphTasksController {
   constructor(private prisma: PrismaService, private dataverse: DataverseService) {}
 
   /**
-   * GET /api/graph-tasks/dataverse-test?plannerTaskId=xxx
-   * Diagnostic: connect to Dataverse, look up the matching msdyn_projecttask for a Planner task ID.
-   * Tries multiple candidate fields to find the mapping.
+   * GET /api/graph-tasks/dataverse-test?plannerTaskId=xxx&email=xxx&subject=xxx
+   * Diagnostic: full flow — Graph API GET task (by email) → Dataverse search by subject.
    */
   @Public()
   @Get('dataverse-test')
-  async dataverseTest(@Query('plannerTaskId') plannerTaskId: string) {
+  async dataverseTest(
+    @Query('plannerTaskId') plannerTaskId: string,
+    @Query('email') email: string,
+    @Query('subject') subjectOverride: string,
+  ) {
     if (!this.dataverse.isConfigured()) {
       return { ok: false, error: 'Dataverse not configured. Set DATAVERSE_* env vars on the server.' };
     }
+    const result: any = { ok: true, envUrl: this.dataverse.getEnvUrl() };
+
+    // Step 1: Dataverse token + schema sample
     try {
-      const token = await this.dataverse.getToken();
-      const tokenInfo = { ok: true, tokenLength: token.length };
-
-      // Always fetch a small sample of msdyn_projecttask to inspect schema
-      let sample: any = null;
-      try {
-        sample = await this.dataverse.get('/api/data/v9.2/msdyn_projecttasks?$top=1');
-      } catch (e: any) {
-        return { ...tokenInfo, step: 'list projecttasks', error: e?.message };
-      }
-      const sampleRecord = sample?.value?.[0] || null;
-      const schemaFields = sampleRecord ? Object.keys(sampleRecord).filter(k => !k.startsWith('@')) : [];
-
-      let matched: any = null;
-      if (plannerTaskId) {
-        matched = await this.dataverse.findProjectTaskByPlannerId(plannerTaskId);
-      }
-
-      return {
-        ...tokenInfo,
-        envUrl: this.dataverse.getEnvUrl(),
-        sampleRecordFields: schemaFields,
-        sampleRecordId: sampleRecord?.msdyn_projecttaskid || null,
-        matched,
-      };
+      const tok = await this.dataverse.getToken();
+      result.dvTokenLength = tok.length;
     } catch (e: any) {
-      return { ok: false, error: e?.message || String(e) };
+      return { ok: false, step: 'dv-token', error: e?.message };
     }
+
+    let taskSample: any = null;
+    try {
+      const sample = await this.dataverse.get('/api/data/v9.2/msdyn_projecttasks?$top=1');
+      taskSample = sample?.value?.[0] || null;
+    } catch (e: any) {
+      return { ...result, ok: false, step: 'dv-sample-task', error: e?.message };
+    }
+    result.taskSampleFields = taskSample ? Object.keys(taskSample).filter(k => !k.startsWith('@')) : [];
+    result.taskSampleId = taskSample?.msdyn_projecttaskid || null;
+
+    // Project sample
+    const projectSample = await this.dataverse.getSampleProject();
+    result.projectSampleFields = projectSample ? Object.keys(projectSample).filter(k => !k.startsWith('@')) : [];
+    result.projectSampleId = projectSample?.msdyn_projectid || null;
+
+    // Step 2: Try direct mapping (likely null)
+    if (plannerTaskId) {
+      result.directMatch = await this.dataverse.findProjectTaskByPlannerId(plannerTaskId);
+    }
+
+    // Step 3: If email provided, use Graph API to get Planner task title
+    let subject = subjectOverride || '';
+    if (!subject && plannerTaskId && email) {
+      try {
+        const user = await (this.prisma as any).user.findFirst({
+          where: {
+            OR: [
+              { teamsUpn: { equals: email, mode: 'insensitive' } },
+              { email: { equals: email, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (user) {
+          const graphToken = await this.getGraphToken(user.id);
+          const task: any = await this.graphGet(graphToken, `/planner/tasks/${plannerTaskId}`);
+          subject = String(task?.title || '');
+          result.graphTaskTitle = subject;
+          result.graphPlanId = task?.planId || null;
+        }
+      } catch (e: any) {
+        result.graphError = e?.message || String(e);
+      }
+    }
+
+    // Step 4: Search Dataverse by subject
+    if (subject) {
+      try {
+        const matches = await this.dataverse.findProjectTasksBySubject(subject);
+        result.subjectSearch = {
+          subject,
+          count: matches.length,
+          matches: matches.map((m: any) => ({
+            id: m.msdyn_projecttaskid,
+            subject: m.msdyn_subject,
+            progress: m.msdyn_progress,
+            projectId: m._msdyn_project_value,
+          })),
+        };
+      } catch (e: any) {
+        result.subjectSearchError = e?.message || String(e);
+      }
+    }
+
+    return result;
   }
 
   // ─── Helper: decode JWT to inspect scopes ─────────────────

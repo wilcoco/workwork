@@ -136,10 +136,13 @@ export class DataverseService {
    * We try common candidates and inspect the schema on first use.
    */
   async findProjectTaskByPlannerId(plannerTaskId: string): Promise<any | null> {
-    // Try known candidate fields. Dataverse stores Planner integration key on the project task.
-    // Candidates observed in Project for the Web schema:
-    //   msdyn_plannertaskid / msdyn_sourceid / msdyn_externaltaskid
-    const candidates = ['msdyn_plannertaskid', 'msdyn_sourceid', 'msdyn_externaltaskid'];
+    const candidates = [
+      'msdyn_plannertaskid',
+      'msdyn_sourceid',
+      'msdyn_externaltaskid',
+      'msdyn_externalid',
+      'msdyn_identifier',
+    ];
     for (const field of candidates) {
       try {
         const escaped = plannerTaskId.replace(/'/g, "''");
@@ -153,5 +156,49 @@ export class DataverseService {
       }
     }
     return null;
+  }
+
+  /**
+   * Find msdyn_projecttask records by subject (title).
+   * Optionally filter by parent project GUID.
+   */
+  async findProjectTasksBySubject(
+    subject: string,
+    projectId?: string,
+  ): Promise<any[]> {
+    const escaped = subject.replace(/'/g, "''");
+    let filter = `msdyn_subject eq '${escaped}'`;
+    if (projectId) {
+      filter += ` and _msdyn_project_value eq ${projectId}`;
+    }
+    const resp = await this.get(
+      `/api/data/v9.2/msdyn_projecttasks?$filter=${encodeURIComponent(filter)}&$top=10`,
+    );
+    return resp?.value || [];
+  }
+
+  /** Fetch a sample msdyn_project record to inspect its schema. */
+  async getSampleProject(): Promise<any | null> {
+    try {
+      const resp = await this.get('/api/data/v9.2/msdyn_projects?$top=1');
+      return resp?.value?.[0] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** PATCH msdyn_projecttask by its Dataverse GUID. */
+  async patchProjectTask(
+    projectTaskId: string,
+    fields: { description?: string; progress?: number; subject?: string },
+  ): Promise<any> {
+    const body: any = {};
+    if (fields.description !== undefined) body.msdyn_description = fields.description;
+    if (fields.progress !== undefined) body.msdyn_progress = fields.progress;
+    if (fields.subject !== undefined) body.msdyn_subject = fields.subject;
+    return this.patch(
+      `/api/data/v9.2/msdyn_projecttasks(${projectTaskId})`,
+      body,
+    );
   }
 }
