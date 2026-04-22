@@ -770,9 +770,65 @@ export class GraphTasksController {
 
       // Planner Premium: Graph API PATCH is blocked. Fall back to Dataverse.
       if (patchRes.status === 403 && this.dataverse.isConfigured()) {
+        // Step A: Try attaching files as Planner references via a separate minimal PATCH
+        // (references-only, no description). Premium may allow references PATCH even when
+        // description PATCH is blocked.
+        let plannerReferencesAdded = 0;
+        const bodyForDataverse = { ...body };
+        if (body.attachments?.length) {
+          try {
+            const freshDetails: any = await this.graphGet(token, `/planner/tasks/${taskId}/details`);
+            const freshEtag = freshDetails?.['@odata.etag'];
+            const existingRefs = freshDetails?.references || {};
+            const newRefs: Record<string, any> = {};
+            for (const att of body.attachments) {
+              if (!att?.url) continue;
+              const key = att.url
+                .replace(/%/g, '%25')
+                .replace(/\./g, '%2E')
+                .replace(/:/g, '%3A')
+                .replace(/#/g, '%23')
+                .replace(/@/g, '%40');
+              if (existingRefs[key]) continue;
+              newRefs[key] = {
+                '@odata.type': '#microsoft.graph.plannerExternalReference',
+                alias: att.name || '첨부파일',
+                type: 'Other',
+              };
+            }
+            const newCount = Object.keys(newRefs).length;
+            if (newCount > 0 && freshEtag) {
+              const refRes = await fetch(
+                `https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`,
+                {
+                  method: 'PATCH',
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'If-Match': freshEtag,
+                  },
+                  body: JSON.stringify({ references: newRefs }),
+                },
+              );
+              if (refRes.ok) {
+                plannerReferencesAdded = newCount;
+                // Strip attachments so syncViaDataverse doesn't re-add them as text links
+                bodyForDataverse.attachments = [];
+                console.log(`[sync-worklog] refs-only PATCH succeeded: ${newCount} attachments → Planner`);
+              } else {
+                const rt = await refRes.text().catch(() => '');
+                console.error(`[sync-worklog] refs-only PATCH failed (${refRes.status}): ${rt.slice(0, 200)}`);
+              }
+            }
+          } catch (e: any) {
+            console.error(`[sync-worklog] refs-only PATCH error: ${e?.message}`);
+          }
+        }
+
+        // Step B: Run Dataverse flow for description + progress
         try {
-          const dvResult = await this.syncViaDataverse(taskId, body, token);
-          return { ok: true, method: 'dataverse', ...dvResult };
+          const dvResult = await this.syncViaDataverse(taskId, bodyForDataverse, token);
+          return { ok: true, method: 'dataverse', plannerReferencesAdded, ...dvResult };
         } catch (dvErr: any) {
           console.error(`[sync-worklog] Dataverse fallback failed: ${dvErr?.message}`);
           throw new BadRequestException(
