@@ -235,8 +235,16 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
         </div>
       )}
 
-      {showBody && worklog?.structuredData && (() => {
-        const sd = worklog.structuredData;
+      {showBody && (() => {
+        const sd = worklog?.structuredData;
+        const hasStructuredForm = !!sd && (
+          (Array.isArray(sd.todayTasks) && sd.todayTasks.length > 0) ||
+          (Array.isArray(sd.ongoingTasks) && sd.ongoingTasks.length > 0) ||
+          (Array.isArray(sd.issues) && sd.issues.length > 0) ||
+          (Array.isArray(sd.tomorrowPlan) && sd.tomorrowPlan.length > 0) ||
+          (typeof sd.remarks === 'string' && sd.remarks.trim())
+        );
+        if (!hasStructuredForm) return null;
         const statusLabel = (s: string) => s === 'completed' ? '완료' : s === 'in_progress' ? '진행' : '대기';
         const statusColor = (s: string) => s === 'completed' ? '#16a34a' : s === 'in_progress' ? '#2563eb' : '#94a3b8';
         return (
@@ -298,7 +306,17 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
         );
       })()}
 
-      {showBody && !worklog?.structuredData && (
+      {showBody && (() => {
+        const sd = worklog?.structuredData;
+        const hasStructuredForm = !!sd && (
+          (Array.isArray(sd.todayTasks) && sd.todayTasks.length > 0) ||
+          (Array.isArray(sd.ongoingTasks) && sd.ongoingTasks.length > 0) ||
+          (Array.isArray(sd.issues) && sd.issues.length > 0) ||
+          (Array.isArray(sd.tomorrowPlan) && sd.tomorrowPlan.length > 0) ||
+          (typeof sd.remarks === 'string' && sd.remarks.trim())
+        );
+        if (hasStructuredForm) return null;
+        return (
         <div>
           {contentHtml ? (
             <div
@@ -313,7 +331,8 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {showBody && Array.isArray(photos) && photos.length > 0 && (
         <div style={{ display: 'grid', gap: 8 }}>
