@@ -837,7 +837,6 @@ export class GraphTasksController {
     dvProjectId: string;
     opsetId: string;
     progressUpdated: boolean;
-    attachments: Array<{ name: string; ok: boolean; error?: string; size?: number }>;
   }> {
     // 1. Look up user's email for impersonation
     const user = await (this.prisma as any).user.findUnique({
@@ -884,14 +883,19 @@ export class GraphTasksController {
     const dvTask: any = dvTasks[0];
     const dvTaskId: string = dvTask.msdyn_projecttaskid;
 
-    // 6. Build description: use existing Dataverse description + new entry.
-    // Attachments go as real file notes (annotations) on the task, not text links.
+    // 6. Build description: existing Dataverse description + new entry (with OneDrive links).
+    // Files stay on OneDrive — we only append the sharing URLs, no duplication.
     const existing = String(dvTask.msdyn_description || '').trim();
     const dateStr = body.date || new Date().toISOString().slice(0, 10);
+    const attachmentLines = (body.attachments || [])
+      .filter(a => a?.url)
+      .map(a => `📎 ${a.name || '첨부파일'}: ${a.url}`)
+      .join('\n');
     const newEntry = [
       `\n\n--- 업무일지 (${dateStr}) ---`,
       `제목: ${body.title || '(제목 없음)'}`,
       body.content || '',
+      attachmentLines,
     ]
       .filter(Boolean)
       .join('\n')
@@ -925,59 +929,11 @@ export class GraphTasksController {
       { executorCallerId },
     );
 
-    // 10. Upload attachments as Dataverse annotations (notes) on the task.
-    // Each file is downloaded from SharePoint via Graph /shares/{id}/driveItem/content
-    // and uploaded as a base64 documentbody on an annotation record.
-    const attachments: Array<{ name?: string; url?: string }> = body.attachments || [];
-    const attachmentResults: Array<{ name: string; ok: boolean; error?: string; size?: number }> = [];
-    const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10 MB safety cap
-    for (const att of attachments) {
-      if (!att?.url) continue;
-      const name = att.name || '첨부파일';
-      try {
-        const shareId = 'u!' + Buffer.from(att.url, 'utf-8')
-          .toString('base64')
-          .replace(/=+$/, '')
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_');
-        const dlRes = await fetch(
-          `https://graph.microsoft.com/v1.0/shares/${shareId}/driveItem/content`,
-          { headers: { Authorization: `Bearer ${graphToken}` }, redirect: 'follow' },
-        );
-        if (!dlRes.ok) {
-          const t = await dlRes.text().catch(() => '');
-          throw new Error(`Graph 파일 다운로드 실패 (${dlRes.status}): ${t.slice(0, 150)}`);
-        }
-        const buf = Buffer.from(await dlRes.arrayBuffer());
-        if (buf.length > MAX_ATTACHMENT_BYTES) {
-          throw new Error(`파일 크기 초과 (${buf.length} bytes > ${MAX_ATTACHMENT_BYTES})`);
-        }
-        const mime = dlRes.headers.get('content-type') || 'application/octet-stream';
-        await this.dataverse.post(
-          '/api/data/v9.2/annotations',
-          {
-            'objectid_msdyn_projecttask@odata.bind': `/msdyn_projecttasks(${dvTaskId})`,
-            objecttypecode: 'msdyn_projecttask',
-            subject: `업무일지 (${dateStr}) - ${name}`,
-            filename: name,
-            documentbody: buf.toString('base64'),
-            mimetype: mime,
-          },
-          executorCallerId,
-        );
-        attachmentResults.push({ name, ok: true, size: buf.length });
-      } catch (e: any) {
-        attachmentResults.push({ name, ok: false, error: e?.message || String(e) });
-        console.error(`[sync-worklog][dataverse] attachment upload failed: ${name}: ${e?.message}`);
-      }
-    }
-
     return {
       dvTaskId,
       dvProjectId: projectId,
       opsetId: res.opsetId,
       progressUpdated,
-      attachments: attachmentResults,
     };
   }
 
