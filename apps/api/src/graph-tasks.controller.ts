@@ -127,6 +127,61 @@ export class GraphTasksController {
   }
 
   /**
+   * GET /api/graph-tasks/dataverse-entity-attrs?entity=msdyn_projecttaskattachment
+   * List all attributes (columns) of a Dataverse entity.
+   */
+  @Public()
+  @Get('dataverse-entity-attrs')
+  async dataverseEntityAttrs(@Query('entity') entity: string) {
+    if (!this.dataverse.isConfigured()) return { ok: false, error: 'Dataverse not configured.' };
+    const e = entity || 'msdyn_projecttaskattachment';
+    try {
+      const resp: any = await this.dataverse.get(
+        `/api/data/v9.2/EntityDefinitions(LogicalName='${e}')/Attributes?$select=LogicalName,SchemaName,AttributeType,IsCustomAttribute,RequiredLevel`,
+      );
+      const attrs = (resp?.value || [])
+        .map((a: any) => ({
+          logical: a.LogicalName,
+          type: a.AttributeType,
+          required: a.RequiredLevel?.Value,
+          custom: a.IsCustomAttribute,
+        }))
+        .sort((x: any, y: any) => x.logical.localeCompare(y.logical));
+      return { ok: true, entity: e, count: attrs.length, attrs };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+
+  /**
+   * GET /api/graph-tasks/dataverse-table-sample?entity=msdyn_projecttaskattachment&top=3
+   * Fetch a few sample records to inspect real data shape.
+   */
+  @Public()
+  @Get('dataverse-table-sample')
+  async dataverseTableSample(@Query('entity') entity: string, @Query('top') top: string) {
+    if (!this.dataverse.isConfigured()) return { ok: false, error: 'Dataverse not configured.' };
+    const e = entity || 'msdyn_projecttaskattachment';
+    const n = Math.max(1, Math.min(10, Number(top) || 3));
+    try {
+      // need EntitySetName for plural URL. Try common plural patterns.
+      const candidates = [`${e}s`, `${e}es`, e];
+      let lastErr: any = null;
+      for (const setName of candidates) {
+        try {
+          const resp = await this.dataverse.get(`/api/data/v9.2/${setName}?$top=${n}`);
+          return { ok: true, entity: e, setName, count: resp?.value?.length || 0, rows: resp?.value || [] };
+        } catch (err: any) {
+          lastErr = err;
+        }
+      }
+      return { ok: false, error: lastErr?.message || 'no candidate worked' };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+
+  /**
    * GET /api/graph-tasks/dataverse-entities?q=reference
    * Diagnostic: list Dataverse entities whose LogicalName contains the query string.
    * Used to discover the entity that stores Planner task references (attachments).
