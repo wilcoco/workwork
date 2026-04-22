@@ -374,6 +374,14 @@ export class DataverseService {
     }, callerSystemUserId);
   }
 
+  /** PssCreateV2 — for creating new records (msdyn_projecttaskattachment, etc.) within an OperationSet. */
+  async pssCreate(operationSetId: string, entities: any[], callerSystemUserId?: string): Promise<any> {
+    return this.post('/api/data/v9.2/msdyn_PssCreateV2', {
+      OperationSetId: operationSetId,
+      EntityCollection: entities,
+    }, callerSystemUserId);
+  }
+
   async executeOperationSet(operationSetId: string, callerSystemUserId?: string): Promise<any> {
     return this.post('/api/data/v9.2/msdyn_ExecuteOperationSetV1', {
       OperationSetId: operationSetId,
@@ -394,10 +402,9 @@ export class DataverseService {
     fields: { description?: string; progress?: number; subject?: string },
     callers: { creatorCallerId?: string; executorCallerId?: string } = {},
     attachments: Array<{ name: string; url: string; linkType?: string }> = [],
-  ): Promise<{ opsetId: string; pssUpdate: any; execute: any; attachmentIds: string[] }> {
-    const entities: any[] = [];
-
-    // Task update entity
+  ): Promise<{ opsetId: string; pssUpdate: any; pssCreate?: any; execute: any; attachmentIds: string[] }> {
+    // Update entities (existing task)
+    const updateEntities: any[] = [];
     const taskEntity: any = {
       '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_projecttask',
       msdyn_projecttaskid: projectTaskId,
@@ -405,15 +412,16 @@ export class DataverseService {
     if (fields.description !== undefined) taskEntity.msdyn_description = fields.description;
     if (fields.progress !== undefined) taskEntity.msdyn_progress = fields.progress;
     if (fields.subject !== undefined) taskEntity.msdyn_subject = fields.subject;
-    if (Object.keys(taskEntity).length > 2) entities.push(taskEntity);
+    if (Object.keys(taskEntity).length > 2) updateEntities.push(taskEntity);
 
-    // Attachment create entities (one per file) — new GUID triggers Create
+    // Create entities (new attachments) — each needs a fresh GUID so the server recognizes Create
+    const createEntities: any[] = [];
     const attachmentIds: string[] = [];
     for (const att of attachments) {
       if (!att?.url) continue;
       const newId = randomUUID();
       attachmentIds.push(newId);
-      entities.push({
+      createEntities.push({
         '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_projecttaskattachment',
         msdyn_projecttaskattachmentid: newId,
         msdyn_name: att.name || '첨부파일',
@@ -425,8 +433,18 @@ export class DataverseService {
 
     const opsetId = await this.createOperationSet(projectId, 'WorkWork sync-worklog', callers.creatorCallerId);
     if (!opsetId) throw new BadRequestException('Failed to create operation set');
-    const pssResp = await this.pssUpdate(opsetId, entities, callers.creatorCallerId);
+
+    let pssUpdateResp: any = null;
+    if (updateEntities.length) {
+      pssUpdateResp = await this.pssUpdate(opsetId, updateEntities, callers.creatorCallerId);
+    }
+
+    let pssCreateResp: any = null;
+    if (createEntities.length) {
+      pssCreateResp = await this.pssCreate(opsetId, createEntities, callers.creatorCallerId);
+    }
+
     const execResp = await this.executeOperationSet(opsetId, callers.executorCallerId);
-    return { opsetId, pssUpdate: pssResp, execute: execResp, attachmentIds };
+    return { opsetId, pssUpdate: pssUpdateResp, pssCreate: pssCreateResp, execute: execResp, attachmentIds };
   }
 }
