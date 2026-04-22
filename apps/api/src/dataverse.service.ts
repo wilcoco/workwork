@@ -290,7 +290,9 @@ export class DataverseService {
       msdyn_name: payload.name,
       msdyn_linkuri: payload.url,
       msdyn_linktype: payload.linkType || 'Other',
-      'msdyn_task@odata.bind': `/msdyn_projecttasks(${projectTaskId})`,
+      // Navigation property name (PascalCase) — NOT the logical attribute name.
+      // Relationship schema: msdyn_msdyn_projecttask_msdyn_projecttaskattachment_Task
+      'msdyn_Task@odata.bind': `/msdyn_projecttasks(${projectTaskId})`,
     };
     const url = `${this.getEnvUrl()}/api/data/v9.2/msdyn_projecttaskattachments`;
     const res = await fetch(url, {
