@@ -394,7 +394,24 @@ export function WorklogQuickNew() {
             urgent,
             visibility,
             tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode || hashTags.length) ? { ...tags, hashTags: hashTags.length ? hashTags : undefined } : undefined,
-            structuredData: structuredMode ? sections : undefined,
+            structuredData: (() => {
+              const base: any = structuredMode ? { ...sections } : {};
+              // Planner 선택 시 taskId/제목을 즉시 저장 (sync 실패해도 breadcrumb 최소 1단 보장)
+              if (selection.startsWith('planner:')) {
+                const pid = selection.substring(8);
+                const pt = plannerTasks.find((t) => t.id === pid);
+                if (pt) {
+                  base.planner = {
+                    taskId: pid,
+                    taskTitle: pt.title || '',
+                    planTitle: pt.planName || '',
+                    breadcrumb: [pt.planName, pt.title].filter(Boolean).join(' > '),
+                    savedAt: new Date().toISOString(),
+                  };
+                }
+              }
+              return Object.keys(base).length ? base : undefined;
+            })(),
             keywords: keywords.trim() || undefined,
           }),
         }
