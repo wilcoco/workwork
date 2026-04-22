@@ -177,10 +177,53 @@ export class DataverseService {
     if (projectId) {
       filter += ` and _msdyn_project_value eq ${projectId}`;
     }
+    const select = [
+      'msdyn_projecttaskid',
+      'msdyn_subject',
+      'msdyn_progress',
+      'msdyn_description',
+      'msdyn_outlinelevel',
+      'msdyn_displaysequence',
+      '_msdyn_project_value',
+      '_msdyn_parenttask_value',
+      '_msdyn_projectbucket_value',
+    ].join(',');
     const resp = await this.get(
-      `/api/data/v9.2/msdyn_projecttasks?$filter=${encodeURIComponent(filter)}&$top=10`,
+      `/api/data/v9.2/msdyn_projecttasks?$filter=${encodeURIComponent(filter)}&$select=${select}&$top=10`,
     );
     return resp?.value || [];
+  }
+
+  /**
+   * Walk up the _msdyn_parenttask_value chain to build the full parent hierarchy (breadcrumb).
+   * Returns an array ordered from root → direct parent (not including the task itself).
+   */
+  async buildTaskParentChain(taskId: string): Promise<Array<{ id: string; subject: string; outlineLevel?: number }>> {
+    const chain: Array<{ id: string; subject: string; outlineLevel?: number }> = [];
+    let cursor: string | null = taskId;
+    const visited = new Set<string>();
+    // Safety cap: Project for the Web typically allows ~10 levels; 20 is a hard stop
+    for (let i = 0; i < 20 && cursor; i++) {
+      if (visited.has(cursor)) break; // cycle guard
+      visited.add(cursor);
+      const t: any = await this.get(
+        `/api/data/v9.2/msdyn_projecttasks(${cursor})?$select=msdyn_projecttaskid,msdyn_subject,msdyn_outlinelevel,_msdyn_parenttask_value`,
+      ).catch(() => null);
+      if (!t) break;
+      const parentId: string | null = t?._msdyn_parenttask_value || null;
+      if (!parentId) break;
+      const parent: any = await this.get(
+        `/api/data/v9.2/msdyn_projecttasks(${parentId})?$select=msdyn_projecttaskid,msdyn_subject,msdyn_outlinelevel,_msdyn_parenttask_value`,
+      ).catch(() => null);
+      if (!parent) break;
+      chain.unshift({
+        id: parent.msdyn_projecttaskid,
+        subject: parent.msdyn_subject,
+        outlineLevel: parent.msdyn_outlinelevel,
+      });
+      cursor = parent._msdyn_parenttask_value || null;
+    }
+    return chain;
   }
 
   /** Fetch a sample msdyn_project record to inspect its schema. */

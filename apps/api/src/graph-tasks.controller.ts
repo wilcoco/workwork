@@ -240,16 +240,32 @@ export class GraphTasksController {
     if (subject) {
       try {
         const matches = await this.dataverse.findProjectTasksBySubject(subject, projectMatchId || undefined);
+        const enriched = await Promise.all(
+          matches.map(async (m: any) => {
+            const parents = await this.dataverse.buildTaskParentChain(m.msdyn_projecttaskid).catch(() => []);
+            const breadcrumb = [
+              ...parents.map(p => p.subject),
+              m.msdyn_subject,
+            ].join(' > ');
+            return {
+              id: m.msdyn_projecttaskid,
+              subject: m.msdyn_subject,
+              progress: m.msdyn_progress,
+              outlineLevel: m.msdyn_outlinelevel,
+              displaySequence: m.msdyn_displaysequence,
+              projectId: m._msdyn_project_value,
+              parentTaskId: m._msdyn_parenttask_value || null,
+              bucketId: m._msdyn_projectbucket_value || null,
+              parents,
+              breadcrumb,
+            };
+          }),
+        );
         result.subjectSearch = {
           subject,
           filteredByProjectId: projectMatchId,
           count: matches.length,
-          matches: matches.map((m: any) => ({
-            id: m.msdyn_projecttaskid,
-            subject: m.msdyn_subject,
-            progress: m.msdyn_progress,
-            projectId: m._msdyn_project_value,
-          })),
+          matches: enriched,
         };
 
         // Step 7: Look up systemuserid for impersonation (PSS requires Project license)
@@ -893,6 +909,8 @@ export class GraphTasksController {
     dvProjectId: string;
     opsetId: string;
     progressUpdated: boolean;
+    breadcrumb: string;
+    parents: Array<{ id: string; subject: string; outlineLevel?: number }>;
   }> {
     // 1. Look up user's email for impersonation
     const user = await (this.prisma as any).user.findUnique({
@@ -985,11 +1003,23 @@ export class GraphTasksController {
       { executorCallerId },
     );
 
+    // 10. Build parent breadcrumb for traceability in the response
+    const parents = await this.dataverse.buildTaskParentChain(dvTaskId).catch(() => []);
+    const breadcrumb = [
+      planTitle,
+      ...parents.map(p => p.subject),
+      subject,
+    ]
+      .filter(Boolean)
+      .join(' > ');
+
     return {
       dvTaskId,
       dvProjectId: projectId,
       opsetId: res.opsetId,
       progressUpdated,
+      breadcrumb,
+      parents,
     };
   }
 
