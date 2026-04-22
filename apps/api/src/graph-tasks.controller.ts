@@ -836,12 +836,38 @@ export class GraphTasksController {
     if (!body.userId) throw new BadRequestException('userId required');
     const token = await this.getGraphToken(body.userId);
 
-    // Fetch current task details to get etag + existing description
-    let details: any;
+    // Fetch current task details to get etag + existing description.
+    // Premium plans may block even GET on /details — in that case fall back to Dataverse directly.
+    let details: any = null;
+    let detailsFetchError: any = null;
     try {
       details = await this.graphGet(token, `/planner/tasks/${taskId}/details`);
-    } catch {
-      throw new BadRequestException('Planner 태스크 상세 정보를 가져올 수 없습니다.');
+    } catch (e: any) {
+      detailsFetchError = e;
+      console.error(`[sync-worklog] GET /details failed: ${e?.message || String(e)}`);
+    }
+    if (!details && this.dataverse.isConfigured()) {
+      // Graph GET blocked → go straight to Dataverse (it has its own description storage)
+      try {
+        const dvResult = await this.syncViaDataverse(taskId, body, token);
+        return {
+          ok: true,
+          method: 'dataverse',
+          plannerReferencesAdded: 0,
+          attachmentsError: 'graph-details-get-blocked',
+          ...dvResult,
+        };
+      } catch (dvErr: any) {
+        console.error(`[sync-worklog] Dataverse fallback (from GET-fail) failed: ${dvErr?.message}`);
+        throw new BadRequestException(
+          `Planner \ud0dc\uc2a4\ud06c \uc0c1\uc138 GET \uc2e4\ud328 + Dataverse fallback \uc2e4\ud328: ${dvErr?.message || String(dvErr)}`,
+        );
+      }
+    }
+    if (!details) {
+      throw new BadRequestException(
+        `Planner \ud0dc\uc2a4\ud06c \uc0c1\uc138 \uc815\ubcf4\ub97c \uac00\uc838\uc62c \uc218 \uc5c6\uc2b5\ub2c8\ub2e4: ${detailsFetchError?.message || ''}`,
+      );
     }
     const detailsEtag = details?.['@odata.etag'] || '';
     if (!detailsEtag) throw new BadRequestException('태스크 etag를 가져올 수 없습니다.');
