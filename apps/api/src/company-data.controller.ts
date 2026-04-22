@@ -8,7 +8,11 @@ import {
   Body,
   Param,
   BadRequestException,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { PrismaService } from './prisma.service';
 
 const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
@@ -104,13 +108,41 @@ export class CompanyDataController {
   }
 
   private async uploadFileToOpenAI(fileName: string, content: string): Promise<string> {
-    const f: any = (globalThis as any).fetch;
     const blob = new Blob([content], { type: 'text/plain' });
     const formData = new FormData();
     formData.append('purpose', 'assistants');
     formData.append('file', blob, fileName.endsWith('.txt') ? fileName : `${fileName}.txt`);
     const result = await this.oai('/files', { method: 'POST', formData });
     return result.id;
+  }
+
+  /** Upload binary file buffer (PDF/DOCX/PPTX/CSV/etc.) directly to OpenAI for file_search RAG. */
+  private async uploadBinaryToOpenAI(fileName: string, mimeType: string, buffer: Buffer): Promise<string> {
+    // @ts-ignore – Node 18+ has Blob global
+    const blob = new Blob([buffer], { type: mimeType || 'application/octet-stream' });
+    const formData = new FormData();
+    formData.append('purpose', 'assistants');
+    formData.append('file', blob, fileName);
+    const result = await this.oai('/files', { method: 'POST', formData });
+    return result.id;
+  }
+
+  /** Normalize xlsx → csv is not done here; OpenAI assistants file_search accepts many formats
+   * (pdf, docx, pptx, txt, md, csv, json, html, xml, + code files).
+   * xlsx is NOT supported directly — we reject and tell user to save as CSV.
+   */
+  private assertSupportedForFileSearch(fileName: string): void {
+    const ext = (fileName.match(/\.([a-z0-9]+)(?:[?#]|$)/i)?.[1] || '').toLowerCase();
+    const supported = new Set([
+      'pdf', 'docx', 'doc', 'pptx', 'ppt', 'txt', 'md', 'html', 'htm',
+      'csv', 'json', 'xml', 'tex', 'rtf',
+      'c', 'cpp', 'cs', 'java', 'js', 'ts', 'py', 'rb', 'go', 'php', 'sh',
+    ]);
+    if (!supported.has(ext)) {
+      throw new BadRequestException(
+        `지원하지 않는 파일 형식입니다 (.${ext}). OpenAI file_search는 PDF, Word(docx), PowerPoint(pptx), CSV, TXT, MD, JSON 등을 지원합니다. Excel(xlsx)은 CSV로 저장 후 업로드하세요.`,
+      );
+    }
   }
 
   private async addFileToVectorStore(vectorStoreId: string, fileId: string): Promise<void> {
@@ -171,6 +203,48 @@ export class CompanyDataController {
         fileUrl: body.fileUrl || '',
         fileName: body.fileName || body.title,
         content: textContent || null,
+        openaiFileId,
+        uploadedById: body.uploadedById,
+      },
+    });
+  }
+
+  /**
+   * POST /company-data/upload — multipart upload (file binary + metadata fields)
+   * Fields: title, description?, uploadedById, and 'file' (binary)
+   * The file binary is streamed directly to OpenAI for file_search RAG.
+   * Supported: PDF, DOCX, PPTX, CSV, TXT, MD, JSON, HTML, XML, + common source files.
+   * NOT supported: XLSX (convert to CSV), images (use text extraction first).
+   */
+  @Post('upload')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }))
+  async upload(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { title?: string; description?: string; uploadedById?: string },
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+    if (!body.uploadedById) throw new BadRequestException('uploadedById required');
+    const title = (body.title || file.originalname || '').trim();
+    if (!title) throw new BadRequestException('title required');
+
+    // Decode latin1 → utf-8 (multer quirk for Korean filenames)
+    let fileName = file.originalname || '';
+    try {
+      fileName = Buffer.from(fileName, 'latin1').toString('utf-8');
+    } catch {}
+    this.assertSupportedForFileSearch(fileName);
+
+    const vsId = await this.ensureVectorStore();
+    const openaiFileId = await this.uploadBinaryToOpenAI(fileName, file.mimetype, file.buffer);
+    await this.addFileToVectorStore(vsId, openaiFileId);
+
+    return this.prisma.companyData.create({
+      data: {
+        title,
+        description: body.description || null,
+        fileUrl: '',
+        fileName,
+        content: null, // binary — content kept in OpenAI vector store
         openaiFileId,
         uploadedById: body.uploadedById,
       },

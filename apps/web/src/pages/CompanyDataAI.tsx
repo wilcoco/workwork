@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { apiJson } from '../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { apiFetch, apiJson } from '../lib/api';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 
 interface DataSource {
@@ -38,6 +38,8 @@ export function CompanyDataAI() {
   const [addFileName, setAddFileName] = useState('');
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Edit
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -71,6 +73,37 @@ export function CompanyDataAI() {
       const res = await apiJson<ChatMsg[]>(`/api/company-data/chats?userId=${encodeURIComponent(userId)}`);
       setChatHistory(res || []);
     } catch {}
+  }
+
+  async function handleFileUpload(file: File) {
+    if (!userId) {
+      setError('로그인이 필요합니다.');
+      return;
+    }
+    const title = (addTitle.trim() || file.name).trim();
+    setUploading(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file, file.name);
+      fd.append('originalName', file.name);
+      fd.append('title', title);
+      if (addDesc.trim()) fd.append('description', addDesc.trim());
+      fd.append('uploadedById', userId);
+      const res = await apiFetch('/api/company-data/upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `업로드 실패 (${res.status})`);
+      }
+      setAddTitle(''); setAddDesc(''); setAddContent(''); setAddFileUrl(''); setAddFileName('');
+      setShowAdd(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      await loadData();
+    } catch (e: any) {
+      setError(e?.message || '파일 업로드 실패');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleAdd() {
@@ -242,13 +275,34 @@ export function CompanyDataAI() {
               <div style={{ display: 'grid', gap: 10 }}>
                 <input type="text" value={addTitle} onChange={(e) => setAddTitle(e.target.value)} placeholder="자료 제목 (예: 2026년 1분기 매출현황)" style={inputStyle} />
                 <input type="text" value={addDesc} onChange={(e) => setAddDesc(e.target.value)} placeholder="설명 (선택)" style={inputStyle} />
+                <div style={{ border: '1px dashed #3b82f6', borderRadius: 10, padding: 12, background: '#eff6ff' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a8a', marginBottom: 6 }}>
+                    📎 파일 업로드 (RAG 자동 처리)
+                  </div>
+                  <div style={{ fontSize: 12, color: '#475569', marginBottom: 8, lineHeight: 1.5 }}>
+                    PDF, Word(docx), PowerPoint(pptx), CSV, TXT, MD, JSON 등을 업로드하면<br />
+                    OpenAI가 자동으로 내용을 인식해 AI 질의에 활용합니다. (Excel은 CSV로 변환 후 업로드)
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.csv,.json,.xml,.html,.htm,.rtf"
+                    disabled={uploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFileUpload(f);
+                    }}
+                    style={{ fontSize: 13 }}
+                  />
+                  {uploading && <span style={{ marginLeft: 10, fontSize: 12, color: '#2563eb' }}>OpenAI 업로드 중…</span>}
+                </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button style={btnGhost} onClick={() => setShowFilePicker(true)}>OneDrive에서 파일 선택 (선택)</button>
+                  <button style={btnGhost} onClick={() => setShowFilePicker(true)}>OneDrive에서 파일 선택 (URL만 저장)</button>
                   {addFileName && <span style={{ fontSize: 13, color: '#475569' }}>{addFileName}</span>}
                 </div>
                 <div>
                   <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                    자료 내용 (텍스트) — 이 내용이 OpenAI에 업로드되어 AI가 참조합니다
+                    또는 자료 내용을 텍스트로 직접 입력 (복사·붙여넣기)
                   </label>
                   <textarea
                     value={addContent}
