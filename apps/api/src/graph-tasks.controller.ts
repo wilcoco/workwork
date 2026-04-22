@@ -973,13 +973,19 @@ export class GraphTasksController {
     const dvTaskId: string = dvTask.msdyn_projecttaskid;
 
     // 6. Build description: existing Dataverse description + new entry.
-    // 첨부파일은 Planner references(task details)로 별도 PATCH 되므로 description 텍스트에는 포함하지 않음.
+    // Premium은 Graph API references PATCH도 403이므로, syncViaDataverse로 전달된 attachments는
+    // refs-patch 실패분이다 → description 텍스트에 링크로 포함시켜 Planner UI에서 클릭 가능하게 한다.
     const existing = String(dvTask.msdyn_description || '').trim();
     const dateStr = body.date || new Date().toISOString().slice(0, 10);
+    const attachmentLines = (body.attachments || [])
+      .filter(a => a?.url)
+      .map(a => `📎 ${a.name || '첨부파일'}: ${a.url}`)
+      .join('\n');
     const newEntry = [
       `\n\n--- 업무일지 (${dateStr}) ---`,
       `제목: ${body.title || '(제목 없음)'}`,
       body.content || '',
+      attachmentLines,
     ]
       .filter(Boolean)
       .join('\n')
