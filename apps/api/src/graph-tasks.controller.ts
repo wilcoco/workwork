@@ -971,19 +971,14 @@ export class GraphTasksController {
     const dvTask: any = dvTasks[0];
     const dvTaskId: string = dvTask.msdyn_projecttaskid;
 
-    // 6. Build description: existing Dataverse description + new entry (with OneDrive links).
-    // Files stay on OneDrive — we only append the sharing URLs, no duplication.
+    // 6. Build description: existing Dataverse description + new entry.
+    // 첨부파일은 Planner references(task details)로 별도 PATCH 되므로 description 텍스트에는 포함하지 않음.
     const existing = String(dvTask.msdyn_description || '').trim();
     const dateStr = body.date || new Date().toISOString().slice(0, 10);
-    const attachmentLines = (body.attachments || [])
-      .filter(a => a?.url)
-      .map(a => `📎 ${a.name || '첨부파일'}: ${a.url}`)
-      .join('\n');
     const newEntry = [
       `\n\n--- 업무일지 (${dateStr}) ---`,
       `제목: ${body.title || '(제목 없음)'}`,
       body.content || '',
-      attachmentLines,
     ]
       .filter(Boolean)
       .join('\n')
