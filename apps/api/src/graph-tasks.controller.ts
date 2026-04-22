@@ -741,34 +741,9 @@ export class GraphTasksController {
     // Update description (max 32KB for Planner description)
     const desc = merged.length > 30000 ? merged.slice(-30000) : merged;
 
-    // Build patch body: description + optional file references
+    // Build patch body: description ONLY.
+    // 첨부는 아래에서 별도 PATCH(references-only)로 분리해 안정적으로 추가한다.
     const patchBody: any = { description: desc };
-
-    // Add attachments as external references (only NEW ones — do NOT re-send existing refs)
-    if (body.attachments?.length) {
-      const existingRefs = details?.references || {};
-      const newRefs: Record<string, any> = {};
-      for (const att of body.attachments) {
-        if (!att.url) continue;
-        // Planner reference key: URL with special chars percent-encoded
-        const encodedUrl = att.url
-          .replace(/%/g, '%25')
-          .replace(/\./g, '%2E')
-          .replace(/:/g, '%3A')
-          .replace(/#/g, '%23')
-          .replace(/@/g, '%40');
-        // Skip if already exists
-        if (existingRefs[encodedUrl]) continue;
-        newRefs[encodedUrl] = {
-          '@odata.type': '#microsoft.graph.plannerExternalReference',
-          alias: att.name || '첨부파일',
-          type: 'Other',
-        };
-      }
-      if (Object.keys(newRefs).length > 0) {
-        patchBody.references = newRefs;
-      }
-    }
 
     const patchRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`, {
       method: 'PATCH',
@@ -782,69 +757,18 @@ export class GraphTasksController {
     if (!patchRes.ok) {
       const text = await patchRes.text().catch(() => '');
       const scopes = this.decodeTokenScopes(token);
-      console.error(`[sync-worklog] PATCH failed: status=${patchRes.status}, scopes=${scopes}, body=${text.slice(0, 500)}`);
+      console.error(`[sync-worklog] description PATCH failed: status=${patchRes.status}, scopes=${scopes}, body=${text.slice(0, 500)}`);
 
-      // Planner Premium: Graph API PATCH is blocked. Fall back to Dataverse.
+      // Planner Premium: Graph API description PATCH is blocked. Try references-only PATCH first (may still work),
+      // then fall back to Dataverse for description + progress.
       if (patchRes.status === 403 && this.dataverse.isConfigured()) {
-        // Step A: Try attaching files as Planner references via a separate minimal PATCH
-        // (references-only, no description). Premium may allow references PATCH even when
-        // description PATCH is blocked.
-        let plannerReferencesAdded = 0;
+        const refsResult = await this.patchPlannerReferences(token, taskId, body.attachments || []);
         const bodyForDataverse = { ...body };
-        if (body.attachments?.length) {
-          try {
-            const freshDetails: any = await this.graphGet(token, `/planner/tasks/${taskId}/details`);
-            const freshEtag = freshDetails?.['@odata.etag'];
-            const existingRefs = freshDetails?.references || {};
-            const newRefs: Record<string, any> = {};
-            for (const att of body.attachments) {
-              if (!att?.url) continue;
-              const key = att.url
-                .replace(/%/g, '%25')
-                .replace(/\./g, '%2E')
-                .replace(/:/g, '%3A')
-                .replace(/#/g, '%23')
-                .replace(/@/g, '%40');
-              if (existingRefs[key]) continue;
-              newRefs[key] = {
-                '@odata.type': '#microsoft.graph.plannerExternalReference',
-                alias: att.name || '첨부파일',
-                type: 'Other',
-              };
-            }
-            const newCount = Object.keys(newRefs).length;
-            if (newCount > 0 && freshEtag) {
-              const refRes = await fetch(
-                `https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`,
-                {
-                  method: 'PATCH',
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'If-Match': freshEtag,
-                  },
-                  body: JSON.stringify({ references: newRefs }),
-                },
-              );
-              if (refRes.ok) {
-                plannerReferencesAdded = newCount;
-                // Strip attachments so syncViaDataverse doesn't re-add them as text links
-                bodyForDataverse.attachments = [];
-                console.log(`[sync-worklog] refs-only PATCH succeeded: ${newCount} attachments → Planner`);
-              } else {
-                const rt = await refRes.text().catch(() => '');
-                console.error(`[sync-worklog] refs-only PATCH failed (${refRes.status}): ${rt.slice(0, 200)}`);
-              }
-            }
-          } catch (e: any) {
-            console.error(`[sync-worklog] refs-only PATCH error: ${e?.message}`);
-          }
-        }
+        if (refsResult.added > 0) bodyForDataverse.attachments = [];
 
-        // Step B: Run Dataverse flow for description + progress
         try {
           const dvResult = await this.syncViaDataverse(taskId, bodyForDataverse, token);
-          return { ok: true, method: 'dataverse', plannerReferencesAdded, ...dvResult };
+          return { ok: true, method: 'dataverse', plannerReferencesAdded: refsResult.added, attachmentsError: refsResult.error, ...dvResult };
         } catch (dvErr: any) {
           console.error(`[sync-worklog] Dataverse fallback failed: ${dvErr?.message}`);
           throw new BadRequestException(
@@ -899,8 +823,85 @@ export class GraphTasksController {
       console.error(`[sync-worklog] post-patch task/plan fetch failed: ${e?.message}`);
     }
 
+    // Always run references-only PATCH (description PATCH already committed, so etag must be re-fetched)
+    const refsResult = await this.patchPlannerReferences(token, taskId, body.attachments || []);
+
     const breadcrumb = [planTitleGraph, taskTitle].filter(Boolean).join(' > ');
-    return { ok: true, method: 'graph', progressUpdated, breadcrumb, planTitle: planTitleGraph, taskTitle };
+    return {
+      ok: true,
+      method: 'graph',
+      progressUpdated,
+      breadcrumb,
+      planTitle: planTitleGraph,
+      taskTitle,
+      plannerReferencesAdded: refsResult.added,
+      attachmentsError: refsResult.error,
+    };
+  }
+
+  /**
+   * Attach files to a Planner task as external references. Performs a references-only PATCH
+   * (fetches fresh etag right before). Returns count added and any error message.
+   * Safe to call with empty array.
+   */
+  private async patchPlannerReferences(
+    token: string,
+    taskId: string,
+    attachments: Array<{ url: string; name: string }>,
+  ): Promise<{ added: number; error?: string }> {
+    if (!attachments?.length) return { added: 0 };
+    try {
+      const freshDetails: any = await this.graphGet(token, `/planner/tasks/${taskId}/details`);
+      const freshEtag: string | undefined = freshDetails?.['@odata.etag'];
+      const existingRefs: Record<string, any> = freshDetails?.references || {};
+      if (!freshEtag) return { added: 0, error: 'no-etag' };
+
+      const newRefs: Record<string, any> = {};
+      for (const att of attachments) {
+        if (!att?.url) continue;
+        // Planner reference key encoding: replace `:`, `.`, `@`, `#`, `%` per MS spec
+        const key = att.url
+          .replace(/%/g, '%25')
+          .replace(/\./g, '%2E')
+          .replace(/:/g, '%3A')
+          .replace(/#/g, '%23')
+          .replace(/@/g, '%40');
+        if (existingRefs[key]) continue;
+        newRefs[key] = {
+          '@odata.type': '#microsoft.graph.plannerExternalReference',
+          alias: att.name || '첨부파일',
+          type: 'Other',
+        };
+      }
+      const count = Object.keys(newRefs).length;
+      if (count === 0) {
+        console.log(`[refs-patch] no new refs to add (existing=${Object.keys(existingRefs).length}, input=${attachments.length})`);
+        return { added: 0 };
+      }
+
+      const res = await fetch(
+        `https://graph.microsoft.com/v1.0/planner/tasks/${taskId}/details`,
+        {
+          method: 'PATCH',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'If-Match': freshEtag,
+          },
+          body: JSON.stringify({ references: newRefs }),
+        },
+      );
+      if (res.ok) {
+        console.log(`[refs-patch] succeeded: added ${count} refs to task ${taskId}`);
+        return { added: count };
+      }
+      const text = await res.text().catch(() => '');
+      console.error(`[refs-patch] FAILED (${res.status}) task=${taskId}: ${text.slice(0, 400)}`);
+      return { added: 0, error: `${res.status}: ${text.slice(0, 200)}` };
+    } catch (e: any) {
+      console.error(`[refs-patch] exception task=${taskId}: ${e?.message}`);
+      return { added: 0, error: e?.message || String(e) };
+    }
   }
 
   /**
