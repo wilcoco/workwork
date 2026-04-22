@@ -275,6 +275,42 @@ export class DataverseService {
     );
   }
 
+  /**
+   * Create a Planner reference (attachment) record on a Project for the Web task.
+   * Writes directly to msdyn_projecttaskattachment — same table the Planner UI reads from,
+   * so the attachment becomes visible in Planner/Teams UI's 첨부 파일 area even for Premium.
+   */
+  async createTaskAttachment(
+    projectTaskId: string,
+    payload: { name: string; url: string; linkType?: string },
+    callerSystemUserId?: string,
+  ): Promise<any> {
+    const token = await this.getToken();
+    const body: any = {
+      msdyn_name: payload.name,
+      msdyn_linkuri: payload.url,
+      msdyn_linktype: payload.linkType || 'Other',
+      'msdyn_task@odata.bind': `/msdyn_projecttasks(${projectTaskId})`,
+    };
+    const url = `${this.getEnvUrl()}/api/data/v9.2/msdyn_projecttaskattachments`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...this.buildHeaders(token, callerSystemUserId),
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new BadRequestException(
+        `Dataverse createTaskAttachment failed (${res.status}): ${text.slice(0, 400)}`,
+      );
+    }
+    try { return JSON.parse(text); } catch { return text; }
+  }
+
   /** POST to Dataverse Web API (for custom actions). */
   async post(path: string, body: any, callerSystemUserId?: string): Promise<any> {
     const token = await this.getToken();

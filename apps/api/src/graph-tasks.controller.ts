@@ -1039,6 +1039,8 @@ export class GraphTasksController {
     progressUpdated: boolean;
     breadcrumb: string;
     parents: Array<{ id: string; subject: string; outlineLevel?: number }>;
+    attachmentsCreated?: number;
+    attachmentErrors?: string[];
   }> {
     // 1. Look up user's email for impersonation
     const user = await (this.prisma as any).user.findUnique({
@@ -1086,19 +1088,14 @@ export class GraphTasksController {
     const dvTaskId: string = dvTask.msdyn_projecttaskid;
 
     // 6. Build description: existing Dataverse description + new entry.
-    // Premium은 Graph API references PATCH도 403이므로, syncViaDataverse로 전달된 attachments는
-    // refs-patch 실패분이다 → description 텍스트에 링크로 포함시켜 Planner UI에서 클릭 가능하게 한다.
+    // 첨부는 아래(step 11)에서 msdyn_projecttaskattachment 레코드로 직접 생성되어
+    // Planner UI의 "첨부 파일" 영역에 표시되므로 description 텍스트에는 URL을 포함하지 않는다.
     const existing = String(dvTask.msdyn_description || '').trim();
     const dateStr = body.date || new Date().toISOString().slice(0, 10);
-    const attachmentLines = (body.attachments || [])
-      .filter(a => a?.url)
-      .map(a => `📎 ${a.name || '첨부파일'}: ${a.url}`)
-      .join('\n');
     const newEntry = [
       `\n\n--- 업무일지 (${dateStr}) ---`,
       `제목: ${body.title || '(제목 없음)'}`,
       body.content || '',
-      attachmentLines,
     ]
       .filter(Boolean)
       .join('\n')
@@ -1142,6 +1139,28 @@ export class GraphTasksController {
       .filter(Boolean)
       .join(' > ');
 
+    // 11. Create attachment records directly in Dataverse (msdyn_projecttaskattachment).
+    // Planner UI reads from this table, so attachments appear in 첨부 파일 area for Premium tasks.
+    let attachmentsCreated = 0;
+    const attachmentErrors: string[] = [];
+    if (body.attachments?.length) {
+      for (const att of body.attachments) {
+        if (!att?.url) continue;
+        try {
+          await this.dataverse.createTaskAttachment(dvTaskId, {
+            name: att.name || '첨부파일',
+            url: att.url,
+            linkType: this.inferLinkType(att.name || att.url),
+          }, executorCallerId);
+          attachmentsCreated++;
+        } catch (e: any) {
+          const msg = e?.message || String(e);
+          console.error(`[sync-dataverse] attachment create failed name="${att.name}": ${msg}`);
+          attachmentErrors.push(msg);
+        }
+      }
+    }
+
     return {
       dvTaskId,
       dvProjectId: projectId,
@@ -1149,7 +1168,28 @@ export class GraphTasksController {
       progressUpdated,
       breadcrumb,
       parents,
+      attachmentsCreated,
+      attachmentErrors: attachmentErrors.length ? attachmentErrors : undefined,
     };
+  }
+
+  /**
+   * Map file name / URL to msdyn_linktype value expected by Planner UI.
+   * Known valid values (from sample data + MS Graph parity): PowerPoint, Word, Excel, Pdf, OneNote, Video, Image, Other.
+   */
+  private inferLinkType(nameOrUrl: string): string {
+    const s = String(nameOrUrl || '').toLowerCase();
+    const ext = (s.match(/\.([a-z0-9]+)(?:[?#].*)?$/) || [])[1] || '';
+    switch (ext) {
+      case 'pptx': case 'ppt': case 'ppsx': case 'pps': return 'PowerPoint';
+      case 'docx': case 'doc': case 'rtf': return 'Word';
+      case 'xlsx': case 'xls': case 'xlsm': case 'csv': return 'Excel';
+      case 'pdf': return 'Pdf';
+      case 'one': case 'onepkg': return 'OneNote';
+      case 'mp4': case 'mov': case 'avi': case 'mkv': case 'webm': return 'Video';
+      case 'png': case 'jpg': case 'jpeg': case 'gif': case 'bmp': case 'svg': case 'webp': return 'Image';
+      default: return 'Other';
+    }
   }
 
   /**
