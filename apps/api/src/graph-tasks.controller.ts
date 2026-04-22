@@ -836,6 +836,11 @@ export class GraphTasksController {
     if (!body.userId) throw new BadRequestException('userId required');
     const token = await this.getGraphToken(body.userId);
 
+    // Strip inline images from content before sending to Planner.
+    // Planner description has a 32KB limit and chokes on base64 data URLs.
+    // Images are preserved in Worklog DB (attachments.contentHtml) — only the outgoing Planner copy is cleaned.
+    body.content = this.stripImagesForPlanner(body.content);
+
     // Fetch current task details to get etag + existing description.
     // Premium plans may block even GET on /details — in that case fall back to Dataverse directly.
     let details: any = null;
@@ -1184,6 +1189,21 @@ export class GraphTasksController {
       parents,
       attachmentsCreated: res.attachmentIds?.length || 0,
     };
+  }
+
+  /**
+   * Strip inline images from content before sending to Planner.
+   * - Removes <img> tags (including base64 data: URLs)
+   * - Removes standalone data:image/...;base64,... payloads
+   * - Leaves textual content + non-image HTML intact
+   */
+  private stripImagesForPlanner(content: string): string {
+    if (!content) return content;
+    return String(content)
+      .replace(/<img\b[^>]*>/gi, '')
+      .replace(/data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+/gi, '[이미지 제거됨]')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   /**
