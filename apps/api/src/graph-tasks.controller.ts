@@ -127,6 +127,64 @@ export class GraphTasksController {
   }
 
   /**
+   * GET /api/graph-tasks/dataverse-entities?q=reference
+   * Diagnostic: list Dataverse entities whose LogicalName contains the query string.
+   * Used to discover the entity that stores Planner task references (attachments).
+   */
+  @Public()
+  @Get('dataverse-entities')
+  async dataverseEntities(@Query('q') q: string) {
+    if (!this.dataverse.isConfigured()) return { ok: false, error: 'Dataverse not configured.' };
+    const query = (q || 'reference').toLowerCase();
+    try {
+      const resp = await this.dataverse.get(
+        `/api/data/v9.2/EntityDefinitions?$select=LogicalName,SchemaName,DisplayName,EntitySetName,IsCustomEntity&$filter=contains(LogicalName,'${query}')`,
+      );
+      const items = (resp?.value || []).map((r: any) => ({
+        logical: r.LogicalName,
+        schema: r.SchemaName,
+        setName: r.EntitySetName,
+        display: r.DisplayName?.UserLocalizedLabel?.Label || '',
+      }));
+      return { ok: true, query, count: items.length, items };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  /**
+   * GET /api/graph-tasks/dataverse-relationships?entity=msdyn_projecttask
+   * Diagnostic: list all 1:N/N:N relationships from a given entity.
+   */
+  @Public()
+  @Get('dataverse-relationships')
+  async dataverseRelationships(@Query('entity') entity: string) {
+    if (!this.dataverse.isConfigured()) return { ok: false, error: 'Dataverse not configured.' };
+    const e = entity || 'msdyn_projecttask';
+    try {
+      const meta: any = await this.dataverse.get(
+        `/api/data/v9.2/EntityDefinitions(LogicalName='${e}')?$expand=OneToManyRelationships($select=SchemaName,ReferencingEntity,ReferencingAttribute),ManyToManyRelationships($select=SchemaName,Entity1LogicalName,Entity2LogicalName)`,
+      );
+      return {
+        ok: true,
+        entity: e,
+        oneToMany: (meta?.OneToManyRelationships || []).map((r: any) => ({
+          schema: r.SchemaName,
+          childEntity: r.ReferencingEntity,
+          childAttribute: r.ReferencingAttribute,
+        })),
+        manyToMany: (meta?.ManyToManyRelationships || []).map((r: any) => ({
+          schema: r.SchemaName,
+          e1: r.Entity1LogicalName,
+          e2: r.Entity2LogicalName,
+        })),
+      };
+    } catch (err: any) {
+      return { ok: false, error: err?.message || String(err) };
+    }
+  }
+
+  /**
    * GET /api/graph-tasks/dataverse-test?plannerTaskId=xxx&email=xxx&subject=xxx
    * Diagnostic: full flow — Graph API GET task (by email) → Dataverse search by subject.
    */
