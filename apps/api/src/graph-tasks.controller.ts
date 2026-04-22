@@ -1121,12 +1121,22 @@ export class GraphTasksController {
       progressUpdated = true;
     }
 
-    // 9. Execute OperationSet mixed-mode flow (description + progress)
+    // 9. Execute OperationSet: task update + attachment creates in one transaction.
+    // Direct POST to msdyn_projecttaskattachment is blocked by PSS plugin,
+    // so we go through PssUpdateV2 (new GUID → Create operation).
+    const attachmentPayloads = (body.attachments || [])
+      .filter(a => a?.url)
+      .map(a => ({
+        name: a.name || '첨부파일',
+        url: a.url,
+        linkType: this.inferLinkType(a.name || a.url),
+      }));
     const res = await this.dataverse.updateProjectTaskViaOperationSet(
       dvTaskId,
       projectId,
       fields,
       { executorCallerId },
+      attachmentPayloads,
     );
 
     // 10. Build parent breadcrumb for traceability in the response
@@ -1139,28 +1149,6 @@ export class GraphTasksController {
       .filter(Boolean)
       .join(' > ');
 
-    // 11. Create attachment records directly in Dataverse (msdyn_projecttaskattachment).
-    // Planner UI reads from this table, so attachments appear in 첨부 파일 area for Premium tasks.
-    let attachmentsCreated = 0;
-    const attachmentErrors: string[] = [];
-    if (body.attachments?.length) {
-      for (const att of body.attachments) {
-        if (!att?.url) continue;
-        try {
-          await this.dataverse.createTaskAttachment(dvTaskId, {
-            name: att.name || '첨부파일',
-            url: att.url,
-            linkType: this.inferLinkType(att.name || att.url),
-          }, executorCallerId);
-          attachmentsCreated++;
-        } catch (e: any) {
-          const msg = e?.message || String(e);
-          console.error(`[sync-dataverse] attachment create failed name="${att.name}": ${msg}`);
-          attachmentErrors.push(msg);
-        }
-      }
-    }
-
     return {
       dvTaskId,
       dvProjectId: projectId,
@@ -1168,8 +1156,7 @@ export class GraphTasksController {
       progressUpdated,
       breadcrumb,
       parents,
-      attachmentsCreated,
-      attachmentErrors: attachmentErrors.length ? attachmentErrors : undefined,
+      attachmentsCreated: res.attachmentIds?.length || 0,
     };
   }
 

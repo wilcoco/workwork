@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 
 /**
  * Dataverse (Project for the Web / Planner Premium) client.
@@ -392,19 +393,40 @@ export class DataverseService {
     projectId: string,
     fields: { description?: string; progress?: number; subject?: string },
     callers: { creatorCallerId?: string; executorCallerId?: string } = {},
-  ): Promise<{ opsetId: string; pssUpdate: any; execute: any }> {
-    const entity: any = {
+    attachments: Array<{ name: string; url: string; linkType?: string }> = [],
+  ): Promise<{ opsetId: string; pssUpdate: any; execute: any; attachmentIds: string[] }> {
+    const entities: any[] = [];
+
+    // Task update entity
+    const taskEntity: any = {
       '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_projecttask',
       msdyn_projecttaskid: projectTaskId,
     };
-    if (fields.description !== undefined) entity.msdyn_description = fields.description;
-    if (fields.progress !== undefined) entity.msdyn_progress = fields.progress;
-    if (fields.subject !== undefined) entity.msdyn_subject = fields.subject;
+    if (fields.description !== undefined) taskEntity.msdyn_description = fields.description;
+    if (fields.progress !== undefined) taskEntity.msdyn_progress = fields.progress;
+    if (fields.subject !== undefined) taskEntity.msdyn_subject = fields.subject;
+    if (Object.keys(taskEntity).length > 2) entities.push(taskEntity);
+
+    // Attachment create entities (one per file) — new GUID triggers Create
+    const attachmentIds: string[] = [];
+    for (const att of attachments) {
+      if (!att?.url) continue;
+      const newId = randomUUID();
+      attachmentIds.push(newId);
+      entities.push({
+        '@odata.type': 'Microsoft.Dynamics.CRM.msdyn_projecttaskattachment',
+        msdyn_projecttaskattachmentid: newId,
+        msdyn_name: att.name || '첨부파일',
+        msdyn_linkuri: att.url,
+        msdyn_linktype: att.linkType || 'Other',
+        'msdyn_Task@odata.bind': `/msdyn_projecttasks(${projectTaskId})`,
+      });
+    }
 
     const opsetId = await this.createOperationSet(projectId, 'WorkWork sync-worklog', callers.creatorCallerId);
     if (!opsetId) throw new BadRequestException('Failed to create operation set');
-    const pssResp = await this.pssUpdate(opsetId, [entity], callers.creatorCallerId);
+    const pssResp = await this.pssUpdate(opsetId, entities, callers.creatorCallerId);
     const execResp = await this.executeOperationSet(opsetId, callers.executorCallerId);
-    return { opsetId, pssUpdate: pssResp, execute: execResp };
+    return { opsetId, pssUpdate: pssResp, execute: execResp, attachmentIds };
   }
 }
