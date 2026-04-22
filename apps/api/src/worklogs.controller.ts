@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
@@ -170,6 +170,51 @@ class CreateSimpleWorklogDto {
 @Controller('worklogs')
 export class WorklogsController {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * PATCH /api/worklogs/:id/planner-info
+   * Merge Planner/Project sync metadata (breadcrumb, taskId, titles) into structuredData.planner
+   */
+  @Patch(':id/planner-info')
+  async updatePlannerInfo(
+    @Param('id') id: string,
+    @Body() body: {
+      userId: string;
+      taskId?: string;
+      taskTitle?: string;
+      planTitle?: string;
+      breadcrumb?: string;
+      method?: 'graph' | 'dataverse';
+      parents?: Array<{ id: string; subject: string; outlineLevel?: number }>;
+      dvTaskId?: string;
+      dvProjectId?: string;
+    },
+  ) {
+    const wl = await (this.prisma as any).worklog.findUnique({ where: { id } });
+    if (!wl) throw new BadRequestException('Worklog not found');
+    if (wl.createdById !== body.userId) throw new BadRequestException('Unauthorized');
+    const current = (wl.structuredData as any) || {};
+    const next = {
+      ...current,
+      planner: {
+        ...(current.planner || {}),
+        taskId: body.taskId,
+        taskTitle: body.taskTitle,
+        planTitle: body.planTitle,
+        breadcrumb: body.breadcrumb,
+        method: body.method,
+        parents: body.parents,
+        dvTaskId: body.dvTaskId,
+        dvProjectId: body.dvProjectId,
+        syncedAt: new Date().toISOString(),
+      },
+    };
+    await (this.prisma as any).worklog.update({
+      where: { id },
+      data: { structuredData: next },
+    });
+    return { ok: true, planner: next.planner };
+  }
 
   private graphTokenCache: { token: string; expMs: number } | null = null;
 

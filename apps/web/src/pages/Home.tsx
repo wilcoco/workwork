@@ -401,8 +401,15 @@ export function Home() {
                       const thumbSize = 40;
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                       const snippet = (snippetSrc || '').trim();
+                      const planner = (anyW.structuredData && anyW.structuredData.planner) || null;
+                      const breadcrumb = String(planner?.breadcrumb || '').trim();
                       return (
                         <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                          {breadcrumb && (
+                            <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: 6, padding: '3px 8px', display: 'inline-block', fontWeight: 600, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                              📋 {breadcrumb}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {viewMode === 'full' ? (
                               <UserAvatar userId={authorId} name={authorName || w.title} size={thumbSize} style={{ borderRadius: 8 }} />
@@ -463,8 +470,15 @@ export function Home() {
                       const thumbSize = 40;
                       const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
                       const snippet = (snippetSrc || '').trim();
+                      const planner = (anyW.structuredData && anyW.structuredData.planner) || null;
+                      const breadcrumb = String(planner?.breadcrumb || '').trim();
                       return (
                         <div key={w.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                          {breadcrumb && (
+                            <div style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: 6, padding: '3px 8px', display: 'inline-block', fontWeight: 600, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                              📋 {breadcrumb}
+                            </div>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {viewMode === 'full' ? (
                               <UserAvatar userId={authorId} name={authorName || w.title} size={thumbSize} style={{ borderRadius: 8 }} />

@@ -860,33 +860,47 @@ export class GraphTasksController {
 
     // Update progress (percentComplete)
     let progressUpdated = false;
-    if (body.percentComplete !== undefined && body.percentComplete !== null) {
-      // Small delay to let Graph API settle after description patch (etag conflict prevention)
-      await new Promise(r => setTimeout(r, 1000));
+    let taskTitle = '';
+    let planTitleGraph = '';
+    try {
       const taskData: any = await this.graphGet(token, `/planner/tasks/${taskId}`);
-      const taskEtag = taskData?.['@odata.etag'] || '';
-      if (!taskEtag) {
-        console.error('[sync-worklog] progress update failed: no etag from task');
-      } else {
-        const progressRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
-          method: 'PATCH',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'If-Match': taskEtag,
-          },
-          body: JSON.stringify({ percentComplete: body.percentComplete }),
-        });
-        if (!progressRes.ok) {
-          const errText = await progressRes.text().catch(() => '');
-          console.error(`[sync-worklog] progress update failed (${progressRes.status}): ${errText.slice(0, 300)}`);
+      taskTitle = String(taskData?.title || '');
+      const planId = String(taskData?.planId || '');
+      if (planId) {
+        const plan: any = await this.graphGet(token, `/planner/plans/${planId}`);
+        planTitleGraph = String(plan?.title || '');
+      }
+      if (body.percentComplete !== undefined && body.percentComplete !== null) {
+        // Small delay to let Graph API settle after description patch (etag conflict prevention)
+        await new Promise(r => setTimeout(r, 1000));
+        const taskRefresh: any = await this.graphGet(token, `/planner/tasks/${taskId}`);
+        const taskEtag = taskRefresh?.['@odata.etag'] || '';
+        if (!taskEtag) {
+          console.error('[sync-worklog] progress update failed: no etag from task');
         } else {
-          progressUpdated = true;
+          const progressRes = await fetch(`https://graph.microsoft.com/v1.0/planner/tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'If-Match': taskEtag,
+            },
+            body: JSON.stringify({ percentComplete: body.percentComplete }),
+          });
+          if (!progressRes.ok) {
+            const errText = await progressRes.text().catch(() => '');
+            console.error(`[sync-worklog] progress update failed (${progressRes.status}): ${errText.slice(0, 300)}`);
+          } else {
+            progressUpdated = true;
+          }
         }
       }
+    } catch (e: any) {
+      console.error(`[sync-worklog] post-patch task/plan fetch failed: ${e?.message}`);
     }
 
-    return { ok: true, progressUpdated };
+    const breadcrumb = [planTitleGraph, taskTitle].filter(Boolean).join(' > ');
+    return { ok: true, method: 'graph', progressUpdated, breadcrumb, planTitle: planTitleGraph, taskTitle };
   }
 
   /**

@@ -519,7 +519,17 @@ export function WorklogQuickNew() {
             ...attachments.map(a => ({ url: a.url, name: a.name || a.filename || '첨부파일' })),
             ...photos.map(p => ({ url: p.url, name: p.name || p.filename || '사진' })),
           ].filter(f => f.url);
-          const syncResult = await apiJson<{ ok: boolean; progressUpdated?: boolean }>(`/api/graph-tasks/${encodeURIComponent(selectedId)}/sync-worklog`, {
+          const syncResult = await apiJson<{
+            ok: boolean;
+            progressUpdated?: boolean;
+            method?: 'graph' | 'dataverse';
+            breadcrumb?: string;
+            planTitle?: string;
+            taskTitle?: string;
+            parents?: Array<{ id: string; subject: string; outlineLevel?: number }>;
+            dvTaskId?: string;
+            dvProjectId?: string;
+          }>(`/api/graph-tasks/${encodeURIComponent(selectedId)}/sync-worklog`, {
             method: 'POST',
             body: JSON.stringify({
               userId,
@@ -530,6 +540,24 @@ export function WorklogQuickNew() {
               attachments: allFiles.length ? allFiles : undefined,
             }),
           });
+          // Persist planner breadcrumb onto the worklog so Home page can display it
+          try {
+            const plannerTask = plannerTasks.find((t) => t.id === selectedId);
+            await apiJson(`/api/worklogs/${encodeURIComponent(wl.id)}/planner-info`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                userId,
+                taskId: selectedId,
+                taskTitle: syncResult.taskTitle || plannerTask?.title,
+                planTitle: syncResult.planTitle || plannerTask?.planName,
+                breadcrumb: syncResult.breadcrumb,
+                method: syncResult.method,
+                parents: syncResult.parents,
+                dvTaskId: syncResult.dvTaskId,
+                dvProjectId: syncResult.dvProjectId,
+              }),
+            });
+          } catch {}
           if (initiativeDone && !syncResult.progressUpdated) {
             alert('업무일지 → Planner 내용 동기화 완료.\n\n⚠️ 진행률(완료) 업데이트가 실패했습니다.\nTeams Planner에서 직접 완료 처리해주세요.');
           }
