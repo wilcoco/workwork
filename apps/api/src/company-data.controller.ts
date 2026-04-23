@@ -397,6 +397,64 @@ export class CompanyDataController {
   // ─── Diagnostics ───────────────────────────────────────
 
   /**
+   * GET /company-data/openai-account
+   * Identifies which OpenAI account/organization/project the configured API key belongs to.
+   * Also calls a cheap endpoint (/models) to confirm the key actually works and surface org/project headers.
+   */
+  @Public()
+  @Get('openai-account')
+  async openaiAccount() {
+    const f: any = (globalThis as any).fetch;
+    const picks = [
+      { name: 'OPENAI_API_KEY', key: process.env.OPENAI_API_KEY },
+      { name: 'OPENAI_API_KEY_CAMS', key: process.env.OPENAI_API_KEY_CAMS },
+      { name: 'OPENAI_API_KEY_IAT', key: process.env.OPENAI_API_KEY_IAT },
+    ].filter((p) => !!p.key);
+
+    const results: any[] = [];
+    for (const p of picks) {
+      const prefix = (p.key || '').slice(0, 10);
+      const suffix = (p.key || '').slice(-4);
+      const entry: any = { envVar: p.name, keyPrefix: `${prefix}...${suffix}` };
+      try {
+        // /v1/me is undocumented but returns user info when the key is a user key.
+        const meResp = await f('https://api.openai.com/v1/me', {
+          headers: { Authorization: `Bearer ${p.key}` },
+        });
+        if (meResp.ok) entry.me = await meResp.json();
+        else entry.meError = `${meResp.status} ${(await meResp.text().catch(() => '')).slice(0, 200)}`;
+      } catch (e: any) {
+        entry.meError = e?.message;
+      }
+      try {
+        // /v1/organization/me — newer endpoint for org info
+        const orgResp = await f('https://api.openai.com/v1/organization', {
+          headers: { Authorization: `Bearer ${p.key}` },
+        });
+        if (orgResp.ok) entry.organization = await orgResp.json();
+        else entry.organizationError = `${orgResp.status}`;
+      } catch {}
+      try {
+        // /v1/models — always works with any valid key; response headers expose org id
+        const modelsResp = await f('https://api.openai.com/v1/models?limit=1', {
+          headers: { Authorization: `Bearer ${p.key}` },
+        });
+        entry.modelsStatus = modelsResp.status;
+        entry.headers = {
+          'openai-organization': modelsResp.headers.get('openai-organization'),
+          'openai-project': modelsResp.headers.get('openai-project'),
+          'openai-processing-ms': modelsResp.headers.get('openai-processing-ms'),
+        };
+      } catch (e: any) {
+        entry.modelsError = e?.message;
+      }
+      results.push(entry);
+    }
+
+    return { count: results.length, keys: results };
+  }
+
+  /**
    * GET /company-data/debug
    * Returns the current vector store + assistant + file list so we can see why AI says "모른다".
    * Use this when user uploads a file but AI can't find it.
