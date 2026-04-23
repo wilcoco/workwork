@@ -144,7 +144,7 @@ export class WeeklyReportsController {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          model: process.env.OPENAI_MODEL || 'gpt-4.1',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `다음은 ${user.name}님의 이번 주(${body.weekStart}) 업무일지입니다:\n\n${logTexts}` },

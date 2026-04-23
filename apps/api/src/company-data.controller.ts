@@ -104,6 +104,18 @@ export class CompanyDataController {
       const found = (list?.data || []).find((a: any) => a?.name === ASSISTANT_NAME);
       if (found?.id) {
         console.log(`[company-data] Reusing existing assistant: ${found.id}`);
+        // Check if model needs update
+        if (found.model !== 'gpt-4.1') {
+          console.log(`[company-data] Updating assistant model from ${found.model} to gpt-4.1`);
+          try {
+            await this.oai(`/assistants/${found.id}`, {
+              method: 'PATCH',
+              body: { model: 'gpt-4.1' },
+            });
+          } catch (e: any) {
+            console.error(`[company-data] Failed to update assistant model: ${e?.message}`);
+          }
+        }
         CompanyDataController.cachedAssistantId = found.id;
         return found.id;
       }
@@ -113,7 +125,7 @@ export class CompanyDataController {
     const assistant = await this.oai('/assistants', {
       method: 'POST',
       body: {
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1',
         name: ASSISTANT_NAME,
         instructions: ASSISTANT_INSTRUCTIONS,
         tools: [{ type: 'file_search' }],
@@ -644,7 +656,7 @@ export class CompanyDataController {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4.1',
         messages: [
           { role: 'system', content: ASSISTANT_INSTRUCTIONS },
           { role: 'user', content: `## 회사 자료\n\n${context}\n\n## 질문\n${question}` },
