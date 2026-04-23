@@ -154,7 +154,7 @@ export class SharePointSyncController {
         requests: [{
           entityTypes: ['listItem'],
           query: {
-            queryString: '*'
+            queryString: `path:"${list.webUrl}"` // Filter by specific list URL
           },
           from: 0,
           size: maxItems,
