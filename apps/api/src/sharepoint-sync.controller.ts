@@ -147,25 +147,30 @@ export class SharePointSyncController {
         throw new BadRequestException(`List '${listName}' not found`);
       }
 
-      // Get list items with limit using ID range to avoid list view threshold
-      // Use ID filter which is indexed in SharePoint
-      const itemsUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields&$orderby=ID desc&$top=${maxItems}`;
+      // Get list items using SharePoint Search API to avoid list view threshold
+      // Search API can handle large lists better than list items API
+      let searchUrl = `https://graph.microsoft.com/v1.0/search/query?$top=${maxItems}&entityTypes=["listItem"]&query="*"&sortProperties=[{"name":"Created","isDescending":true}]`;
+      if (startDate) {
+        searchUrl += `&filters="range(created,ge,'${startDate}')"`;
+      }
 
-      const itemsResp = await fetchFn(itemsUrl, {
+      const searchResp = await fetchFn(searchUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!itemsResp.ok) {
-        const text = await itemsResp.text().catch(() => '');
-        throw new BadRequestException(`Failed to get list items: ${itemsResp.status} ${text}`);
+
+      if (!searchResp.ok) {
+        const text = await searchResp.text().catch(() => '');
+        throw new BadRequestException(`Failed to search list items: ${searchResp.status} ${text}`);
       }
-      const itemsData = await itemsResp.json();
-      const items = (itemsData.value || []).map((item: any) => ({
-        id: item.id,
-        name: item.fields?.Title || item.id,
-        webUrl: item.webUrl,
-        fields: item.fields,
-        lastModified: item.lastModifiedDateTime,
-        created: item.createdDateTime,
+
+      const searchData = await searchResp.json();
+      const items = (searchData.value?.[0]?.hitsContainers?.[0]?.hits || []).map((hit: any) => ({
+        id: hit.resource.id,
+        name: hit.resource.fields?.Title || hit.resource.id,
+        webUrl: hit.resource.webUrl,
+        fields: hit.resource.fields,
+        lastModified: hit.resource.fields?.LastModifiedTime,
+        created: hit.resource.fields?.Created,
       }));
 
       return { items, total: items.length, listId: list.id, listName: list.displayName };
