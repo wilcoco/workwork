@@ -30,6 +30,7 @@ export function WorklogAnalysis() {
   const [siteId, setSiteId] = useState<string>('');
   const [hostname, setHostname] = useState('cams2002.sharepoint.com');
   const [sitePath, setSitePath] = useState('/sites/msteams_03d426');
+  const [listName, setListName] = useState('WorkReports'); // SharePoint list name
 
   // Chat
   const [question, setQuestion] = useState('');
@@ -76,8 +77,11 @@ export function WorklogAnalysis() {
     }
     setLoadingSharePoint(true);
     try {
-      const res = await apiJson<{ files: any[] }>(`/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}`);
-      setSharePointFiles(res.files || []);
+      const url = listName
+        ? `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&listName=${encodeURIComponent(listName)}`
+        : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}`;
+      const res = await apiJson<{ files?: any[]; items?: any[]; total: number }>(url);
+      setSharePointFiles(res.files || res.items || []);
     } catch (e: any) {
       console.error('Failed to load SharePoint files:', e?.message);
       alert(`SharePoint 파일 목록 로드 실패: ${e?.message}`);
@@ -212,6 +216,17 @@ export function WorklogAnalysis() {
                   onChange={(e) => setSitePath(e.target.value)}
                 />
               </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">List Name (선택사항 - SharePoint List인 경우)</label>
+              <input
+                type="text"
+                className="w-full border rounded px-3 py-2"
+                placeholder="WorkReports"
+                value={listName}
+                onChange={(e) => setListName(e.target.value)}
+              />
+              <div className="text-xs text-gray-500 mt-1">비워두면 Drive 파일을 읽습니다.</div>
             </div>
             <div className="flex gap-2">
               <button

@@ -110,11 +110,15 @@ export class SharePointSyncController {
 
   /**
    * GET /sharepoint-sync/files
-   * List SharePoint files from a given site.
+   * List SharePoint files or list items from a given site.
    * Requires user's Graph access token.
    */
   @Get('files')
-  async listSharePointFiles(@Query('userId') userId: string, @Query('siteId') siteId?: string) {
+  async listSharePointFiles(
+    @Query('userId') userId: string,
+    @Query('siteId') siteId?: string,
+    @Query('listName') listName?: string, // e.g., 'WorkReports'
+  ) {
     if (!userId) throw new BadRequestException('userId required');
 
     const token = await this.getGraphToken(userId);
@@ -123,28 +127,67 @@ export class SharePointSyncController {
     const targetSiteId = siteId || 'root';
 
     const fetchFn: any = (globalThis as any).fetch;
-    const resp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/root/children`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`Graph API error: ${resp.status} ${text}`);
-    }
-    
-    const data = await resp.json();
-    const files = (data.value || [])
-      .filter((item: any) => item.file && !item.folder) // Only files, not folders
-      .map((item: any) => ({
+
+    // If listName is provided, read list items; otherwise read drive files
+    if (listName) {
+      // Get list ID by name
+      const listsResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists?$filter=displayName eq '${listName}'`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!listsResp.ok) {
+        const text = await listsResp.text().catch(() => '');
+        throw new BadRequestException(`Failed to get list: ${listsResp.status} ${text}`);
+      }
+      const listsData = await listsResp.json();
+      const list = listsData.value?.[0];
+      if (!list) {
+        throw new BadRequestException(`List '${listName}' not found`);
+      }
+
+      // Get list items
+      const itemsResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!itemsResp.ok) {
+        const text = await itemsResp.text().catch(() => '');
+        throw new BadRequestException(`Failed to get list items: ${itemsResp.status} ${text}`);
+      }
+      const itemsData = await itemsResp.json();
+      const items = (itemsData.value || []).map((item: any) => ({
         id: item.id,
-        name: item.name,
+        name: item.fields?.Title || item.id,
         webUrl: item.webUrl,
-        size: item.size,
+        fields: item.fields,
         lastModified: item.lastModifiedDateTime,
         created: item.createdDateTime,
       }));
-    
-    return { files, total: files.length };
+
+      return { items, total: items.length, listId: list.id, listName: list.displayName };
+    } else {
+      // Read drive files
+      const resp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/root/children`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        throw new BadRequestException(`Graph API error: ${resp.status} ${text}`);
+      }
+
+      const data = await resp.json();
+      const files = (data.value || [])
+        .filter((item: any) => item.file && !item.folder) // Only files, not folders
+        .map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          webUrl: item.webUrl,
+          size: item.size,
+          lastModified: item.lastModifiedDateTime,
+          created: item.createdDateTime,
+        }));
+
+      return { files, total: files.length };
+    }
   }
 
   /**
