@@ -179,7 +179,7 @@ export class CompanyDataController {
     return result.id;
   }
 
-  /** Convert Excel buffer to CSV string using xlsx library. */
+  /** Convert Excel buffer to CSV string using xlsx library, with merged cell values replicated. */
   private excelBufferToCsv(buffer: Buffer, fileName: string): { csv: string; csvFileName: string } {
     try {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -188,8 +188,34 @@ export class CompanyDataController {
         throw new BadRequestException('Excel 파일에 시트가 없습니다.');
       }
       const worksheet = workbook.Sheets[sheetName];
+
+      // Handle merged cells: replicate the merged value to all cells in the range
+      const merges = worksheet['!merges'] || [];
+      if (merges.length > 0) {
+        console.log(`[company-data] Processing ${merges.length} merged cell ranges`);
+        for (const merge of merges) {
+          const { s: start, e: end } = merge; // start and end {r: row, c: col}
+          const topLeftCell = worksheet[XLSX.utils.encode_cell(start)];
+          if (!topLeftCell) continue;
+          const mergedValue = topLeftCell.v;
+
+          // Fill all cells in the merge range with the merged value
+          for (let r = start.r; r <= end.r; r++) {
+            for (let c = start.c; c <= end.c; c++) {
+              const cellRef = XLSX.utils.encode_cell({ r, c });
+              if (!worksheet[cellRef]) {
+                worksheet[cellRef] = { t: 's', v: mergedValue };
+              } else {
+                worksheet[cellRef].v = mergedValue;
+              }
+            }
+          }
+        }
+      }
+
       const csv = XLSX.utils.sheet_to_csv(worksheet);
       const csvFileName = fileName.replace(/\.[^.]+$/, '.csv');
+      console.log(`[company-data] Excel to CSV conversion complete: ${csvFileName} (${csv.length} bytes)`);
       return { csv, csvFileName };
     } catch (e: any) {
       console.error('[company-data] Excel to CSV conversion failed:', e?.message);
