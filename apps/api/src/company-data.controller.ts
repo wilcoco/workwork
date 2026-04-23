@@ -24,8 +24,16 @@ const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터�
 - 가능하면 표 형태로 비교/정리해주세요.
 - 한국어로 답변하세요.`;
 
+const VECTOR_STORE_NAME = 'company-data';
+const ASSISTANT_NAME = '회사 데이터 분석';
+
 @Controller('company-data')
 export class CompanyDataController {
+  // In-process caches so we don't re-query OpenAI every call.
+  // Also survives lack of env vars across a single Railway container lifetime.
+  private static cachedVectorStoreId: string | null = null;
+  private static cachedAssistantId: string | null = null;
+
   constructor(private prisma: PrismaService) {}
 
   private getApiKey(): string {
@@ -59,25 +67,54 @@ export class CompanyDataController {
   // ─── Assistants / Vector Store helpers ─────────────────
 
   private async ensureVectorStore(): Promise<string> {
-    const vsId = process.env.OPENAI_VECTOR_STORE_ID;
-    if (vsId) return vsId;
-    // Create one
+    // 1. Env var takes priority
+    const envId = process.env.OPENAI_VECTOR_STORE_ID;
+    if (envId) return envId;
+    // 2. In-process cache
+    if (CompanyDataController.cachedVectorStoreId) return CompanyDataController.cachedVectorStoreId;
+    // 3. Find existing by name (so we don't create duplicates across restarts)
+    try {
+      const list = await this.oai('/vector_stores?limit=100');
+      const found = (list?.data || []).find((v: any) => v?.name === VECTOR_STORE_NAME);
+      if (found?.id) {
+        console.log(`[company-data] Reusing existing vector store: ${found.id}`);
+        CompanyDataController.cachedVectorStoreId = found.id;
+        return found.id;
+      }
+    } catch (e: any) {
+      console.error(`[company-data] Failed to list vector stores: ${e?.message}`);
+    }
+    // 4. Create a new one
     const vs = await this.oai('/vector_stores', {
       method: 'POST',
-      body: { name: 'company-data' },
+      body: { name: VECTOR_STORE_NAME },
     });
-    console.log(`[company-data] Created vector store: ${vs.id} — set OPENAI_VECTOR_STORE_ID env var`);
+    console.log(`[company-data] Created vector store: ${vs.id} — consider setting OPENAI_VECTOR_STORE_ID env var`);
+    CompanyDataController.cachedVectorStoreId = vs.id;
     return vs.id;
   }
 
   private async ensureAssistant(vectorStoreId: string): Promise<string> {
-    const aId = process.env.OPENAI_ASSISTANT_ID;
-    if (aId) return aId;
+    const envId = process.env.OPENAI_ASSISTANT_ID;
+    if (envId) return envId;
+    if (CompanyDataController.cachedAssistantId) return CompanyDataController.cachedAssistantId;
+    // Find existing by name
+    try {
+      const list = await this.oai('/assistants?limit=100&order=desc');
+      const found = (list?.data || []).find((a: any) => a?.name === ASSISTANT_NAME);
+      if (found?.id) {
+        console.log(`[company-data] Reusing existing assistant: ${found.id}`);
+        CompanyDataController.cachedAssistantId = found.id;
+        return found.id;
+      }
+    } catch (e: any) {
+      console.error(`[company-data] Failed to list assistants: ${e?.message}`);
+    }
     const assistant = await this.oai('/assistants', {
       method: 'POST',
       body: {
         model: 'gpt-4o-mini',
-        name: '회사 데이터 분석',
+        name: ASSISTANT_NAME,
         instructions: ASSISTANT_INSTRUCTIONS,
         tools: [{ type: 'file_search' }],
         tool_resources: {
@@ -85,7 +122,8 @@ export class CompanyDataController {
         },
       },
     });
-    console.log(`[company-data] Created assistant: ${assistant.id} — set OPENAI_ASSISTANT_ID env var`);
+    console.log(`[company-data] Created assistant: ${assistant.id} — consider setting OPENAI_ASSISTANT_ID env var`);
+    CompanyDataController.cachedAssistantId = assistant.id;
     return assistant.id;
   }
 
