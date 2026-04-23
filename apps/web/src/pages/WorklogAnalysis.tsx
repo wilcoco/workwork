@@ -121,6 +121,8 @@ export function WorklogAnalysis() {
       return;
     }
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5분 타임아웃
       const res = await apiFetch('/api/sharepoint-sync/batch', {
         method: 'POST',
         headers: {
@@ -129,7 +131,9 @@ export function WorklogAnalysis() {
         },
         body: JSON.stringify({ userId, fileIds, siteId, listId }),
         cache: 'no-store',
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`일괄 동기화 실패 (${res.status}): ${text}`);
@@ -139,7 +143,11 @@ export function WorklogAnalysis() {
       loadDataSources();
       loadSharePointFiles();
     } catch (e: any) {
-      alert(`일괄 동기화 실패: ${e?.message}`);
+      if (e.name === 'AbortError') {
+        alert('일괄 동기화 시간 초과 (5분). 일부 항목만 동기화되었을 수 있습니다.');
+      } else {
+        alert(`일괄 동기화 실패: ${e?.message}`);
+      }
     }
   }
 
