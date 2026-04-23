@@ -118,6 +118,7 @@ export class SharePointSyncController {
     @Query('userId') userId: string,
     @Query('siteId') siteId?: string,
     @Query('listName') listName?: string, // e.g., 'WorkReports'
+    @Query('startDate') startDate?: string, // Filter by start date (ISO format)
   ) {
     if (!userId) throw new BadRequestException('userId required');
 
@@ -144,8 +145,14 @@ export class SharePointSyncController {
         throw new BadRequestException(`List '${listName}' not found`);
       }
 
-      // Get list items
-      const itemsResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields`, {
+      // Get list items with optional date filter
+      let itemsUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields`;
+      if (startDate) {
+        // Filter by created date (adjust field name based on your SharePoint list)
+        itemsUrl += `&$filter=fields/Created ge '${startDate}'`;
+      }
+
+      const itemsResp = await fetchFn(itemsUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!itemsResp.ok) {
@@ -164,8 +171,13 @@ export class SharePointSyncController {
 
       return { items, total: items.length, listId: list.id, listName: list.displayName };
     } else {
-      // Read drive files
-      const resp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/root/children`, {
+      // Read drive files with optional date filter
+      let filesUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/root/children`;
+      if (startDate) {
+        filesUrl += `?$filter=createdDateTime ge '${startDate}'`;
+      }
+
+      const resp = await fetchFn(filesUrl, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

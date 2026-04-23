@@ -31,6 +31,7 @@ export function WorklogAnalysis() {
   const [hostname, setHostname] = useState('cams2002.sharepoint.com');
   const [sitePath, setSitePath] = useState('/sites/msteams_03d426');
   const [listName, setListName] = useState('WorkReports'); // SharePoint list name
+  const [startDate, setStartDate] = useState(''); // Filter by start date
 
   // Chat
   const [question, setQuestion] = useState('');
@@ -78,12 +79,12 @@ export function WorklogAnalysis() {
     setLoadingSharePoint(true);
     try {
       const url = listName
-        ? `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&listName=${encodeURIComponent(listName)}`
-        : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}`;
+        ? `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&listName=${encodeURIComponent(listName)}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`
+        : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`;
       const res = await apiJson<{ files?: any[]; items?: any[]; total: number }>(url);
       const items = res.files || res.items || [];
       setSharePointFiles(items);
-      alert(`${items.length}개 항목 발견`);
+      alert(`${items.length}개 항목 발견${startDate ? ` (${startDate} 이후)` : ''}`);
     } catch (e: any) {
       console.error('Failed to load SharePoint files:', e?.message);
       alert(`SharePoint 파일 목록 로드 실패: ${e?.message}`);
@@ -229,6 +230,16 @@ export function WorklogAnalysis() {
                 onChange={(e) => setListName(e.target.value)}
               />
               <div className="text-xs text-gray-500 mt-1">비워두면 Drive 파일을 읽습니다.</div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">시작 날짜 필터 (선택사항)</label>
+              <input
+                type="date"
+                className="w-full border rounded px-3 py-2"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              <div className="text-xs text-gray-500 mt-1">이 날짜 이후의 항목만 동기화합니다. 비워두면 전체 동기화.</div>
             </div>
             <div className="flex gap-2">
               <button
