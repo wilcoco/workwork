@@ -32,6 +32,7 @@ export function WorklogAnalysis() {
   const [sitePath, setSitePath] = useState('/sites/msteams_03d426');
   const [listName, setListName] = useState('WorkReports'); // SharePoint list name
   const [startDate, setStartDate] = useState(''); // Filter by start date
+  const [limit, setLimit] = useState(100); // Default limit to 100 items
 
   // Chat
   const [question, setQuestion] = useState('');
@@ -79,12 +80,12 @@ export function WorklogAnalysis() {
     setLoadingSharePoint(true);
     try {
       const url = listName
-        ? `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&listName=${encodeURIComponent(listName)}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`
-        : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`;
+        ? `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&listName=${encodeURIComponent(listName)}&limit=${limit}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`
+        : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&limit=${limit}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`;
       const res = await apiJson<{ files?: any[]; items?: any[]; total: number }>(url);
       const items = res.files || res.items || [];
       setSharePointFiles(items);
-      alert(`${items.length}개 항목 발견${startDate ? ` (${startDate} 이후)` : ''}`);
+      alert(`${items.length}개 항목 발견 (최근 ${limit}개)${startDate ? ` (${startDate} 이후)` : ''}`);
     } catch (e: any) {
       console.error('Failed to load SharePoint files:', e?.message);
       alert(`SharePoint 파일 목록 로드 실패: ${e?.message}`);
@@ -240,6 +241,18 @@ export function WorklogAnalysis() {
                 onChange={(e) => setStartDate(e.target.value)}
               />
               <div className="text-xs text-gray-500 mt-1">이 날짜 이후의 항목만 동기화합니다. 비워두면 전체 동기화.</div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">최대 항목 수 (기본: 100)</label>
+              <input
+                type="number"
+                className="w-full border rounded px-3 py-2"
+                value={limit}
+                onChange={(e) => setLimit(parseInt(e.target.value) || 100)}
+                min="1"
+                max="1000"
+              />
+              <div className="text-xs text-gray-500 mt-1">최근 N개 항목만 동기화합니다. 너무 많으면 시간이 오래 걸립니다.</div>
             </div>
             <div className="flex gap-2">
               <button

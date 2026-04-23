@@ -119,6 +119,7 @@ export class SharePointSyncController {
     @Query('siteId') siteId?: string,
     @Query('listName') listName?: string, // e.g., 'WorkReports'
     @Query('startDate') startDate?: string, // Filter by start date (ISO format)
+    @Query('limit') limit?: string, // Limit number of items (default: 100)
   ) {
     if (!userId) throw new BadRequestException('userId required');
 
@@ -128,6 +129,7 @@ export class SharePointSyncController {
     const targetSiteId = siteId || 'root';
 
     const fetchFn: any = (globalThis as any).fetch;
+    const maxItems = limit ? parseInt(limit, 10) : 100; // Default to 100
 
     // If listName is provided, read list items; otherwise read drive files
     if (listName) {
@@ -145,8 +147,8 @@ export class SharePointSyncController {
         throw new BadRequestException(`List '${listName}' not found`);
       }
 
-      // Get list items with optional date filter
-      let itemsUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields`;
+      // Get list items with optional date filter and limit
+      let itemsUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields&$orderby=createdDateTime desc&$top=${maxItems}`;
       if (startDate) {
         // Filter by created date (adjust field name based on your SharePoint list)
         itemsUrl += `&$filter=fields/Created ge '${startDate}'`;
@@ -171,10 +173,10 @@ export class SharePointSyncController {
 
       return { items, total: items.length, listId: list.id, listName: list.displayName };
     } else {
-      // Read drive files with optional date filter
-      let filesUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/root/children`;
+      // Read drive files with optional date filter and limit
+      let filesUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/root/children?$orderby=createdDateTime desc&$top=${maxItems}`;
       if (startDate) {
-        filesUrl += `?$filter=createdDateTime ge '${startDate}'`;
+        filesUrl += `&$filter=createdDateTime ge '${startDate}'`;
       }
 
       const resp = await fetchFn(filesUrl, {
