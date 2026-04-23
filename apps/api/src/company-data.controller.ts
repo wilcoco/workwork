@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { PrismaService } from './prisma.service';
+import { Public } from './jwt-auth.guard';
 
 const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
 업로드된 회사 자료를 바탕으로 사용자의 질문에 정확하고 구체적으로 답변하세요.
@@ -362,6 +363,7 @@ export class CompanyDataController {
    * Returns the current vector store + assistant + file list so we can see why AI says "모른다".
    * Use this when user uploads a file but AI can't find it.
    */
+  @Public()
   @Get('debug')
   async debug() {
     const out: any = {
@@ -419,6 +421,7 @@ export class CompanyDataController {
    * Re-links the current vector store to the configured assistant and re-attaches all DB files to the vector store.
    * Use after env changes or if debug shows assistant not linked.
    */
+  @Public()
   @Post('repair')
   async repair() {
     const vsId = await this.ensureVectorStore();
