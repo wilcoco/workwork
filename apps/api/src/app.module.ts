@@ -39,6 +39,7 @@ import { PeriodicAlarmsController } from './periodic-alarms.controller';
 import { MeetingMinutesController } from './meeting-minutes.controller';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
+import { SharePointSyncController } from './sharepoint-sync.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 import { DataverseService } from './dataverse.service';
 
@@ -80,6 +81,7 @@ import { DataverseService } from './dataverse.service';
     MeetingMinutesController,
     GraphTasksController,
     CompanyDataController,
+    SharePointSyncController,
   ],
   providers: [
     PrismaService,
