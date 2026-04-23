@@ -31,8 +31,6 @@ export function WorklogAnalysis() {
   const [hostname, setHostname] = useState('cams2002.sharepoint.com');
   const [sitePath, setSitePath] = useState('/sites/msteams_03d426');
   const [listName, setListName] = useState('WorkReports'); // SharePoint list name
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
 
   // Chat
   const [question, setQuestion] = useState('');
@@ -83,8 +81,9 @@ export function WorklogAnalysis() {
         ? `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&listName=${encodeURIComponent(listName)}`
         : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}`;
       const res = await apiJson<{ files?: any[]; items?: any[]; total: number }>(url);
-      setSharePointFiles(res.files || res.items || []);
-      setPage(1); // Reset to first page
+      const items = res.files || res.items || [];
+      setSharePointFiles(items);
+      alert(`${items.length}개 항목 발견`);
     } catch (e: any) {
       console.error('Failed to load SharePoint files:', e?.message);
       alert(`SharePoint 파일 목록 로드 실패: ${e?.message}`);
@@ -92,9 +91,6 @@ export function WorklogAnalysis() {
       setLoadingSharePoint(false);
     }
   }
-
-  const paginatedFiles = sharePointFiles.slice((page - 1) * pageSize, page * pageSize);
-  const totalPages = Math.ceil(sharePointFiles.length / pageSize);
 
   async function syncSharePointFile(fileId: string) {
     try {
@@ -255,7 +251,7 @@ export function WorklogAnalysis() {
               onClick={loadSharePointFiles}
               disabled={loadingSharePoint || !siteId}
             >
-              {loadingSharePoint ? '로딩 중...' : 'SharePoint 파일 목록 가져오기'}
+              {loadingSharePoint ? '로딩 중...' : '항목 확인'}
             </button>
             {sharePointFiles.length > 0 && (
               <button
@@ -269,52 +265,7 @@ export function WorklogAnalysis() {
 
           {sharePointFiles.length === 0 && !loadingSharePoint && (
             <div className="text-center py-8 text-gray-500">
-              {siteId ? 'SharePoint 파일 목록을 가져오세요.' : '먼저 사이트 ID를 가져오세요.'}
-            </div>
-          )}
-
-          {sharePointFiles.length > 0 && (
-            <div className="mb-4 text-sm text-gray-600">
-              총 {sharePointFiles.length}개 항목 (페이지 {page}/{totalPages})
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {paginatedFiles.map((file) => (
-              <div key={file.id} className="border rounded-lg p-4 flex justify-between items-center">
-                <div>
-                  <div className="font-semibold">{file.name}</div>
-                  <div className="text-sm text-gray-500">{new Date(file.lastModified).toLocaleDateString()}</div>
-                </div>
-                <button
-                  className="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
-                  onClick={() => syncSharePointFile(file.id)}
-                >
-                  동기화
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {totalPages > 1 && (
-            <div className="mt-4 flex justify-center gap-2">
-              <button
-                className="px-3 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                이전
-              </button>
-              <span className="px-3 py-1">
-                {page} / {totalPages}
-              </span>
-              <button
-                className="px-3 py-1 border rounded disabled:opacity-50"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                다음
-              </button>
+              {siteId ? '항목 확인 버튼을 클릭하세요.' : '먼저 사이트 ID를 가져오세요.'}
             </div>
           )}
         </div>
