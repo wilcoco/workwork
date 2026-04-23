@@ -152,6 +152,49 @@ export class CompanyDataController {
     });
   }
 
+  /** Poll vector store file status until 'completed' or timeout. Required before the assistant can find the content. */
+  private async waitForVectorStoreFile(vectorStoreId: string, fileId: string, timeoutMs = 90_000): Promise<{ status: string; lastError?: any }> {
+    const start = Date.now();
+    let last: any = null;
+    while (Date.now() - start < timeoutMs) {
+      try {
+        last = await this.oai(`/vector_stores/${vectorStoreId}/files/${fileId}`);
+        const status = String(last?.status || '');
+        if (status === 'completed') return { status };
+        if (status === 'failed' || status === 'cancelled') return { status, lastError: last?.last_error };
+      } catch (e: any) {
+        last = { error: e?.message };
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    return { status: String(last?.status || 'timeout'), lastError: last?.last_error };
+  }
+
+  /** Ensure the assistant has the given vector store linked under its file_search tool_resources.
+   *  If OPENAI_ASSISTANT_ID points to an older assistant that was created without the current vector store,
+   *  this fixes it on the fly. Without this, file_search returns nothing. */
+  private async ensureAssistantHasVectorStore(assistantId: string, vectorStoreId: string): Promise<void> {
+    try {
+      const a = await this.oai(`/assistants/${assistantId}`);
+      const linked: string[] = a?.tool_resources?.file_search?.vector_store_ids || [];
+      if (linked.includes(vectorStoreId)) return;
+      const hasFileSearchTool = Array.isArray(a?.tools) && a.tools.some((t: any) => t?.type === 'file_search');
+      const nextTools = hasFileSearchTool ? a.tools : [...(a?.tools || []), { type: 'file_search' }];
+      await this.oai(`/assistants/${assistantId}`, {
+        method: 'POST',
+        body: {
+          tools: nextTools,
+          tool_resources: {
+            file_search: { vector_store_ids: [...new Set([...linked, vectorStoreId])] },
+          },
+        },
+      });
+      console.log(`[company-data] linked vector store ${vectorStoreId} → assistant ${assistantId}`);
+    } catch (e: any) {
+      console.error(`[company-data] ensureAssistantHasVectorStore failed: ${e?.message}`);
+    }
+  }
+
   private async removeFileFromOpenAI(fileId: string): Promise<void> {
     try {
       await this.oai(`/files/${fileId}`, { method: 'DELETE' });
@@ -238,6 +281,18 @@ export class CompanyDataController {
     const openaiFileId = await this.uploadBinaryToOpenAI(fileName, file.mimetype, file.buffer);
     await this.addFileToVectorStore(vsId, openaiFileId);
 
+    // Wait for OpenAI to finish chunking + embedding the file, otherwise the assistant won't find it.
+    const indexed = await this.waitForVectorStoreFile(vsId, openaiFileId);
+    if (indexed.status !== 'completed') {
+      console.error(`[company-data] upload ${fileName} indexing not completed: status=${indexed.status} error=${JSON.stringify(indexed.lastError || {})}`);
+    }
+
+    // Make sure the existing assistant (if env-configured) is actually linked to this vector store.
+    const assistantIdEnv = process.env.OPENAI_ASSISTANT_ID;
+    if (assistantIdEnv) {
+      await this.ensureAssistantHasVectorStore(assistantIdEnv, vsId);
+    }
+
     return this.prisma.companyData.create({
       data: {
         title,
@@ -300,6 +355,91 @@ export class CompanyDataController {
     return { ok: true };
   }
 
+  // ─── Diagnostics ───────────────────────────────────────
+
+  /**
+   * GET /company-data/debug
+   * Returns the current vector store + assistant + file list so we can see why AI says "모른다".
+   * Use this when user uploads a file but AI can't find it.
+   */
+  @Get('debug')
+  async debug() {
+    const out: any = {
+      env: {
+        OPENAI_VECTOR_STORE_ID: process.env.OPENAI_VECTOR_STORE_ID || null,
+        OPENAI_ASSISTANT_ID: process.env.OPENAI_ASSISTANT_ID || null,
+        hasApiKey: !!(process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT),
+      },
+      db: {
+        total: await this.prisma.companyData.count(),
+        withOpenaiFileId: await this.prisma.companyData.count({ where: { openaiFileId: { not: null } } }),
+        recent: await this.prisma.companyData.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: { id: true, title: true, fileName: true, openaiFileId: true, content: true, createdAt: true },
+        }).then((rows) => rows.map((r) => ({ ...r, hasContent: !!r.content, content: undefined }))),
+      },
+    };
+    try {
+      const vsId = await this.ensureVectorStore();
+      out.vectorStore = { id: vsId };
+      try {
+        const vs = await this.oai(`/vector_stores/${vsId}`);
+        out.vectorStore.info = { name: vs?.name, file_counts: vs?.file_counts, status: vs?.status };
+      } catch (e: any) {
+        out.vectorStore.infoError = e?.message;
+      }
+      try {
+        const files = await this.oai(`/vector_stores/${vsId}/files?limit=20`);
+        out.vectorStore.files = (files?.data || []).map((f: any) => ({ id: f.id, status: f.status, last_error: f.last_error, created_at: f.created_at }));
+      } catch (e: any) {
+        out.vectorStore.filesError = e?.message;
+      }
+      try {
+        const assistantId = await this.ensureAssistant(vsId);
+        out.assistant = { id: assistantId };
+        const a = await this.oai(`/assistants/${assistantId}`);
+        out.assistant.info = {
+          model: a?.model,
+          tools: (a?.tools || []).map((t: any) => t?.type),
+          linkedVectorStores: a?.tool_resources?.file_search?.vector_store_ids || [],
+        };
+        out.assistant.vectorStoreLinked = (a?.tool_resources?.file_search?.vector_store_ids || []).includes(vsId);
+      } catch (e: any) {
+        out.assistant = { error: e?.message };
+      }
+    } catch (e: any) {
+      out.error = e?.message;
+    }
+    return out;
+  }
+
+  /**
+   * POST /company-data/repair
+   * Re-links the current vector store to the configured assistant and re-attaches all DB files to the vector store.
+   * Use after env changes or if debug shows assistant not linked.
+   */
+  @Post('repair')
+  async repair() {
+    const vsId = await this.ensureVectorStore();
+    const assistantId = await this.ensureAssistant(vsId);
+    await this.ensureAssistantHasVectorStore(assistantId, vsId);
+
+    // Re-attach any DB files that are not in the vector store
+    const rows = await this.prisma.companyData.findMany({ where: { openaiFileId: { not: null } }, select: { id: true, openaiFileId: true, fileName: true } });
+    const attached: string[] = [];
+    const skipped: Array<{ fileName: string; reason: string }> = [];
+    for (const r of rows) {
+      try {
+        await this.oai(`/vector_stores/${vsId}/files`, { method: 'POST', body: { file_id: r.openaiFileId! } });
+        attached.push(r.fileName);
+      } catch (e: any) {
+        skipped.push({ fileName: r.fileName, reason: e?.message || 'unknown' });
+      }
+    }
+    return { vectorStoreId: vsId, assistantId, attached, skipped };
+  }
+
   // ─── AI Q&A via Assistants API ─────────────────────────
 
   @Post('ask')
@@ -319,18 +459,24 @@ export class CompanyDataController {
 
     const vsId = await this.ensureVectorStore();
     const assistantId = await this.ensureAssistant(vsId);
+    // Repair assistant→vectorStore linkage in case OPENAI_ASSISTANT_ID was created earlier without it.
+    await this.ensureAssistantHasVectorStore(assistantId, vsId);
 
-    // Create thread and run
+    // Create thread and run — also attach vector_store at thread level as a belt-and-suspenders guarantee
     const thread = await this.oai('/threads', {
       method: 'POST',
       body: {
         messages: [{ role: 'user', content: body.question }],
+        tool_resources: { file_search: { vector_store_ids: [vsId] } },
       },
     });
 
     const run = await this.oai(`/threads/${thread.id}/runs`, {
       method: 'POST',
-      body: { assistant_id: assistantId },
+      body: {
+        assistant_id: assistantId,
+        tool_resources: { file_search: { vector_store_ids: [vsId] } },
+      },
     });
 
     // Poll for completion (max 60s)

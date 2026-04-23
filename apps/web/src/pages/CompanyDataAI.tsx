@@ -75,6 +75,8 @@ export function CompanyDataAI() {
     } catch {}
   }
 
+  const [uploadedNotice, setUploadedNotice] = useState<string | null>(null);
+
   async function handleFileUpload(file: File) {
     if (!userId) {
       setError('로그인이 필요합니다.');
@@ -83,6 +85,7 @@ export function CompanyDataAI() {
     const title = (addTitle.trim() || file.name).trim();
     setUploading(true);
     setError(null);
+    setUploadedNotice(null);
     try {
       const fd = new FormData();
       fd.append('file', file, file.name);
@@ -95,9 +98,9 @@ export function CompanyDataAI() {
         const text = await res.text().catch(() => '');
         throw new Error(text || `업로드 실패 (${res.status})`);
       }
-      setAddTitle(''); setAddDesc(''); setAddContent(''); setAddFileUrl(''); setAddFileName('');
-      setShowAdd(false);
+      // Keep the form open so the user sees a success notice. Clear only the title/desc fields.
       if (fileInputRef.current) fileInputRef.current.value = '';
+      setUploadedNotice(`"${title}" 등록 및 OpenAI 인덱싱 완료 — 이제 AI 질의에서 사용 가능합니다.`);
       await loadData();
     } catch (e: any) {
       setError(e?.message || '파일 업로드 실패');
@@ -294,7 +297,12 @@ export function CompanyDataAI() {
                     }}
                     style={{ fontSize: 13 }}
                   />
-                  {uploading && <span style={{ marginLeft: 10, fontSize: 12, color: '#2563eb' }}>OpenAI 업로드 중…</span>}
+                  {uploading && <span style={{ marginLeft: 10, fontSize: 12, color: '#2563eb' }}>OpenAI 업로드 + 인덱싱 중… (최대 1분)</span>}
+                  {uploadedNotice && (
+                    <div style={{ marginTop: 10, padding: 8, background: '#ecfdf5', border: '1px solid #86efac', borderRadius: 8, color: '#166534', fontSize: 12, fontWeight: 600 }}>
+                      ✅ {uploadedNotice}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button style={btnGhost} onClick={() => setShowFilePicker(true)}>OneDrive에서 파일 선택 (URL만 저장)</button>
