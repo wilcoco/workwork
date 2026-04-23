@@ -91,9 +91,12 @@ export function WorklogAnalysis() {
       const res = await apiFetch('/api/sharepoint-sync/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, fileId }),
+        body: JSON.stringify({ userId, fileId, siteId }),
       });
-      if (!res.ok) throw new Error('동기화 실패');
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`동기화 실패 (${res.status}): ${text}`);
+      }
       const data = await res.json();
       alert(`동기화 완료: ${data.entry.title}`);
       loadDataSources(); // Refresh data sources
@@ -113,11 +116,14 @@ export function WorklogAnalysis() {
       const res = await apiFetch('/api/sharepoint-sync/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, fileIds }),
+        body: JSON.stringify({ userId, fileIds, siteId }),
       });
-      if (!res.ok) throw new Error('일괄 동기화 실패');
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`일괄 동기화 실패 (${res.status}): ${text}`);
+      }
       const data = await res.json();
-      alert(`동기화 완료: 성공 ${data.success}개, 실패 ${data.failed}개`);
+      alert(`동기화 완료: 성공 ${data.success}개, 실패 ${data.failed}개\n실패 상세: ${data.results.filter((r: any) => !r.ok).map((r: any) => r.error).join(', ')}`);
       loadDataSources();
       loadSharePointFiles();
     } catch (e: any) {

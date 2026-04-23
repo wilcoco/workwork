@@ -49,7 +49,7 @@ export class SharePointSyncController {
       client_secret: clientSecret,
       grant_type: 'refresh_token',
       refresh_token: user.graphRefreshToken,
-      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.ReadWrite.All',
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.ReadWrite.All Sites.Read.All',
     });
 
     const resp = await fetch(tokenUrl, {
@@ -292,7 +292,7 @@ export class SharePointSyncController {
     },
   ) {
     if (!body.userId || !body.fileIds?.length) throw new BadRequestException('userId, fileIds required');
-    
+
     const results = [];
     for (const fileId of body.fileIds) {
       try {
@@ -303,10 +303,11 @@ export class SharePointSyncController {
         });
         results.push({ fileId, ok: true, entryId: result.entry.id });
       } catch (e: any) {
-        results.push({ fileId, ok: false, error: e?.message });
+        console.error(`[sharepoint-sync] Failed to sync file ${fileId}:`, e?.message);
+        results.push({ fileId, ok: false, error: e?.message || '알 수 없는 오류' });
       }
     }
-    
+
     return { results, success: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length };
   }
 }
