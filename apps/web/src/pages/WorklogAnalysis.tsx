@@ -27,6 +27,9 @@ export function WorklogAnalysis() {
   // SharePoint files
   const [sharePointFiles, setSharePointFiles] = useState<any[]>([]);
   const [loadingSharePoint, setLoadingSharePoint] = useState(false);
+  const [siteId, setSiteId] = useState<string>('');
+  const [hostname, setHostname] = useState('cams2002.sharepoint.com');
+  const [sitePath, setSitePath] = useState('/sites/msteams_03d426');
 
   // Chat
   const [question, setQuestion] = useState('');
@@ -50,10 +53,30 @@ export function WorklogAnalysis() {
     }
   }
 
+  async function getSiteId() {
+    if (!hostname || !sitePath) {
+      alert('hostname과 sitePath를 입력하세요.');
+      return;
+    }
+    try {
+      const res = await apiJson<{ id: string; name: string; webUrl: string }>(
+        `/api/sharepoint-sync/site-id?userId=${encodeURIComponent(userId)}&hostname=${encodeURIComponent(hostname)}&sitePath=${encodeURIComponent(sitePath)}`
+      );
+      setSiteId(res.id);
+      alert(`사이트 ID 가져오기 성공: ${res.name} (${res.id})`);
+    } catch (e: any) {
+      alert(`사이트 ID 가져오기 실패: ${e?.message}`);
+    }
+  }
+
   async function loadSharePointFiles() {
+    if (!siteId) {
+      alert('먼저 사이트 ID를 가져오세요.');
+      return;
+    }
     setLoadingSharePoint(true);
     try {
-      const res = await apiJson<{ files: any[] }>(`/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}`);
+      const res = await apiJson<{ files: any[] }>(`/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}`);
       setSharePointFiles(res.files || []);
     } catch (e: any) {
       console.error('Failed to load SharePoint files:', e?.message);
@@ -160,11 +183,50 @@ export function WorklogAnalysis() {
       {/* SharePoint Tab */}
       {tab === 'sharepoint' && (
         <div>
+          <div className="mb-6 p-4 bg-gray-50 rounded">
+            <div className="font-semibold mb-3">SharePoint 사이트 설정</div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Hostname</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="cams2002.sharepoint.com"
+                  value={hostname}
+                  onChange={(e) => setHostname(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Site Path</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="/sites/msteams_03d426"
+                  value={sitePath}
+                  onChange={(e) => setSitePath(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                onClick={getSiteId}
+              >
+                사이트 ID 가져오기
+              </button>
+              {siteId && (
+                <div className="flex items-center px-3 py-2 bg-green-50 text-green-700 rounded">
+                  사이트 ID: {siteId.slice(0, 20)}...
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="mb-4 flex gap-2">
             <button
               className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
               onClick={loadSharePointFiles}
-              disabled={loadingSharePoint}
+              disabled={loadingSharePoint || !siteId}
             >
               {loadingSharePoint ? '로딩 중...' : 'SharePoint 파일 목록 가져오기'}
             </button>
@@ -180,7 +242,7 @@ export function WorklogAnalysis() {
 
           {sharePointFiles.length === 0 && !loadingSharePoint && (
             <div className="text-center py-8 text-gray-500">
-              SharePoint 파일 목록을 가져오세요.
+              {siteId ? 'SharePoint 파일 목록을 가져오세요.' : '먼저 사이트 ID를 가져오세요.'}
             </div>
           )}
 
