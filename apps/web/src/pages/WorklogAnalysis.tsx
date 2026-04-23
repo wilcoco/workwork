@@ -123,8 +123,12 @@ export function WorklogAnalysis() {
     try {
       const res = await apiFetch('/api/sharepoint-sync/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+        },
         body: JSON.stringify({ userId, fileIds, siteId }),
+        cache: 'no-store',
       });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
