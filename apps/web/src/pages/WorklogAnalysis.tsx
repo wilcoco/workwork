@@ -33,6 +33,7 @@ export function WorklogAnalysis() {
   const [listName, setListName] = useState('WorkReports'); // SharePoint list name
   const [startDate, setStartDate] = useState(''); // Filter by start date
   const [limit, setLimit] = useState(100); // Default limit to 100 items
+  const [listId, setListId] = useState<string>(''); // SharePoint list ID
 
   // Chat
   const [question, setQuestion] = useState('');
@@ -82,9 +83,10 @@ export function WorklogAnalysis() {
       const url = listName
         ? `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&listName=${encodeURIComponent(listName)}&limit=${limit}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`
         : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&limit=${limit}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`;
-      const res = await apiJson<{ files?: any[]; items?: any[]; total: number }>(url);
+      const res = await apiJson<{ files?: any[]; items?: any[]; total: number; listId?: string }>(url);
       const items = res.files || res.items || [];
       setSharePointFiles(items);
+      if (res.listId) setListId(res.listId);
       alert(`${items.length}개 항목 발견 (최근 ${limit}개)${startDate ? ` (${startDate} 이후)` : ''}`);
     } catch (e: any) {
       console.error('Failed to load SharePoint files:', e?.message);
@@ -99,16 +101,14 @@ export function WorklogAnalysis() {
       const res = await apiFetch('/api/sharepoint-sync/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, fileId, siteId }),
+        body: JSON.stringify({ userId, fileId, siteId, listId }),
       });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`동기화 실패 (${res.status}): ${text}`);
       }
-      const data = await res.json();
-      alert(`동기화 완료: ${data.entry.title}`);
-      loadDataSources(); // Refresh data sources
-      loadSharePointFiles(); // Refresh SharePoint files
+      alert('동기화 완료');
+      loadDataSources();
     } catch (e: any) {
       alert(`동기화 실패: ${e?.message}`);
     }
@@ -127,7 +127,7 @@ export function WorklogAnalysis() {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
         },
-        body: JSON.stringify({ userId, fileIds, siteId }),
+        body: JSON.stringify({ userId, fileIds, siteId, listId }),
         cache: 'no-store',
       });
       if (!res.ok) {

@@ -224,7 +224,7 @@ export class SharePointSyncController {
 
   /**
    * POST /sharepoint-sync/sync
-   * Sync a specific SharePoint file to OpenAI vector store.
+   * Sync a specific SharePoint file or list item to OpenAI vector store.
    */
   @Post('sync')
   async syncFile(
@@ -232,6 +232,7 @@ export class SharePointSyncController {
       userId: string;
       siteId?: string;
       fileId: string;
+      listId?: string; // Optional: if syncing from a SharePoint list
       title?: string;
       description?: string;
     },
@@ -244,34 +245,64 @@ export class SharePointSyncController {
 
     const fetchFn: any = (globalThis as any).fetch;
 
-    // Get file metadata
-    const metaResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/items/${body.fileId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!metaResp.ok) {
-      throw new BadRequestException(`Failed to get file metadata: ${metaResp.status}`);
-    }
-    const metadata = await metaResp.json();
+    let fileName: string;
+    let content: string;
+    let mimeType: string;
+    let webUrl: string;
 
-    // Download file content
-    const downloadResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/items/${body.fileId}/content`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!downloadResp.ok) {
-      throw new BadRequestException(`Failed to download file: ${downloadResp.status}`);
-    }
-    const buffer = Buffer.from(await downloadResp.arrayBuffer());
+    // If listId is provided, sync from SharePoint List
+    if (body.listId) {
+      const itemResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${body.listId}/items/${body.fileId}?$expand=fields`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!itemResp.ok) {
+        throw new BadRequestException(`Failed to get list item: ${itemResp.status}`);
+      }
+      const item = await itemResp.json();
 
-    // Upload to OpenAI vector store
-    const fileName = metadata.name || 'sharepoint-file';
-    const mimeType = metadata.file?.mimeType || 'application/octet-stream';
+      const fields = item.fields || {};
+      fileName = fields.Title || `item-${body.fileId}`;
+      webUrl = item.webUrl || '';
+      content = Object.entries(fields)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n');
+      mimeType = 'text/plain';
+    } else {
+      // Sync from Drive (existing logic)
+      const metaResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/items/${body.fileId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!metaResp.ok) {
+        throw new BadRequestException(`Failed to get file metadata: ${metaResp.status}`);
+      }
+      const metadata = await metaResp.json();
+
+      const downloadResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/items/${body.fileId}/content`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!downloadResp.ok) {
+        throw new BadRequestException(`Failed to download file: ${downloadResp.status}`);
+      }
+      const buffer = Buffer.from(await downloadResp.arrayBuffer());
+
+      fileName = metadata.name || 'sharepoint-file';
+      webUrl = metadata.webUrl || '';
+      mimeType = metadata.file?.mimeType || 'application/octet-stream';
+
+      if (mimeType.startsWith('text/') || mimeType === 'application/json') {
+        content = buffer.toString('utf-8');
+      } else {
+        content = buffer.toString('base64');
+        mimeType = 'application/octet-stream';
+      }
+    }
 
     // Get OpenAI API key
     const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
     if (!apiKey) throw new BadRequestException('OpenAI API key not configured');
 
     // Upload file to OpenAI
-    const blob = new Blob([buffer], { type: mimeType || 'application/octet-stream' });
+    const blob = new Blob([content], { type: mimeType });
     const formData = new FormData();
     formData.append('purpose', 'assistants');
     formData.append('file', blob, fileName);
@@ -341,9 +372,9 @@ export class SharePointSyncController {
     // Save to database
     const entry = await (this.prisma as any).companyData.create({
       data: {
-        title: body.title || metadata.name,
-        description: body.description || `SharePoint file from ${metadata.webUrl}`,
-        fileUrl: metadata.webUrl,
+        title: body.title || fileName,
+        description: body.description || `SharePoint file from ${webUrl}`,
+        fileUrl: webUrl,
         fileName,
         content: null,
         openaiFileId,
@@ -363,6 +394,7 @@ export class SharePointSyncController {
     @Body() body: {
       userId: string;
       siteId?: string;
+      listId?: string; // Optional: if syncing from a SharePoint list
       fileIds: string[];
     },
   ) {
@@ -374,6 +406,7 @@ export class SharePointSyncController {
         const result = await this.syncFile({
           userId: body.userId,
           siteId: body.siteId,
+          listId: body.listId,
           fileId,
         });
         results.push({ fileId, ok: true, entryId: result.entry.id });
