@@ -83,6 +83,32 @@ export class SharePointSyncController {
   }
 
   /**
+   * GET /sharepoint-sync/site-id
+   * Get SharePoint site ID from hostname and path.
+   * Example: /sharepoint-sync/site-id?hostname=cams2002.sharepoint.com&sitePath=/sites/msteams_03d426
+   */
+  @Get('site-id')
+  async getSiteId(@Query('userId') userId: string, @Query('hostname') hostname: string, @Query('sitePath') sitePath: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    if (!hostname || !sitePath) throw new BadRequestException('hostname, sitePath required');
+
+    const token = await this.getGraphToken(userId);
+    const fetchFn: any = (globalThis as any).fetch;
+
+    const resp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${hostname}:${sitePath}?$select=id,name,webUrl`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`Failed to get site ID: ${resp.status} ${text}`);
+    }
+
+    const data = await resp.json();
+    return { id: data.id, name: data.name, webUrl: data.webUrl };
+  }
+
+  /**
    * GET /sharepoint-sync/files
    * List SharePoint files from a given site.
    * Requires user's Graph access token.
