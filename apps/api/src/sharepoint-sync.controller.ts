@@ -149,13 +149,29 @@ export class SharePointSyncController {
 
       // Get list items using SharePoint Search API to avoid list view threshold
       // Search API can handle large lists better than list items API
-      let searchUrl = `https://graph.microsoft.com/v1.0/search/query?$top=${maxItems}&entityTypes=["listItem"]&query="*"&sortProperties=[{"name":"Created","isDescending":true}]`;
-      if (startDate) {
-        searchUrl += `&filters="range(created,ge,'${startDate}')"`;
-      }
+      const searchUrl = `https://graph.microsoft.com/v1.0/search/query`;
+      const searchBody = {
+        requests: [{
+          entityTypes: ['listItem'],
+          query: {
+            queryString: '*'
+          },
+          from: 0,
+          size: maxItems,
+          sortProperties: [{
+            name: 'Created',
+            isDescending: true
+          }]
+        }]
+      };
 
       const searchResp = await fetchFn(searchUrl, {
-        headers: { Authorization: `Bearer ${token}` },
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(searchBody),
       });
 
       if (!searchResp.ok) {
