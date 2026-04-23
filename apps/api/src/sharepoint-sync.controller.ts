@@ -11,6 +11,77 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 export class SharePointSyncController {
   constructor(private prisma: PrismaService) {}
 
+  private async getGraphToken(userId: string): Promise<string> {
+    const user = await (this.prisma as any).user.findUnique({
+      where: { id: userId },
+      select: {
+        graphAccessToken: true,
+        graphRefreshToken: true,
+        graphTokenExpiry: true,
+        entraTenantId: true,
+      },
+    });
+    if (!user?.graphAccessToken) {
+      throw new BadRequestException('Graph API 토큰이 없습니다. 팀즈(Entra) SSO로 다시 로그인해주세요.');
+    }
+
+    // If token is still valid (with 5 min buffer), return it
+    const expiry = user.graphTokenExpiry ? new Date(user.graphTokenExpiry).getTime() : 0;
+    if (expiry > Date.now() + 5 * 60 * 1000) {
+      return user.graphAccessToken;
+    }
+
+    // Try refresh
+    if (!user.graphRefreshToken) {
+      throw new BadRequestException('Graph API 토큰이 만료되었습니다. 다시 로그인해주세요.');
+    }
+
+    const tenantId = String(user.entraTenantId || process.env.ENTRA_TENANT_ID || '').trim();
+    const clientId = String(process.env.ENTRA_CLIENT_ID || '').trim();
+    const clientSecret = String(process.env.ENTRA_CLIENT_SECRET || '').trim();
+    if (!tenantId || !clientId || !clientSecret) {
+      throw new BadRequestException('Entra 설정이 누락되었습니다.');
+    }
+
+    const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
+    const form = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: user.graphRefreshToken,
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.ReadWrite.All',
+    });
+
+    const resp = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (!resp.ok || !json?.access_token) {
+      // Clear stale tokens
+      try {
+        await (this.prisma as any).user.update({
+          where: { id: userId },
+          data: { graphAccessToken: null, graphRefreshToken: null, graphTokenExpiry: null },
+        });
+      } catch {}
+      throw new BadRequestException('Graph API 토큰 갱신 실패. 다시 로그인해주세요.');
+    }
+
+    const newExpiry = new Date(Date.now() + (Number(json.expires_in) || 3600) * 1000);
+    await (this.prisma as any).user.update({
+      where: { id: userId },
+      data: {
+        graphAccessToken: json.access_token,
+        graphRefreshToken: json.refresh_token || user.graphRefreshToken,
+        graphTokenExpiry: newExpiry,
+      },
+    });
+
+    return json.access_token;
+  }
+
   /**
    * GET /sharepoint-sync/files
    * List SharePoint files from a given site.
@@ -19,19 +90,15 @@ export class SharePointSyncController {
   @Get('files')
   async listSharePointFiles(@Query('userId') userId: string, @Query('siteId') siteId?: string) {
     if (!userId) throw new BadRequestException('userId required');
-    
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { graphAccessToken: true, graphRefreshToken: true, graphTokenExpiry: true },
-    });
-    if (!user?.graphAccessToken) throw new BadRequestException('Graph access token not found');
+
+    const token = await this.getGraphToken(userId);
 
     // If siteId not provided, use default SharePoint site
     const targetSiteId = siteId || 'root';
 
     const fetchFn: any = (globalThis as any).fetch;
     const resp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/root/children`, {
-      headers: { Authorization: `Bearer ${user.graphAccessToken}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     
     if (!resp.ok) {
@@ -69,12 +136,8 @@ export class SharePointSyncController {
     },
   ) {
     if (!body.userId || !body.fileId) throw new BadRequestException('userId, fileId required');
-    
-    const user = await this.prisma.user.findUnique({
-      where: { id: body.userId },
-      select: { graphAccessToken: true, graphRefreshToken: true, graphTokenExpiry: true },
-    });
-    if (!user?.graphAccessToken) throw new BadRequestException('Graph access token not found');
+
+    const token = await this.getGraphToken(body.userId);
 
     const targetSiteId = body.siteId || 'root';
 
@@ -82,7 +145,7 @@ export class SharePointSyncController {
 
     // Get file metadata
     const metaResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/items/${body.fileId}`, {
-      headers: { Authorization: `Bearer ${user.graphAccessToken}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (!metaResp.ok) {
       throw new BadRequestException(`Failed to get file metadata: ${metaResp.status}`);
@@ -91,7 +154,7 @@ export class SharePointSyncController {
 
     // Download file content
     const downloadResp = await fetchFn(`https://graph.microsoft.com/v1.0/sites/${targetSiteId}/drive/items/${body.fileId}/content`, {
-      headers: { Authorization: `Bearer ${user.graphAccessToken}` },
+      headers: { Authorization: `Bearer ${token}` },
     });
     if (!downloadResp.ok) {
       throw new BadRequestException(`Failed to download file: ${downloadResp.status}`);
