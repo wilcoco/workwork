@@ -31,6 +31,8 @@ export function WorklogAnalysis() {
   const [hostname, setHostname] = useState('cams2002.sharepoint.com');
   const [sitePath, setSitePath] = useState('/sites/msteams_03d426');
   const [listName, setListName] = useState('WorkReports'); // SharePoint list name
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
 
   // Chat
   const [question, setQuestion] = useState('');
@@ -82,6 +84,7 @@ export function WorklogAnalysis() {
         : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}`;
       const res = await apiJson<{ files?: any[]; items?: any[]; total: number }>(url);
       setSharePointFiles(res.files || res.items || []);
+      setPage(1); // Reset to first page
     } catch (e: any) {
       console.error('Failed to load SharePoint files:', e?.message);
       alert(`SharePoint 파일 목록 로드 실패: ${e?.message}`);
@@ -89,6 +92,9 @@ export function WorklogAnalysis() {
       setLoadingSharePoint(false);
     }
   }
+
+  const paginatedFiles = sharePointFiles.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.ceil(sharePointFiles.length / pageSize);
 
   async function syncSharePointFile(fileId: string) {
     try {
@@ -267,8 +273,14 @@ export function WorklogAnalysis() {
             </div>
           )}
 
+          {sharePointFiles.length > 0 && (
+            <div className="mb-4 text-sm text-gray-600">
+              총 {sharePointFiles.length}개 항목 (페이지 {page}/{totalPages})
+            </div>
+          )}
+
           <div className="space-y-3">
-            {sharePointFiles.map((file) => (
+            {paginatedFiles.map((file) => (
               <div key={file.id} className="border rounded-lg p-4 flex justify-between items-center">
                 <div>
                   <div className="font-semibold">{file.name}</div>
@@ -283,6 +295,28 @@ export function WorklogAnalysis() {
               </div>
             ))}
           </div>
+
+          {totalPages > 1 && (
+            <div className="mt-4 flex justify-center gap-2">
+              <button
+                className="px-3 py-1 border rounded disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                이전
+              </button>
+              <span className="px-3 py-1">
+                {page} / {totalPages}
+              </span>
+              <button
+                className="px-3 py-1 border rounded disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                다음
+              </button>
+            </div>
+          )}
         </div>
       )}
 
