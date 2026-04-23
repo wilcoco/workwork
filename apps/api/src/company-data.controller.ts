@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
+import * as XLSX from 'xlsx';
 
 const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
 업로드된 회사 자료를 바탕으로 사용자의 질문에 정확하고 구체적으로 답변하세요.
@@ -178,9 +179,27 @@ export class CompanyDataController {
     return result.id;
   }
 
-  /** Normalize xlsx → csv is not done here; OpenAI assistants file_search accepts many formats
+  /** Convert Excel buffer to CSV string using xlsx library. */
+  private excelBufferToCsv(buffer: Buffer, fileName: string): { csv: string; csvFileName: string } {
+    try {
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) {
+        throw new BadRequestException('Excel 파일에 시트가 없습니다.');
+      }
+      const worksheet = workbook.Sheets[sheetName];
+      const csv = XLSX.utils.sheet_to_csv(worksheet);
+      const csvFileName = fileName.replace(/\.[^.]+$/, '.csv');
+      return { csv, csvFileName };
+    } catch (e: any) {
+      console.error('[company-data] Excel to CSV conversion failed:', e?.message);
+      throw new BadRequestException(`Excel 파일 변환 실패: ${e?.message || '알 수 없는 오류'}`);
+    }
+  }
+
+  /** Normalize xlsx → csv is done here; OpenAI assistants file_search accepts many formats
    * (pdf, docx, pptx, txt, md, csv, json, html, xml, + code files).
-   * xlsx is NOT supported directly — we reject and tell user to save as CSV.
+   * xlsx is now supported by auto-converting to CSV.
    */
   private assertSupportedForFileSearch(fileName: string): void {
     const ext = (fileName.match(/\.([a-z0-9]+)(?:[?#]|$)/i)?.[1] || '').toLowerCase();
@@ -188,10 +207,11 @@ export class CompanyDataController {
       'pdf', 'docx', 'doc', 'pptx', 'ppt', 'txt', 'md', 'html', 'htm',
       'csv', 'json', 'xml', 'tex', 'rtf',
       'c', 'cpp', 'cs', 'java', 'js', 'ts', 'py', 'rb', 'go', 'php', 'sh',
+      'xlsx', 'xls', 'xlsm', // Excel files (auto-converted to CSV)
     ]);
     if (!supported.has(ext)) {
       throw new BadRequestException(
-        `지원하지 않는 파일 형식입니다 (.${ext}). OpenAI file_search는 PDF, Word(docx), PowerPoint(pptx), CSV, TXT, MD, JSON 등을 지원합니다. Excel(xlsx)은 CSV로 저장 후 업로드하세요.`,
+        `지원하지 않는 파일 형식입니다 (.${ext}). OpenAI file_search는 PDF, Word(docx), PowerPoint(pptx), CSV, TXT, MD, JSON, Excel(xlsx) 등을 지원합니다.`,
       );
     }
   }
@@ -307,8 +327,9 @@ export class CompanyDataController {
    * POST /company-data/upload — multipart upload (file binary + metadata fields)
    * Fields: title, description?, uploadedById, and 'file' (binary)
    * The file binary is streamed directly to OpenAI for file_search RAG.
-   * Supported: PDF, DOCX, PPTX, CSV, TXT, MD, JSON, HTML, XML, + common source files.
-   * NOT supported: XLSX (convert to CSV), images (use text extraction first).
+   * Supported: PDF, DOCX, PPTX, CSV, TXT, MD, JSON, HTML, XML, Excel(xlsx/xls/xlsm), + common source files.
+   * Excel files are auto-converted to CSV before upload.
+   * NOT supported: images (use text extraction first).
    */
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }))
@@ -329,7 +350,23 @@ export class CompanyDataController {
     this.assertSupportedForFileSearch(fileName);
 
     const vsId = await this.ensureVectorStore();
-    const openaiFileId = await this.uploadBinaryToOpenAI(fileName, file.mimetype, file.buffer);
+
+    // Handle Excel files by converting to CSV
+    const ext = (fileName.match(/\.([a-z0-9]+)(?:[?#]|$)/i)?.[1] || '').toLowerCase();
+    let uploadFileName = fileName;
+    let uploadBuffer = file.buffer;
+    let uploadMimeType = file.mimetype;
+
+    if (['xlsx', 'xls', 'xlsm'].includes(ext)) {
+      console.log(`[company-data] Converting Excel file ${fileName} to CSV`);
+      const { csv, csvFileName } = this.excelBufferToCsv(file.buffer, fileName);
+      uploadFileName = csvFileName;
+      uploadBuffer = Buffer.from(csv, 'utf-8');
+      uploadMimeType = 'text/csv';
+      console.log(`[company-data] Converted to CSV: ${csvFileName} (${csv.length} bytes)`);
+    }
+
+    const openaiFileId = await this.uploadBinaryToOpenAI(uploadFileName, uploadMimeType, uploadBuffer);
     await this.addFileToVectorStore(vsId, openaiFileId);
 
     // Wait for OpenAI to finish chunking + embedding the file, otherwise the assistant won't find it.
