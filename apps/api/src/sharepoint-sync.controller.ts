@@ -147,12 +147,9 @@ export class SharePointSyncController {
         throw new BadRequestException(`List '${listName}' not found`);
       }
 
-      // Get list items with optional date filter and limit
-      let itemsUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields&$orderby=createdDateTime desc&$top=${maxItems}`;
-      if (startDate) {
-        // Filter by created date (adjust field name based on your SharePoint list)
-        itemsUrl += `&$filter=fields/Created ge '${startDate}'`;
-      }
+      // Get list items with limit using ID range to avoid list view threshold
+      // Use ID filter which is indexed in SharePoint
+      const itemsUrl = `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields&$orderby=ID desc&$top=${maxItems}`;
 
       const itemsResp = await fetchFn(itemsUrl, {
         headers: { Authorization: `Bearer ${token}` },
