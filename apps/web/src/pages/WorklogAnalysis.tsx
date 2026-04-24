@@ -6,6 +6,9 @@ interface ChatMsg {
   question: string;
   answer: string;
   createdAt: string;
+  keywords?: string[];
+  sourceFiles?: { name: string; url: string }[];
+  sources?: number;
 }
 
 export function WorklogAnalysis() {
@@ -37,7 +40,15 @@ export function WorklogAnalysis() {
       });
       if (!res.ok) throw new Error('질문 실패');
       const data = await res.json();
-      setChatHistory((prev) => [{ id: Date.now().toString(), question, answer: data.answer, createdAt: new Date().toISOString() }, ...prev]);
+      setChatHistory((prev) => [{
+        id: Date.now().toString(),
+        question,
+        answer: data.answer,
+        createdAt: new Date().toISOString(),
+        keywords: data.keywords,
+        sourceFiles: data.sourceFiles,
+        sources: data.sources,
+      }, ...prev]);
       setQuestion('');
     } catch (e: any) {
       alert(`질문 실패: ${e?.message}`);
@@ -78,6 +89,22 @@ export function WorklogAnalysis() {
             <div key={msg.id} className="border rounded-lg p-4">
               <div className="font-semibold mb-2">Q: {msg.question}</div>
               <div className="text-gray-700 whitespace-pre-wrap">{msg.answer}</div>
+              {msg.keywords && msg.keywords.length > 0 && (
+                <div className="mt-3 text-xs">
+                  <span className="text-gray-500">검색 키워드: </span>
+                  {msg.keywords.map((k, i) => (
+                    <span key={i} className="inline-block bg-blue-100 text-blue-700 px-2 py-0.5 rounded mr-1">{k}</span>
+                  ))}
+                </div>
+              )}
+              {msg.sourceFiles && msg.sourceFiles.length > 0 && (
+                <div className="mt-2 text-xs">
+                  <span className="text-gray-500">참조 문서 ({msg.sourceFiles.length}개): </span>
+                  {msg.sourceFiles.map((f, i) => (
+                    <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" className="inline-block bg-green-100 text-green-700 px-2 py-0.5 rounded mr-1 hover:bg-green-200">{f.name}</a>
+                  ))}
+                </div>
+              )}
               <div className="text-sm text-gray-500 mt-2">{new Date(msg.createdAt).toLocaleString('ko-KR')}</div>
             </div>
           ))}

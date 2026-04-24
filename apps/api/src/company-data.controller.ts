@@ -16,6 +16,9 @@ import { memoryStorage } from 'multer';
 import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
 import * as XLSX from 'xlsx';
+import * as mammoth from 'mammoth';
+// @ts-ignore - no types for pdf-parse
+const pdfParse = require('pdf-parse');
 
 const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
 업로드된 회사 자료를 바탕으로 사용자의 질문에 정확하고 구체적으로 답변하세요.
@@ -668,7 +671,7 @@ export class CompanyDataController {
         messages: [
           { 
             role: 'system', 
-            content: '질문에서 검색에 필요한 핵심 키워드를 추출하세요. 한국어와 영어 키워드 모두 포함. JSON 배열 형식으로 반환.' 
+            content: '질문에서 SharePoint 문서 검색에 필요한 핵심 키워드를 추출하세요. 명사 위주, 조사/접속사 제외. 최대 5개. 반드시 다음 JSON 형식으로 반환: {"keywords": ["키워드1", "키워드2", ...]}' 
           },
           { role: 'user', content: question },
         ],
@@ -721,7 +724,8 @@ export class CompanyDataController {
     });
 
     if (!resp.ok) {
-      console.error(`[company-data] SharePoint search failed: ${resp.status}`);
+      const text = await resp.text().catch(() => '');
+      console.error(`[company-data] SharePoint search failed: ${resp.status} ${text.slice(0, 300)}`);
       return [];
     }
 
@@ -730,8 +734,9 @@ export class CompanyDataController {
     return hits.map((hit: any) => ({
       id: hit.resource.id,
       name: hit.resource.name,
-      url: hit.resource.webUrl,
+      webUrl: hit.resource.webUrl,
       driveId: hit.resource.parentReference?.driveId,
+      siteId: hit.resource.parentReference?.siteId,
     }));
   }
 
@@ -776,55 +781,135 @@ export class CompanyDataController {
   // ─── Graph Token Helper ─────────────────────────
 
   private async getGraphToken(userId: string): Promise<string> {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user?.graphRefreshToken) throw new BadRequestException('Microsoft Teams 연결 필요');
-    
-    const f: any = (globalThis as any).fetch;
-    const resp = await f('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: process.env.MICROSOFT_CLIENT_ID || '',
-        client_secret: process.env.MICROSOFT_CLIENT_SECRET || '',
-        refresh_token: user.graphRefreshToken,
-        grant_type: 'refresh_token',
-        scope: 'https://graph.microsoft.com/.default',
-      }),
+    const user = await (this.prisma as any).user.findUnique({
+      where: { id: userId },
+      select: {
+        graphAccessToken: true,
+        graphRefreshToken: true,
+        graphTokenExpiry: true,
+        entraTenantId: true,
+      },
     });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`Graph 토큰 갱신 실패: ${resp.status} ${text.slice(0, 200)}`);
+    if (!user?.graphAccessToken) {
+      throw new BadRequestException('Graph API 토큰이 없습니다. 팀즈(Entra) SSO로 다시 로그인해주세요.');
     }
 
-    const data = await resp.json();
-    return data.access_token;
+    // If token is still valid (with 5 min buffer), return it
+    const expiry = user.graphTokenExpiry ? new Date(user.graphTokenExpiry).getTime() : 0;
+    if (expiry > Date.now() + 5 * 60 * 1000) {
+      return user.graphAccessToken;
+    }
+
+    // Try refresh
+    if (!user.graphRefreshToken) {
+      throw new BadRequestException('Graph API 토큰이 만료되었습니다. 다시 로그인해주세요.');
+    }
+
+    const tenantId = String(user.entraTenantId || process.env.ENTRA_TENANT_ID || '').trim();
+    const clientId = String(process.env.ENTRA_CLIENT_ID || '').trim();
+    const clientSecret = String(process.env.ENTRA_CLIENT_SECRET || '').trim();
+    const tokenUrl = `https://login.microsoftonline.com/${tenantId || 'common'}/oauth2/v2.0/token`;
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: user.graphRefreshToken,
+      scope: 'openid profile email offline_access Tasks.ReadWrite Group.Read.All Files.ReadWrite.All Sites.Read.All',
+    });
+
+    const f: any = (globalThis as any).fetch;
+    const resp = await f(tokenUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+
+    const json: any = await resp.json().catch(() => ({}));
+    if (!resp.ok || !json.access_token) {
+      try {
+        await (this.prisma as any).user.update({
+          where: { id: userId },
+          data: { graphAccessToken: null, graphRefreshToken: null, graphTokenExpiry: null },
+        });
+      } catch {}
+      throw new BadRequestException('Graph API 토큰 갱신 실패. 다시 로그인해주세요.');
+    }
+
+    const newExpiry = new Date(Date.now() + (json.expires_in || 3600) * 1000);
+    await (this.prisma as any).user.update({
+      where: { id: userId },
+      data: {
+        graphAccessToken: json.access_token,
+        graphRefreshToken: json.refresh_token || user.graphRefreshToken,
+        graphTokenExpiry: newExpiry,
+      },
+    });
+
+    return json.access_token;
   }
 
   // ─── File content extraction ─────────────────────────
 
-  private async extractFileContent(fileUrl: string, token: string): Promise<string> {
+  private async extractFileContent(doc: { driveId?: string; id: string; name: string }, token: string): Promise<string> {
+    if (!doc.driveId || !doc.id) return '';
     const f: any = (globalThis as any).fetch;
-    // Download file
-    const resp = await f(fileUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // Get file download URL from Graph API
+    const itemUrl = `https://graph.microsoft.com/v1.0/drives/${doc.driveId}/items/${doc.id}?$select=@microsoft.graph.downloadUrl,name,size`;
+    const metaResp = await f(itemUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (!metaResp.ok) {
+      console.error(`[company-data] File meta fetch failed: ${metaResp.status}`);
+      return '';
+    }
+    const meta = await metaResp.json();
+    const downloadUrl = meta['@microsoft.graph.downloadUrl'];
+    if (!downloadUrl) return '';
 
+    // Skip large files (>10MB)
+    if (meta.size && meta.size > 10 * 1024 * 1024) {
+      console.log(`[company-data] Skipping large file ${doc.name}: ${meta.size} bytes`);
+      return '';
+    }
+
+    // Download file (downloadUrl is pre-authenticated, no auth header needed)
+    const resp = await f(downloadUrl);
     if (!resp.ok) {
       console.error(`[company-data] File download failed: ${resp.status}`);
       return '';
     }
 
-    const buffer = await resp.arrayBuffer();
-    const ext = fileUrl.split('.').pop()?.toLowerCase() || '';
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const name = doc.name.toLowerCase();
+    const ext = name.split('.').pop() || '';
 
-    // For now, return placeholder - actual extraction requires libraries like mammoth (Word), xlsx (Excel), pdf-parse (PDF)
-    if (['doc', 'docx'].includes(ext)) return '[Word 문서 내용 추출 필요]';
-    if (['xls', 'xlsx'].includes(ext)) return '[Excel 문서 내용 추출 필요]';
-    if (ext === 'pdf') return '[PDF 문서 내용 추출 필요]';
-    if (['txt', 'md'].includes(ext)) return new TextDecoder().decode(buffer);
+    try {
+      if (['txt', 'md', 'csv'].includes(ext)) {
+        return buffer.toString('utf-8').slice(0, 10000);
+      }
+      if (['docx'].includes(ext)) {
+        const result = await mammoth.extractRawText({ buffer });
+        return (result.value || '').slice(0, 10000);
+      }
+      if (['xlsx', 'xls'].includes(ext)) {
+        const wb = XLSX.read(buffer, { type: 'buffer' });
+        const parts: string[] = [];
+        for (const sheetName of wb.SheetNames) {
+          const sheet = wb.Sheets[sheetName];
+          const csv = XLSX.utils.sheet_to_csv(sheet);
+          parts.push(`[Sheet: ${sheetName}]\n${csv}`);
+        }
+        return parts.join('\n\n').slice(0, 10000);
+      }
+      if (ext === 'pdf') {
+        const result = await pdfParse(buffer);
+        return (result.text || '').slice(0, 10000);
+      }
+    } catch (e: any) {
+      console.error(`[company-data] Extract failed for ${doc.name}: ${e?.message}`);
+      return '';
+    }
 
-    return '[지원하지 않는 파일 형식]';
+    return '';
   }
 
   // ─── AI Q&A via Assistants API ─────────────────────────
@@ -866,8 +951,8 @@ export class CompanyDataController {
       // 5. Extract content from documents
       const docContents: string[] = [];
       for (const doc of docs.slice(0, 5)) { // Limit to 5 docs
-        const content = await this.extractFileContent(doc.url, token);
-        if (content && !content.includes('[지원하지 않는 파일 형식]')) {
+        const content = await this.extractFileContent(doc, token);
+        if (content) {
           docContents.push(`[문서: ${doc.name}]\n${content}`);
         }
       }
@@ -921,9 +1006,15 @@ export class CompanyDataController {
         },
       });
 
-      return { answer, chatId: chat.id, sources: docs.length + workReports.length };
+      return {
+        answer,
+        chatId: chat.id,
+        sources: docs.length + workReports.length,
+        keywords,
+        sourceFiles: docs.map(d => ({ name: d.name, url: d.webUrl })),
+      };
     } catch (e: any) {
-      console.error(`[company-data] On-demand search failed: ${e?.message}`);
+      console.error(`[company-data] On-demand search failed: ${e?.message}\n${e?.stack}`);
       // Fallback to DB if on-demand search fails
       return await this.askFallback(body.question, body.userId);
     }
