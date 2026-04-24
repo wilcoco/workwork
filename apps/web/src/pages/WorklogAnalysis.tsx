@@ -34,6 +34,8 @@ export function WorklogAnalysis() {
   const [startDate, setStartDate] = useState(''); // Filter by start date
   const [limit, setLimit] = useState(100); // Default limit to 100 items
   const [listId, setListId] = useState<string>(''); // SharePoint list ID
+  const [syncProgress, setSyncProgress] = useState({ completed: 0, total: 0, success: 0, failed: 0 });
+  const [syncing, setSyncing] = useState(false);
 
   // Chat
   const [question, setQuestion] = useState('');
@@ -120,6 +122,8 @@ export function WorklogAnalysis() {
       alert('동기화할 파일이 없습니다.');
       return;
     }
+    setSyncing(true);
+    setSyncProgress({ completed: 0, total: fileIds.length, success: 0, failed: 0 });
     try {
       const response = await apiFetch('/api/sharepoint-sync/batch', {
         method: 'POST',
@@ -138,18 +142,9 @@ export function WorklogAnalysis() {
         throw new Error('응답을 읽을 수 없습니다');
       }
 
-      // 10분 타임아웃
-      const timeoutId = setTimeout(() => {
-        reader.cancel();
-        alert('일괄 동기화 시간 초과 (10분). 일부 항목만 동기화되었을 수 있습니다.');
-      }, 600000);
-
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {
-          clearTimeout(timeoutId);
-          break;
-        }
+        if (done) break;
 
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
@@ -158,15 +153,15 @@ export function WorklogAnalysis() {
           if (line.startsWith('data: ')) {
             const data = JSON.parse(line.slice(6));
             if (data.type === 'progress') {
-              console.log(`진행률: ${data.completed}/${data.total} (성공: ${data.success}, 실패: ${data.failed})`);
+              setSyncProgress({ completed: data.completed, total: data.total, success: data.success, failed: data.failed });
             } else if (data.type === 'complete') {
-              clearTimeout(timeoutId);
+              setSyncing(false);
               alert(`동기화 완료: 성공 ${data.success}개, 실패 ${data.failed}개`);
               loadDataSources();
               loadSharePointFiles();
               return;
             } else if (data.type === 'error') {
-              clearTimeout(timeoutId);
+              setSyncing(false);
               alert(`동기화 오류: ${data.message}`);
               return;
             }
@@ -174,6 +169,7 @@ export function WorklogAnalysis() {
         }
       }
     } catch (e: any) {
+      setSyncing(false);
       alert(`동기화 실패: ${e?.message}`);
     }
   }
@@ -318,13 +314,29 @@ export function WorklogAnalysis() {
             </button>
             {sharePointFiles.length > 0 && (
               <button
-                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-400"
                 onClick={syncAllSharePointFiles}
+                disabled={syncing}
               >
-                전체 동기화 ({sharePointFiles.length}개)
+                {syncing ? '동기화 중...' : `전체 동기화 (${sharePointFiles.length}개)`}
               </button>
             )}
           </div>
+
+          {syncing && (
+            <div className="mt-4">
+              <div className="flex justify-between text-sm mb-1">
+                <span>진행률: {syncProgress.completed}/{syncProgress.total}</span>
+                <span>성공: {syncProgress.success} | 실패: {syncProgress.failed}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div
+                  className="bg-blue-600 h-2.5 rounded-full transition-all"
+                  style={{ width: `${(syncProgress.completed / syncProgress.total) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
 
           {sharePointFiles.length === 0 && !loadingSharePoint && (
             <div className="text-center py-8 text-gray-500">
