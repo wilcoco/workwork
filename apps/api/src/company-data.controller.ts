@@ -944,8 +944,38 @@ export class CompanyDataController {
       .map((d, i) => `[자료 ${i + 1}: ${d.title}]\n${d.content}`)
       .join('\n\n---\n\n');
 
+    // If no data, answer without context
     if (!context.trim()) {
-      throw new BadRequestException('참조할 자료가 없습니다. 자료를 등록하고 내용을 입력하세요.');
+      console.log(`[company-data] No DB data found, answering without context`);
+      const f: any = (globalThis as any).fetch;
+      const resp = await f('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4-turbo',
+          messages: [
+            { role: 'system', content: ASSISTANT_INSTRUCTIONS },
+            { role: 'user', content: `## 질문\n\n${question}\n\n참고: 현재 등록된 회사 자료가 없습니다. 일반적인 지식으로 답변해 주세요.` },
+          ],
+          temperature: 0.3,
+          max_tokens: 4096,
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        throw new BadRequestException(`AI 호출 실패: ${resp.status} ${text.slice(0, 200)}`);
+      }
+
+      const data = await resp.json();
+      const answer = String(data?.choices?.[0]?.message?.content || '').trim();
+      if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
+
+      const chat = await this.prisma.companyDataChat.create({
+        data: { question, answer, dataIds: [], userId },
+      });
+
+      return { answer, chatId: chat.id, sources: 0 };
     }
 
     const f: any = (globalThis as any).fetch;
