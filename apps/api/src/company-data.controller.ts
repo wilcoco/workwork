@@ -840,8 +840,19 @@ export class CompanyDataController {
       const keywords = await this.extractKeywords(body.question);
       console.log(`[company-data] Extracted keywords:`, keywords);
 
-      // 2. Get Graph token
-      const token = await this.getGraphToken(body.userId);
+      // 2. Get Graph token (may fail if Teams not connected)
+      let token: string | null = null;
+      try {
+        token = await this.getGraphToken(body.userId);
+      } catch (e: any) {
+        console.log(`[company-data] Graph token not available: ${e?.message}`);
+      }
+
+      // If no Graph token, fallback to DB
+      if (!token) {
+        console.log(`[company-data] No Graph token, falling back to DB`);
+        return await this.askFallback(body.question, body.userId);
+      }
 
       // 3. Search SharePoint documents
       const docs = await this.searchSharePointDocuments(keywords, token);
