@@ -142,6 +142,8 @@ export function WorklogAnalysis() {
         throw new Error('응답을 읽을 수 없습니다');
       }
 
+      let lastCompleted = 0;
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -154,6 +156,7 @@ export function WorklogAnalysis() {
             const data = JSON.parse(line.slice(6));
             if (data.type === 'progress') {
               setSyncProgress({ completed: data.completed, total: data.total, success: data.success, failed: data.failed });
+              lastCompleted = data.completed;
             } else if (data.type === 'complete') {
               setSyncing(false);
               alert(`동기화 완료: 성공 ${data.success}개, 실패 ${data.failed}개`);
@@ -170,7 +173,14 @@ export function WorklogAnalysis() {
       }
     } catch (e: any) {
       setSyncing(false);
-      alert(`동기화 실패: ${e?.message}`);
+      const completed = syncProgress.completed;
+      const success = syncProgress.success;
+      const failed = syncProgress.failed;
+      if (completed > 0) {
+        alert(`네트워크 오류로 연결이 끊어졌습니다.\n동기화된 항목: ${completed}개 (성공: ${success}, 실패: ${failed})\n다시 시도하면 나머지 항목만 동기화됩니다.`);
+      } else {
+        alert(`동기화 실패: ${e?.message}`);
+      }
     }
   }
 
