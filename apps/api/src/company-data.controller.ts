@@ -617,29 +617,42 @@ export class CompanyDataController {
   /**
    * POST /company-data/upgrade-model
    * Force upgrade the assistant model to gpt-4-turbo for better answer quality.
-   * Clears the in-process cache to ensure the upgrade takes effect.
+   * Deletes the old assistant and creates a new one with the correct model.
    */
   @Public()
   @Post('upgrade-model')
   async upgradeModel() {
     const vsId = await this.ensureVectorStore();
-    // Clear cache to force re-fetch and upgrade
+    // Clear cache
     CompanyDataController.cachedAssistantId = null;
-    const assistantId = await this.ensureAssistant(vsId);
-    // Force model update
+    
+    // Find existing assistant
     try {
-      const a = await this.oai(`/assistants/${assistantId}`);
-      if (a.model !== 'gpt-4-turbo') {
-        await this.oai(`/assistants/${assistantId}`, {
-          method: 'PATCH',
-          body: { model: 'gpt-4-turbo' },
-        });
+      const list = await this.oai('/assistants?limit=100&order=desc');
+      const found = (list?.data || []).find((a: any) => a?.name === ASSISTANT_NAME);
+      if (found?.id) {
+        console.log(`[company-data] Deleting old assistant: ${found.id}`);
+        await this.oai(`/assistants/${found.id}`, { method: 'DELETE' });
       }
     } catch (e: any) {
-      console.error(`[company-data] upgrade-model failed: ${e?.message}`);
+      console.error(`[company-data] Failed to delete old assistant: ${e?.message}`);
     }
-    const a = await this.oai(`/assistants/${assistantId}`);
-    return { assistantId, model: a.model, upgraded: a.model === 'gpt-4-turbo' };
+    
+    // Create new assistant with gpt-4-turbo
+    const assistant = await this.oai('/assistants', {
+      method: 'POST',
+      body: {
+        model: 'gpt-4-turbo',
+        name: ASSISTANT_NAME,
+        instructions: ASSISTANT_INSTRUCTIONS,
+        tools: [{ type: 'file_search' }],
+        tool_resources: {
+          file_search: { vector_store_ids: [vsId] },
+        },
+      },
+    });
+    CompanyDataController.cachedAssistantId = assistant.id;
+    return { assistantId: assistant.id, model: assistant.model, upgraded: assistant.model === 'gpt-4-turbo' };
   }
 
   // ─── AI Q&A via Assistants API ─────────────────────────
