@@ -105,7 +105,7 @@ export class CompanyDataController {
       const found = (list?.data || []).find((a: any) => a?.name === ASSISTANT_NAME);
       if (found?.id) {
         console.log(`[company-data] Reusing existing assistant: ${found.id}`);
-        // Check if model needs update
+        // Always update model to gpt-4.1 for better quality
         if (found.model !== 'gpt-4.1') {
           console.log(`[company-data] Updating assistant model from ${found.model} to gpt-4.1`);
           try {
