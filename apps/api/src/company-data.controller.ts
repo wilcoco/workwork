@@ -614,6 +614,34 @@ export class CompanyDataController {
     return { vectorStoreId: vsId, assistantId, attached, skipped };
   }
 
+  /**
+   * POST /company-data/upgrade-model
+   * Force upgrade the assistant model to gpt-4.1 for better answer quality.
+   * Clears the in-process cache to ensure the upgrade takes effect.
+   */
+  @Public()
+  @Post('upgrade-model')
+  async upgradeModel() {
+    const vsId = await this.ensureVectorStore();
+    // Clear cache to force re-fetch and upgrade
+    CompanyDataController.cachedAssistantId = null;
+    const assistantId = await this.ensureAssistant(vsId);
+    // Force model update
+    try {
+      const a = await this.oai(`/assistants/${assistantId}`);
+      if (a.model !== 'gpt-4.1') {
+        await this.oai(`/assistants/${assistantId}`, {
+          method: 'PATCH',
+          body: { model: 'gpt-4.1' },
+        });
+      }
+    } catch (e: any) {
+      console.error(`[company-data] upgrade-model failed: ${e?.message}`);
+    }
+    const a = await this.oai(`/assistants/${assistantId}`);
+    return { assistantId, model: a.model, upgraded: a.model === 'gpt-4.1' };
+  }
+
   // ─── AI Q&A via Assistants API ─────────────────────────
 
   @Post('ask')
