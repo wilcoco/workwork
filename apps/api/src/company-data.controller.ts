@@ -655,6 +655,178 @@ export class CompanyDataController {
     return { assistantId: assistant.id, model: assistant.model, upgraded: assistant.model === 'gpt-4-turbo' };
   }
 
+  // ─── Keyword extraction for SharePoint search ─────────────────────────
+
+  private async extractKeywords(question: string): Promise<string[]> {
+    const apiKey = this.getApiKey();
+    const f: any = (globalThis as any).fetch;
+    const resp = await f('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { 
+            role: 'system', 
+            content: '질문에서 검색에 필요한 핵심 키워드를 추출하세요. 한국어와 영어 키워드 모두 포함. JSON 배열 형식으로 반환.' 
+          },
+          { role: 'user', content: question },
+        ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`키워드 추출 실패: ${resp.status} ${text.slice(0, 200)}`);
+    }
+
+    const data = await resp.json();
+    const content = String(data?.choices?.[0]?.message?.content || '').trim();
+    try {
+      const parsed = JSON.parse(content);
+      const keywords = Array.isArray(parsed.keywords) ? parsed.keywords : [];
+      return keywords.slice(0, 5); // Max 5 keywords
+    } catch {
+      // Fallback: extract words from question
+      return question.split(/\s+/).filter(w => w.length > 1).slice(0, 5);
+    }
+  }
+
+  // ─── SharePoint Search API ─────────────────────────
+
+  private async searchSharePointDocuments(keywords: string[], token: string): Promise<any[]> {
+    const f: any = (globalThis as any).fetch;
+    const query = keywords.join(' OR ');
+    const searchUrl = 'https://graph.microsoft.com/v1.0/search/query';
+    const searchBody = {
+      requests: [{
+        entityTypes: ['driveItem'],
+        query: {
+          queryString: query,
+        },
+        from: 0,
+        size: 10,
+      }],
+    };
+
+    const resp = await f(searchUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(searchBody),
+    });
+
+    if (!resp.ok) {
+      console.error(`[company-data] SharePoint search failed: ${resp.status}`);
+      return [];
+    }
+
+    const data = await resp.json();
+    const hits = data?.value?.[0]?.hitsContainers?.[0]?.hits || [];
+    return hits.map((hit: any) => ({
+      id: hit.resource.id,
+      name: hit.resource.name,
+      url: hit.resource.webUrl,
+      driveId: hit.resource.parentReference?.driveId,
+    }));
+  }
+
+  private async searchSharePointWorkReports(keywords: string[], token: string, siteId: string): Promise<any[]> {
+    const f: any = (globalThis as any).fetch;
+    const query = keywords.join(' OR ');
+    const searchUrl = 'https://graph.microsoft.com/v1.0/search/query';
+    const searchBody = {
+      requests: [{
+        entityTypes: ['listItem'],
+        query: {
+          queryString: `${query} path:"https://cams2002.sharepoint.com/sites/msteams_03d426/Lists/WorkReports"`,
+        },
+        from: 0,
+        size: 10,
+      }],
+    };
+
+    const resp = await f(searchUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(searchBody),
+    });
+
+    if (!resp.ok) {
+      console.error(`[company-data] WorkReports search failed: ${resp.status}`);
+      return [];
+    }
+
+    const data = await resp.json();
+    const hits = data?.value?.[0]?.hitsContainers?.[0]?.hits || [];
+    return hits.map((hit: any) => ({
+      id: hit.resource.id,
+      title: hit.resource.fields?.Title || hit.resource.fields?.Title,
+      content: hit.resource.fields?.Content || '',
+    }));
+  }
+
+  // ─── Graph Token Helper ─────────────────────────
+
+  private async getGraphToken(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.graphRefreshToken) throw new BadRequestException('Microsoft Teams 연결 필요');
+    
+    const f: any = (globalThis as any).fetch;
+    const resp = await f('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.MICROSOFT_CLIENT_ID || '',
+        client_secret: process.env.MICROSOFT_CLIENT_SECRET || '',
+        refresh_token: user.graphRefreshToken,
+        grant_type: 'refresh_token',
+        scope: 'https://graph.microsoft.com/.default',
+      }),
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`Graph 토큰 갱신 실패: ${resp.status} ${text.slice(0, 200)}`);
+    }
+
+    const data = await resp.json();
+    return data.access_token;
+  }
+
+  // ─── File content extraction ─────────────────────────
+
+  private async extractFileContent(fileUrl: string, token: string): Promise<string> {
+    const f: any = (globalThis as any).fetch;
+    // Download file
+    const resp = await f(fileUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!resp.ok) {
+      console.error(`[company-data] File download failed: ${resp.status}`);
+      return '';
+    }
+
+    const buffer = await resp.arrayBuffer();
+    const ext = fileUrl.split('.').pop()?.toLowerCase() || '';
+
+    // For now, return placeholder - actual extraction requires libraries like mammoth (Word), xlsx (Excel), pdf-parse (PDF)
+    if (['doc', 'docx'].includes(ext)) return '[Word 문서 내용 추출 필요]';
+    if (['xls', 'xlsx'].includes(ext)) return '[Excel 문서 내용 추출 필요]';
+    if (ext === 'pdf') return '[PDF 문서 내용 추출 필요]';
+    if (['txt', 'md'].includes(ext)) return new TextDecoder().decode(buffer);
+
+    return '[지원하지 않는 파일 형식]';
+  }
+
   // ─── AI Q&A via Assistants API ─────────────────────────
 
   @Post('ask')
@@ -662,78 +834,88 @@ export class CompanyDataController {
     if (!body.question?.trim()) throw new BadRequestException('question required');
     if (!body.userId) throw new BadRequestException('userId required');
 
-    // Check we have files in OpenAI
-    const filesWithOai = await this.prisma.companyData.count({
-      where: { openaiFileId: { not: null } },
-    });
+    // New approach: Extract keywords and search SharePoint on-demand
+    try {
+      // 1. Extract keywords from question
+      const keywords = await this.extractKeywords(body.question);
+      console.log(`[company-data] Extracted keywords:`, keywords);
 
-    if (filesWithOai === 0) {
-      // Fallback: use content from DB directly (original approach)
-      return this.askFallback(body.question, body.userId);
+      // 2. Get Graph token
+      const token = await this.getGraphToken(body.userId);
+
+      // 3. Search SharePoint documents
+      const docs = await this.searchSharePointDocuments(keywords, token);
+      console.log(`[company-data] Found ${docs.length} documents`);
+
+      // 4. Search SharePoint WorkReports
+      const siteId = 'cams2002.sharepoint.com,::/sites/msteams_03d426'; // Default site
+      const workReports = await this.searchSharePointWorkReports(keywords, token, siteId);
+      console.log(`[company-data] Found ${workReports.length} work reports`);
+
+      // 5. Extract content from documents
+      const docContents: string[] = [];
+      for (const doc of docs.slice(0, 5)) { // Limit to 5 docs
+        const content = await this.extractFileContent(doc.url, token);
+        if (content && !content.includes('[지원하지 않는 파일 형식]')) {
+          docContents.push(`[문서: ${doc.name}]\n${content}`);
+        }
+      }
+
+      // 6. Add WorkReports content
+      for (const wr of workReports.slice(0, 5)) { // Limit to 5 reports
+        if (wr.content) {
+          docContents.push(`[업무일지: ${wr.title}]\n${wr.content}`);
+        }
+      }
+
+      // 7. If no content found, fallback to DB
+      if (docContents.length === 0) {
+        console.log(`[company-data] No SharePoint content found, falling back to DB`);
+        return await this.askFallback(body.question, body.userId);
+      }
+
+      // 8. Generate answer using extracted content
+      const context = docContents.join('\n\n---\n\n');
+      const apiKey = this.getApiKey();
+      const f: any = (globalThis as any).fetch;
+      const resp = await f('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4-turbo',
+          messages: [
+            { role: 'system', content: ASSISTANT_INSTRUCTIONS },
+            { role: 'user', content: `## 회사 자료\n\n${context}\n\n## 질문\n${body.question}` },
+          ],
+          temperature: 0.3,
+          max_tokens: 4096,
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        throw new BadRequestException(`AI 호출 실패: ${resp.status} ${text.slice(0, 200)}`);
+      }
+
+      const data = await resp.json();
+      const answer = String(data?.choices?.[0]?.message?.content || '').trim();
+      if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
+
+      const chat = await this.prisma.companyDataChat.create({
+        data: {
+          question: body.question,
+          answer,
+          dataIds: [],
+          userId: body.userId,
+        },
+      });
+
+      return { answer, chatId: chat.id, sources: docs.length + workReports.length };
+    } catch (e: any) {
+      console.error(`[company-data] On-demand search failed: ${e?.message}`);
+      // Fallback to DB if on-demand search fails
+      return await this.askFallback(body.question, body.userId);
     }
-
-    const vsId = await this.ensureVectorStore();
-    const assistantId = await this.ensureAssistant(vsId);
-    // Repair assistant→vectorStore linkage in case OPENAI_ASSISTANT_ID was created earlier without it.
-    await this.ensureAssistantHasVectorStore(assistantId, vsId);
-
-    // Create thread and run — also attach vector_store at thread level as a belt-and-suspenders guarantee
-    const thread = await this.oai('/threads', {
-      method: 'POST',
-      body: {
-        messages: [{ role: 'user', content: body.question }],
-        tool_resources: { file_search: { vector_store_ids: [vsId] } },
-      },
-    });
-
-    const run = await this.oai(`/threads/${thread.id}/runs`, {
-      method: 'POST',
-      body: {
-        assistant_id: assistantId,
-        tool_resources: { file_search: { vector_store_ids: [vsId] } },
-      },
-    });
-
-    // Poll for completion (max 60s)
-    let status = run.status;
-    let runData = run;
-    const start = Date.now();
-    while (status === 'queued' || status === 'in_progress') {
-      if (Date.now() - start > 60000) break;
-      await new Promise((r) => setTimeout(r, 1500));
-      runData = await this.oai(`/threads/${thread.id}/runs/${run.id}`);
-      status = runData.status;
-    }
-
-    if (status !== 'completed') {
-      throw new BadRequestException(`AI 분석 실패 (status: ${status}). 다시 시도해주세요.`);
-    }
-
-    // Get messages
-    const msgs = await this.oai(`/threads/${thread.id}/messages?order=desc&limit=1`);
-    const assistantMsg = msgs?.data?.[0];
-    const answer = (assistantMsg?.content || [])
-      .filter((c: any) => c.type === 'text')
-      .map((c: any) => c.text?.value || '')
-      .join('\n')
-      .trim();
-
-    if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
-
-    // Save chat
-    const chat = await this.prisma.companyDataChat.create({
-      data: {
-        question: body.question,
-        answer,
-        dataIds: [],
-        userId: body.userId,
-      },
-    });
-
-    // Cleanup thread
-    try { await this.oai(`/threads/${thread.id}`, { method: 'DELETE' }); } catch {}
-
-    return { answer, chatId: chat.id };
   }
 
   // Fallback: use DB content directly when no OpenAI files
