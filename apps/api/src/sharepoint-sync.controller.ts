@@ -261,7 +261,7 @@ export class SharePointSyncController {
       const item = await itemResp.json();
 
       const fields = item.fields || {};
-      fileName = fields.Title || `item-${body.fileId}`;
+      fileName = (fields.Title || `item-${body.fileId}`).replace(/\.[^.]+$/, '') + '.txt';
       webUrl = item.webUrl || '';
       content = Object.entries(fields)
         .map(([key, value]) => `${key}: ${value}`)
