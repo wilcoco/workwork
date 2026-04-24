@@ -17,8 +17,6 @@ import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
-// @ts-ignore - no types for pdf-parse
-const pdfParse = require('pdf-parse');
 
 const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
 업로드된 회사 자료를 바탕으로 사용자의 질문에 정확하고 구체적으로 답변하세요.
@@ -901,6 +899,9 @@ export class CompanyDataController {
         return parts.join('\n\n').slice(0, 10000);
       }
       if (ext === 'pdf') {
+        // Dynamic require to avoid pdf-parse's debug mode at module load time
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const pdfParse = require('pdf-parse/lib/pdf-parse.js');
         const result = await pdfParse(buffer);
         return (result.text || '').slice(0, 10000);
       }
