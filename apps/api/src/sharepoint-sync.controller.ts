@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Body, Param, BadRequestException, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, Param, BadRequestException, UseGuards, Header, Req, Res } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
@@ -387,9 +387,12 @@ export class SharePointSyncController {
 
   /**
    * POST /sharepoint-sync/batch
-   * Sync multiple SharePoint files at once.
+   * Sync multiple SharePoint files at once with progress updates via SSE.
    */
   @Post('batch')
+  @Header('Content-Type', 'text/event-stream')
+  @Header('Cache-Control', 'no-cache')
+  @Header('Connection', 'keep-alive')
   async syncBatch(
     @Body() body: {
       userId: string;
@@ -397,25 +400,66 @@ export class SharePointSyncController {
       listId?: string; // Optional: if syncing from a SharePoint list
       fileIds: string[];
     },
+    @Req() req: any,
+    @Res() res: any,
   ) {
     if (!body.userId || !body.fileIds?.length) throw new BadRequestException('userId, fileIds required');
 
+    const total = body.fileIds.length;
+    let completed = 0;
+    let success = 0;
+    let failed = 0;
     const results = [];
-    for (const fileId of body.fileIds) {
-      try {
-        const result = await this.syncFile({
-          userId: body.userId,
-          siteId: body.siteId,
-          listId: body.listId,
-          fileId,
-        });
-        results.push({ fileId, ok: true, entryId: result.entry.id });
-      } catch (e: any) {
-        console.error(`[sharepoint-sync] Failed to sync file ${fileId}:`, e?.message);
-        results.push({ fileId, ok: false, error: e?.message || '알 수 없는 오류' });
-      }
-    }
 
-    return { results, success: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length };
+    // Helper to send SSE event
+    const sendEvent = (data: any) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      for (const fileId of body.fileIds) {
+        try {
+          const result = await this.syncFile({
+            userId: body.userId,
+            siteId: body.siteId,
+            listId: body.listId,
+            fileId,
+          });
+          results.push({ fileId, ok: true, entryId: result.entry.id });
+          success++;
+        } catch (e: any) {
+          console.error(`[sharepoint-sync] Failed to sync file ${fileId}:`, e?.message);
+          results.push({ fileId, ok: false, error: e?.message || '알 수 없는 오류' });
+          failed++;
+        }
+        completed++;
+
+        // Send progress update
+        sendEvent({
+          type: 'progress',
+          completed,
+          total,
+          success,
+          failed,
+          currentFileId: fileId,
+        });
+      }
+
+      // Send final result
+      sendEvent({
+        type: 'complete',
+        results,
+        success,
+        failed,
+      });
+
+      res.end();
+    } catch (e: any) {
+      sendEvent({
+        type: 'error',
+        message: e?.message || '알 수 없는 오류',
+      });
+      res.end();
+    }
   }
 }

@@ -121,33 +121,49 @@ export function WorklogAnalysis() {
       return;
     }
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5분 타임아웃
-      const res = await apiFetch('/api/sharepoint-sync/batch', {
+      const response = await apiFetch('/api/sharepoint-sync/batch', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, fileIds, siteId, listId }),
-        cache: 'no-store',
-        signal: controller.signal,
       });
-      clearTimeout(timeoutId);
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        throw new Error(`일괄 동기화 실패 (${res.status}): ${text}`);
+
+      if (!response.ok) {
+        throw new Error(`동기화 실패: ${response.status}`);
       }
-      const data = await res.json();
-      alert(`동기화 완료: 성공 ${data.success}개, 실패 ${data.failed}개\n실패 상세: ${data.results.filter((r: any) => !r.ok).map((r: any) => r.error).join(', ')}`);
-      loadDataSources();
-      loadSharePointFiles();
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('응답을 읽을 수 없습니다');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'progress') {
+              console.log(`진행률: ${data.completed}/${data.total} (성공: ${data.success}, 실패: ${data.failed})`);
+            } else if (data.type === 'complete') {
+              alert(`동기화 완료: 성공 ${data.success}개, 실패 ${data.failed}개`);
+              loadDataSources();
+              loadSharePointFiles();
+              return;
+            } else if (data.type === 'error') {
+              alert(`동기화 오류: ${data.message}`);
+              return;
+            }
+          }
+        }
+      }
     } catch (e: any) {
-      if (e.name === 'AbortError') {
-        alert('일괄 동기화 시간 초과 (5분). 일부 항목만 동기화되었을 수 있습니다.');
-      } else {
-        alert(`일괄 동기화 실패: ${e?.message}`);
-      }
+      alert(`동기화 실패: ${e?.message}`);
     }
   }
 
