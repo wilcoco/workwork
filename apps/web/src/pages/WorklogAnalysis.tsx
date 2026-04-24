@@ -138,9 +138,18 @@ export function WorklogAnalysis() {
         throw new Error('응답을 읽을 수 없습니다');
       }
 
+      // 10분 타임아웃
+      const timeoutId = setTimeout(() => {
+        reader.cancel();
+        alert('일괄 동기화 시간 초과 (10분). 일부 항목만 동기화되었을 수 있습니다.');
+      }, 600000);
+
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          clearTimeout(timeoutId);
+          break;
+        }
 
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
@@ -151,11 +160,13 @@ export function WorklogAnalysis() {
             if (data.type === 'progress') {
               console.log(`진행률: ${data.completed}/${data.total} (성공: ${data.success}, 실패: ${data.failed})`);
             } else if (data.type === 'complete') {
+              clearTimeout(timeoutId);
               alert(`동기화 완료: 성공 ${data.success}개, 실패 ${data.failed}개`);
               loadDataSources();
               loadSharePointFiles();
               return;
             } else if (data.type === 'error') {
+              clearTimeout(timeoutId);
               alert(`동기화 오류: ${data.message}`);
               return;
             }
