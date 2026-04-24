@@ -105,13 +105,13 @@ export class CompanyDataController {
       const found = (list?.data || []).find((a: any) => a?.name === ASSISTANT_NAME);
       if (found?.id) {
         console.log(`[company-data] Reusing existing assistant: ${found.id}`);
-        // Always update model to gpt-4.1 for better quality
-        if (found.model !== 'gpt-4.1') {
-          console.log(`[company-data] Updating assistant model from ${found.model} to gpt-4.1`);
+        // Always update model to gpt-4-turbo for better quality
+        if (found.model !== 'gpt-4-turbo') {
+          console.log(`[company-data] Updating assistant model from ${found.model} to gpt-4-turbo`);
           try {
             await this.oai(`/assistants/${found.id}`, {
               method: 'PATCH',
-              body: { model: 'gpt-4.1' },
+              body: { model: 'gpt-4-turbo' },
             });
           } catch (e: any) {
             console.error(`[company-data] Failed to update assistant model: ${e?.message}`);
@@ -126,7 +126,7 @@ export class CompanyDataController {
     const assistant = await this.oai('/assistants', {
       method: 'POST',
       body: {
-        model: 'gpt-4.1',
+        model: 'gpt-4-turbo',
         name: ASSISTANT_NAME,
         instructions: ASSISTANT_INSTRUCTIONS,
         tools: [{ type: 'file_search' }],
@@ -616,7 +616,7 @@ export class CompanyDataController {
 
   /**
    * POST /company-data/upgrade-model
-   * Force upgrade the assistant model to gpt-4.1 for better answer quality.
+   * Force upgrade the assistant model to gpt-4-turbo for better answer quality.
    * Clears the in-process cache to ensure the upgrade takes effect.
    */
   @Public()
@@ -629,17 +629,17 @@ export class CompanyDataController {
     // Force model update
     try {
       const a = await this.oai(`/assistants/${assistantId}`);
-      if (a.model !== 'gpt-4.1') {
+      if (a.model !== 'gpt-4-turbo') {
         await this.oai(`/assistants/${assistantId}`, {
           method: 'PATCH',
-          body: { model: 'gpt-4.1' },
+          body: { model: 'gpt-4-turbo' },
         });
       }
     } catch (e: any) {
       console.error(`[company-data] upgrade-model failed: ${e?.message}`);
     }
     const a = await this.oai(`/assistants/${assistantId}`);
-    return { assistantId, model: a.model, upgraded: a.model === 'gpt-4.1' };
+    return { assistantId, model: a.model, upgraded: a.model === 'gpt-4-turbo' };
   }
 
   // ─── AI Q&A via Assistants API ─────────────────────────
@@ -747,7 +747,7 @@ export class CompanyDataController {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'gpt-4.1',
+        model: 'gpt-4-turbo',
         messages: [
           { role: 'system', content: ASSISTANT_INSTRUCTIONS },
           { role: 'user', content: `## 회사 자료\n\n${context}\n\n## 질문\n${question}` },
