@@ -87,9 +87,14 @@ export function WorklogAnalysis() {
         : `/api/sharepoint-sync/files?userId=${encodeURIComponent(userId)}&siteId=${encodeURIComponent(siteId)}&limit=${limit}${startDate ? `&startDate=${encodeURIComponent(startDate)}` : ''}`;
       const res = await apiJson<{ files?: any[]; items?: any[]; total: number; listId?: string }>(url);
       const items = res.files || res.items || [];
-      setSharePointFiles(items);
+      
+      // Filter out already synced files
+      const syncedFileIds = new Set(dataSources.map((d) => d.fileName));
+      const unsyncedItems = items.filter((item) => !syncedFileIds.has(item.name || item.title));
+      
+      setSharePointFiles(unsyncedItems);
       if (res.listId) setListId(res.listId);
-      alert(`${items.length}개 항목 발견 (최근 ${limit}개)${startDate ? ` (${startDate} 이후)` : ''}`);
+      alert(`${unsyncedItems.length}개 항목 발견 (동기화 안된 항목만)${startDate ? ` (${startDate} 이후)` : ''}`);
     } catch (e: any) {
       console.error('Failed to load SharePoint files:', e?.message);
       alert(`SharePoint 파일 목록 로드 실패: ${e?.message}`);
