@@ -9,6 +9,7 @@ interface ChatMsg {
   keywords?: string[];
   sourceFiles?: { name: string; url: string }[];
   sources?: number;
+  debug?: any;
 }
 
 export function WorklogAnalysis() {
@@ -48,6 +49,7 @@ export function WorklogAnalysis() {
         keywords: data.keywords,
         sourceFiles: data.sourceFiles,
         sources: data.sources,
+        debug: data.debug,
       }, ...prev]);
       setQuestion('');
     } catch (e: any) {
@@ -106,6 +108,12 @@ export function WorklogAnalysis() {
                 </div>
               )}
               <div className="text-sm text-gray-500 mt-2">{new Date(msg.createdAt).toLocaleString('ko-KR')}</div>
+              {msg.debug && (
+                <details className="mt-2 text-xs text-gray-600">
+                  <summary className="cursor-pointer">디버그 정보 ({msg.debug.path})</summary>
+                  <pre className="bg-gray-50 p-2 rounded mt-1 overflow-x-auto">{JSON.stringify(msg.debug, null, 2)}</pre>
+                </details>
+              )}
             </div>
           ))}
           {chatHistory.length === 0 && (

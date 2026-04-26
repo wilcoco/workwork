@@ -920,43 +920,56 @@ export class CompanyDataController {
     if (!body.question?.trim()) throw new BadRequestException('question required');
     if (!body.userId) throw new BadRequestException('userId required');
 
+    const debug: any = { path: 'unknown', keywords: [], docCount: 0, workReportCount: 0, extractedCount: 0 };
+
     // New approach: Extract keywords and search SharePoint on-demand
     try {
       // 1. Extract keywords from question
       const keywords = await this.extractKeywords(body.question);
+      debug.keywords = keywords;
       console.log(`[company-data] Extracted keywords:`, keywords);
 
       // 2. Get Graph token (may fail if Teams not connected)
       let token: string | null = null;
       try {
         token = await this.getGraphToken(body.userId);
+        debug.tokenAcquired = true;
       } catch (e: any) {
+        debug.tokenError = e?.message;
         console.log(`[company-data] Graph token not available: ${e?.message}`);
       }
 
       // If no Graph token, fallback to DB
       if (!token) {
+        debug.path = 'no-graph-token';
         console.log(`[company-data] No Graph token, falling back to DB`);
-        return await this.askFallback(body.question, body.userId);
+        const r = await this.askFallback(body.question, body.userId);
+        return { ...r, debug };
       }
 
       // 3. Search SharePoint documents
       const docs = await this.searchSharePointDocuments(keywords, token);
+      debug.docCount = docs.length;
+      debug.docNames = docs.slice(0, 5).map(d => d.name);
       console.log(`[company-data] Found ${docs.length} documents`);
 
       // 4. Search SharePoint WorkReports
       const siteId = 'cams2002.sharepoint.com,::/sites/msteams_03d426'; // Default site
       const workReports = await this.searchSharePointWorkReports(keywords, token, siteId);
+      debug.workReportCount = workReports.length;
       console.log(`[company-data] Found ${workReports.length} work reports`);
 
       // 5. Extract content from documents
       const docContents: string[] = [];
+      const extractStatus: any[] = [];
       for (const doc of docs.slice(0, 5)) { // Limit to 5 docs
         const content = await this.extractFileContent(doc, token);
+        extractStatus.push({ name: doc.name, ext: doc.name.split('.').pop(), len: content?.length || 0 });
         if (content) {
           docContents.push(`[문서: ${doc.name}]\n${content}`);
         }
       }
+      debug.extractStatus = extractStatus;
 
       // 6. Add WorkReports content
       for (const wr of workReports.slice(0, 5)) { // Limit to 5 reports
@@ -964,12 +977,16 @@ export class CompanyDataController {
           docContents.push(`[업무일지: ${wr.title}]\n${wr.content}`);
         }
       }
+      debug.extractedCount = docContents.length;
 
       // 7. If no content found, fallback to DB
       if (docContents.length === 0) {
+        debug.path = 'no-sharepoint-content';
         console.log(`[company-data] No SharePoint content found, falling back to DB`);
-        return await this.askFallback(body.question, body.userId);
+        const r = await this.askFallback(body.question, body.userId);
+        return { ...r, debug };
       }
+      debug.path = 'sharepoint-success';
 
       // 8. Generate answer using extracted content
       const context = docContents.join('\n\n---\n\n');
@@ -1013,11 +1030,15 @@ export class CompanyDataController {
         sources: docs.length + workReports.length,
         keywords,
         sourceFiles: docs.map(d => ({ name: d.name, url: d.webUrl })),
+        debug,
       };
     } catch (e: any) {
+      debug.path = 'exception';
+      debug.error = e?.message;
       console.error(`[company-data] On-demand search failed: ${e?.message}\n${e?.stack}`);
       // Fallback to DB if on-demand search fails
-      return await this.askFallback(body.question, body.userId);
+      const r = await this.askFallback(body.question, body.userId);
+      return { ...r, debug };
     }
   }
 
