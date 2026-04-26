@@ -17,6 +17,7 @@ import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
+import JSZip from 'jszip';
 
 const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
 업로드된 회사 자료를 바탕으로 사용자의 질문에 정확하고 구체적으로 답변하세요.
@@ -849,7 +850,29 @@ export class CompanyDataController {
 
   // ─── File content extraction ─────────────────────────
 
-  private static readonly SUPPORTED_EXTS = ['txt', 'md', 'csv', 'docx', 'xlsx', 'xls', 'pdf'];
+  private static readonly SUPPORTED_EXTS = ['txt', 'md', 'csv', 'docx', 'xlsx', 'xls', 'pdf', 'pptx'];
+
+  private async extractPptxText(buffer: Buffer): Promise<string> {
+    const zip = await JSZip.loadAsync(buffer);
+    // Slide XML files in order: ppt/slides/slide1.xml, slide2.xml, ...
+    const slideEntries = Object.keys(zip.files)
+      .filter(p => /^ppt\/slides\/slide\d+\.xml$/.test(p))
+      .sort((a, b) => {
+        const na = parseInt(a.match(/slide(\d+)/)?.[1] || '0', 10);
+        const nb = parseInt(b.match(/slide(\d+)/)?.[1] || '0', 10);
+        return na - nb;
+      });
+    const parts: string[] = [];
+    for (let i = 0; i < slideEntries.length; i++) {
+      const xml = await zip.files[slideEntries[i]].async('string');
+      // Extract <a:t>...</a:t> text runs
+      const matches = xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g) || [];
+      const texts = matches.map(m => m.replace(/<a:t[^>]*>/, '').replace(/<\/a:t>/, ''));
+      const slideText = texts.join(' ').replace(/\s+/g, ' ').trim();
+      if (slideText) parts.push(`[Slide ${i + 1}]\n${slideText}`);
+    }
+    return parts.join('\n\n');
+  }
 
   private async extractFileContent(
     doc: { driveId?: string; id: string; name: string },
@@ -909,6 +932,10 @@ export class CompanyDataController {
           parts.push(`[Sheet: ${sheetName}]\n${csv}`);
         }
         return { content: parts.join('\n\n').slice(0, 10000) };
+      }
+      if (ext === 'pptx') {
+        const text = await this.extractPptxText(buffer);
+        return { content: text.slice(0, 10000) };
       }
       if (ext === 'pdf') {
         // Dynamic require to avoid pdf-parse's debug mode at module load time
