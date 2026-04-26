@@ -849,44 +849,56 @@ export class CompanyDataController {
 
   // ─── File content extraction ─────────────────────────
 
-  private async extractFileContent(doc: { driveId?: string; id: string; name: string }, token: string): Promise<string> {
-    if (!doc.driveId || !doc.id) return '';
+  private static readonly SUPPORTED_EXTS = ['txt', 'md', 'csv', 'docx', 'xlsx', 'xls', 'pdf'];
+
+  private async extractFileContent(
+    doc: { driveId?: string; id: string; name: string },
+    token: string,
+  ): Promise<{ content: string; error?: string }> {
+    const name = doc.name || '';
+    const dotIdx = name.lastIndexOf('.');
+    const ext = dotIdx >= 0 ? name.slice(dotIdx + 1).toLowerCase() : '';
+    if (!CompanyDataController.SUPPORTED_EXTS.includes(ext)) {
+      return { content: '', error: `unsupported-ext:${ext || 'none'}` };
+    }
+    if (!doc.driveId || !doc.id) {
+      return { content: '', error: 'missing-driveId-or-id' };
+    }
+
     const f: any = (globalThis as any).fetch;
-    // Get file download URL from Graph API
-    const itemUrl = `https://graph.microsoft.com/v1.0/drives/${doc.driveId}/items/${doc.id}?$select=@microsoft.graph.downloadUrl,name,size`;
+    // Get file download URL from Graph API. Note: $select with @microsoft.graph.downloadUrl
+    // is unreliable; just fetch the full item.
+    const itemUrl = `https://graph.microsoft.com/v1.0/drives/${doc.driveId}/items/${doc.id}`;
     const metaResp = await f(itemUrl, { headers: { Authorization: `Bearer ${token}` } });
     if (!metaResp.ok) {
-      console.error(`[company-data] File meta fetch failed: ${metaResp.status}`);
-      return '';
+      const text = await metaResp.text().catch(() => '');
+      return { content: '', error: `meta-${metaResp.status}:${text.slice(0, 100)}` };
     }
     const meta = await metaResp.json();
     const downloadUrl = meta['@microsoft.graph.downloadUrl'];
-    if (!downloadUrl) return '';
+    if (!downloadUrl) {
+      return { content: '', error: 'no-download-url' };
+    }
 
     // Skip large files (>10MB)
     if (meta.size && meta.size > 10 * 1024 * 1024) {
-      console.log(`[company-data] Skipping large file ${doc.name}: ${meta.size} bytes`);
-      return '';
+      return { content: '', error: `too-large:${meta.size}` };
     }
 
-    // Download file (downloadUrl is pre-authenticated, no auth header needed)
     const resp = await f(downloadUrl);
     if (!resp.ok) {
-      console.error(`[company-data] File download failed: ${resp.status}`);
-      return '';
+      return { content: '', error: `download-${resp.status}` };
     }
 
     const buffer = Buffer.from(await resp.arrayBuffer());
-    const name = doc.name.toLowerCase();
-    const ext = name.split('.').pop() || '';
 
     try {
       if (['txt', 'md', 'csv'].includes(ext)) {
-        return buffer.toString('utf-8').slice(0, 10000);
+        return { content: buffer.toString('utf-8').slice(0, 10000) };
       }
-      if (['docx'].includes(ext)) {
+      if (ext === 'docx') {
         const result = await mammoth.extractRawText({ buffer });
-        return (result.value || '').slice(0, 10000);
+        return { content: (result.value || '').slice(0, 10000) };
       }
       if (['xlsx', 'xls'].includes(ext)) {
         const wb = XLSX.read(buffer, { type: 'buffer' });
@@ -896,21 +908,20 @@ export class CompanyDataController {
           const csv = XLSX.utils.sheet_to_csv(sheet);
           parts.push(`[Sheet: ${sheetName}]\n${csv}`);
         }
-        return parts.join('\n\n').slice(0, 10000);
+        return { content: parts.join('\n\n').slice(0, 10000) };
       }
       if (ext === 'pdf') {
         // Dynamic require to avoid pdf-parse's debug mode at module load time
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const pdfParse = require('pdf-parse/lib/pdf-parse.js');
         const result = await pdfParse(buffer);
-        return (result.text || '').slice(0, 10000);
+        return { content: (result.text || '').slice(0, 10000) };
       }
     } catch (e: any) {
-      console.error(`[company-data] Extract failed for ${doc.name}: ${e?.message}`);
-      return '';
+      return { content: '', error: `parse-error:${e?.message || String(e)}`.slice(0, 200) };
     }
 
-    return '';
+    return { content: '', error: 'unhandled' };
   }
 
   // ─── AI Q&A via Assistants API ─────────────────────────
@@ -959,14 +970,24 @@ export class CompanyDataController {
       debug.workReportCount = workReports.length;
       console.log(`[company-data] Found ${workReports.length} work reports`);
 
-      // 5. Extract content from documents
+      // 5. Extract content from documents (prefer files with supported extensions first)
+      const supported = docs.filter(d => {
+        const idx = (d.name || '').lastIndexOf('.');
+        const ext = idx >= 0 ? d.name.slice(idx + 1).toLowerCase() : '';
+        return CompanyDataController.SUPPORTED_EXTS.includes(ext);
+      });
+      const candidates = [...supported, ...docs.filter(d => !supported.includes(d))].slice(0, 8);
+      debug.supportedCount = supported.length;
+
       const docContents: string[] = [];
       const extractStatus: any[] = [];
-      for (const doc of docs.slice(0, 5)) { // Limit to 5 docs
-        const content = await this.extractFileContent(doc, token);
-        extractStatus.push({ name: doc.name, ext: doc.name.split('.').pop(), len: content?.length || 0 });
-        if (content) {
-          docContents.push(`[문서: ${doc.name}]\n${content}`);
+      for (const doc of candidates) {
+        const dotIdx = (doc.name || '').lastIndexOf('.');
+        const ext = dotIdx >= 0 ? doc.name.slice(dotIdx + 1).toLowerCase() : '';
+        const result = await this.extractFileContent(doc, token);
+        extractStatus.push({ name: doc.name, ext, len: result.content.length, error: result.error });
+        if (result.content) {
+          docContents.push(`[문서: ${doc.name}]\n${result.content}`);
         }
       }
       debug.extractStatus = extractStatus;
