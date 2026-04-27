@@ -953,14 +953,75 @@ export class CompanyDataController {
     return { content: '', error: 'unhandled' };
   }
 
+  // ─── LLM answer generation (provider-switchable) ─────────────────────────
+
+  private async generateAnswer(
+    provider: 'openai' | 'claude',
+    system: string,
+    user: string,
+  ): Promise<string> {
+    const f: any = (globalThis as any).fetch;
+    if (provider === 'claude') {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) throw new BadRequestException('ANTHROPIC_API_KEY가 설정되지 않았습니다.');
+      const model = process.env.CLAUDE_MODEL || 'claude-opus-4-20250514';
+      const resp = await f('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 4096,
+          system,
+          messages: [{ role: 'user', content: user }],
+          temperature: 0.3,
+        }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        throw new BadRequestException(`Claude 호출 실패: ${resp.status} ${text.slice(0, 200)}`);
+      }
+      const data = await resp.json();
+      const blocks: any[] = data?.content || [];
+      const textBlock = blocks.find((b: any) => b.type === 'text');
+      return String(textBlock?.text || '').trim();
+    }
+    // OpenAI (default) — latest top-tier model
+    const apiKey = this.getApiKey();
+    const model = process.env.OPENAI_MODEL || 'gpt-4.1';
+    const resp = await f('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        temperature: 0.3,
+        max_tokens: 4096,
+      }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => '');
+      throw new BadRequestException(`OpenAI 호출 실패: ${resp.status} ${text.slice(0, 200)}`);
+    }
+    const data = await resp.json();
+    return String(data?.choices?.[0]?.message?.content || '').trim();
+  }
+
   // ─── AI Q&A via Assistants API ─────────────────────────
 
   @Post('ask')
-  async ask(@Body() body: { question: string; userId: string }) {
+  async ask(@Body() body: { question: string; userId: string; provider?: 'openai' | 'claude' }) {
     if (!body.question?.trim()) throw new BadRequestException('question required');
     if (!body.userId) throw new BadRequestException('userId required');
 
-    const debug: any = { path: 'unknown', keywords: [], docCount: 0, workReportCount: 0, extractedCount: 0 };
+    const provider: 'openai' | 'claude' = body.provider === 'claude' ? 'claude' : 'openai';
+    const debug: any = { path: 'unknown', provider, keywords: [], docCount: 0, workReportCount: 0, extractedCount: 0 };
 
     // New approach: Extract keywords and search SharePoint on-demand
     try {
@@ -983,7 +1044,7 @@ export class CompanyDataController {
       if (!token) {
         debug.path = 'no-graph-token';
         console.log(`[company-data] No Graph token, falling back to DB`);
-        const r = await this.askFallback(body.question, body.userId);
+        const r = await this.askFallback(body.question, body.userId, provider);
         return { ...r, debug };
       }
 
@@ -1033,37 +1094,17 @@ export class CompanyDataController {
       if (docContents.length === 0) {
         debug.path = 'no-sharepoint-content';
         console.log(`[company-data] No SharePoint content found, falling back to DB`);
-        const r = await this.askFallback(body.question, body.userId);
+        const r = await this.askFallback(body.question, body.userId, provider);
         return { ...r, debug };
       }
       debug.path = 'sharepoint-success';
 
       // 8. Generate answer using extracted content
       const context = docContents.join('\n\n---\n\n');
-      const apiKey = this.getApiKey();
-      const f: any = (globalThis as any).fetch;
-      const resp = await f('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: 'gpt-4-turbo',
-          messages: [
-            { role: 'system', content: ASSISTANT_INSTRUCTIONS },
-            { role: 'user', content: `## 회사 자료\n\n${context}\n\n## 질문\n${body.question}` },
-          ],
-          temperature: 0.3,
-          max_tokens: 4096,
-        }),
-      });
-
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '');
-        throw new BadRequestException(`AI 호출 실패: ${resp.status} ${text.slice(0, 200)}`);
-      }
-
-      const data = await resp.json();
-      const answer = String(data?.choices?.[0]?.message?.content || '').trim();
+      const userPrompt = `## 회사 자료\n\n${context}\n\n## 질문\n${body.question}`;
+      const answer = await this.generateAnswer(provider, ASSISTANT_INSTRUCTIONS, userPrompt);
       if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
+      debug.model = provider === 'claude' ? (process.env.CLAUDE_MODEL || 'claude-opus-4-20250514') : 'gpt-4.1';
 
       const chat = await this.prisma.companyDataChat.create({
         data: {
@@ -1087,14 +1128,13 @@ export class CompanyDataController {
       debug.error = e?.message;
       console.error(`[company-data] On-demand search failed: ${e?.message}\n${e?.stack}`);
       // Fallback to DB if on-demand search fails
-      const r = await this.askFallback(body.question, body.userId);
+      const r = await this.askFallback(body.question, body.userId, provider);
       return { ...r, debug };
     }
   }
 
-  // Fallback: use DB content directly when no OpenAI files
-  private async askFallback(question: string, userId: string) {
-    const apiKey = this.getApiKey();
+  // Fallback: use DB content directly when no SharePoint content
+  private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' = 'openai') {
     const dataSources = await this.prisma.companyData.findMany({
       where: { content: { not: null } },
       select: { id: true, title: true, content: true },
@@ -1107,69 +1147,24 @@ export class CompanyDataController {
       .map((d, i) => `[자료 ${i + 1}: ${d.title}]\n${d.content}`)
       .join('\n\n---\n\n');
 
-    // If no data, answer without context
+    let userPrompt: string;
+    let dataIds: string[];
     if (!context.trim()) {
-      console.log(`[company-data] No DB data found, answering without context`);
-      const f: any = (globalThis as any).fetch;
-      const resp = await f('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: 'gpt-4-turbo',
-          messages: [
-            { role: 'system', content: ASSISTANT_INSTRUCTIONS },
-            { role: 'user', content: `## 질문\n\n${question}\n\n참고: 현재 등록된 회사 자료가 없습니다. 일반적인 지식으로 답변해 주세요.` },
-          ],
-          temperature: 0.3,
-          max_tokens: 4096,
-        }),
-      });
-
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '');
-        throw new BadRequestException(`AI 호출 실패: ${resp.status} ${text.slice(0, 200)}`);
-      }
-
-      const data = await resp.json();
-      const answer = String(data?.choices?.[0]?.message?.content || '').trim();
-      if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
-
-      const chat = await this.prisma.companyDataChat.create({
-        data: { question, answer, dataIds: [], userId },
-      });
-
-      return { answer, chatId: chat.id, sources: 0 };
+      userPrompt = `## 질문\n\n${question}\n\n참고: 현재 등록된 회사 자료가 없습니다. 일반적인 지식으로 답변해 주세요.`;
+      dataIds = [];
+    } else {
+      userPrompt = `## 회사 자료\n\n${context}\n\n## 질문\n${question}`;
+      dataIds = dataSources.map((d) => d.id);
     }
 
-    const f: any = (globalThis as any).fetch;
-    const resp = await f('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4-turbo',
-        messages: [
-          { role: 'system', content: ASSISTANT_INSTRUCTIONS },
-          { role: 'user', content: `## 회사 자료\n\n${context}\n\n## 질문\n${question}` },
-        ],
-        temperature: 0.3,
-        max_tokens: 4096,
-      }),
-    });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`AI 호출 실패: ${resp.status} ${text.slice(0, 200)}`);
-    }
-
-    const data = await resp.json();
-    const answer = String(data?.choices?.[0]?.message?.content || '').trim();
+    const answer = await this.generateAnswer(provider, ASSISTANT_INSTRUCTIONS, userPrompt);
     if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
 
     const chat = await this.prisma.companyDataChat.create({
-      data: { question, answer, dataIds: dataSources.map((d) => d.id), userId },
+      data: { question, answer, dataIds, userId },
     });
 
-    return { answer, chatId: chat.id };
+    return { answer, chatId: chat.id, sources: dataIds.length };
   }
 
   // ─── Chat History ──────────────────────────────────────

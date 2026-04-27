@@ -10,6 +10,7 @@ interface ChatMsg {
   sourceFiles?: { name: string; url: string }[];
   sources?: number;
   debug?: any;
+  provider?: 'openai' | 'claude';
 }
 
 export function WorklogAnalysis() {
@@ -18,7 +19,7 @@ export function WorklogAnalysis() {
   // Chat
   const [question, setQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
-  const [asking, setAsking] = useState(false);
+  const [asking, setAsking] = useState<'openai' | 'claude' | null>(null);
 
   useEffect(() => { loadChats(); }, []);
 
@@ -30,14 +31,14 @@ export function WorklogAnalysis() {
     } catch {}
   }
 
-  async function askQuestion() {
+  async function askQuestion(provider: 'openai' | 'claude') {
     if (!question.trim() || !userId) return;
-    setAsking(true);
+    setAsking(provider);
     try {
       const res = await apiFetch('/api/company-data/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, question }),
+        body: JSON.stringify({ userId, question, provider }),
       });
       if (!res.ok) throw new Error('질문 실패');
       const data = await res.json();
@@ -50,12 +51,13 @@ export function WorklogAnalysis() {
         sourceFiles: data.sourceFiles,
         sources: data.sources,
         debug: data.debug,
+        provider,
       }, ...prev]);
       setQuestion('');
     } catch (e: any) {
       alert(`질문 실패: ${e?.message}`);
     } finally {
-      setAsking(false);
+      setAsking(null);
     }
   }
 
@@ -71,17 +73,26 @@ export function WorklogAnalysis() {
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && askQuestion()}
+            onKeyPress={(e) => e.key === 'Enter' && !asking && askQuestion('openai')}
             placeholder="질문을 입력하세요..."
             className="flex-1 border rounded-lg px-4 py-2"
-            disabled={asking}
+            disabled={!!asking}
           />
           <button
-            onClick={askQuestion}
-            disabled={asking || !question.trim()}
-            className="bg-blue-500 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+            onClick={() => askQuestion('openai')}
+            disabled={!!asking || !question.trim()}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+            title="OpenAI GPT-4.1 (최신)"
           >
-            {asking ? '질문 중...' : '질문하기'}
+            {asking === 'openai' ? '분석 중...' : 'OpenAI'}
+          </button>
+          <button
+            onClick={() => askQuestion('claude')}
+            disabled={!!asking || !question.trim()}
+            className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
+            title="Claude Opus 4 (최신)"
+          >
+            {asking === 'claude' ? '분석 중...' : 'Claude'}
           </button>
         </div>
 
@@ -89,7 +100,14 @@ export function WorklogAnalysis() {
         <div className="space-y-4">
           {chatHistory.map((msg) => (
             <div key={msg.id} className="border rounded-lg p-4">
-              <div className="font-semibold mb-2">Q: {msg.question}</div>
+              <div className="font-semibold mb-2 flex items-center gap-2">
+                <span>Q: {msg.question}</span>
+                {msg.provider && (
+                  <span className={`text-xs px-2 py-0.5 rounded ${msg.provider === 'claude' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    {msg.provider === 'claude' ? 'Claude' : 'OpenAI'}
+                  </span>
+                )}
+              </div>
               <div className="text-gray-700 whitespace-pre-wrap">{msg.answer}</div>
               {msg.keywords && msg.keywords.length > 0 && (
                 <div className="mt-3 text-xs">
