@@ -17,7 +17,8 @@ import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
-import JSZip from 'jszip';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const JSZip = require('jszip');
 
 const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
 업로드된 회사 자료를 바탕으로 사용자의 질문에 정확하고 구체적으로 답변하세요.
@@ -867,7 +868,7 @@ export class CompanyDataController {
       const xml = await zip.files[slideEntries[i]].async('string');
       // Extract <a:t>...</a:t> text runs
       const matches = xml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g) || [];
-      const texts = matches.map(m => m.replace(/<a:t[^>]*>/, '').replace(/<\/a:t>/, ''));
+      const texts = matches.map((m: string) => m.replace(/<a:t[^>]*>/, '').replace(/<\/a:t>/, ''));
       const slideText = texts.join(' ').replace(/\s+/g, ' ').trim();
       if (slideText) parts.push(`[Slide ${i + 1}]\n${slideText}`);
     }
@@ -903,8 +904,9 @@ export class CompanyDataController {
       return { content: '', error: 'no-download-url' };
     }
 
-    // Skip large files (>10MB)
-    if (meta.size && meta.size > 10 * 1024 * 1024) {
+    // Size limits by type (pptx/pdf can legitimately be larger due to embedded images)
+    const sizeLimit = ['pptx', 'pdf'].includes(ext) ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (meta.size && meta.size > sizeLimit) {
       return { content: '', error: `too-large:${meta.size}` };
     }
 
