@@ -227,7 +227,17 @@ export class UsersController {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { orgUnit: true } });
     if (!user) throw new NotFoundException('user not found');
     void this.autoSyncTeamsPhoto(user as any);
-    return { id: user.id, email: user.email, teamsUpn: (user as any).teamsUpn || '', name: user.name, role: user.role, status: (user as any).status || 'ACTIVE', activatedAt: (user as any).activatedAt || null, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '' };
+    // Admin allowlist by email/UPN (env: ADMIN_EMAILS, comma-separated)
+    const defaultAdmins = ['json@cams2002.onmicrosoft.com'];
+    const envAdmins = String(process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const adminSet = new Set([...defaultAdmins.map((s) => s.toLowerCase()), ...envAdmins]);
+    const email = String(user.email || '').toLowerCase();
+    const upn = String((user as any).teamsUpn || '').toLowerCase();
+    const isAdmin = String(user.role) === 'CEO' || adminSet.has(email) || adminSet.has(upn);
+    return { id: user.id, email: user.email, teamsUpn: (user as any).teamsUpn || '', name: user.name, role: user.role, status: (user as any).status || 'ACTIVE', activatedAt: (user as any).activatedAt || null, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '', isAdmin };
   }
 
   @Get()

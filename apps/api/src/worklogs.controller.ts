@@ -369,7 +369,20 @@ export class WorklogsController {
   private async assertCeo(userId?: string) {
     if (!userId) throw new BadRequestException('userId required');
     const actor = await this.prisma.user.findUnique({ where: { id: String(userId) } });
-    if (!actor || String((actor as any).role || '') !== 'CEO') throw new ForbiddenException('only CEO can perform this action');
+    if (!actor) throw new ForbiddenException('only CEO or admin can perform this action');
+    const role = String((actor as any).role || '');
+    if (role === 'CEO') return;
+    // Admin allowlist by email/UPN (env: ADMIN_EMAILS, comma-separated)
+    const defaultAdmins = ['json@cams2002.onmicrosoft.com'];
+    const envAdmins = String(process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const admins = new Set([...defaultAdmins.map((s) => s.toLowerCase()), ...envAdmins]);
+    const email = String((actor as any).email || '').toLowerCase();
+    const upn = String((actor as any).teamsUpn || '').toLowerCase();
+    if (admins.has(email) || admins.has(upn)) return;
+    throw new ForbiddenException('only CEO or admin can perform this action');
   }
 
   private async getScopeOrgUnitIdsForViewer(viewerId: string): Promise<Set<string>> {

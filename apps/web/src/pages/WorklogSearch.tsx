@@ -215,8 +215,8 @@ export function WorklogSearch() {
     (async () => {
       if (myUserId) {
         try {
-          const me = await apiJson<{ id: string; role: string }>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
-          setIsCeo(String((me as any)?.role || '') === 'CEO');
+          const me = await apiJson<{ id: string; role: string; isAdmin?: boolean }>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
+          setIsCeo(Boolean((me as any)?.isAdmin) || String((me as any)?.role || '') === 'CEO');
         } catch {
           setIsCeo(false);
         }
