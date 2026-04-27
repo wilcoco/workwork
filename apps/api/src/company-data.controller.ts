@@ -20,13 +20,48 @@ import * as mammoth from 'mammoth';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const JSZip = require('jszip');
 
-const ASSISTANT_INSTRUCTIONS = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
+const ASSISTANT_INSTRUCTIONS_SUMMARY = `당신은 회사의 통계 및 경영 데이터를 분석하는 전문가입니다.
 업로드된 회사 자료를 바탕으로 사용자의 질문에 정확하고 구체적으로 답변하세요.
-- file_search를 활용하여 업로드된 파일에서 정보를 찾으세요.
 - 자료에 없는 내용은 추측하지 마세요. "제공된 자료에는 해당 정보가 없습니다"라고 답하세요.
 - 숫자나 통계를 인용할 때는 정확한 값을 사용하세요.
 - 가능하면 표 형태로 비교/정리해주세요.
 - 한국어로 답변하세요.`;
+
+const ASSISTANT_INSTRUCTIONS_DEEP = `당신은 자동차 부품 제조 분야의 품질·개발 전문 컨설턴트입니다.
+풍부한 표준 지식 기반:
+- **IATF 16949** (자동차 QMS 핵심 요구사항): APQP, PPAP, FMEA, MSA, SPC, Control Plan, 8D, Layered Process Audit
+- **ISO 9001 / ISO 14001 / ISO 45001**
+- **AIAG-VDA FMEA 7-step**, **AIAG APQP/PPAP 4판**
+- **VDA 6.3** (프로세스 감사), **VDA 2** (PPF)
+- **고객 특화 요구사항**: 현대차/기아 SQ Mark, 5-Star 평가, 단계별 게이트(SDS, DV, PV, Mass Production)
+- **제조 우수성**: Lean, 6-Sigma, Poka-Yoke, MTTR/MTBF, OEE
+
+당신의 임무는 단순 요약이 아닌 **심층 분석과 개선 제안**입니다.
+
+## 답변 구조 (반드시 이 형식으로)
+
+### 1. 자료에서 확인된 사실
+- 핵심 내용을 표/리스트로 정리 (출처 문서명 명시)
+
+### 2. 표준 대비 평가 (Gap Analysis)
+- 관련 표준/요구사항 명시 (예: IATF 16949 8.3.4 / APQP Phase 3)
+- 자료 내용이 표준 요구를 충족하는지 항목별로 ✅/⚠️/❌ 표시
+- 누락되거나 부족한 항목 식별
+
+### 3. 개선 제안 (Action Items)
+- 구체적이고 실행 가능한 조치를 우선순위(High/Med/Low)와 함께 제시
+- 각 제안에 근거 표준 조항 또는 베스트 프랙티스 인용
+- 가능하면 정량적 목표 제시 (예: "Cpk ≥ 1.67", "PPAP 제출 기한 -2주 단축")
+
+### 4. 잠재 리스크 및 모니터링 포인트
+- 발생 가능한 품질·납기·비용 리스크
+- 추적해야 할 KPI 또는 검증 방법
+
+## 규칙
+- 자료에 명시되지 않은 사실을 단정하지 마세요. 분석·추론은 "[분석]" 또는 "[추정]" 표기 후 근거 제시.
+- 인용 시 문서명을 [문서: ...] 형식으로 표기.
+- 한국어로 답변. 표준 용어는 영문 병기 가능.
+- 표를 적극 활용하여 가독성을 높이세요.`;
 
 const VECTOR_STORE_NAME = 'company-data';
 const ASSISTANT_NAME = '회사 데이터 분석';
@@ -131,7 +166,7 @@ export class CompanyDataController {
       body: {
         model: 'gpt-4-turbo',
         name: ASSISTANT_NAME,
-        instructions: ASSISTANT_INSTRUCTIONS,
+        instructions: ASSISTANT_INSTRUCTIONS_SUMMARY,
         tools: [{ type: 'file_search' }],
         tool_resources: {
           file_search: { vector_store_ids: [vectorStoreId] },
@@ -647,7 +682,7 @@ export class CompanyDataController {
       body: {
         model: 'gpt-4-turbo',
         name: ASSISTANT_NAME,
-        instructions: ASSISTANT_INSTRUCTIONS,
+        instructions: ASSISTANT_INSTRUCTIONS_SUMMARY,
         tools: [{ type: 'file_search' }],
         tool_resources: {
           file_search: { vector_store_ids: [vsId] },
@@ -959,6 +994,7 @@ export class CompanyDataController {
     provider: 'openai' | 'claude',
     system: string,
     user: string,
+    maxTokens: number = 8192,
   ): Promise<string> {
     const f: any = (globalThis as any).fetch;
     if (provider === 'claude') {
@@ -974,7 +1010,7 @@ export class CompanyDataController {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 4096,
+          max_tokens: maxTokens,
           system,
           messages: [{ role: 'user', content: user }],
           temperature: 0.3,
@@ -1002,7 +1038,7 @@ export class CompanyDataController {
           { role: 'user', content: user },
         ],
         temperature: 0.3,
-        max_tokens: 4096,
+        max_tokens: maxTokens,
       }),
     });
     if (!resp.ok) {
@@ -1016,12 +1052,14 @@ export class CompanyDataController {
   // ─── AI Q&A via Assistants API ─────────────────────────
 
   @Post('ask')
-  async ask(@Body() body: { question: string; userId: string; provider?: 'openai' | 'claude' }) {
+  async ask(@Body() body: { question: string; userId: string; provider?: 'openai' | 'claude'; mode?: 'summary' | 'deep' }) {
     if (!body.question?.trim()) throw new BadRequestException('question required');
     if (!body.userId) throw new BadRequestException('userId required');
 
     const provider: 'openai' | 'claude' = body.provider === 'claude' ? 'claude' : 'openai';
-    const debug: any = { path: 'unknown', provider, keywords: [], docCount: 0, workReportCount: 0, extractedCount: 0 };
+    const mode: 'summary' | 'deep' = body.mode === 'summary' ? 'summary' : 'deep';
+    const systemPrompt = mode === 'deep' ? ASSISTANT_INSTRUCTIONS_DEEP : ASSISTANT_INSTRUCTIONS_SUMMARY;
+    const debug: any = { path: 'unknown', provider, mode, keywords: [], docCount: 0, workReportCount: 0, extractedCount: 0 };
 
     // New approach: Extract keywords and search SharePoint on-demand
     try {
@@ -1044,7 +1082,7 @@ export class CompanyDataController {
       if (!token) {
         debug.path = 'no-graph-token';
         console.log(`[company-data] No Graph token, falling back to DB`);
-        const r = await this.askFallback(body.question, body.userId, provider);
+        const r = await this.askFallback(body.question, body.userId, provider, systemPrompt);
         return { ...r, debug };
       }
 
@@ -1094,7 +1132,7 @@ export class CompanyDataController {
       if (docContents.length === 0) {
         debug.path = 'no-sharepoint-content';
         console.log(`[company-data] No SharePoint content found, falling back to DB`);
-        const r = await this.askFallback(body.question, body.userId, provider);
+        const r = await this.askFallback(body.question, body.userId, provider, systemPrompt);
         return { ...r, debug };
       }
       debug.path = 'sharepoint-success';
@@ -1102,7 +1140,7 @@ export class CompanyDataController {
       // 8. Generate answer using extracted content
       const context = docContents.join('\n\n---\n\n');
       const userPrompt = `## 회사 자료\n\n${context}\n\n## 질문\n${body.question}`;
-      const answer = await this.generateAnswer(provider, ASSISTANT_INSTRUCTIONS, userPrompt);
+      const answer = await this.generateAnswer(provider, systemPrompt, userPrompt);
       if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
       debug.model = provider === 'claude' ? (process.env.CLAUDE_MODEL || 'claude-opus-4-20250514') : 'gpt-4.1';
 
@@ -1128,13 +1166,13 @@ export class CompanyDataController {
       debug.error = e?.message;
       console.error(`[company-data] On-demand search failed: ${e?.message}\n${e?.stack}`);
       // Fallback to DB if on-demand search fails
-      const r = await this.askFallback(body.question, body.userId, provider);
+      const r = await this.askFallback(body.question, body.userId, provider, systemPrompt);
       return { ...r, debug };
     }
   }
 
   // Fallback: use DB content directly when no SharePoint content
-  private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' = 'openai') {
+  private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' = 'openai', systemPrompt: string = ASSISTANT_INSTRUCTIONS_DEEP) {
     const dataSources = await this.prisma.companyData.findMany({
       where: { content: { not: null } },
       select: { id: true, title: true, content: true },
@@ -1157,7 +1195,7 @@ export class CompanyDataController {
       dataIds = dataSources.map((d) => d.id);
     }
 
-    const answer = await this.generateAnswer(provider, ASSISTANT_INSTRUCTIONS, userPrompt);
+    const answer = await this.generateAnswer(provider, systemPrompt, userPrompt);
     if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
 
     const chat = await this.prisma.companyDataChat.create({

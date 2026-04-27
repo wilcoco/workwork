@@ -20,6 +20,7 @@ export function WorklogAnalysis() {
   const [question, setQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
   const [asking, setAsking] = useState<'openai' | 'claude' | null>(null);
+  const [mode, setMode] = useState<'summary' | 'deep'>('deep');
 
   useEffect(() => { loadChats(); }, []);
 
@@ -38,7 +39,7 @@ export function WorklogAnalysis() {
       const res = await apiFetch('/api/company-data/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, question, provider }),
+        body: JSON.stringify({ userId, question, provider, mode }),
       });
       if (!res.ok) throw new Error('질문 실패');
       const data = await res.json();
@@ -64,7 +65,29 @@ export function WorklogAnalysis() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">과거 업무일지 분석</h1>
-      <p className="text-gray-600 mb-6">SharePoint 문서와 업무일지를 AI로 검색하고 질의할 수 있습니다.</p>
+      <p className="text-gray-600 mb-4">SharePoint 문서와 업무일지를 AI로 검색하고 질의할 수 있습니다.</p>
+
+      {/* Mode Toggle */}
+      <div className="mb-4 flex items-center gap-3">
+        <span className="text-sm font-medium text-gray-700">분석 모드:</span>
+        <div className="inline-flex rounded-lg border bg-white p-1">
+          <button
+            onClick={() => setMode('deep')}
+            className={`px-3 py-1 text-sm rounded transition ${mode === 'deep' ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            심층 분석 (IATF 표준 기반)
+          </button>
+          <button
+            onClick={() => setMode('summary')}
+            className={`px-3 py-1 text-sm rounded transition ${mode === 'summary' ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}
+          >
+            간단 요약
+          </button>
+        </div>
+        <span className="text-xs text-gray-500">
+          {mode === 'deep' ? 'IATF 16949 등 표준을 인용해 Gap 분석·개선 제안을 제공합니다' : '자료 내용 요약 수준으로만 답변합니다'}
+        </span>
+      </div>
 
       {/* Chat Section */}
       <div className="mb-6">
