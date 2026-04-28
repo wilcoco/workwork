@@ -119,16 +119,17 @@ export class WeeklyReportsController {
       return `[${i + 1}] ${dateStr} | ${task}\n${structured || note}`;
     }).join('\n\n');
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!anthropicKey && !openaiKey) {
       // Fallback: generate simple aggregation without AI
       return { sections: this.buildFallbackSections(worklogs), message: 'AI 키 없음 - 기본 집계' };
     }
 
-    const systemPrompt = `당신은 제조업 팀장을 위한 주간 업무 리포트 작성 도우미입니다.
+    const systemPrompt = `당신은 ㈜캠스(CAMS)의 팀장을 위한 주간 업무 리포트 작성 도우미입니다.
 주어진 일일 업무일지들을 분석하여 아래 5개 섹션의 주간 리포트를 JSON으로 생성하세요.
 
-출력 JSON 형식:
+출력 JSON 형식 (반드시 이 키만 사용):
 {
   "completedTasks": ["이번 주 완료된 주요 업무 목록"],
   "ongoingProjects": ["진행 중인 핵심 프로젝트/업무"],
@@ -137,17 +138,60 @@ export class WeeklyReportsController {
   "supportRequests": ["지원 요청 사항"]
 }
 
-각 항목은 간결하고 구체적으로 작성하세요. 빈 섹션은 빈 배열로 두세요.`;
+각 항목은 간결하고 구체적으로 작성하세요. 빈 섹션은 빈 배열로 두세요. 추가 설명 없이 JSON만 출력.`;
+    const userPrompt = `다음은 ${user.name}님의 이번 주(${body.weekStart}) 업무일지입니다:\n\n${logTexts}`;
+
+    // Prefer Claude Opus 4 (top-tier) for worklog analysis; fall back to OpenAI.
+    if (anthropicKey) {
+      try {
+        const model = process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-20250514';
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': anthropicKey,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 2000,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }],
+            temperature: 0.3,
+          }),
+        });
+        if (res.ok) {
+          const data: any = await res.json();
+          const blocks: any[] = data?.content || [];
+          const textBlock = blocks.find((b: any) => b.type === 'text');
+          const content = String(textBlock?.text || '').trim();
+          // Strip code fences if present
+          const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
+          const sections = JSON.parse(cleaned || '{}');
+          return { sections, model: `${model}` };
+        }
+        // If Claude fails and no OpenAI, fall back to basic aggregation
+        if (!openaiKey) {
+          const errText = await res.text().catch(() => '');
+          return { sections: this.buildFallbackSections(worklogs), message: 'Claude 호출 실패 - 기본 집계', error: errText.slice(0, 200) };
+        }
+        // Otherwise continue to OpenAI fallback below
+      } catch (err: any) {
+        if (!openaiKey) {
+          return { sections: this.buildFallbackSections(worklogs), message: 'Claude 호출 실패 - 기본 집계', error: err?.message };
+        }
+      }
+    }
 
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
         body: JSON.stringify({
           model: process.env.OPENAI_MODEL || 'gpt-4.1',
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `다음은 ${user.name}님의 이번 주(${body.weekStart}) 업무일지입니다:\n\n${logTexts}` },
+            { role: 'user', content: userPrompt },
           ],
           response_format: { type: 'json_object' },
           temperature: 0.3,
@@ -157,7 +201,7 @@ export class WeeklyReportsController {
       const data = await res.json();
       const content = data?.choices?.[0]?.message?.content || '{}';
       const sections = JSON.parse(content);
-      return { sections };
+      return { sections, model: process.env.OPENAI_MODEL || 'gpt-4.1' };
     } catch (err: any) {
       return { sections: this.buildFallbackSections(worklogs), message: 'AI 호출 실패 - 기본 집계', error: err?.message };
     }
