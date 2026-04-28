@@ -1,4 +1,6 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import * as jwt from 'jsonwebtoken';
 import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
 import { DataverseService } from './dataverse.service';
@@ -1578,6 +1580,10 @@ export class GraphTasksController {
       ? ['organization']
       : ['anonymous', 'organization'];
 
+    // Sign a long-lived proxy token so the frontend can render the file via
+    // our backend even from browsers without a SharePoint session cookie.
+    const proxyUrl = this.signProxyUrl({ uploaderId: userId, driveId, itemId, name: fileName });
+
     const errors: Record<string, string | undefined> = {};
     for (const s of order) {
       const res = await attempt(s);
@@ -1587,6 +1593,7 @@ export class GraphTasksController {
           scope: s,
           requestedScope,
           name: fileName,
+          proxyUrl,
           ...(s !== requestedScope ? { fallbackFrom: requestedScope, anonymousError: errors.anonymous } : {}),
         };
       }
@@ -1599,8 +1606,95 @@ export class GraphTasksController {
       scope: 'owner',
       requestedScope,
       name: fileName,
+      proxyUrl,
       anonymousError: errors.anonymous,
       organizationError: errors.organization,
     };
+  }
+
+  // ─── OneDrive content proxy ─────────────────────────
+  //
+  // Some viewers won't have an active SharePoint browser session (e.g. opening
+  // the worklog from a phone or a different browser), so embedding a
+  // SharePoint share URL via <img> can still fail. We therefore expose a
+  // backend proxy that uses the uploader's Graph token to fetch the file
+  // bytes and streams them to the viewer. The proxy URL is signed (HS256
+  // JWT) so it is only valid for the specific driveItem and uploader and
+  // expires after a fixed window.
+
+  private proxySecret(): string {
+    return String(process.env.JWT_SECRET || 'devsecret');
+  }
+
+  private signProxyUrl(params: { uploaderId: string; driveId: string; itemId: string; name?: string }): string {
+    const token = jwt.sign(
+      {
+        uid: params.uploaderId,
+        d: params.driveId,
+        i: params.itemId,
+        n: params.name || undefined,
+      },
+      this.proxySecret(),
+      { expiresIn: '180d' },
+    );
+    return `/api/graph-tasks/onedrive/proxy?t=${encodeURIComponent(token)}`;
+  }
+
+  /**
+   * GET /api/graph-tasks/onedrive/proxy?t=<jwt>
+   * Stream a OneDrive file's bytes via our backend using the uploader's
+   * Graph token. Public so it can be used as <img src="..."> directly.
+   */
+  @Public()
+  @Get('onedrive/proxy')
+  async onedriveProxy(@Query('t') t: string, @Res() res: Response) {
+    if (!t) {
+      res.status(400).send('missing token');
+      return;
+    }
+    let payload: any;
+    try {
+      payload = jwt.verify(t, this.proxySecret());
+    } catch {
+      res.status(401).send('invalid token');
+      return;
+    }
+    const uploaderId = String(payload?.uid || '');
+    const driveId = String(payload?.d || '');
+    const itemId = String(payload?.i || '');
+    const name = String(payload?.n || '');
+    if (!uploaderId || !driveId || !itemId) {
+      res.status(400).send('malformed token');
+      return;
+    }
+
+    let token: string;
+    try {
+      token = await this.getGraphToken(uploaderId);
+    } catch (e: any) {
+      res.status(502).send(`uploader graph token unavailable: ${e?.message || e}`);
+      return;
+    }
+
+    const f: any = (globalThis as any).fetch;
+    const contentUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}/content`;
+    const upstream = await f(contentUrl, { headers: { Authorization: `Bearer ${token}` }, redirect: 'follow' });
+    if (!upstream.ok) {
+      const errText = await upstream.text().catch(() => '');
+      res.status(upstream.status).send(errText || `upstream ${upstream.status}`);
+      return;
+    }
+
+    const ct = upstream.headers.get('content-type') || 'application/octet-stream';
+    const cl = upstream.headers.get('content-length');
+    res.setHeader('Content-Type', ct);
+    if (cl) res.setHeader('Content-Length', cl);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    if (name) {
+      // inline so <img> renders; downloads keep the original filename.
+      res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(name)}`);
+    }
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.status(200).end(buf);
   }
 }

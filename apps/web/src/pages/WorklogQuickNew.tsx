@@ -83,7 +83,9 @@ export function WorklogQuickNew() {
     return !!(t.krOwnerId && t.krOwnerId === myUserId);
   }
 
-  async function upgradeToAnonShareLink(raw: string): Promise<{ url: string; name?: string }> {
+  async function upgradeToAnonShareLink(
+    raw: string,
+  ): Promise<{ url: string; name?: string; proxyUrl?: string }> {
     // Ask the user which share scope to apply, then call the backend to
     // (re)create the share link with that scope. Scope 'skip' keeps the URL
     // as-is (e.g. if the user has already set sharing manually).
@@ -100,7 +102,11 @@ export function WorklogQuickNew() {
           if (data?.scope && data.scope !== shareScope && data.scope !== 'passthrough') {
             window.alert(`주의: 선택한 공유 범위(${shareScope})로 설정하지 못했습니다 (적용된 범위=${data.scope}).`);
           }
-          return { url: String(data.url), name: data?.name ? String(data.name) : undefined };
+          return {
+            url: String(data.url),
+            name: data?.name ? String(data.name) : undefined,
+            proxyUrl: data?.proxyUrl ? String(data.proxyUrl) : undefined,
+          };
         }
       } else {
         const err: any = await resp.json().catch(() => ({}));
@@ -121,8 +127,10 @@ export function WorklogQuickNew() {
       setError('http(s)로 시작하는 URL을 입력해주세요.');
       return;
     }
-    const { url: finalUrl, name } = await upgradeToAnonShareLink(raw);
-    setPhotos((prev) => [...prev, { url: finalUrl, name: name || finalUrl }]);
+    const { url: finalUrl, name, proxyUrl } = await upgradeToAnonShareLink(raw);
+    // Photos always render as <img>: prefer the backend proxy URL so it works
+    // even from browsers without a SharePoint session cookie.
+    setPhotos((prev) => [...prev, { url: proxyUrl || finalUrl, name: name || finalUrl }]);
   }
 
   // addFile removed — cloud link only (use addAttachmentLink)
@@ -1326,13 +1334,19 @@ export function WorklogQuickNew() {
           userId={myUserId}
           multiple
           onSelect={async (files) => {
+            const isPhotoMode = showFilePicker === 'photo';
             const upgraded = await Promise.all(
               files.map(async (f) => {
-                const { url, name } = await upgradeToAnonShareLink(f.url);
-                return { url, name: name || f.name };
+                const { url, name, proxyUrl } = await upgradeToAnonShareLink(f.url);
+                // Photos render as <img> → use proxy for reliability;
+                // file attachments open in OneDrive → keep the share URL.
+                return {
+                  url: isPhotoMode ? (proxyUrl || url) : url,
+                  name: name || f.name,
+                };
               }),
             );
-            if (showFilePicker === 'photo') {
+            if (isPhotoMode) {
               setPhotos((prev) => [...prev, ...upgraded]);
             } else {
               setAttachments((prev) => [...prev, ...upgraded]);

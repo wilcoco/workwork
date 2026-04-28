@@ -24,25 +24,46 @@ function toBase64Url(input: string): string {
   }
 }
 
-function isOneDriveShareUrl(url: string): boolean {
+function isPersonalOneDrive(url: string): boolean {
   if (!url) return false;
   const u = url.toLowerCase();
-  if (u.includes('1drv.ms/')) return true;
-  if (u.includes('onedrive.live.com/')) return true;
-  // SharePoint personal share links use the /:i:/, /:b:/, /:w:/, /:x:/, /:p:/ patterns.
-  if (/sharepoint\.com\/:[a-z]:\//i.test(url)) return true;
-  return false;
+  return u.includes('1drv.ms/') || u.includes('onedrive.live.com/');
+}
+
+function isSharePointShare(url: string): boolean {
+  // SharePoint share links use the /:i:/, /:b:/, /:w:/, /:x:/, /:p:/, /:f:/ patterns.
+  return /sharepoint\.com\/:[a-z]:\//i.test(url);
+}
+
+function isOneDriveShareUrl(url: string): boolean {
+  if (!url) return false;
+  return isPersonalOneDrive(url) || isSharePointShare(url);
 }
 
 /**
  * Convert a OneDrive / SharePoint share URL into a URL that resolves to raw
  * binary content (image bytes, file bytes). Non-share URLs are returned as-is.
+ *
+ * - SharePoint Business (`*-my.sharepoint.com/:i:/g/...`):
+ *     Append `?download=1`. Returns raw bytes if the viewer has a SharePoint
+ *     session cookie (typical for M365 users) or if the share is anonymous.
+ *     The legacy `api.onedrive.com/v1.0/shares/` endpoint is OneDrive Personal
+ *     only and does NOT work for SharePoint Business links.
+ * - OneDrive Personal (`1drv.ms`, `onedrive.live.com`):
+ *     Use the anonymous Shares API `api.onedrive.com/v1.0/shares/u!<b64>/root/content`
+ *     which redirects to the raw content for "anyone with the link" shares.
  */
 export function toOneDriveDirectUrl(url: string): string {
   if (!url || typeof url !== 'string') return url;
   if (!isOneDriveShareUrl(url)) return url;
-  // Already a direct content URL – leave alone.
   if (url.includes('api.onedrive.com/v1.0/shares/')) return url;
+
+  if (isSharePointShare(url)) {
+    if (/[?&]download=1\b/i.test(url)) return url;
+    return url + (url.includes('?') ? '&' : '?') + 'download=1';
+  }
+
+  // OneDrive Personal
   const encoded = toBase64Url(url);
   if (!encoded) return url;
   return `https://api.onedrive.com/v1.0/shares/u!${encoded}/root/content`;
