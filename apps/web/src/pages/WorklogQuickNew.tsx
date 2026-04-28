@@ -43,7 +43,7 @@ export function WorklogQuickNew() {
   //   organization: 회사(Entra) 로그인한 사람만
   //   skip        : 공유 설정 변경하지 않음 (이미 설정됨)
   const [shareScope, setShareScope] = useState<'anonymous' | 'organization' | 'skip'>('organization');
-  const [showFilePicker, setShowFilePicker] = useState<'attach' | 'photo' | null>(null);
+  const [showFilePicker, setShowFilePicker] = useState<'attach' | 'photo' | 'editor' | null>(null);
   const [attachUrl, setAttachUrl] = useState<string>('');
   const quillRef = useRef<Quill | null>(null);
   const editorEl = useRef<HTMLDivElement | null>(null);
@@ -635,22 +635,21 @@ export function WorklogQuickNew() {
   }
 
   function onImageUpload() {
-    const url = window.prompt('이미지 URL을 입력하세요 (OneDrive/Teams 공유 링크)');
-    if (!url || !url.trim()) return;
-    const raw = url.trim();
-    if (!/^https?:\/\//i.test(raw)) {
-      setError('http(s)로 시작하는 URL을 입력해주세요.');
-      return;
-    }
+    // Open the OneDrive file picker so the user can browse their OneDrive
+    // folders directly instead of having to paste a share link by hand.
+    setShowFilePicker('editor');
+  }
+
+  function insertImageIntoEditor(url: string) {
     const editor = !plainMode ? quillRef.current : null;
     const range = editor?.getSelection?.(true);
     if (editor && range) {
-      editor.insertEmbed(range.index, 'image', raw, 'user');
+      editor.insertEmbed(range.index, 'image', url, 'user');
       editor.setSelection(range.index + 1, 0, 'user');
     } else if (editor) {
-      editor.insertEmbed(0, 'image', raw, 'user');
+      editor.insertEmbed(0, 'image', url, 'user');
     } else {
-      setContentPlain((prev) => (prev ? prev + '\n' + raw : raw));
+      setContentPlain((prev) => (prev ? prev + '\n' + url : url));
     }
   }
 
@@ -1334,20 +1333,23 @@ export function WorklogQuickNew() {
           userId={myUserId}
           multiple
           onSelect={async (files) => {
-            const isPhotoMode = showFilePicker === 'photo';
+            const mode = showFilePicker;
+            const isImageMode = mode === 'photo' || mode === 'editor';
             const upgraded = await Promise.all(
               files.map(async (f) => {
                 const { url, name, proxyUrl } = await upgradeToAnonShareLink(f.url);
-                // Photos render as <img> → use proxy for reliability;
+                // Images render as <img> → use proxy for reliability;
                 // file attachments open in OneDrive → keep the share URL.
                 return {
-                  url: isPhotoMode ? (proxyUrl || url) : url,
+                  url: isImageMode ? (proxyUrl || url) : url,
                   name: name || f.name,
                 };
               }),
             );
-            if (isPhotoMode) {
+            if (mode === 'photo') {
               setPhotos((prev) => [...prev, ...upgraded]);
+            } else if (mode === 'editor') {
+              upgraded.forEach((u) => insertImageIntoEditor(u.url));
             } else {
               setAttachments((prev) => [...prev, ...upgraded]);
             }
