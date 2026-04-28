@@ -133,22 +133,45 @@ export function WorklogAnalysis() {
                   </span>
                 )}
               </div>
-              <div className="text-gray-800 mt-2 leading-relaxed
-                  [&_h1]:text-xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:border-b [&_h1]:pb-1
-                  [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2
-                  [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1
-                  [&_p]:my-2
-                  [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-2
-                  [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-2
-                  [&_li]:my-0.5
-                  [&_table]:border-collapse [&_table]:my-3 [&_table]:w-full
-                  [&_th]:border [&_th]:border-gray-300 [&_th]:bg-gray-100 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left
-                  [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1
-                  [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-2
-                  [&_strong]:font-semibold
-                  [&_hr]:my-4 [&_hr]:border-gray-200
-                  [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.answer}</ReactMarkdown>
+              {/* Report card with clear top/bottom delimiters */}
+              <div className="mt-3 border-2 border-gray-300 rounded-lg bg-white shadow-sm overflow-hidden">
+                {/* Report Header */}
+                <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-5 py-2.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold tracking-wider">📑 분석 보고서 (REPORT)</span>
+                    {msg.provider && (
+                      <span className="px-2 py-0.5 rounded bg-white/20 text-white text-[10px]">
+                        {msg.provider === 'claude' ? 'Claude Opus 4' : 'GPT-4.1'}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-gray-300">{new Date(msg.createdAt).toLocaleString('ko-KR')}</span>
+                </div>
+
+                {/* Report Body */}
+                <div className="px-6 py-5 text-gray-800 leading-relaxed
+                    [&_h1]:text-xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-3 [&_h1]:border-b-2 [&_h1]:border-gray-400 [&_h1]:pb-2 [&_h1]:text-center
+                    [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-5 [&_h2]:mb-2 [&_h2]:text-slate-800 [&_h2]:border-l-4 [&_h2]:border-slate-700 [&_h2]:pl-2
+                    [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-slate-700
+                    [&_p]:my-2.5 [&_p]:text-justify
+                    [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-2
+                    [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-2
+                    [&_li]:my-1
+                    [&_table]:border-collapse [&_table]:my-3 [&_table]:w-full
+                    [&_th]:border [&_th]:border-gray-300 [&_th]:bg-gray-100 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left
+                    [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1
+                    [&_blockquote]:border-l-4 [&_blockquote]:border-amber-400 [&_blockquote]:bg-amber-50 [&_blockquote]:pl-3 [&_blockquote]:py-2 [&_blockquote]:italic [&_blockquote]:text-gray-700 [&_blockquote]:my-3
+                    [&_strong]:font-semibold [&_strong]:text-slate-900
+                    [&_hr]:my-4 [&_hr]:border-gray-300
+                    [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.answer}</ReactMarkdown>
+                </div>
+
+                {/* Report Footer */}
+                <div className="bg-gray-50 border-t border-gray-200 px-5 py-2 text-[11px] text-gray-500 flex items-center justify-between">
+                  <span>— 보고서 끝 (END OF REPORT) —</span>
+                  <span>AI 분석 시스템</span>
+                </div>
               </div>
               {msg.keywords && msg.keywords.length > 0 && (
                 <div className="mt-3 text-xs">
@@ -166,7 +189,6 @@ export function WorklogAnalysis() {
                   ))}
                 </div>
               )}
-              <div className="text-sm text-gray-500 mt-2">{new Date(msg.createdAt).toLocaleString('ko-KR')}</div>
               {msg.debug && (
                 <details className="mt-2 text-xs text-gray-600">
                   <summary className="cursor-pointer">디버그 정보 ({msg.debug.path})</summary>
