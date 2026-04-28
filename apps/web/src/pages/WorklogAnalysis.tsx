@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { apiFetch, apiJson } from '../lib/api';
 
 interface ChatMsg {
@@ -131,7 +133,23 @@ export function WorklogAnalysis() {
                   </span>
                 )}
               </div>
-              <div className="text-gray-700 whitespace-pre-wrap">{msg.answer}</div>
+              <div className="text-gray-800 mt-2 leading-relaxed
+                  [&_h1]:text-xl [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h1]:border-b [&_h1]:pb-1
+                  [&_h2]:text-lg [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2
+                  [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1
+                  [&_p]:my-2
+                  [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:my-2
+                  [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:my-2
+                  [&_li]:my-0.5
+                  [&_table]:border-collapse [&_table]:my-3 [&_table]:w-full
+                  [&_th]:border [&_th]:border-gray-300 [&_th]:bg-gray-100 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left
+                  [&_td]:border [&_td]:border-gray-300 [&_td]:px-2 [&_td]:py-1
+                  [&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-2
+                  [&_strong]:font-semibold
+                  [&_hr]:my-4 [&_hr]:border-gray-200
+                  [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.answer}</ReactMarkdown>
+              </div>
               {msg.keywords && msg.keywords.length > 0 && (
                 <div className="mt-3 text-xs">
                   <span className="text-gray-500">검색 키워드: </span>
