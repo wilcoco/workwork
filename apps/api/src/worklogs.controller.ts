@@ -1273,6 +1273,24 @@ export class WorklogsController {
     return { ...wl, process } as any;
   }
 
+  @Post('bulk-delete')
+  async bulkDeleteWorklogs(@Body() body: { ids: string[] }, @Query('userId') userId?: string) {
+    await this.assertCeo(userId);
+    const ids = Array.isArray(body?.ids) ? body.ids.filter((x) => typeof x === 'string' && x.trim()) : [];
+    if (!ids.length) throw new BadRequestException('ids required');
+    let deleted = 0;
+    const failed: { id: string; error: string }[] = [];
+    for (const id of ids) {
+      try {
+        const r = await this.deleteWorklog(id, userId);
+        if ((r as any)?.deleted) deleted += 1;
+      } catch (e: any) {
+        failed.push({ id, error: e?.message || String(e) });
+      }
+    }
+    return { ok: true, requested: ids.length, deleted, failed };
+  }
+
   @Post(':id/delete')
   async deleteWorklog(@Param('id') id: string, @Query('userId') userId?: string) {
     await this.assertCeo(userId);

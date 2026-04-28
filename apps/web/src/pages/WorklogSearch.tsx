@@ -145,6 +145,7 @@ export function WorklogSearch() {
   const [kind, setKind] = useState<'' | 'OKR' | 'KPI'>('');
   const location = useLocation();
   const [isCeo, setIsCeo] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
 
   async function search() {
@@ -241,9 +242,55 @@ export function WorklogSearch() {
     try {
       await apiJson(`/api/worklogs/${encodeURIComponent(id)}/delete?userId=${encodeURIComponent(myUserId)}`, { method: 'POST' });
       setItems((prev) => (prev || []).filter((x) => x.id !== id));
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
       if (detail?.id === id) setDetail(null);
     } catch (e: any) {
       alert(e?.message || '삭제 실패');
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible() {
+    setSelectedIds((prev) => {
+      const visibleIds = (items || []).map((it) => it.id);
+      const allSelected = visibleIds.length > 0 && visibleIds.every((id) => prev.has(id));
+      if (allSelected) {
+        const next = new Set(prev);
+        for (const id of visibleIds) next.delete(id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const id of visibleIds) next.add(id);
+      return next;
+    });
+  }
+
+  async function onBulkDelete() {
+    if (!isCeo) return;
+    if (!myUserId) { alert('로그인이 필요합니다'); return; }
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    if (!confirm(`선택된 ${ids.length}건의 업무일지를 일괄 삭제하시겠습니까?\n(되돌릴 수 없습니다)`)) return;
+    try {
+      const res = await apiJson<{ deleted: number; requested: number; failed: { id: string; error: string }[] }>(
+        `/api/worklogs/bulk-delete?userId=${encodeURIComponent(myUserId)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) },
+      );
+      const deletedSet = new Set(ids.filter((id) => !(res.failed || []).some((f) => f.id === id)));
+      setItems((prev) => (prev || []).filter((x) => !deletedSet.has(x.id)));
+      setSelectedIds(new Set());
+      if (detail && deletedSet.has(detail.id)) setDetail(null);
+      const failedCount = (res.failed || []).length;
+      alert(`삭제 완료: ${res.deleted}건${failedCount ? ` (실패 ${failedCount}건)` : ''}`);
+    } catch (e: any) {
+      alert(e?.message || '일괄 삭제 실패');
     }
   }
 
@@ -409,6 +456,61 @@ export function WorklogSearch() {
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
+      {isCeo && mode === 'list' && items.length > 0 ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '8px 12px',
+          marginBottom: 8,
+          background: selectedIds.size > 0 ? '#FEF2F2' : '#F1F5F9',
+          border: `1px solid ${selectedIds.size > 0 ? '#FCA5A5' : '#CBD5E1'}`,
+          borderRadius: 10,
+          position: 'sticky',
+          top: 0,
+          zIndex: 5,
+        }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={items.length > 0 && items.every((it) => selectedIds.has(it.id))}
+              ref={(el) => {
+                if (el) {
+                  const some = items.some((it) => selectedIds.has(it.id));
+                  const all = items.length > 0 && items.every((it) => selectedIds.has(it.id));
+                  el.indeterminate = some && !all;
+                }
+              }}
+              onChange={toggleSelectAllVisible}
+            />
+            전체 선택 ({selectedIds.size} / {items.length})
+          </label>
+          <div style={{ flex: 1 }} />
+          {selectedIds.size > 0 ? (
+            <>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                style={{ fontSize: 12 }}
+              >
+                선택 해제
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={onBulkDelete}
+                style={{ background: '#DC2626', color: '#fff', fontWeight: 600 }}
+              >
+                선택 {selectedIds.size}건 일괄 삭제
+              </button>
+            </>
+          ) : (
+            <span style={{ fontSize: 12, color: '#64748B' }}>관리자: 항목 좌측 체크박스로 선택 후 일괄 삭제 가능</span>
+          )}
+        </div>
+      ) : null}
+
       {mode === 'feed' ? (
         <div className="feed-grid">
           {items.map((it) => {
@@ -450,7 +552,15 @@ export function WorklogSearch() {
         {items.map((it) => (
           <div key={it.id} style={card}>
             {isCeo ? (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(it.id)}
+                    onChange={() => toggleSelect(it.id)}
+                  />
+                  선택
+                </label>
                 <button className="btn" type="button" onClick={() => onDeleteWorklog(it.id)} style={{ color: '#b91c1c' }}>삭제</button>
               </div>
             ) : null}
