@@ -1,6 +1,7 @@
 import { useMemo, useState, type MouseEvent } from 'react';
 import { apiUrl } from '../lib/api';
 import { toSafeHtml } from '../lib/richText';
+import { toOneDriveDirectUrl } from '../lib/onedrive';
 import { formatKstDatetime, formatKstYmd, formatMinutesAsHmKo } from '../lib/time';
 import { UserAvatar } from './UserAvatar';
 
@@ -68,7 +69,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
 
   function absLink(url: string): string {
     if (!url) return url;
-    if (/^https?:\/\//i.test(url)) return url;
+    if (/^https?:\/\//i.test(url)) return toOneDriveDirectUrl(url);
     return apiUrl(url);
   }
 
@@ -118,7 +119,10 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
       const n = String(f.name || f.originalName || f.filename || '').toLowerCase();
       if (/(png|jpe?g|gif|webp|bmp|svg)$/.test(n)) return true;
     }
-    return /(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+    if (/(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(url)) return true;
+    // OneDrive / SharePoint "image" share links use /:i:/ in the path.
+    if (/sharepoint\.com\/:i:\//i.test(url) || /1drv\.ms\/i\//i.test(url)) return true;
+    return false;
   }
 
   function onContentClick(e: MouseEvent<HTMLDivElement>) {
@@ -365,7 +369,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
               const raw = pickFileUrl(f);
               const url = absLink(raw);
               const name = pickFileName(f, url);
-              const isImg = isImageAttachment(f, url);
+              const isImg = isImageAttachment(f, url) || isImageAttachment(f, raw);
               return (
                 <div className="attachment-item" key={(f?.filename || f?.url || raw || '') + i}>
                   {isImg ? (

@@ -1,4 +1,5 @@
 import { apiUrl } from './api';
+import { rewriteOneDriveImagesInHtml } from './onedrive';
 
 function absolutizeUploads(html: string): string {
   if (!html) return html;
@@ -54,5 +55,5 @@ function sanitizeRichHtml(html: string): string {
 }
 
 export function toSafeHtml(html: string): string {
-  return absolutizeUploads(sanitizeRichHtml(html));
+  return rewriteOneDriveImagesInHtml(absolutizeUploads(sanitizeRichHtml(html)));
 }
