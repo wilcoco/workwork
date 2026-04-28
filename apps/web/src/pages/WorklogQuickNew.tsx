@@ -1027,6 +1027,23 @@ export function WorklogQuickNew() {
             </>
           )}
           
+          <div style={{
+            marginTop: 8,
+            padding: '10px 12px',
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            borderRadius: 10,
+            fontSize: 12.5,
+            color: '#1E3A8A',
+            lineHeight: 1.55,
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>📌 첨부 안내</div>
+            사진·파일은 <b>먼저 OneDrive(회사 SharePoint)</b>에 업로드한 뒤 아래의
+            <b> 「OneDrive에서 선택」</b> 버튼을 눌러 첨부해 주세요.
+            <br />
+            서버에 직접 업로드하지 않으며, OneDrive 파일을 선택하면 공유 링크가 자동 생성됩니다.
+          </div>
+
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
             <label style={{ fontSize: 13, color: '#6b7280' }}>사진 추가</label>
             <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>

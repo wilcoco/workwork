@@ -623,8 +623,22 @@ export function WorklogNew() {
       </div>
 
       <h3>첨부(링크)</h3>
-      <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
-        파일 첨부: Teams/OneDrive에 있는 파일은 업로드하지 않고, 공유 링크를 붙여넣어 첨부합니다.
+      <div style={{
+        marginTop: 4,
+        marginBottom: 8,
+        padding: '10px 12px',
+        background: '#EFF6FF',
+        border: '1px solid #BFDBFE',
+        borderRadius: 10,
+        fontSize: 12.5,
+        color: '#1E3A8A',
+        lineHeight: 1.55,
+      }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>📌 첨부 안내</div>
+        사진·파일은 <b>먼저 OneDrive(회사 SharePoint)</b>에 업로드한 뒤,
+        해당 파일의 <b>공유 링크</b>를 복사해 아래에 붙여넣어 주세요.
+        <br />
+        서버에 파일을 직접 올리지 않습니다. 회사 OneDrive 링크(<code>cams2002-my.sharepoint.com</code>)만 허용됩니다.
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <input
