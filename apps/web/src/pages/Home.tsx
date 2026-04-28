@@ -29,6 +29,7 @@ export function Home() {
   const [error, setError] = useState<string | null>(null);
   const [overdueTasks, setOverdueTasks] = useState<any[]>([]);
   const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
+  const [overdueYear, setOverdueYear] = useState<'2026' | 'before' | 'all'>('2026');
   const [overdueLoading, setOverdueLoading] = useState(false);
   const [expandedOverdueUser, setExpandedOverdueUser] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
@@ -189,32 +190,68 @@ export function Home() {
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
       {/* 기한 경과 과제 섹션 */}
-      <div style={{ background: overdueTasks.length ? '#fef2f2' : '#f8fafc', border: `1px solid ${overdueTasks.length ? '#fca5a5' : '#CBD5E1'}`, borderRadius: 12, padding: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: overdueTasks.length || overdueLoading ? 10 : 0, flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 800, color: overdueTasks.length ? '#dc2626' : '#334155', fontSize: 15 }}>
-            기한 경과 과제 {overdueTasks.length > 0 && <span style={{ fontSize: 13, fontWeight: 600 }}>({overdueTasks.length}건)</span>}
+      {(() => {
+        const filteredOverdue = overdueTasks.filter((t: any) => {
+          if (overdueYear === 'all') return true;
+          const d = new Date(t.dueDateTime);
+          if (isNaN(d.getTime())) return false;
+          const y = d.getFullYear();
+          if (overdueYear === '2026') return y === 2026;
+          if (overdueYear === 'before') return y < 2026;
+          return true;
+        });
+        return (
+      <div style={{ background: filteredOverdue.length ? '#fef2f2' : '#f8fafc', border: `1px solid ${filteredOverdue.length ? '#fca5a5' : '#CBD5E1'}`, borderRadius: 12, padding: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: filteredOverdue.length || overdueLoading ? 10 : 0, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 800, color: filteredOverdue.length ? '#dc2626' : '#334155', fontSize: 15 }}>
+            기한 경과 과제 {filteredOverdue.length > 0 && <span style={{ fontSize: 13, fontWeight: 600 }}>({filteredOverdue.length}건{overdueYear !== 'all' ? ` / 전체 ${overdueTasks.length}건` : ''})</span>}
           </span>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-            <button
-              className={overdueScope === 'mine' ? 'btn btn-primary' : 'btn'}
-              onClick={() => setOverdueScope('mine')}
-              style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}
-            >내 과제</button>
-            <button
-              className={overdueScope === 'all' ? 'btn btn-primary' : 'btn'}
-              onClick={() => setOverdueScope('all')}
-              style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}
-            >전사 과제</button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                className={overdueYear === '2026' ? 'btn btn-primary' : 'btn'}
+                onClick={() => setOverdueYear('2026')}
+                style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap' }}
+                title="2026년에 완료해야 할 과제"
+              >2026년</button>
+              <button
+                className={overdueYear === 'before' ? 'btn btn-primary' : 'btn'}
+                onClick={() => setOverdueYear('before')}
+                style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap' }}
+                title="2025년 이전"
+              >이전</button>
+              <button
+                className={overdueYear === 'all' ? 'btn btn-primary' : 'btn'}
+                onClick={() => setOverdueYear('all')}
+                style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap' }}
+              >전체</button>
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                className={overdueScope === 'mine' ? 'btn btn-primary' : 'btn'}
+                onClick={() => setOverdueScope('mine')}
+                style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}
+              >내 과제</button>
+              <button
+                className={overdueScope === 'all' ? 'btn btn-primary' : 'btn'}
+                onClick={() => setOverdueScope('all')}
+                style={{ height: 28, padding: '0 10px', fontSize: 12, minWidth: 0, whiteSpace: 'nowrap', writingMode: 'horizontal-tb' as any }}
+              >전사 과제</button>
+            </div>
           </div>
         </div>
         {overdueLoading ? (
           <div style={{ color: '#64748b', fontSize: 13 }}>불러오는 중…</div>
-        ) : overdueTasks.length === 0 ? (
-          <div style={{ color: '#94a3b8', fontSize: 13 }}>{overdueScope === 'mine' ? '기한 경과된 과제가 없습니다.' : '전사 기한 경과 과제가 없습니다.'}</div>
+        ) : filteredOverdue.length === 0 ? (
+          <div style={{ color: '#94a3b8', fontSize: 13 }}>{
+            overdueYear === '2026' ? '2026년에 완료해야 할 기한 경과 과제가 없습니다.' :
+            overdueYear === 'before' ? '2025년 이전 기한의 경과 과제가 없습니다.' :
+            overdueScope === 'mine' ? '기한 경과된 과제가 없습니다.' : '전사 기한 경과 과제가 없습니다.'
+          }</div>
         ) : overdueScope === 'mine' ? (
           /* ── 내 과제: 플랫 리스트 ── */
           <div style={{ display: 'grid', gap: 6 }}>
-            {overdueTasks.map((t: any) => {
+            {filteredOverdue.map((t: any) => {
               const daysOver = Math.floor((Date.now() - new Date(t.dueDateTime).getTime()) / (24 * 60 * 60 * 1000));
               const priorityLabel: Record<number, string> = { 1: '긴급', 3: '중요', 5: '보통', 9: '낮음' };
               const priorityColor: Record<number, string> = { 1: '#dc2626', 3: '#ea580c', 5: '#64748b', 9: '#94a3b8' };
@@ -238,7 +275,7 @@ export function Home() {
           /* ── 전사 과제: 개인별 그룹 아코디언 ── */
           (() => {
             const grouped: Record<string, { name: string; team: string; tasks: any[] }> = {};
-            overdueTasks.forEach((t: any) => {
+            filteredOverdue.forEach((t: any) => {
               const key = t.assigneeName || '미배정';
               if (!grouped[key]) grouped[key] = { name: key, team: t.assigneeTeam || '', tasks: [] };
               grouped[key].tasks.push(t);
@@ -297,6 +334,8 @@ export function Home() {
           })()
         )}
       </div>
+        );
+      })()}
 
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.8fr) minmax(0, 1fr)', alignItems: 'start' }}>
         {isMobile ? (
