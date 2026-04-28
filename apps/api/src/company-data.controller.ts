@@ -988,11 +988,11 @@ export class CompanyDataController {
 
     try {
       if (['txt', 'md', 'csv'].includes(ext)) {
-        return { content: buffer.toString('utf-8').slice(0, 10000) };
+        return { content: buffer.toString('utf-8').slice(0, 6000) };
       }
       if (ext === 'docx') {
         const result = await mammoth.extractRawText({ buffer });
-        return { content: (result.value || '').slice(0, 10000) };
+        return { content: (result.value || '').slice(0, 6000) };
       }
       if (['xlsx', 'xls'].includes(ext)) {
         const wb = XLSX.read(buffer, { type: 'buffer' });
@@ -1002,18 +1002,18 @@ export class CompanyDataController {
           const csv = XLSX.utils.sheet_to_csv(sheet);
           parts.push(`[Sheet: ${sheetName}]\n${csv}`);
         }
-        return { content: parts.join('\n\n').slice(0, 10000) };
+        return { content: parts.join('\n\n').slice(0, 6000) };
       }
       if (ext === 'pptx') {
         const text = await this.extractPptxText(buffer);
-        return { content: text.slice(0, 10000) };
+        return { content: text.slice(0, 6000) };
       }
       if (ext === 'pdf') {
         // Dynamic require to avoid pdf-parse's debug mode at module load time
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const pdfParse = require('pdf-parse/lib/pdf-parse.js');
         const result = await pdfParse(buffer);
-        return { content: (result.text || '').slice(0, 10000) };
+        return { content: (result.text || '').slice(0, 6000) };
       }
     } catch (e: any) {
       return { content: '', error: `parse-error:${e?.message || String(e)}`.slice(0, 200) };
@@ -1028,15 +1028,22 @@ export class CompanyDataController {
     provider: 'openai' | 'claude',
     system: string,
     user: string,
-    maxTokens: number = 8192,
+    maxTokens: number = 6000,
   ): Promise<string> {
     const f: any = (globalThis as any).fetch;
+    // Hard timeout to prevent Railway/Cloudflare from killing the request
+    // without CORS headers (which surfaces as a CORS error in browsers).
+    const TIMEOUT_MS = 90_000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
     if (provider === 'claude') {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) throw new BadRequestException('ANTHROPIC_API_KEY가 설정되지 않았습니다.');
       const model = process.env.CLAUDE_MODEL || 'claude-opus-4-20250514';
       const resp = await f('https://api.anthropic.com/v1/messages', {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
@@ -1064,6 +1071,7 @@ export class CompanyDataController {
     const model = process.env.OPENAI_MODEL || 'gpt-4.1';
     const resp = await f('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
+      signal: controller.signal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model,
@@ -1081,6 +1089,14 @@ export class CompanyDataController {
     }
     const data = await resp.json();
     return String(data?.choices?.[0]?.message?.content || '').trim();
+    } catch (e: any) {
+      if (e?.name === 'AbortError' || /aborted|timeout/i.test(e?.message || '')) {
+        throw new BadRequestException(`AI 응답이 ${TIMEOUT_MS / 1000}초 내에 완료되지 않았습니다. 질문을 더 구체적으로 좁히거나 잠시 후 다시 시도해 주세요.`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ─── AI Q&A via Assistants API ─────────────────────────
