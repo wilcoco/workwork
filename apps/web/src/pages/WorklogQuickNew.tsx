@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiJson, apiFetch } from '../lib/api';
+import { apiJson, apiFetch, apiUrl } from '../lib/api';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
@@ -641,15 +641,19 @@ export function WorklogQuickNew() {
   }
 
   function insertImageIntoEditor(url: string) {
+    // Absolutize /api/... URLs so the saved HTML still works when the web app
+    // and API live on different origins (the saved <img src> is otherwise
+    // relative to the web host).
+    const absUrl = url.startsWith('/') ? apiUrl(url) : url;
     const editor = !plainMode ? quillRef.current : null;
     const range = editor?.getSelection?.(true);
     if (editor && range) {
-      editor.insertEmbed(range.index, 'image', url, 'user');
+      editor.insertEmbed(range.index, 'image', absUrl, 'user');
       editor.setSelection(range.index + 1, 0, 'user');
     } else if (editor) {
-      editor.insertEmbed(0, 'image', url, 'user');
+      editor.insertEmbed(0, 'image', absUrl, 'user');
     } else {
-      setContentPlain((prev) => (prev ? prev + '\n' + url : url));
+      setContentPlain((prev) => (prev ? prev + '\n' + absUrl : absUrl));
     }
   }
 

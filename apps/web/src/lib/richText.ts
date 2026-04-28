@@ -3,7 +3,13 @@ import { rewriteOneDriveImagesInHtml } from './onedrive';
 
 function absolutizeUploads(html: string): string {
   if (!html) return html;
-  return html.replace(/(src|href)=["'](\/(api\/)?(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
+  // Rewrite uploads/files (legacy) plus any /api/... reference (e.g. the
+  // OneDrive proxy endpoint /api/graph-tasks/onedrive/proxy?t=...) so that
+  // relative src/href values resolve to the API host when the web and API
+  // are served from different origins.
+  return html
+    .replace(/(src|href)=["'](\/(api\/)?(uploads|files)\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`)
+    .replace(/(src|href)=["'](\/api\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
 }
 
 function sanitizeRichHtml(html: string): string {
