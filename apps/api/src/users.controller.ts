@@ -237,7 +237,8 @@ export class UsersController {
     const email = String(user.email || '').toLowerCase();
     const upn = String((user as any).teamsUpn || '').toLowerCase();
     const isAdmin = String(user.role) === 'CEO' || adminSet.has(email) || adminSet.has(upn);
-    return { id: user.id, email: user.email, teamsUpn: (user as any).teamsUpn || '', name: user.name, role: user.role, status: (user as any).status || 'ACTIVE', activatedAt: (user as any).activatedAt || null, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '', isAdmin };
+    const isExecOrAbove = ['CEO', 'EXEC'].includes(String(user.role)) || isAdmin;
+    return { id: user.id, email: user.email, teamsUpn: (user as any).teamsUpn || '', name: user.name, role: user.role, status: (user as any).status || 'ACTIVE', activatedAt: (user as any).activatedAt || null, teamName: user.orgUnit?.name || '', orgUnitId: user.orgUnitId || '', isAdmin, isExecOrAbove };
   }
 
   @Get()

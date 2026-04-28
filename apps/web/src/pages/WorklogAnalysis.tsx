@@ -12,8 +12,10 @@ interface ChatMsg {
   sourceFiles?: { name: string; url: string }[];
   sources?: number;
   debug?: any;
-  provider?: 'openai' | 'claude';
+  provider?: 'openai' | 'claude' | 'claude-opus';
 }
+
+type Provider = 'openai' | 'claude' | 'claude-opus';
 
 export function WorklogAnalysis() {
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -21,10 +23,22 @@ export function WorklogAnalysis() {
   // Chat
   const [question, setQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
-  const [asking, setAsking] = useState<'openai' | 'claude' | null>(null);
+  const [asking, setAsking] = useState<Provider | null>(null);
   const [mode, setMode] = useState<'summary' | 'deep'>('deep');
+  const [isExecOrAbove, setIsExecOrAbove] = useState(false);
 
-  useEffect(() => { loadChats(); }, []);
+  useEffect(() => {
+    loadChats();
+    (async () => {
+      if (!userId) return;
+      try {
+        const me = await apiJson<{ isExecOrAbove?: boolean }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        setIsExecOrAbove(Boolean(me?.isExecOrAbove));
+      } catch {
+        setIsExecOrAbove(false);
+      }
+    })();
+  }, []);
 
   async function loadChats() {
     if (!userId) return;
@@ -34,7 +48,7 @@ export function WorklogAnalysis() {
     } catch {}
   }
 
-  async function askQuestion(provider: 'openai' | 'claude') {
+  async function askQuestion(provider: Provider) {
     if (!question.trim() || !userId) return;
     setAsking(provider);
     try {
@@ -119,6 +133,16 @@ export function WorklogAnalysis() {
           >
             {asking === 'claude' ? '분석 중...' : 'Claude'}
           </button>
+          {isExecOrAbove && (
+            <button
+              onClick={() => askQuestion('claude-opus')}
+              disabled={!!asking || !question.trim()}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2 rounded-lg disabled:opacity-50 font-semibold shadow"
+              title="Claude Opus 4 + Extended Thinking (임원 전용)"
+            >
+              {asking === 'claude-opus' ? '심도 분석 중... (최대 3분)' : 'Opus (심도)'}
+            </button>
+          )}
         </div>
 
         {/* Chat History */}
@@ -128,8 +152,12 @@ export function WorklogAnalysis() {
               <div className="font-semibold mb-2 flex items-center gap-2">
                 <span>Q: {msg.question}</span>
                 {msg.provider && (
-                  <span className={`text-xs px-2 py-0.5 rounded ${msg.provider === 'claude' ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                    {msg.provider === 'claude' ? 'Claude' : 'OpenAI'}
+                  <span className={`text-xs px-2 py-0.5 rounded ${
+                    msg.provider === 'claude-opus' ? 'bg-purple-100 text-purple-700' :
+                    msg.provider === 'claude' ? 'bg-orange-100 text-orange-700' :
+                    'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {msg.provider === 'claude-opus' ? 'Claude Opus (심도)' : msg.provider === 'claude' ? 'Claude' : 'OpenAI'}
                   </span>
                 )}
               </div>
@@ -141,7 +169,7 @@ export function WorklogAnalysis() {
                     <span className="font-semibold tracking-wider">📑 분석 보고서 (REPORT)</span>
                     {msg.provider && (
                       <span className="px-2 py-0.5 rounded bg-white/20 text-white text-[10px]">
-                        {msg.provider === 'claude' ? 'Claude Opus 4' : 'GPT-4.1'}
+                        {msg.provider === 'claude-opus' ? 'Claude Opus 4 (Extended Thinking)' : msg.provider === 'claude' ? 'Claude Opus 4' : 'GPT-4.1'}
                       </span>
                     )}
                   </div>

@@ -8,6 +8,7 @@ import {
   Body,
   Param,
   BadRequestException,
+  ForbiddenException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -1025,7 +1026,7 @@ export class CompanyDataController {
   // ─── LLM answer generation (provider-switchable) ─────────────────────────
 
   private async generateAnswer(
-    provider: 'openai' | 'claude',
+    provider: 'openai' | 'claude' | 'claude-opus',
     system: string,
     user: string,
     maxTokens: number = 6000,
@@ -1033,14 +1034,36 @@ export class CompanyDataController {
     const f: any = (globalThis as any).fetch;
     // Hard timeout to prevent Railway/Cloudflare from killing the request
     // without CORS headers (which surfaces as a CORS error in browsers).
-    const TIMEOUT_MS = 90_000;
+    // Extended thinking mode needs a longer budget.
+    const TIMEOUT_MS = provider === 'claude-opus' ? 180_000 : 90_000;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-    if (provider === 'claude') {
+    if (provider === 'claude' || provider === 'claude-opus') {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) throw new BadRequestException('ANTHROPIC_API_KEY가 설정되지 않았습니다.');
-      const model = process.env.CLAUDE_MODEL || 'claude-opus-4-20250514';
+      const isOpusPremium = provider === 'claude-opus';
+      const model = isOpusPremium
+        ? (process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-20250514')
+        : (process.env.CLAUDE_MODEL || 'claude-opus-4-20250514');
+      // Extended thinking for the premium Opus button — deeper reasoning.
+      // Extended thinking requires temperature=1 and max_tokens >= budget + output.
+      const body: any = isOpusPremium
+        ? {
+            model,
+            max_tokens: Math.max(maxTokens, 16000),
+            system,
+            messages: [{ role: 'user', content: user }],
+            temperature: 1,
+            thinking: { type: 'enabled', budget_tokens: 8000 },
+          }
+        : {
+            model,
+            max_tokens: maxTokens,
+            system,
+            messages: [{ role: 'user', content: user }],
+            temperature: 0.3,
+          };
       const resp = await f('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         signal: controller.signal,
@@ -1049,13 +1072,7 @@ export class CompanyDataController {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify({
-          model,
-          max_tokens: maxTokens,
-          system,
-          messages: [{ role: 'user', content: user }],
-          temperature: 0.3,
-        }),
+        body: JSON.stringify(body),
       });
       if (!resp.ok) {
         const text = await resp.text().catch(() => '');
@@ -1102,11 +1119,26 @@ export class CompanyDataController {
   // ─── AI Q&A via Assistants API ─────────────────────────
 
   @Post('ask')
-  async ask(@Body() body: { question: string; userId: string; provider?: 'openai' | 'claude'; mode?: 'summary' | 'deep' }) {
+  async ask(@Body() body: { question: string; userId: string; provider?: 'openai' | 'claude' | 'claude-opus'; mode?: 'summary' | 'deep' }) {
     if (!body.question?.trim()) throw new BadRequestException('question required');
     if (!body.userId) throw new BadRequestException('userId required');
 
-    const provider: 'openai' | 'claude' = body.provider === 'claude' ? 'claude' : 'openai';
+    let provider: 'openai' | 'claude' | 'claude-opus' =
+      body.provider === 'claude-opus' ? 'claude-opus' : body.provider === 'claude' ? 'claude' : 'openai';
+    // claude-opus (premium) is restricted to EXEC/CEO/admin
+    if (provider === 'claude-opus') {
+      const actor = await this.prisma.user.findUnique({ where: { id: body.userId } });
+      const role = String((actor as any)?.role || '');
+      const defaultAdmins = ['json@cams2002.onmicrosoft.com'];
+      const envAdmins = String(process.env.ADMIN_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+      const admins = new Set([...defaultAdmins.map((s) => s.toLowerCase()), ...envAdmins]);
+      const email = String((actor as any)?.email || '').toLowerCase();
+      const upn = String((actor as any)?.teamsUpn || '').toLowerCase();
+      const allowed = ['CEO', 'EXEC'].includes(role) || admins.has(email) || admins.has(upn);
+      if (!allowed) {
+        throw new ForbiddenException('Claude Opus 프리미엄 분석은 임원 이상만 이용할 수 있습니다.');
+      }
+    }
     const mode: 'summary' | 'deep' = body.mode === 'summary' ? 'summary' : 'deep';
     const systemPrompt = mode === 'deep' ? ASSISTANT_INSTRUCTIONS_DEEP : ASSISTANT_INSTRUCTIONS_SUMMARY;
     const debug: any = { path: 'unknown', provider, mode, keywords: [], docCount: 0, workReportCount: 0, extractedCount: 0 };
@@ -1193,7 +1225,12 @@ export class CompanyDataController {
       const userPrompt = `오늘 날짜: ${today}\n\n## 회사 자료\n\n${context}\n\n## 질문\n${body.question}`;
       const answer = await this.generateAnswer(provider, systemPrompt, userPrompt);
       if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
-      debug.model = provider === 'claude' ? (process.env.CLAUDE_MODEL || 'claude-opus-4-20250514') : 'gpt-4.1';
+      debug.model =
+        provider === 'claude-opus'
+          ? `${process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-20250514'} (extended thinking)`
+          : provider === 'claude'
+          ? (process.env.CLAUDE_MODEL || 'claude-opus-4-20250514')
+          : (process.env.OPENAI_MODEL || 'gpt-4.1');
 
       const chat = await this.prisma.companyDataChat.create({
         data: {
@@ -1223,7 +1260,7 @@ export class CompanyDataController {
   }
 
   // Fallback: use DB content directly when no SharePoint content
-  private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' = 'openai', systemPrompt: string = ASSISTANT_INSTRUCTIONS_DEEP) {
+  private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' | 'claude-opus' = 'openai', systemPrompt: string = ASSISTANT_INSTRUCTIONS_DEEP) {
     const dataSources = await this.prisma.companyData.findMany({
       where: { content: { not: null } },
       select: { id: true, title: true, content: true },
