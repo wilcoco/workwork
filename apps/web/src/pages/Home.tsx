@@ -42,16 +42,20 @@ export function Home() {
   const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('urgent');
   const WORKLOG_PAGE_SIZE = 20;
   const [worklogPage, setWorklogPage] = useState(1);
+  const [worklogTotal, setWorklogTotal] = useState(0);
+  // Team/name filter options come from a one-time sample fetch so the
+  // dropdowns are not limited to the current page's entries.
+  const [facetSample, setFacetSample] = useState<WL[]>([]);
   const teamOptions = useMemo(() => {
     const s = new Set<string>();
-    worklogs.forEach(w => { if (w.teamName) s.add(w.teamName); });
+    facetSample.forEach(w => { if (w.teamName) s.add(w.teamName); });
     return Array.from(s).sort();
-  }, [worklogs]);
+  }, [facetSample]);
   const nameOptions = useMemo(() => {
     const s = new Set<string>();
-    worklogs.forEach(w => { if (w.userName) s.add(w.userName); });
+    facetSample.forEach(w => { if (w.userName) s.add(w.userName); });
     return Array.from(s).sort();
-  }, [worklogs]);
+  }, [facetSample]);
   const latestComments = useMemo(() => {
     const map = new Map<string, { c: FB; t: number }>();
     comments.forEach(c => {
@@ -62,27 +66,16 @@ export function Home() {
     return Array.from(map.values()).sort((a,b) => b.t - a.t).map(x => x.c);
   }, [comments]);
 
-  const filteredWorklogs = useMemo(() => {
-    const ts = (w: any) => new Date(w?.createdAt || w?.date).getTime();
-    return (worklogs || [])
-      .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
-      .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
-      .slice()
-      .sort((a, b) => ts(b) - ts(a));
-  }, [filterName, filterTeam, worklogs]);
-
-  const totalWorklogPages = Math.max(1, Math.ceil(filteredWorklogs.length / WORKLOG_PAGE_SIZE));
-  // Reset to first page when filters change or the total page count shrinks below the current page.
+  // The worklogs list is now server-paginated, so treat the fetched page as
+  // the view directly. We keep the (team|name) filter in sync with server
+  // query params below.
+  const pagedWorklogs = worklogs;
+  const filteredWorklogs = worklogs; // legacy name used by empty-state check
+  const totalWorklogPages = Math.max(1, Math.ceil(worklogTotal / WORKLOG_PAGE_SIZE));
+  // Reset to first page when filters change
   useEffect(() => {
     setWorklogPage(1);
   }, [filterTeam, filterName]);
-  useEffect(() => {
-    if (worklogPage > totalWorklogPages) setWorklogPage(totalWorklogPages);
-  }, [totalWorklogPages, worklogPage]);
-  const pagedWorklogs = useMemo(() => {
-    const start = (worklogPage - 1) * WORKLOG_PAGE_SIZE;
-    return filteredWorklogs.slice(start, start + WORKLOG_PAGE_SIZE);
-  }, [filteredWorklogs, worklogPage]);
 
   useEffect(() => {
     const update = () => {
@@ -100,26 +93,51 @@ export function Home() {
     };
   }, []);
 
+  // Fetch the current page of worklogs whenever filters or page change.
   useEffect(() => {
+    let ignore = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
         const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
-        const wlQs = viewerId ? `limit=200&viewerId=${encodeURIComponent(viewerId)}` : 'limit=200';
-        const wl = await apiJson<{ items: WL[] }>(`/api/worklogs/search?${wlQs}`);
+        const offset = (worklogPage - 1) * WORKLOG_PAGE_SIZE;
+        const params = new URLSearchParams();
+        params.set('limit', String(WORKLOG_PAGE_SIZE));
+        params.set('offset', String(offset));
+        params.set('withTotal', '1');
+        if (viewerId) params.set('viewerId', viewerId);
+        if (filterTeam.trim()) params.set('team', filterTeam.trim());
+        if (filterName.trim()) params.set('user', filterName.trim());
+        const wl = await apiJson<{ items: WL[]; total?: number }>(`/api/worklogs/search?${params.toString()}`);
+        if (ignore) return;
         setWorklogs(wl.items || []);
-        try {
-          const uwQs = viewerId ? `limit=20&urgent=true&viewerId=${encodeURIComponent(viewerId)}` : 'limit=20&urgent=true';
-          const uw = await apiJson<{ items: WL[] }>(`/api/worklogs/search?${uwQs}`);
-          setUrgentWls(uw.items || []);
-        } catch {}
+        if (typeof wl.total === 'number') setWorklogTotal(wl.total);
       } catch (e: any) {
-        setError('업무일지 로드 실패');
+        if (!ignore) setError('업무일지 로드 실패');
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
+    })();
+    return () => { ignore = true; };
+  }, [worklogPage, filterTeam, filterName]);
 
+  // Urgent worklogs and facet sample (for filter dropdowns): fetched once.
+  useEffect(() => {
+    (async () => {
+      try {
+        const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+        const uwQs = viewerId ? `limit=20&urgent=true&viewerId=${encodeURIComponent(viewerId)}` : 'limit=20&urgent=true';
+        const uw = await apiJson<{ items: WL[] }>(`/api/worklogs/search?${uwQs}`);
+        setUrgentWls(uw.items || []);
+      } catch {}
+      try {
+        const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+        const fs = await apiJson<{ items: WL[] }>(
+          `/api/worklogs/search?limit=200${viewerId ? `&viewerId=${encodeURIComponent(viewerId)}` : ''}`,
+        );
+        setFacetSample(fs.items || []);
+      } catch {}
     })();
   }, []);
 
@@ -486,8 +504,8 @@ export function Home() {
                         </div>
                       );
                     })}
-                  {filteredWorklogs.length === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
-                  {filteredWorklogs.length > WORKLOG_PAGE_SIZE && (
+                  {worklogTotal === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                  {worklogTotal > WORKLOG_PAGE_SIZE && (
                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 8 }}>
                       <button
                         className="btn"
@@ -495,7 +513,7 @@ export function Home() {
                         onClick={() => setWorklogPage((p) => Math.max(1, p - 1))}
                       >이전</button>
                       <div style={{ fontSize: 13, color: '#475569' }}>
-                        {worklogPage} / {totalWorklogPages} 페이지 · 총 {filteredWorklogs.length}건
+                        {worklogPage} / {totalWorklogPages} 페이지 · 총 {worklogTotal}건
                       </div>
                       <button
                         className="btn"
@@ -573,8 +591,8 @@ export function Home() {
                         </div>
                       );
                     })}
-                  {filteredWorklogs.length === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
-                  {filteredWorklogs.length > WORKLOG_PAGE_SIZE && (
+                  {worklogTotal === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
+                  {worklogTotal > WORKLOG_PAGE_SIZE && (
                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 8 }}>
                       <button
                         className="btn"
@@ -582,7 +600,7 @@ export function Home() {
                         onClick={() => setWorklogPage((p) => Math.max(1, p - 1))}
                       >이전</button>
                       <div style={{ fontSize: 13, color: '#475569' }}>
-                        {worklogPage} / {totalWorklogPages} 페이지 · 총 {filteredWorklogs.length}건
+                        {worklogPage} / {totalWorklogPages} 페이지 · 총 {worklogTotal}건
                       </div>
                       <button
                         className="btn"

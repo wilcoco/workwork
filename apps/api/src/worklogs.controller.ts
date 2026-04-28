@@ -1152,6 +1152,8 @@ export class WorklogsController {
     @Query('q') q?: string,
     @Query('limit') limitStr?: string,
     @Query('cursor') cursor?: string,
+    @Query('offset') offsetStr?: string,
+    @Query('withTotal') withTotalStr?: string,
     @Query('kind') kind?: 'OKR' | 'KPI',
     @Query('krId') krId?: string,
     @Query('initiativeId') initiativeId?: string,
@@ -1160,6 +1162,12 @@ export class WorklogsController {
     @Query('tag') tagFilter?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '20', 10) || 20, 100);
+    const offsetNum = Math.max(0, parseInt(offsetStr || '0', 10) || 0);
+    const useOffset = !cursor && offsetNum > 0;
+    const wantTotal = (() => {
+      const v = String(withTotalStr || '').toLowerCase();
+      return v === '1' || v === 'true';
+    })();
     const where: any = {};
     if (from || to) {
       where.date = {};
@@ -1203,28 +1211,33 @@ export class WorklogsController {
       }
     }
 
-    const items = await this.prisma.worklog.findMany({
-      where: {
-        ...where,
-        ...(kind === 'OKR' ? { initiative: { keyResult: { objective: { pillar: null } } } } : {}),
-        ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
-        ...(krId ? { initiative: { keyResultId: krId } } : {}),
-        ...(initiativeId ? { initiativeId } : {}),
-        ...(viewerId
-          ? {
-              OR: [
-                { createdById: viewerId },
-                { visibility: { in: visibilityIn as any } },
-              ],
-            }
-          : { visibility: { in: visibilityIn as any } }),
-      },
-      take: limit,
-      skip: cursor ? 1 : 0,
-      ...(cursor ? { cursor: { id: cursor } } : {}),
-      orderBy: { date: 'desc' },
-      include: { createdBy: { include: { orgUnit: true } }, initiative: true },
-    });
+    const finalWhere = {
+      ...where,
+      ...(kind === 'OKR' ? { initiative: { keyResult: { objective: { pillar: null } } } } : {}),
+      ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
+      ...(krId ? { initiative: { keyResultId: krId } } : {}),
+      ...(initiativeId ? { initiativeId } : {}),
+      ...(viewerId
+        ? {
+            OR: [
+              { createdById: viewerId },
+              { visibility: { in: visibilityIn as any } },
+            ],
+          }
+        : { visibility: { in: visibilityIn as any } }),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.worklog.findMany({
+        where: finalWhere,
+        take: limit,
+        skip: cursor ? 1 : useOffset ? offsetNum : 0,
+        ...(cursor ? { cursor: { id: cursor } } : {}),
+        orderBy: { date: 'desc' },
+        include: { createdBy: { include: { orgUnit: true } }, initiative: true },
+      }),
+      wantTotal ? this.prisma.worklog.count({ where: finalWhere }) : Promise.resolve(undefined),
+    ]);
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
     const mapped = items.map((it: any) => {
       const lines = (it.note || '').split(/\n+/);
@@ -1250,7 +1263,7 @@ export class WorklogsController {
         keywords: (it as any).keywords ?? undefined,
       };
     });
-    return { items: mapped, nextCursor };
+    return { items: mapped, nextCursor, ...(wantTotal ? { total } : {}) };
   }
 
   @Get(':id')
