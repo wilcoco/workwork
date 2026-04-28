@@ -40,8 +40,8 @@ export function Home() {
   const [viewMode, setViewMode] = useState<'summary'|'full'>('full');
   const [isMobile, setIsMobile] = useState(false);
   const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('urgent');
-  const [worklogDays, setWorklogDays] = useState(3);
-  const WORKLOG_DAYS_STEP = 3;
+  const WORKLOG_PAGE_SIZE = 20;
+  const [worklogPage, setWorklogPage] = useState(1);
   const teamOptions = useMemo(() => {
     const s = new Set<string>();
     worklogs.forEach(w => { if (w.teamName) s.add(w.teamName); });
@@ -63,26 +63,26 @@ export function Home() {
   }, [comments]);
 
   const filteredWorklogs = useMemo(() => {
-    const windowMs = worklogDays * 24 * 60 * 60 * 1000;
-    const now = Date.now();
     const ts = (w: any) => new Date(w?.createdAt || w?.date).getTime();
     return (worklogs || [])
       .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
       .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
-      .filter((w) => (now - ts(w)) <= windowMs)
       .slice()
       .sort((a, b) => ts(b) - ts(a));
-  }, [filterName, filterTeam, worklogDays, worklogs]);
+  }, [filterName, filterTeam, worklogs]);
 
-  const canShowMoreWorklogs = useMemo(() => {
-    const windowMs = worklogDays * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const ts = (w: any) => new Date(w?.createdAt || w?.date).getTime();
-    return (worklogs || [])
-      .filter((w) => !filterTeam || (w.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))
-      .filter((w) => !filterName || (w.userName || '').toLowerCase().includes(filterName.toLowerCase()))
-      .some((w) => (now - ts(w)) > windowMs);
-  }, [filterName, filterTeam, worklogDays, worklogs]);
+  const totalWorklogPages = Math.max(1, Math.ceil(filteredWorklogs.length / WORKLOG_PAGE_SIZE));
+  // Reset to first page when filters change or the total page count shrinks below the current page.
+  useEffect(() => {
+    setWorklogPage(1);
+  }, [filterTeam, filterName]);
+  useEffect(() => {
+    if (worklogPage > totalWorklogPages) setWorklogPage(totalWorklogPages);
+  }, [totalWorklogPages, worklogPage]);
+  const pagedWorklogs = useMemo(() => {
+    const start = (worklogPage - 1) * WORKLOG_PAGE_SIZE;
+    return filteredWorklogs.slice(start, start + WORKLOG_PAGE_SIZE);
+  }, [filteredWorklogs, worklogPage]);
 
   useEffect(() => {
     const update = () => {
@@ -429,7 +429,7 @@ export function Home() {
               <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
               {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
                 <div style={{ display: 'grid', gap: 8 }}>
-                  {filteredWorklogs.map((w) => {
+                  {pagedWorklogs.map((w) => {
                       const anyW: any = w as any;
                       const authorId = getWorklogAuthorId(anyW);
                       const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
@@ -487,9 +487,21 @@ export function Home() {
                       );
                     })}
                   {filteredWorklogs.length === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
-                  {canShowMoreWorklogs && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                      <button className="btn" onClick={() => setWorklogDays((d) => d + WORKLOG_DAYS_STEP)}>더보기</button>
+                  {filteredWorklogs.length > WORKLOG_PAGE_SIZE && (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                      <button
+                        className="btn"
+                        disabled={worklogPage <= 1}
+                        onClick={() => setWorklogPage((p) => Math.max(1, p - 1))}
+                      >이전</button>
+                      <div style={{ fontSize: 13, color: '#475569' }}>
+                        {worklogPage} / {totalWorklogPages} 페이지 · 총 {filteredWorklogs.length}건
+                      </div>
+                      <button
+                        className="btn"
+                        disabled={worklogPage >= totalWorklogPages}
+                        onClick={() => setWorklogPage((p) => Math.min(totalWorklogPages, p + 1))}
+                      >다음</button>
                     </div>
                   )}
                 </div>
@@ -504,7 +516,7 @@ export function Home() {
               <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
               {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
                 <div style={{ display: 'grid', gap: 8 }}>
-                  {filteredWorklogs.map((w) => {
+                  {pagedWorklogs.map((w) => {
                       const anyW: any = w as any;
                       const authorId = getWorklogAuthorId(anyW);
                       const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
@@ -562,9 +574,21 @@ export function Home() {
                       );
                     })}
                   {filteredWorklogs.length === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
-                  {canShowMoreWorklogs && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                      <button className="btn" onClick={() => setWorklogDays((d) => d + WORKLOG_DAYS_STEP)}>더보기</button>
+                  {filteredWorklogs.length > WORKLOG_PAGE_SIZE && (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                      <button
+                        className="btn"
+                        disabled={worklogPage <= 1}
+                        onClick={() => setWorklogPage((p) => Math.max(1, p - 1))}
+                      >이전</button>
+                      <div style={{ fontSize: 13, color: '#475569' }}>
+                        {worklogPage} / {totalWorklogPages} 페이지 · 총 {filteredWorklogs.length}건
+                      </div>
+                      <button
+                        className="btn"
+                        disabled={worklogPage >= totalWorklogPages}
+                        onClick={() => setWorklogPage((p) => Math.min(totalWorklogPages, p + 1))}
+                      >다음</button>
                     </div>
                   )}
                 </div>
