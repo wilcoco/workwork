@@ -78,7 +78,35 @@ export function WorklogQuickNew() {
     return !!(t.krOwnerId && t.krOwnerId === myUserId);
   }
 
-  function addPhoto() {
+  async function upgradeToAnonShareLink(raw: string): Promise<{ url: string; name?: string }> {
+    // Ask the backend to promote the share URL to "anyone with the link". If it
+    // fails we fall back to the original URL so the user isn't blocked.
+    try {
+      const resp = await apiFetch('/api/graph-tasks/onedrive/anon-link-from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: myUserId, url: raw }),
+      });
+      if (resp.ok) {
+        const data: any = await resp.json().catch(() => ({}));
+        if (data?.url) {
+          if (data?.scope && data.scope !== 'anonymous' && data.scope !== 'passthrough') {
+            window.alert(`주의: 익명 공유로 설정하지 못했습니다 (scope=${data.scope}). 해당 첨부는 회사 계정이 있는 사람만 열 수 있습니다.`);
+          }
+          return { url: String(data.url), name: data?.name ? String(data.name) : undefined };
+        }
+      } else {
+        const err: any = await resp.json().catch(() => ({}));
+        const msg = err?.message || `HTTP ${resp.status}`;
+        window.alert(`공유 설정 자동 변경에 실패했습니다: ${msg}\n원본 링크 그대로 사용합니다.`);
+      }
+    } catch (e: any) {
+      window.alert(`공유 설정 자동 변경 중 오류: ${e?.message || e}\n원본 링크 그대로 사용합니다.`);
+    }
+    return { url: raw };
+  }
+
+  async function addPhoto() {
     const url = window.prompt('사진 URL을 입력하세요 (OneDrive/Teams 공유 링크)');
     if (!url || !url.trim()) return;
     const raw = url.trim();
@@ -86,7 +114,8 @@ export function WorklogQuickNew() {
       setError('http(s)로 시작하는 URL을 입력해주세요.');
       return;
     }
-    setPhotos((prev) => [...prev, { url: raw, name: raw }]);
+    const { url: finalUrl, name } = await upgradeToAnonShareLink(raw);
+    setPhotos((prev) => [...prev, { url: finalUrl, name: name || finalUrl }]);
   }
 
   // addFile removed — cloud link only (use addAttachmentLink)
@@ -632,7 +661,7 @@ export function WorklogQuickNew() {
     }
   }
 
-  function addAttachmentLink() {
+  async function addAttachmentLink() {
     const raw = String(attachUrl || '').trim();
     if (!raw) return;
     if (!/^https?:\/\//i.test(raw)) {
@@ -643,7 +672,7 @@ export function WorklogQuickNew() {
     try {
       const u = new URL(raw);
       const h = String(u.hostname || '').toLowerCase();
-      const allowed = h === 'cams2002-my.sharepoint.com' || h.endsWith('.cams2002-my.sharepoint.com');
+      const allowed = h === 'cams2002-my.sharepoint.com' || h.endsWith('.cams2002-my.sharepoint.com') || h === '1drv.ms';
       if (!allowed) {
         window.alert('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.\n허용 도메인: cams2002-my.sharepoint.com');
         setError('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.');
@@ -659,7 +688,8 @@ export function WorklogQuickNew() {
       if (!ok) return;
       setAttachOneDriveOk(true);
     }
-    setAttachments((prev) => [...prev, { url: raw, name: raw }]);
+    const { url: finalUrl, name } = await upgradeToAnonShareLink(raw);
+    setAttachments((prev) => [...prev, { url: finalUrl, name: name || finalUrl }]);
     setAttachUrl('');
   }
 
@@ -1041,7 +1071,8 @@ export function WorklogQuickNew() {
             사진·파일은 <b>먼저 OneDrive(회사 SharePoint)</b>에 업로드한 뒤 아래의
             <b> 「OneDrive에서 선택」</b> 버튼을 눌러 첨부해 주세요.
             <br />
-            서버에 직접 업로드하지 않으며, OneDrive 파일을 선택하면 공유 링크가 자동 생성됩니다.
+            선택 또는 링크 추가 시 공유 설정이 자동으로 <b>"링크가 있는 모든 사용자"</b>로 전환되어
+            다른 사용자도 사진이 바로 보입니다.
           </div>
 
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
@@ -1274,11 +1305,17 @@ export function WorklogQuickNew() {
         <OneDriveFilePicker
           userId={myUserId}
           multiple
-          onSelect={(files) => {
+          onSelect={async (files) => {
+            const upgraded = await Promise.all(
+              files.map(async (f) => {
+                const { url, name } = await upgradeToAnonShareLink(f.url);
+                return { url, name: name || f.name };
+              }),
+            );
             if (showFilePicker === 'photo') {
-              setPhotos((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name }))]);
+              setPhotos((prev) => [...prev, ...upgraded]);
             } else {
-              setAttachments((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name }))]);
+              setAttachments((prev) => [...prev, ...upgraded]);
             }
           }}
           onClose={() => setShowFilePicker(null)}

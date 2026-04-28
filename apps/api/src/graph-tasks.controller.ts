@@ -1495,4 +1495,97 @@ export class GraphTasksController {
     }
     return { url: shareUrl, name: body.fileName || file?.name || '' };
   }
+
+  /**
+   * POST /api/graph-tasks/onedrive/anon-link-from-url
+   * Resolve a user-pasted OneDrive/SharePoint share URL to the underlying
+   * driveItem and (re)create an anonymous "anyone with the link" view link so
+   * that the file renders publicly (e.g. as an <img> in a worklog).
+   *
+   * Falls back to 'organization' scope if the tenant disallows anonymous links.
+   * Returns { url, scope, name } on success.
+   */
+  @Post('onedrive/anon-link-from-url')
+  async onedriveAnonLinkFromUrl(
+    @Body() body: { userId: string; url: string },
+  ) {
+    const userId = String(body?.userId || '').trim();
+    const url = String(body?.url || '').trim();
+    if (!userId) throw new BadRequestException('userId required');
+    if (!url) throw new BadRequestException('url required');
+
+    // Only handle OneDrive / SharePoint URLs; otherwise return the URL as-is.
+    const isOneDrive = /1drv\.ms\//i.test(url)
+      || /onedrive\.live\.com\//i.test(url)
+      || /sharepoint\.com\/:[a-z]:\//i.test(url);
+    if (!isOneDrive) {
+      return { url, scope: 'passthrough', name: '' };
+    }
+
+    const token = await this.getGraphToken(userId);
+    const b64 = Buffer.from(url, 'utf8')
+      .toString('base64')
+      .replace(/=+$/, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_');
+    const shareId = `u!${b64}`;
+
+    // Step 1: resolve share URL → driveItem (requires user to have access).
+    let driveItem: any;
+    try {
+      driveItem = await this.graphGet(
+        token,
+        `/shares/${shareId}/driveItem?$select=id,name,parentReference,webUrl`,
+      );
+    } catch (e: any) {
+      throw new BadRequestException(
+        `공유 링크를 확인할 수 없습니다. 본인 소유 파일이 맞는지 확인해주세요. (${e?.message || e})`,
+      );
+    }
+
+    const itemId = String(driveItem?.id || '');
+    const driveId = String(driveItem?.parentReference?.driveId || '');
+    const fileName = String(driveItem?.name || '');
+    if (!itemId || !driveId) {
+      throw new BadRequestException('driveItem에서 id/driveId를 가져올 수 없습니다.');
+    }
+
+    // Step 2: try anonymous link first, then fall back to organization.
+    const f: any = (globalThis as any).fetch;
+    const attempt = async (scope: 'anonymous' | 'organization') => {
+      const resp = await f(
+        `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/items/${encodeURIComponent(itemId)}/createLink`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ type: 'view', scope }),
+        },
+      );
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) return { ok: false, error: data?.error?.message || `HTTP ${resp.status}` };
+      const webUrl = data?.link?.webUrl || '';
+      return { ok: !!webUrl, url: webUrl, error: webUrl ? undefined : 'no webUrl in response' };
+    };
+
+    const anon = await attempt('anonymous');
+    if (anon.ok) {
+      return { url: anon.url, scope: 'anonymous', name: fileName };
+    }
+    const org = await attempt('organization');
+    if (org.ok) {
+      return { url: org.url, scope: 'organization', name: fileName, anonymousError: anon.error };
+    }
+
+    // Final fallback: return the original webUrl so at least the link still works.
+    return {
+      url: driveItem?.webUrl || url,
+      scope: 'owner',
+      name: fileName,
+      anonymousError: anon.error,
+      organizationError: org.error,
+    };
+  }
 }

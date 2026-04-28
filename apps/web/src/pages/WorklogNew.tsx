@@ -638,6 +638,9 @@ export function WorklogNew() {
         사진·파일은 <b>먼저 OneDrive(회사 SharePoint)</b>에 업로드한 뒤,
         해당 파일의 <b>공유 링크</b>를 복사해 아래에 붙여넣어 주세요.
         <br />
+        <b>링크 추가</b> 버튼을 누르면 공유 설정이 자동으로 <b>"링크가 있는 모든 사용자"</b>로 전환되어
+        다른 사용자도 사진이 바로 보입니다.
+        <br />
         서버에 파일을 직접 올리지 않습니다. 회사 OneDrive 링크(<code>cams2002-my.sharepoint.com</code>)만 허용됩니다.
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -650,7 +653,7 @@ export function WorklogNew() {
         <button
           type="button"
           className="btn"
-          onClick={() => {
+          onClick={async () => {
             const raw = String(attachUrl || '').trim();
             if (!raw) return;
             if (!/^https?:\/\//i.test(raw)) {
@@ -661,7 +664,7 @@ export function WorklogNew() {
             try {
               const u = new URL(raw);
               const h = String(u.hostname || '').toLowerCase();
-              const allowed = h === 'cams2002-my.sharepoint.com' || h.endsWith('.cams2002-my.sharepoint.com');
+              const allowed = h === 'cams2002-my.sharepoint.com' || h.endsWith('.cams2002-my.sharepoint.com') || h === '1drv.ms';
               if (!allowed) {
                 window.alert('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.\n허용 도메인: cams2002-my.sharepoint.com');
                 setError('회사 원드라이브(SharePoint) 링크만 첨부할 수 있습니다.');
@@ -677,7 +680,43 @@ export function WorklogNew() {
               if (!ok) return;
               setAttachOneDriveOk(true);
             }
-            setAttachments((prev) => [...prev, { url: raw, name: raw }]);
+
+            // Upgrade to an anonymous (anyone with link) share URL so other
+            // users and <img> tags can actually render the file.
+            let finalUrl = raw;
+            let finalName = raw;
+            try {
+              const resp = await apiFetch('/api/graph-tasks/onedrive/anon-link-from-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: myUserId, url: raw }),
+              });
+              if (resp.ok) {
+                const data: any = await resp.json().catch(() => ({}));
+                if (data?.url) finalUrl = String(data.url);
+                if (data?.name) finalName = String(data.name);
+                if (data?.scope && data.scope !== 'anonymous' && data.scope !== 'passthrough') {
+                  window.alert(
+                    `주의: 익명 공유로 설정하지 못했습니다 (scope=${data.scope}). ` +
+                    `이 첨부는 회사 계정이 있는 사람만 열 수 있습니다.`,
+                  );
+                }
+              } else {
+                const err: any = await resp.json().catch(() => ({}));
+                const msg = err?.message || `HTTP ${resp.status}`;
+                const cont = window.confirm(
+                  `공유 설정 자동 변경에 실패했습니다: ${msg}\n원본 링크 그대로 첨부할까요?`,
+                );
+                if (!cont) return;
+              }
+            } catch (e: any) {
+              const cont = window.confirm(
+                `공유 설정 자동 변경 중 오류: ${e?.message || e}\n원본 링크 그대로 첨부할까요?`,
+              );
+              if (!cont) return;
+            }
+
+            setAttachments((prev) => [...prev, { url: finalUrl, name: finalName }]);
             setAttachUrl('');
           }}
           disabled={!String(attachUrl || '').trim()}
