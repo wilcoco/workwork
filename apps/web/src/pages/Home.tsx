@@ -477,6 +477,12 @@ export function Home() {
                               <WorklogDocument worklog={anyW} variant="content" />
                             </div>
                           )}
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}
+                          >
+                            <CommentsBox worklogId={w.id} />
+                          </div>
                         </div>
                       );
                     })}
@@ -546,6 +552,12 @@ export function Home() {
                               <WorklogDocument worklog={anyW} variant="content" />
                             </div>
                           )}
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}
+                          >
+                            <CommentsBox worklogId={w.id} />
+                          </div>
                         </div>
                       );
                     })}
