@@ -1507,10 +1507,11 @@ export class GraphTasksController {
    */
   @Post('onedrive/anon-link-from-url')
   async onedriveAnonLinkFromUrl(
-    @Body() body: { userId: string; url: string },
+    @Body() body: { userId: string; url: string; scope?: 'anonymous' | 'organization' },
   ) {
     const userId = String(body?.userId || '').trim();
     const url = String(body?.url || '').trim();
+    const requestedScope: 'anonymous' | 'organization' = body?.scope === 'organization' ? 'organization' : 'anonymous';
     if (!userId) throw new BadRequestException('userId required');
     if (!url) throw new BadRequestException('url required');
 
@@ -1570,22 +1571,36 @@ export class GraphTasksController {
       return { ok: !!webUrl, url: webUrl, error: webUrl ? undefined : 'no webUrl in response' };
     };
 
-    const anon = await attempt('anonymous');
-    if (anon.ok) {
-      return { url: anon.url, scope: 'anonymous', name: fileName };
-    }
-    const org = await attempt('organization');
-    if (org.ok) {
-      return { url: org.url, scope: 'organization', name: fileName, anonymousError: anon.error };
+    // Honor the user's requested scope first, then fall back (anonymous may be
+    // disabled tenant-wide; organization should almost always work for our
+    // members).
+    const order: Array<'anonymous' | 'organization'> = requestedScope === 'organization'
+      ? ['organization']
+      : ['anonymous', 'organization'];
+
+    const errors: Record<string, string | undefined> = {};
+    for (const s of order) {
+      const res = await attempt(s);
+      if (res.ok) {
+        return {
+          url: res.url,
+          scope: s,
+          requestedScope,
+          name: fileName,
+          ...(s !== requestedScope ? { fallbackFrom: requestedScope, anonymousError: errors.anonymous } : {}),
+        };
+      }
+      errors[s] = res.error;
     }
 
     // Final fallback: return the original webUrl so at least the link still works.
     return {
       url: driveItem?.webUrl || url,
       scope: 'owner',
+      requestedScope,
       name: fileName,
-      anonymousError: anon.error,
-      organizationError: org.error,
+      anonymousError: errors.anonymous,
+      organizationError: errors.organization,
     };
   }
 }

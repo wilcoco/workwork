@@ -54,6 +54,8 @@ export function WorklogNew() {
   const [attachments, setAttachments] = useState<Array<{ url: string; name?: string }>>([]);
   const [attachUrl, setAttachUrl] = useState<string>('');
   const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
+  // 공유 범위 선택: anonymous(링크 공개) / organization(회사 내부) / skip(변경 없음)
+  const [shareScope, setShareScope] = useState<'anonymous' | 'organization' | 'skip'>('organization');
 
   // follow-up actions
   const [approverId, setApproverId] = useState('');
@@ -638,10 +640,22 @@ export function WorklogNew() {
         사진·파일은 <b>먼저 OneDrive(회사 SharePoint)</b>에 업로드한 뒤,
         해당 파일의 <b>공유 링크</b>를 복사해 아래에 붙여넣어 주세요.
         <br />
-        <b>링크 추가</b> 버튼을 누르면 공유 설정이 자동으로 <b>"링크가 있는 모든 사용자"</b>로 전환되어
-        다른 사용자도 사진이 바로 보입니다.
-        <br />
-        서버에 파일을 직접 올리지 않습니다. 회사 OneDrive 링크(<code>cams2002-my.sharepoint.com</code>)만 허용됩니다.
+        <b>링크 추가</b> 버튼을 누르면 아래에서 선택한 <b>공유 범위</b>로 자동 재설정됩니다.
+        <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+            <input type="radio" name="wnShareScope" value="organization" checked={shareScope === 'organization'} onChange={() => setShareScope('organization')} />
+            <span>회사 내부(로그인 필요) — 권장</span>
+          </label>
+          <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+            <input type="radio" name="wnShareScope" value="anonymous" checked={shareScope === 'anonymous'} onChange={() => setShareScope('anonymous')} />
+            <span>링크가 있는 모든 사용자</span>
+          </label>
+          <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+            <input type="radio" name="wnShareScope" value="skip" checked={shareScope === 'skip'} onChange={() => setShareScope('skip')} />
+            <span>변경 없음</span>
+          </label>
+        </div>
+        <div style={{ marginTop: 4 }}>서버에 파일을 직접 올리지 않습니다. 회사 OneDrive 링크(<code>cams2002-my.sharepoint.com</code>)만 허용됩니다.</div>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <input
@@ -681,39 +695,41 @@ export function WorklogNew() {
               setAttachOneDriveOk(true);
             }
 
-            // Upgrade to an anonymous (anyone with link) share URL so other
-            // users and <img> tags can actually render the file.
+            // Upgrade to the user-selected share scope. 'skip' leaves the
+            // URL as-is (assumes the user already configured sharing).
             let finalUrl = raw;
             let finalName = raw;
-            try {
-              const resp = await apiFetch('/api/graph-tasks/onedrive/anon-link-from-url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: myUserId, url: raw }),
-              });
-              if (resp.ok) {
-                const data: any = await resp.json().catch(() => ({}));
-                if (data?.url) finalUrl = String(data.url);
-                if (data?.name) finalName = String(data.name);
-                if (data?.scope && data.scope !== 'anonymous' && data.scope !== 'passthrough') {
-                  window.alert(
-                    `주의: 익명 공유로 설정하지 못했습니다 (scope=${data.scope}). ` +
-                    `이 첨부는 회사 계정이 있는 사람만 열 수 있습니다.`,
+            if (shareScope !== 'skip') {
+              try {
+                const resp = await apiFetch('/api/graph-tasks/onedrive/anon-link-from-url', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId: myUserId, url: raw, scope: shareScope }),
+                });
+                if (resp.ok) {
+                  const data: any = await resp.json().catch(() => ({}));
+                  if (data?.url) finalUrl = String(data.url);
+                  if (data?.name) finalName = String(data.name);
+                  if (data?.scope && data.scope !== shareScope && data.scope !== 'passthrough') {
+                    window.alert(
+                      `주의: 선택한 공유 범위(${shareScope})로 설정하지 못했습니다 ` +
+                      `(적용된 범위=${data.scope}).`,
+                    );
+                  }
+                } else {
+                  const err: any = await resp.json().catch(() => ({}));
+                  const msg = err?.message || `HTTP ${resp.status}`;
+                  const cont = window.confirm(
+                    `공유 설정 자동 변경에 실패했습니다: ${msg}\n원본 링크 그대로 첨부할까요?`,
                   );
+                  if (!cont) return;
                 }
-              } else {
-                const err: any = await resp.json().catch(() => ({}));
-                const msg = err?.message || `HTTP ${resp.status}`;
+              } catch (e: any) {
                 const cont = window.confirm(
-                  `공유 설정 자동 변경에 실패했습니다: ${msg}\n원본 링크 그대로 첨부할까요?`,
+                  `공유 설정 자동 변경 중 오류: ${e?.message || e}\n원본 링크 그대로 첨부할까요?`,
                 );
                 if (!cont) return;
               }
-            } catch (e: any) {
-              const cont = window.confirm(
-                `공유 설정 자동 변경 중 오류: ${e?.message || e}\n원본 링크 그대로 첨부할까요?`,
-              );
-              if (!cont) return;
             }
 
             setAttachments((prev) => [...prev, { url: finalUrl, name: finalName }]);

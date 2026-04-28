@@ -38,6 +38,11 @@ export function WorklogQuickNew() {
   const [attachments, setAttachments] = useState<Array<{ url: string; name?: string; filename?: string }>>([]);
   const [photos, setPhotos] = useState<Array<{ url: string; name?: string; filename?: string; type?: string }>>([]);
   const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
+  // Share scope to apply when adding OneDrive/SharePoint links.
+  //   anonymous   : 링크가 있는 누구나 (회사 외부 포함)
+  //   organization: 회사(Entra) 로그인한 사람만
+  //   skip        : 공유 설정 변경하지 않음 (이미 설정됨)
+  const [shareScope, setShareScope] = useState<'anonymous' | 'organization' | 'skip'>('organization');
   const [showFilePicker, setShowFilePicker] = useState<'attach' | 'photo' | null>(null);
   const [attachUrl, setAttachUrl] = useState<string>('');
   const quillRef = useRef<Quill | null>(null);
@@ -79,19 +84,21 @@ export function WorklogQuickNew() {
   }
 
   async function upgradeToAnonShareLink(raw: string): Promise<{ url: string; name?: string }> {
-    // Ask the backend to promote the share URL to "anyone with the link". If it
-    // fails we fall back to the original URL so the user isn't blocked.
+    // Ask the user which share scope to apply, then call the backend to
+    // (re)create the share link with that scope. Scope 'skip' keeps the URL
+    // as-is (e.g. if the user has already set sharing manually).
+    if (shareScope === 'skip') return { url: raw };
     try {
       const resp = await apiFetch('/api/graph-tasks/onedrive/anon-link-from-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: myUserId, url: raw }),
+        body: JSON.stringify({ userId: myUserId, url: raw, scope: shareScope }),
       });
       if (resp.ok) {
         const data: any = await resp.json().catch(() => ({}));
         if (data?.url) {
-          if (data?.scope && data.scope !== 'anonymous' && data.scope !== 'passthrough') {
-            window.alert(`주의: 익명 공유로 설정하지 못했습니다 (scope=${data.scope}). 해당 첨부는 회사 계정이 있는 사람만 열 수 있습니다.`);
+          if (data?.scope && data.scope !== shareScope && data.scope !== 'passthrough') {
+            window.alert(`주의: 선택한 공유 범위(${shareScope})로 설정하지 못했습니다 (적용된 범위=${data.scope}).`);
           }
           return { url: String(data.url), name: data?.name ? String(data.name) : undefined };
         }
@@ -1071,8 +1078,21 @@ export function WorklogQuickNew() {
             사진·파일은 <b>먼저 OneDrive(회사 SharePoint)</b>에 업로드한 뒤 아래의
             <b> 「OneDrive에서 선택」</b> 버튼을 눌러 첨부해 주세요.
             <br />
-            선택 또는 링크 추가 시 공유 설정이 자동으로 <b>"링크가 있는 모든 사용자"</b>로 전환되어
-            다른 사용자도 사진이 바로 보입니다.
+            첨부 시 아래에서 선택한 <b>공유 범위</b>로 자동 재설정됩니다.
+            <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="radio" name="shareScope" value="organization" checked={shareScope === 'organization'} onChange={() => setShareScope('organization')} />
+                <span>회사 내부(로그인 필요) — 권장</span>
+              </label>
+              <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="radio" name="shareScope" value="anonymous" checked={shareScope === 'anonymous'} onChange={() => setShareScope('anonymous')} />
+                <span>링크가 있는 모든 사용자</span>
+              </label>
+              <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+                <input type="radio" name="shareScope" value="skip" checked={shareScope === 'skip'} onChange={() => setShareScope('skip')} />
+                <span>변경 없음</span>
+              </label>
+            </div>
           </div>
 
           <div style={{ display: 'grid', gap: 8, marginTop: 6 }}>
