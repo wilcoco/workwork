@@ -1119,7 +1119,7 @@ export class CompanyDataController {
   // ─── AI Q&A via Assistants API ─────────────────────────
 
   @Post('ask')
-  async ask(@Body() body: { question: string; userId: string; provider?: 'openai' | 'claude' | 'claude-opus'; mode?: 'summary' | 'deep' }) {
+  async ask(@Body() body: { question: string; userId: string; provider?: 'openai' | 'claude' | 'claude-opus'; mode?: 'summary' | 'deep'; source?: string }) {
     if (!body.question?.trim()) throw new BadRequestException('question required');
     if (!body.userId) throw new BadRequestException('userId required');
 
@@ -1164,7 +1164,7 @@ export class CompanyDataController {
       if (!token) {
         debug.path = 'no-graph-token';
         console.log(`[company-data] No Graph token, falling back to DB`);
-        const r = await this.askFallback(body.question, body.userId, provider, systemPrompt);
+        const r = await this.askFallback(body.question, body.userId, provider, systemPrompt, body.source);
         return { ...r, debug };
       }
 
@@ -1214,7 +1214,7 @@ export class CompanyDataController {
       if (docContents.length === 0) {
         debug.path = 'no-sharepoint-content';
         console.log(`[company-data] No SharePoint content found, falling back to DB`);
-        const r = await this.askFallback(body.question, body.userId, provider, systemPrompt);
+        const r = await this.askFallback(body.question, body.userId, provider, systemPrompt, body.source);
         return { ...r, debug };
       }
       debug.path = 'sharepoint-success';
@@ -1238,7 +1238,8 @@ export class CompanyDataController {
           answer,
           dataIds: [],
           userId: body.userId,
-        },
+          source: body.source || null,
+        } as any,
       });
 
       return {
@@ -1254,13 +1255,13 @@ export class CompanyDataController {
       debug.error = e?.message;
       console.error(`[company-data] On-demand search failed: ${e?.message}\n${e?.stack}`);
       // Fallback to DB if on-demand search fails
-      const r = await this.askFallback(body.question, body.userId, provider, systemPrompt);
+      const r = await this.askFallback(body.question, body.userId, provider, systemPrompt, body.source);
       return { ...r, debug };
     }
   }
 
   // Fallback: use DB content directly when no SharePoint content
-  private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' | 'claude-opus' = 'openai', systemPrompt: string = ASSISTANT_INSTRUCTIONS_DEEP) {
+  private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' | 'claude-opus' = 'openai', systemPrompt: string = ASSISTANT_INSTRUCTIONS_DEEP, source?: string) {
     const dataSources = await this.prisma.companyData.findMany({
       where: { content: { not: null } },
       select: { id: true, title: true, content: true },
@@ -1287,7 +1288,7 @@ export class CompanyDataController {
     if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
 
     const chat = await this.prisma.companyDataChat.create({
-      data: { question, answer, dataIds, userId },
+      data: { question, answer, dataIds, userId, source: source || null } as any,
     });
 
     return { answer, chatId: chat.id, sources: dataIds.length };
@@ -1296,10 +1297,21 @@ export class CompanyDataController {
   // ─── Chat History ──────────────────────────────────────
 
   @Get('chats')
-  async chatHistory(@Query('userId') userId: string) {
+  async chatHistory(@Query('userId') userId: string, @Query('source') source?: string) {
     if (!userId) throw new BadRequestException('userId required');
+    const where: any = { userId };
+    if (source) {
+      // Include legacy rows (source IS NULL) for the original 'company-data'
+      // page so users don't lose their pre-existing history. Other sources
+      // get exact-match filtering only.
+      if (source === 'company-data') {
+        where.OR = [{ source: 'company-data' }, { source: null }];
+      } else {
+        where.source = source;
+      }
+    }
     return this.prisma.companyDataChat.findMany({
-      where: { userId },
+      where,
       orderBy: { createdAt: 'desc' },
       take: 50,
     });

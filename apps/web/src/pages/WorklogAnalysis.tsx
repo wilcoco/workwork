@@ -26,6 +26,7 @@ export function WorklogAnalysis() {
   const [asking, setAsking] = useState<Provider | null>(null);
   const [mode, setMode] = useState<'summary' | 'deep'>('deep');
   const [isExecOrAbove, setIsExecOrAbove] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     loadChats();
@@ -43,7 +44,7 @@ export function WorklogAnalysis() {
   async function loadChats() {
     if (!userId) return;
     try {
-      const res = await apiJson<ChatMsg[]>(`/api/company-data/chats?userId=${encodeURIComponent(userId)}`);
+      const res = await apiJson<ChatMsg[]>(`/api/company-data/chats?userId=${encodeURIComponent(userId)}&source=worklog-analysis`);
       setChatHistory(res || []);
     } catch {}
   }
@@ -55,12 +56,13 @@ export function WorklogAnalysis() {
       const res = await apiFetch('/api/company-data/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, question, provider, mode }),
+        body: JSON.stringify({ userId, question, provider, mode, source: 'worklog-analysis' }),
       });
       if (!res.ok) throw new Error('질문 실패');
       const data = await res.json();
+      const newId = data.chatId || Date.now().toString();
       setChatHistory((prev) => [{
-        id: Date.now().toString(),
+        id: newId,
         question,
         answer: data.answer,
         createdAt: new Date().toISOString(),
@@ -70,6 +72,7 @@ export function WorklogAnalysis() {
         debug: data.debug,
         provider,
       }, ...prev]);
+      setExpandedId(newId);
       setQuestion('');
     } catch (e: any) {
       alert(`질문 실패: ${e?.message}`);
@@ -145,24 +148,49 @@ export function WorklogAnalysis() {
           )}
         </div>
 
-        {/* Chat History */}
-        <div className="space-y-4">
-          {chatHistory.map((msg) => (
-            <div key={msg.id} className="border rounded-lg p-4">
-              <div className="font-semibold mb-2 flex items-center gap-2">
-                <span>Q: {msg.question}</span>
-                {msg.provider && (
-                  <span className={`text-xs px-2 py-0.5 rounded ${
-                    msg.provider === 'claude-opus' ? 'bg-purple-100 text-purple-700' :
-                    msg.provider === 'claude' ? 'bg-orange-100 text-orange-700' :
-                    'bg-emerald-100 text-emerald-700'
-                  }`}>
-                    {msg.provider === 'claude-opus' ? 'Claude Opus (심도)' : msg.provider === 'claude' ? 'Claude' : 'OpenAI'}
-                  </span>
+        {/* Chat History — Google-style collapsible list */}
+        <div className="space-y-2">
+          {chatHistory.map((msg) => {
+            const isOpen = expandedId === msg.id;
+            const snippet = String(msg.answer || '')
+              .replace(/[#*_`>\-]/g, '')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, 180);
+            return (
+            <div key={msg.id} className="border rounded-lg bg-white">
+              {/* Collapsed row — title + snippet */}
+              <button
+                type="button"
+                onClick={() => setExpandedId(isOpen ? null : msg.id)}
+                className="w-full text-left px-4 py-3 hover:bg-gray-50 rounded-lg"
+              >
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className="text-[13px] text-gray-500 shrink-0">{new Date(msg.createdAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  {msg.provider && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      msg.provider === 'claude-opus' ? 'bg-purple-100 text-purple-700' :
+                      msg.provider === 'claude' ? 'bg-orange-100 text-orange-700' :
+                      'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {msg.provider === 'claude-opus' ? 'Opus 심도' : msg.provider === 'claude' ? 'Claude' : 'OpenAI'}
+                    </span>
+                  )}
+                  {typeof msg.sources === 'number' && msg.sources > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">참조 {msg.sources}건</span>
+                  )}
+                  <span className="ml-auto text-gray-400 text-xs">{isOpen ? '▲ 접기' : '▼ 펼치기'}</span>
+                </div>
+                <div className="text-[15px] font-semibold text-blue-700 line-clamp-2">{msg.question}</div>
+                {!isOpen && (
+                  <div className="text-[13px] text-gray-600 mt-1 line-clamp-2">{snippet}{snippet.length >= 180 ? '…' : ''}</div>
                 )}
-              </div>
+              </button>
+
+              {!isOpen ? null : (
+              <div className="px-4 pb-4">
               {/* Report card with clear top/bottom delimiters */}
-              <div className="mt-3 border-2 border-gray-300 rounded-lg bg-white shadow-sm overflow-hidden">
+              <div className="mt-1 border-2 border-gray-300 rounded-lg bg-white shadow-sm overflow-hidden">
                 {/* Report Header */}
                 <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white px-5 py-2.5 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
@@ -223,8 +251,11 @@ export function WorklogAnalysis() {
                   <pre className="bg-gray-50 p-2 rounded mt-1 overflow-x-auto">{JSON.stringify(msg.debug, null, 2)}</pre>
                 </details>
               )}
+              </div>
+              )}
             </div>
-          ))}
+            );
+          })}
           {chatHistory.length === 0 && (
             <div className="text-gray-500 text-center py-8">아직 질문이 없습니다.</div>
           )}

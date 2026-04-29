@@ -1105,9 +1105,14 @@ model CompanyDataChat {
   question  String   @db.Text
   answer    String   @db.Text
   dataIds   String[]
+  /// Originating page/feature so the same table can power multiple
+  /// distinct chat lists. Examples: 'company-data', 'worklog-analysis'.
+  /// Nullable for legacy rows recorded before this column existed.
+  source    String?
   userId    String
   user      User     @relation("CompanyDataChatUser", fields: [userId], references: [id])
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([source])
 }

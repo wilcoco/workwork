@@ -49,6 +49,7 @@ export function CompanyDataAI() {
   const [question, setQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
   const [asking, setAsking] = useState(false);
+  const [expandedChatId, setExpandedChatId] = useState<string | null>(null);
 
   // Tab
   const [tab, setTab] = useState<'data' | 'chat'>('chat');
@@ -70,7 +71,7 @@ export function CompanyDataAI() {
   async function loadChats() {
     if (!userId) return;
     try {
-      const res = await apiJson<ChatMsg[]>(`/api/company-data/chats?userId=${encodeURIComponent(userId)}`);
+      const res = await apiJson<ChatMsg[]>(`/api/company-data/chats?userId=${encodeURIComponent(userId)}&source=company-data`);
       setChatHistory(res || []);
     } catch {}
   }
@@ -176,12 +177,13 @@ export function CompanyDataAI() {
     try {
       const res = await apiJson<{ answer: string; chatId: string }>('/api/company-data/ask', {
         method: 'POST',
-        body: JSON.stringify({ question: question.trim(), userId }),
+        body: JSON.stringify({ question: question.trim(), userId, source: 'company-data' }),
       });
       setChatHistory((prev) => [
         { id: res.chatId, question: question.trim(), answer: res.answer, createdAt: new Date().toISOString() },
         ...prev,
       ]);
+      setExpandedChatId(res.chatId);
       setQuestion('');
     } catch (e: any) {
       setError(e?.message || 'AI 질의 실패');
@@ -246,21 +248,40 @@ export function CompanyDataAI() {
             </button>
           </div>
 
-          {/* Chat history */}
-          <div style={{ display: 'grid', gap: 16 }}>
-            {chatHistory.map((c) => (
-              <div key={c.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-                <div style={{ padding: '10px 14px', background: '#f1f5f9', fontWeight: 600, fontSize: 14, color: '#334155' }}>
-                  Q. {c.question}
+          {/* Chat history — Google-style collapsible list */}
+          <div style={{ display: 'grid', gap: 8 }}>
+            {chatHistory.map((c) => {
+              const isOpen = expandedChatId === c.id;
+              const snippet = String(c.answer || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+              return (
+                <div key={c.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff' }}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedChatId(isOpen ? null : c.id)}
+                    style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 12 }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>{new Date(c.createdAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>{isOpen ? '▲ 접기' : '▼ 펼치기'}</span>
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#1d4ed8', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>{c.question}</div>
+                    {!isOpen && (
+                      <div style={{ fontSize: 13, color: '#475569', marginTop: 4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>{snippet}{snippet.length >= 180 ? '…' : ''}</div>
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding: '0 14px 12px' }}>
+                      <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', color: '#1e293b' }}>
+                        {c.answer}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div style={{ padding: '12px 14px', fontSize: 14, lineHeight: 1.7, whiteSpace: 'pre-wrap', color: '#1e293b' }}>
-                  {c.answer}
-                </div>
-                <div style={{ padding: '4px 14px 8px', fontSize: 11, color: '#94a3b8' }}>
-                  {new Date(c.createdAt).toLocaleString('ko-KR')}
-                </div>
-              </div>
-            ))}
+              );
+            })}
+            {chatHistory.length === 0 && (
+              <div style={{ textAlign: 'center', color: '#94a3b8', padding: 24, fontSize: 13 }}>아직 질문이 없습니다.</div>
+            )}
           </div>
         </div>
       )}
