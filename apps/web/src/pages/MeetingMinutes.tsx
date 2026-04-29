@@ -335,10 +335,24 @@ export function MeetingMinutes() {
   async function handleTranscribe() {
     if (!active) return;
     setTranscribing(true);
+    setRefineNote(null);
     try {
-      const res = await apiJson<{ transcript: string }>(`/api/meeting-minutes/${active.id}/transcribe`, { method: 'POST' });
+      const res = await apiJson<{
+        transcript: string;
+        corrections?: Array<{ from?: string; to?: string; reason?: string }>;
+        refined?: boolean;
+        refineError?: string | null;
+      }>(`/api/meeting-minutes/${active.id}/transcribe`, { method: 'POST' });
       setActive({ ...active, transcript: res.transcript, status: 'draft' });
       setEditTranscript(res.transcript);
+      if (res.refined) {
+        const n = (res.corrections || []).length;
+        setRefineNote(n > 0
+          ? `전사 후 자동 정제 완료 (${n}개 단어 교정).`
+          : '전사 후 자동 정제 완료.');
+      } else if (res.refineError) {
+        setRefineNote(`자동 정제 건너뜀: ${res.refineError}. 필요시 'AI 녹취 정제' 버튼을 눌러주세요.`);
+      }
     } catch (e: any) {
       setError(e?.message || '전사 실패');
     } finally {
@@ -600,7 +614,7 @@ export function MeetingMinutes() {
               {transcribing ? (
                 <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
                   <div style={{ fontSize: 24, marginBottom: 8 }}>🎙️</div>
-                  AI가 음성을 텍스트로 변환하고 있습니다…<br />
+                  AI가 음성을 텍스트로 변환하고 자동 정제까지 수행합니다…<br />
                   <span style={{ fontSize: 12 }}>오디오 길이에 따라 수 분 소요될 수 있습니다.</span>
                 </div>
               ) : refining ? (

@@ -271,7 +271,31 @@ export class MeetingMinutesController {
       },
     });
 
-    return { transcript: fullTranscript, duration: totalDuration };
+    // Auto-chain: run Claude refine immediately after Whisper transcription
+    // so the user gets a clean transcript in one click. If refine fails for
+    // any reason (network, quota, parsing), fall back gracefully to the
+    // raw Whisper output instead of failing the whole transcribe call.
+    let finalTranscript = fullTranscript;
+    let corrections: any[] = [];
+    let refineError: string | null = null;
+    if (fullTranscript.trim().length >= 20 && !process.env.MEETING_AUTO_REFINE_DISABLED) {
+      try {
+        const refineRes = await this.runRefineOnText(id, fullTranscript);
+        finalTranscript = refineRes.transcript;
+        corrections = refineRes.corrections || [];
+      } catch (e: any) {
+        refineError = String(e?.message || 'refine failed');
+        try { console.warn('[meeting-minutes] auto-refine failed, keeping raw transcript:', refineError); } catch {}
+      }
+    }
+
+    return {
+      transcript: finalTranscript,
+      duration: totalDuration,
+      corrections,
+      refined: finalTranscript !== fullTranscript,
+      refineError,
+    };
   }
 
   // ─── AI Refine (transcript clean-up) ──────────────────────
@@ -294,7 +318,15 @@ export class MeetingMinutesController {
     if (transcript.length < 20) {
       throw new BadRequestException('정제할 녹취록이 너무 짧습니다. 먼저 AI 음성 전사를 진행하세요.');
     }
+    return this.runRefineOnText(id, transcript);
+  }
 
+  /**
+   * Internal helper: run the LLM refine pass on the given transcript text
+   * and persist the result. Shared by the explicit /refine endpoint and
+   * the auto-chain after /transcribe.
+   */
+  private async runRefineOnText(meetingId: string, transcript: string) {
     const { callAI } = await import('./llm/ai-client');
     const glossary = String(process.env.MEETING_GLOSSARY || '').trim();
 
@@ -334,7 +366,7 @@ export class MeetingMinutesController {
     }
 
     await this.prisma.meetingMinutes.update({
-      where: { id },
+      where: { id: meetingId },
       data: { transcript: refined },
     });
 
