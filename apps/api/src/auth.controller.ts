@@ -141,6 +141,23 @@ export class AuthController {
     if (!user || !user.passwordHash) throw new BadRequestException('invalid credentials');
     const ok = await bcrypt.compare(dto.password, user.passwordHash);
     if (!ok) throw new BadRequestException('invalid credentials');
+
+    // Domain enforcement on login: when ALLOWED_EXTERNAL_DOMAINS is set,
+    // only emails on that list may use ID/password login. Internal admin
+    // roles (CEO/EXEC) are exempt so primary-company admin accounts keep
+    // working regardless of their domain. When the env is empty there is
+    // no enforcement (preserves accounts created before this gate).
+    const allowedDomains = this.getAllowedExternalDomains();
+    if (allowedDomains.length > 0) {
+      const role = String((user as any).role || '');
+      const isInternalAdmin = role === 'CEO' || role === 'EXEC';
+      if (!isInternalAdmin) {
+        const domain = this.extractEmailDomain(dto.username);
+        if (!domain || !allowedDomains.includes(domain)) {
+          throw new BadRequestException(`허용되지 않은 도메인입니다 (${domain || dto.username})`);
+        }
+      }
+    }
     try {
       const status = String((user as any).status || 'ACTIVE');
       if (status !== 'ACTIVE') {
