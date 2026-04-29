@@ -799,6 +799,11 @@ export function WorklogQuickNew() {
               setError(null);
               setKrValue('');
               setKrAchieved(false);
+              // Auto-fill title from instruction title if user hasn't typed one yet.
+              if (v.startsWith('inst:') && !title.trim()) {
+                const ins = myInstructions.find((x) => x.id === v.substring(5));
+                if (ins?.title) setTitle(ins.title);
+              }
             }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="new:1">-- 과제 미선택 (키워드 직접 입력) --</option>
               {myInstructions.length > 0 && (
@@ -900,6 +905,46 @@ export function WorklogQuickNew() {
                   <div style={{ fontSize: 13, color: '#312e81' }}>{pt.planName ? `플랜: ${pt.planName}` : ''}</div>
                   {pt.dueDateTime && <div style={{ fontSize: 12, color: overdue ? '#DC2626' : '#64748b', fontWeight: overdue ? 700 : 400, marginTop: 2 }}>기한: {new Date(pt.dueDateTime).toLocaleDateString('ko-KR')}{overdue ? ' (기한 초과)' : ''}</div>}
                   <div style={{ fontSize: 11, color: '#6366f1', marginTop: 6 }}>업무일지 제출 시 내용이 Planner 태스크 설명에 자동 동기화됩니다. "과제 완료" 체크 시 태스크도 완료 처리됩니다.</div>
+                </div>
+              );
+            })()}
+            {selection.startsWith('inst:') && (() => {
+              const insId = selection.substring(5);
+              const ins = myInstructions.find((x) => x.id === insId);
+              if (!ins) return null;
+              const due = ins.dueDate ? String(ins.dueDate).slice(0, 10) : '';
+              return (
+                <div style={{ border: '2px solid #dc2626', borderRadius: 8, padding: 12, marginTop: 8, background: '#fff1f2' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <span style={{ background: '#dc2626', color: '#fff', borderRadius: 6, padding: '1px 8px', fontWeight: 700, fontSize: 12 }}>📌 업무 지시</span>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: '#7f1d1d' }}>{ins.title}</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#7f1d1d', marginBottom: 6 }}>
+                    {ins.assignerName ? `지시자: ${ins.assignerName}` : ''}
+                    {due ? `${ins.assignerName ? ' · ' : ''}마감: ${due}` : ''}
+                  </div>
+                  {ins.description && (
+                    <div
+                      style={{ fontSize: 14, color: '#7f1d1d', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                      dangerouslySetInnerHTML={{ __html: toSafeHtml(ins.description) }}
+                    />
+                  )}
+                  {ins.sourceWorklogId && (
+                    <div style={{ marginTop: 8 }}>
+                      <a
+                        href={`/worklogs/${encodeURIComponent(ins.sourceWorklogId)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-ghost"
+                        style={{ fontSize: 12 }}
+                      >
+                        지시 원본 업무일지 보기 ↗
+                      </a>
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: '#9f1239', marginTop: 8 }}>
+                    이 업무일지를 저장하면 해당 업무 지시는 자동으로 완료 처리됩니다.
+                  </div>
                 </div>
               );
             })()}
