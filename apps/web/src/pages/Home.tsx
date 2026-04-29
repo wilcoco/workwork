@@ -43,6 +43,8 @@ export function Home() {
   const WORKLOG_PAGE_SIZE = 20;
   const [worklogPage, setWorklogPage] = useState(1);
   const [worklogTotal, setWorklogTotal] = useState(0);
+  // Like summary for the currently displayed worklog page: { worklogId: {count, liked} }
+  const [likeMap, setLikeMap] = useState<Record<string, { count: number; liked: boolean }>>({});
   // Team/name filter options come from a one-time sample fetch so the
   // dropdowns are not limited to the current page's entries.
   const [facetSample, setFacetSample] = useState<WL[]>([]);
@@ -113,6 +115,24 @@ export function Home() {
         if (ignore) return;
         setWorklogs(wl.items || []);
         if (typeof wl.total === 'number') setWorklogTotal(wl.total);
+        // Batch-fetch like summary for the visible page.
+        try {
+          const ids = (wl.items || []).map((x: any) => x.id).filter(Boolean);
+          if (ids.length) {
+            const res = await apiJson<{ items: Record<string, { count: number; liked: boolean }> }>(
+              '/api/likes/by-subjects',
+              {
+                method: 'POST',
+                body: JSON.stringify({ subjectType: 'Worklog', ids, viewerId }),
+              },
+            );
+            if (!ignore) setLikeMap(res.items || {});
+          } else if (!ignore) {
+            setLikeMap({});
+          }
+        } catch {
+          if (!ignore) setLikeMap({});
+        }
       } catch (e: any) {
         if (!ignore) setError('업무일지 로드 실패');
       } finally {
@@ -497,8 +517,13 @@ export function Home() {
                           )}
                           <div
                             onClick={(e) => e.stopPropagation()}
-                            style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}
+                            style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8, display: 'grid', gap: 8 }}
                           >
+                            <LikeButton
+                              worklogId={w.id}
+                              initial={likeMap[w.id] || { count: 0, liked: false }}
+                              onChange={(next) => setLikeMap((m) => ({ ...m, [w.id]: next }))}
+                            />
                             <CommentsBox worklogId={w.id} />
                           </div>
                         </div>
@@ -584,8 +609,13 @@ export function Home() {
                           )}
                           <div
                             onClick={(e) => e.stopPropagation()}
-                            style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}
+                            style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8, display: 'grid', gap: 8 }}
                           >
+                            <LikeButton
+                              worklogId={w.id}
+                              initial={likeMap[w.id] || { count: 0, liked: false }}
+                              onChange={(next) => setLikeMap((m) => ({ ...m, [w.id]: next }))}
+                            />
                             <CommentsBox worklogId={w.id} />
                           </div>
                         </div>
@@ -1000,5 +1030,158 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
     </div>
+  );
+}
+
+/**
+ * Inline like (heart) button. Optimistically toggles, syncs with server,
+ * and pops a modal listing every user who liked when the count is clicked.
+ */
+function LikeButton({
+  worklogId,
+  initial,
+  onChange,
+}: {
+  worklogId: string;
+  initial?: { count: number; liked: boolean };
+  onChange?: (next: { count: number; liked: boolean }) => void;
+}) {
+  const [count, setCount] = useState<number>(initial?.count ?? 0);
+  const [liked, setLiked] = useState<boolean>(initial?.liked ?? false);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [likers, setLikers] = useState<Array<{ userId: string; name: string; createdAt: string }>>([]);
+  const [likersLoading, setLikersLoading] = useState(false);
+
+  useEffect(() => {
+    if (initial) {
+      setCount(initial.count);
+      setLiked(initial.liked);
+    }
+  }, [initial?.count, initial?.liked]);
+
+  async function toggle() {
+    if (busy) return;
+    const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+    if (!uid) {
+      alert('로그인이 필요합니다');
+      return;
+    }
+    setBusy(true);
+    // Optimistic update
+    const prev = { count, liked };
+    const nextLiked = !liked;
+    const nextCount = Math.max(0, count + (nextLiked ? 1 : -1));
+    setLiked(nextLiked);
+    setCount(nextCount);
+    try {
+      const r = await apiJson<{ liked: boolean; count: number }>('/api/likes/toggle', {
+        method: 'POST',
+        body: JSON.stringify({ subjectType: 'Worklog', subjectId: worklogId, userId: uid }),
+      });
+      setLiked(r.liked);
+      setCount(r.count);
+      onChange?.({ count: r.count, liked: r.liked });
+    } catch {
+      // Revert on failure
+      setLiked(prev.liked);
+      setCount(prev.count);
+      alert('좋아요 처리 실패');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openLikers() {
+    if (count === 0) return;
+    setOpen(true);
+    setLikersLoading(true);
+    try {
+      const r = await apiJson<{ likers: Array<{ userId: string; name: string; createdAt: string }> }>(
+        `/api/likes?subjectType=Worklog&subjectId=${encodeURIComponent(worklogId)}`,
+      );
+      setLikers(r.likers || []);
+    } catch {
+      setLikers([]);
+    } finally {
+      setLikersLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={busy}
+          aria-pressed={liked}
+          title={liked ? '좋아요 취소' : '좋아요'}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '4px 10px',
+            border: '1px solid #e5e7eb',
+            borderRadius: 999,
+            background: liked ? '#fee2e2' : '#fff',
+            color: liked ? '#dc2626' : '#334155',
+            cursor: 'pointer',
+            fontSize: 13,
+            lineHeight: 1,
+          }}
+        >
+          <span style={{ fontSize: 14 }}>{liked ? '♥' : '♡'}</span>
+          <span>좋아요</span>
+        </button>
+        <button
+          type="button"
+          onClick={openLikers}
+          disabled={count === 0}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#475569',
+            cursor: count === 0 ? 'default' : 'pointer',
+            fontSize: 13,
+            padding: 0,
+          }}
+        >
+          {count}명
+        </button>
+      </div>
+      {open && (
+        <div
+          className="image-overlay"
+          onClick={() => setOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 360, width: '92%', maxHeight: '70vh', overflowY: 'auto' }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>좋아요 ({count})</div>
+            {likersLoading ? (
+              <div style={{ color: '#64748b' }}>불러오는 중…</div>
+            ) : likers.length === 0 ? (
+              <div style={{ color: '#94a3b8' }}>아직 좋아요가 없습니다.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {likers.map((u) => (
+                  <div key={u.userId} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <UserAvatar userId={u.userId} name={u.name} size={20} />
+                    <div style={{ fontWeight: 600 }}>{u.name || '이름없음'}</div>
+                    <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{formatKstYmd(u.createdAt)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+              <button className="btn" onClick={() => setOpen(false)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

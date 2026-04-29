@@ -156,6 +156,7 @@ model User {
   plannerTaskCache PlannerTaskCache[]
   companyDataUploads CompanyData[] @relation("CompanyDataUploader")
   companyDataChats CompanyDataChat[] @relation("CompanyDataChatUser")
+  likes Like[]
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -519,6 +520,18 @@ model Feedback {
   rating      Int?
   actionRequired Boolean    @default(false)
   createdAt   DateTime      @default(now())
+}
+
+model Like {
+  id          String   @id @default(cuid())
+  subjectType String
+  subjectId   String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([subjectType, subjectId, userId])
+  @@index([subjectType, subjectId])
 }
 
 model WorklogTeamDailyEval {
