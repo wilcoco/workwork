@@ -65,6 +65,42 @@ export class EntraAuthController {
     return { tenantId, clientId, clientSecret, redirectUri };
   }
 
+  /**
+   * Tenants whose users may sign in through our Entra SSO.
+   *
+   * - The primary ENTRA_TENANT_ID is always included (existing behaviour).
+   * - Additional tenant IDs may be listed in ALLOWED_ENTRA_TENANTS as a
+   *   comma-separated value, e.g. "tid-of-partner-a,tid-of-partner-b".
+   * - When the list is effectively just the primary tenant, authentication
+   *   stays single-tenant (no behaviour change). When additional tenants are
+   *   present, the app becomes multi-tenant for those specific tenants.
+   */
+  private getAllowedTenants(): string[] {
+    const primary = String(process.env.ENTRA_TENANT_ID || '').trim();
+    const csv = String(process.env.ALLOWED_ENTRA_TENANTS || '').trim();
+    const extras = csv
+      ? csv.split(',').map((x) => x.trim()).filter(Boolean)
+      : [];
+    const set = new Set<string>();
+    if (primary) set.add(primary);
+    for (const x of extras) set.add(x);
+    return Array.from(set);
+  }
+
+  private isMultiTenantMode(): boolean {
+    // If the admin listed any tenant other than the primary one, use the
+    // /organizations authority so external tenant users can sign in.
+    const primary = String(process.env.ENTRA_TENANT_ID || '').trim();
+    return this.getAllowedTenants().some((t) => t && t !== primary);
+  }
+
+  // Authority segment for Microsoft login endpoints. Either the primary
+  // tenant id (single-tenant) or "organizations" (any work/school tenant).
+  private getAuthorityTenantSegment(): string {
+    if (this.isMultiTenantMode()) return 'organizations';
+    return String(process.env.ENTRA_TENANT_ID || '').trim();
+  }
+
   private async fetchEntraJwks(tenantId: string) {
     const url = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/discovery/v2.0/keys`;
     const res = await fetch(url);
@@ -78,16 +114,28 @@ export class EntraAuthController {
     return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----\n`;
   }
 
-  private async verifyEntraIdToken(idToken: string, tenantId: string, clientId: string, expectedNonce?: string) {
+  private async verifyEntraIdToken(idToken: string, clientId: string, expectedNonce?: string) {
     const decoded: any = jwt.decode(idToken, { complete: true });
     const kid = String(decoded?.header?.kid || '');
-    const jwks = await this.fetchEntraJwks(tenantId);
+    // The token tells us which tenant issued it via the "tid" claim. We
+    // reject tokens from tenants outside our allowlist before even fetching
+    // keys, so an attacker cannot push us to a foreign tenant's JWKS.
+    const tokenTid = String(decoded?.payload?.tid || '').trim();
+    if (!tokenTid) throw new Error('id_token missing tid');
+    const allowed = this.getAllowedTenants();
+    if (!allowed.includes(tokenTid)) {
+      throw new Error(`tenant ${tokenTid} is not allowed`);
+    }
+
+    // Fetch JWKS from the issuing tenant so the signing key actually matches
+    // the token. This is necessary once multi-tenant mode is enabled.
+    const jwks = await this.fetchEntraJwks(tokenTid);
     const key = (jwks?.keys || []).find((k: any) => String(k?.kid || '') === kid) || (jwks?.keys || [])[0];
     const x5c = (key as any)?.x5c?.[0];
     if (!x5c) throw new Error('jwks key missing x5c');
     const pem = this.certToPem(String(x5c));
 
-    const issuer = `https://login.microsoftonline.com/${tenantId}/v2.0`;
+    const issuer = `https://login.microsoftonline.com/${tokenTid}/v2.0`;
     const verified: any = jwt.verify(idToken, pem, {
       algorithms: ['RS256'],
       audience: clientId,
@@ -115,7 +163,8 @@ export class EntraAuthController {
       nonce,
       prompt: 'select_account',
     });
-    const url = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/authorize?${params.toString()}`;
+    const authority = this.getAuthorityTenantSegment() || tenantId;
+    const url = `https://login.microsoftonline.com/${encodeURIComponent(authority)}/oauth2/v2.0/authorize?${params.toString()}`;
     return res.redirect(url);
   }
 
@@ -165,7 +214,8 @@ export class EntraAuthController {
       return res.redirect(`${webBase}/login?error=${encodeURIComponent('invalid state')}`);
     }
 
-    const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/oauth2/v2.0/token`;
+    const tokenAuthority = this.getAuthorityTenantSegment() || tenantId;
+    const tokenUrl = `https://login.microsoftonline.com/${encodeURIComponent(tokenAuthority)}/oauth2/v2.0/token`;
     const form = new URLSearchParams({
       client_id: clientId,
       client_secret: clientSecret,
@@ -192,7 +242,7 @@ export class EntraAuthController {
 
     let claims: any;
     try {
-      claims = await this.verifyEntraIdToken(idToken, tenantId, clientId, expectedNonce);
+      claims = await this.verifyEntraIdToken(idToken, clientId, expectedNonce);
     } catch (e: any) {
       const msg = encodeURIComponent(String(e?.message || 'id_token verify failed').slice(0, 200));
       return res.redirect(`${webBase}/login?error=${msg}`);
