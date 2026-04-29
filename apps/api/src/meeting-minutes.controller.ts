@@ -265,44 +265,68 @@ export class MeetingMinutesController {
 
     const { callAI } = await import('./llm/ai-client');
 
-    const system = `당신은 회의록 정리 전문가입니다.
+    // Optional company-specific glossary, supplied via env so admins can
+    // teach the model how STT typically misrecognises our jargon. Format
+    // is freeform text (one entry per line, "잘못→올바른" or any natural
+    // phrasing). Example:
+    //   MEETING_GLOSSARY="캠스: CAMS / 케이엠에스 / 컴스 으로 들리면 모두 '캠스'\n
+    //                     OKR: 오케알 / 오캐알 → OKR\n
+    //                     이니셔티브: 이니시어티브 / 이내셔티브 → 이니셔티브"
+    const glossary = String(process.env.MEETING_GLOSSARY || '').trim();
 
-**절대 규칙:**
-- 오직 제공된 녹취록 텍스트에 포함된 내용만 요약하세요.
-- 녹취록에 없는 내용을 추측하거나 지어내지 마세요.
-- 녹취록에서 직접 확인 가능한 사실만 포함하세요.
-- 녹취록 내용이 불충분하면 "녹취록 내용이 부족하여 해당 항목을 작성할 수 없습니다"라고 적어주세요.
-- 담당자나 기한이 녹취록에 명시되지 않았으면 빈 문자열로 두세요.
+    const system = `당신은 한국어 회의록 정리 전문가입니다. 입력된 녹취록은 STT(음성→텍스트) 자동 변환물이므로 한국어 동음이의어, 영문 기술 용어, 사람·조직·고유명사가 자주 잘못 인식됩니다.
+
+수행 절차:
+1) 먼저 녹취록을 마음속으로 "교정"합니다. 문맥과 일반 업무 상식, 그리고 아래 용어집을 활용해 STT 오인식이 명백한 단어만 올바른 단어로 바꿉니다.
+2) 교정된 의미를 바탕으로 요약·핵심 논의·결정 사항·액션 아이템을 작성합니다.
+
+교정 규칙(중요):
+- 명백한 STT 오인식만 교정합니다(예: 음운이 비슷하고 문맥상 의미가 분명한 경우).
+- 발화자가 무엇을 말하려 했는지 모호하면 원문을 유지하고 [원문 그대로] 표기합니다.
+- 새로운 사실, 인물, 결정, 일정, 숫자를 만들어내지 않습니다. 교정은 어휘 단위에 한합니다.
+- 녹취록에 전혀 등장하지 않은 내용은 절대 추가하지 않습니다.
+- 담당자·기한이 명시되지 않았으면 빈 문자열로 둡니다.
 
 반드시 JSON으로 응답하세요.`;
 
-    const user = `다음 회의 녹취록을 **있는 그대로** 분석하여 요약해주세요. 녹취록에 없는 내용은 절대 포함하지 마세요.
-
-회의 제목: ${meeting.title}
+    const user = `회의 제목: ${meeting.title}
 회의 일시: ${meeting.date ? new Date(meeting.date).toLocaleString('ko-KR') : '미정'}
 
-녹취록:
+${glossary ? `참고 용어집(STT 오인식이 잦은 회사·업무 용어):\n${glossary}\n` : ''}
+녹취록(STT 원문, 오인식 가능):
 ${transcript}
 
-다음 JSON 형식으로 응답하세요 (녹취록에 근거한 내용만 작성):
+위 절차대로 STT 오인식만 살짝 교정한 뒤 다음 JSON 형식으로 응답하세요. \`corrections\` 에는 실제로 바꾼 항목만 적고, 바꾸지 않았으면 빈 배열로 두세요. 사실을 새로 만들지 마세요.
 {
-  "summary": "회의 전체 요약 (녹취록 기반 3-5문장)",
-  "keyPoints": ["녹취록에서 확인된 핵심 논의 사항 1", ...],
-  "decisions": ["녹취록에서 확인된 결정 사항 1", ...],
+  "summary": "회의 전체 요약 (3-5문장, 교정된 의미 기반)",
+  "keyPoints": ["핵심 논의 사항 1", ...],
+  "decisions": ["결정 사항 1", ...],
   "actionItems": [
-    { "text": "녹취록에서 확인된 할 일", "assignee": "녹취록에 명시된 담당자 또는 빈값", "dueDate": "녹취록에 명시된 기한 또는 빈값" }
+    { "text": "할 일", "assignee": "담당자 또는 빈값", "dueDate": "기한 또는 빈값" }
   ],
-  "nextSteps": "녹취록에서 확인된 후속 조치"
+  "nextSteps": "후속 조치",
+  "corrections": [
+    { "from": "녹취록 원문 단어", "to": "교정한 단어", "reason": "문맥/용어집/일반 상식 등 간단 사유" }
+  ]
 }`;
 
     const result = await callAI({ system, user, model: 'openai', maxTokens: 4096 });
 
     const parsed = result.parsed || {};
+    const corrections: Array<{ from?: string; to?: string; reason?: string }> = Array.isArray(parsed.corrections)
+      ? parsed.corrections
+      : [];
     const summaryText = [
       parsed.summary || '',
       parsed.keyPoints?.length ? `\n\n**핵심 논의 사항:**\n${parsed.keyPoints.map((p: string) => `- ${p}`).join('\n')}` : '',
       parsed.decisions?.length ? `\n\n**결정 사항:**\n${parsed.decisions.map((d: string) => `- ${d}`).join('\n')}` : '',
       parsed.nextSteps ? `\n\n**후속 조치:** ${parsed.nextSteps}` : '',
+      corrections.length
+        ? `\n\n**STT 교정 내역:**\n${corrections
+            .filter((c) => c && (c.from || c.to))
+            .map((c) => `- ${String(c.from || '').trim()} → ${String(c.to || '').trim()}${c.reason ? ` (${c.reason})` : ''}`)
+            .join('\n')}`
+        : '',
     ].filter(Boolean).join('');
 
     await this.prisma.meetingMinutes.update({
@@ -314,6 +338,6 @@ ${transcript}
       },
     });
 
-    return { summary: summaryText, actionItems: parsed.actionItems || [] };
+    return { summary: summaryText, actionItems: parsed.actionItems || [], corrections };
   }
 }
