@@ -201,11 +201,29 @@ export class MeetingMinutesController {
     const f: any = (globalThis as any).fetch;
     if (!f) throw new BadRequestException('Server fetch not available');
 
-    // Transcribe each chunk via Whisper API
+    // Whisper accepts an optional `prompt` that biases recognition toward
+    // the vocabulary used in the prompt (works as a soft style/lexicon
+    // hint). Admins can supply company-specific terms via STT_PROMPT,
+    // otherwise we fall back to MEETING_GLOSSARY (which is also used by
+    // the summariser). Keep it short — Whisper truncates beyond ~224
+    // tokens of prompt text.
+    const baseHint = String(
+      process.env.STT_PROMPT || process.env.MEETING_GLOSSARY || '',
+    ).trim().slice(0, 800);
+
+    // Transcribe each chunk via Whisper API.
+    // For continuity across chunks, also feed the tail of the previous
+    // transcript as part of the prompt so spelling/style stays consistent.
     const transcriptParts: string[] = [];
+    let prevTail = '';
     for (const chunk of chunks) {
       const upload = await this.prisma.upload.findUnique({ where: { id: chunk.uploadId } });
       if (!upload || !upload.data) continue;
+
+      const promptParts: string[] = [];
+      if (baseHint) promptParts.push(baseHint);
+      if (prevTail) promptParts.push(prevTail);
+      const promptText = promptParts.join('\n').slice(-1000); // hard cap
 
       const blob = new Blob([Buffer.from(upload.data as any)], { type: upload.contentType || 'audio/webm' });
       const formData = new FormData();
@@ -213,6 +231,10 @@ export class MeetingMinutesController {
       formData.append('model', 'whisper-1');
       formData.append('language', 'ko');
       formData.append('response_format', 'text');
+      // Lower temperature -> Whisper sticks closer to high-confidence words
+      // instead of paraphrasing unclear audio into wild guesses.
+      formData.append('temperature', '0');
+      if (promptText) formData.append('prompt', promptText);
 
       try {
         const resp = await f('https://api.openai.com/v1/audio/transcriptions', {
@@ -226,8 +248,11 @@ export class MeetingMinutesController {
           transcriptParts.push(`[전사 실패: chunk ${chunk.order}]`);
           continue;
         }
-        const text = await resp.text();
-        transcriptParts.push(text.trim());
+        const text = (await resp.text()).trim();
+        transcriptParts.push(text);
+        // Carry tail of this chunk into the next chunk's prompt for
+        // cross-chunk continuity (names, terminology, sentence flow).
+        prevTail = text.slice(-300);
       } catch (err: any) {
         console.error('[meeting-minutes] Whisper exception:', err?.message);
         transcriptParts.push(`[전사 실패: chunk ${chunk.order}]`);
