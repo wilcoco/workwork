@@ -13,6 +13,7 @@ class SignupDto {
   @IsOptional() @IsString() teamName?: string;
   @IsOptional() @IsString() companyId?: string; // optional: allow CEO/EXEC without team
   @IsOptional() @IsString() teamId?: string;    // optional: direct team selection by id
+  @IsOptional()
   @IsEnum({ CEO: 'CEO', EXEC: 'EXEC', MANAGER: 'MANAGER', INDIVIDUAL: 'INDIVIDUAL' } as any)
   role?: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL';
 }
