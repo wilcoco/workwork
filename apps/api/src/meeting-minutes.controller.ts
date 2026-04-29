@@ -22,6 +22,9 @@ class UpdateMeetingDto {
   @IsOptional() @IsString() status?: string;
   @IsOptional() duration?: number;
   @IsOptional() attachments?: any;
+  /** Optional: who edited. When provided together with a summary change,
+   * an audit row is written to MeetingSummaryEdit for AI few-shot learning. */
+  @IsOptional() @IsString() editedById?: string;
 }
 
 @Controller('meeting-minutes')
@@ -80,7 +83,41 @@ export class MeetingMinutesController {
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.duration !== undefined) data.duration = dto.duration;
     if (dto.attachments !== undefined) data.attachments = dto.attachments;
+
+    // If the summary is being changed from a non-empty previous value, log
+    // a before/after snapshot so we can feed real-world corrections back
+    // into future summarise calls as few-shot examples.
+    let priorSummary: string | null = null;
+    if (dto.summary !== undefined) {
+      const prev = await this.prisma.meetingMinutes.findUnique({
+        where: { id },
+        select: { summary: true },
+      });
+      priorSummary = String(prev?.summary || '');
+    }
+
     const m = await this.prisma.meetingMinutes.update({ where: { id }, data });
+
+    if (
+      dto.summary !== undefined &&
+      priorSummary &&
+      priorSummary.trim() &&
+      priorSummary.trim() !== String(dto.summary || '').trim()
+    ) {
+      try {
+        await (this.prisma as any).meetingSummaryEdit.create({
+          data: {
+            meetingId: id,
+            original: priorSummary,
+            edited: String(dto.summary || ''),
+            editedById: dto.editedById || null,
+          },
+        });
+      } catch (e) {
+        try { console.warn('[meeting-minutes] summary edit log failed:', (e as any)?.message || e); } catch {}
+      }
+    }
+
     return m;
   }
 
@@ -398,6 +435,30 @@ export class MeetingMinutesController {
     //                     이니셔티브: 이니시어티브 / 이내셔티브 → 이니셔티브"
     const glossary = String(process.env.MEETING_GLOSSARY || '').trim();
 
+    // Pull a handful of recent before/after summary edits as few-shot
+    // examples. These capture the team's real corrections and style
+    // preferences so each new summary gradually aligns with them.
+    let editExamples: Array<{ original: string; edited: string }> = [];
+    try {
+      const recent = await (this.prisma as any).meetingSummaryEdit.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      });
+      // Deduplicate by (original, edited) pair and keep up to 5 — enough
+      // to steer style without blowing the context window.
+      const seen = new Set<string>();
+      for (const r of recent || []) {
+        const key = `${String(r?.original || '').slice(0, 80)}|${String(r?.edited || '').slice(0, 80)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        editExamples.push({
+          original: String(r?.original || '').slice(0, 1500),
+          edited: String(r?.edited || '').slice(0, 1500),
+        });
+        if (editExamples.length >= 5) break;
+      }
+    } catch {}
+
     const system = `당신은 한국어 회의록 정리 전문가입니다. 입력된 녹취록은 STT(음성→텍스트) 자동 변환물이므로 한국어 동음이의어, 영문 기술 용어, 사람·조직·고유명사가 자주 잘못 인식됩니다.
 
 수행 절차:
@@ -416,7 +477,12 @@ export class MeetingMinutesController {
     const user = `회의 제목: ${meeting.title}
 회의 일시: ${meeting.date ? new Date(meeting.date).toLocaleString('ko-KR') : '미정'}
 
-${glossary ? `참고 용어집(STT 오인식이 잦은 회사·업무 용어):\n${glossary}\n` : ''}
+${glossary ? `참고 용어집(STT 오인식이 잦은 회사·업무 용어):\n${glossary}\n` : ''}${editExamples.length ? `
+과거 사용자 교정 예시(이 팀의 선호 스타일과 실제 수정 패턴이니 새 요약에도 반영하세요):
+${editExamples
+  .map((ex, i) => `[예시 ${i + 1}]\n<AI 초안>\n${ex.original}\n\n<사용자 수정본>\n${ex.edited}`)
+  .join('\n\n---\n\n')}
+` : ''}
 녹취록(STT 원문, 오인식 가능):
 ${transcript}
 

@@ -153,6 +153,7 @@ model User {
   periodicAlarms PeriodicAlarm[]
   workSkillFiles WorkSkillFile[]
   meetingMinutes MeetingMinutes[] @relation("MeetingMinutesCreatedBy")
+  meetingSummaryEdits MeetingSummaryEdit[] @relation("MeetingSummaryEditor")
   plannerTaskCache PlannerTaskCache[]
   companyDataUploads CompanyData[] @relation("CompanyDataUploader")
   companyDataChats CompanyDataChat[] @relation("CompanyDataChatUser")
@@ -1022,6 +1023,24 @@ model WorkSkillFile {
   @@index([status])
 }
 
+/// Every time a user manually edits the AI-generated summary, we store a
+/// before/after snapshot here. These examples are later injected into the
+/// summarise prompt as few-shot references so the model gradually learns
+/// the team's preferred style and corrections.
+model MeetingSummaryEdit {
+  id           String   @id @default(cuid())
+  meetingId    String
+  meeting      MeetingMinutes @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  original     String   @db.Text
+  edited       String   @db.Text
+  editedById   String?
+  editedBy     User?    @relation("MeetingSummaryEditor", fields: [editedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([meetingId])
+  @@index([createdAt])
+}
+
 model MeetingMinutes {
   id            String   @id @default(cuid())
   title         String
@@ -1037,6 +1056,7 @@ model MeetingMinutes {
   duration      Int?     // total duration in seconds
   createdById   String
   createdBy     User     @relation("MeetingMinutesCreatedBy", fields: [createdById], references: [id])
+  summaryEdits  MeetingSummaryEdit[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

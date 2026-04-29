@@ -203,6 +203,8 @@ export function MeetingMinutes() {
   const [summarizing, setSummarizing] = useState(false);
   const [editTranscript, setEditTranscript] = useState('');
   const [editing, setEditing] = useState(false);
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [editSummary, setEditSummary] = useState('');
   const [showFilePicker, setShowFilePicker] = useState(false);
 
   // Action items assignee + Planner integration
@@ -392,6 +394,20 @@ export function MeetingMinutes() {
       setError(e?.message || '녹취록 정제 실패');
     } finally {
       setRefining(false);
+    }
+  }
+
+  async function handleSaveSummary() {
+    if (!active) return;
+    try {
+      await apiJson(`/api/meeting-minutes/${active.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ summary: editSummary, editedById: userId || undefined }),
+      });
+      setActive({ ...active, summary: editSummary });
+      setEditingSummary(false);
+    } catch (e: any) {
+      setError(e?.message || '요약 저장 실패');
     }
   }
 
@@ -643,16 +659,38 @@ export function MeetingMinutes() {
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>AI 요약</h3>
-                {active.transcript && (
+                {active.transcript && !editingSummary && (
                   <button style={primaryBtn} onClick={handleSummarize} disabled={summarizing}>
                     {summarizing ? 'AI 요약중…' : (active.summary ? 'AI 재요약' : 'AI 요약 생성')}
                   </button>
+                )}
+                {active.summary && !editingSummary && (
+                  <button style={ghostBtn} onClick={() => { setEditSummary(active.summary || ''); setEditingSummary(true); }}>
+                    편집
+                  </button>
+                )}
+                {editingSummary && (
+                  <>
+                    <button style={ghostBtn} onClick={() => setEditingSummary(false)}>취소</button>
+                    <button style={primaryBtn} onClick={handleSaveSummary}>저장</button>
+                  </>
                 )}
               </div>
               {summarizing ? (
                 <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
                   AI가 회의 내용을 분석하고 요약하고 있습니다…
                 </div>
+              ) : editingSummary ? (
+                <>
+                  <textarea
+                    value={editSummary}
+                    onChange={(e) => setEditSummary(e.target.value)}
+                    style={{ width: '100%', minHeight: 320, borderRadius: 8, border: '1px solid #CBD5E1', padding: 12, fontSize: 14, fontFamily: 'inherit', lineHeight: 1.7 }}
+                  />
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#64748b' }}>
+                    저장된 수정 내역은 다음 회의 요약 시 AI 학습에 자동 반영됩니다.
+                  </div>
+                </>
               ) : active.summary ? (
                 <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.7, color: '#1e293b' }}>
                   {active.summary}
