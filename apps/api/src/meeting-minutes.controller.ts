@@ -274,6 +274,69 @@ export class MeetingMinutesController {
     return { transcript: fullTranscript, duration: totalDuration };
   }
 
+  // ─── AI Refine (transcript clean-up) ──────────────────────
+
+  /**
+   * Run an LLM pass over the existing transcript to fix obvious STT
+   * mishearings, normalise jargon spelling, and lightly clean filler /
+   * punctuation. The model must NOT add new facts; only word-level edits
+   * and minimal whitespace/punctuation tweaks are allowed.
+   *
+   * The cleaned-up text overwrites the existing transcript so the next
+   * "summarize" step works from a higher-quality input. Audio chunks are
+   * untouched so the user can re-run the original "AI 음성 전사" any time.
+   */
+  @Post(':id/refine')
+  async refine(@Param('id') id: string) {
+    const meeting = await this.prisma.meetingMinutes.findUnique({ where: { id } });
+    if (!meeting) throw new BadRequestException('Meeting not found');
+    const transcript = String(meeting.transcript || '').trim();
+    if (transcript.length < 20) {
+      throw new BadRequestException('정제할 녹취록이 너무 짧습니다. 먼저 AI 음성 전사를 진행하세요.');
+    }
+
+    const { callAI } = await import('./llm/ai-client');
+    const glossary = String(process.env.MEETING_GLOSSARY || '').trim();
+
+    const system = `당신은 한국어 회의 녹취록 정제 전문가입니다. 입력은 STT(음성→텍스트)로 자동 변환된 회의 녹취록입니다. 다음 원칙으로 "녹취록 자체"를 최소 침습으로 다듬어 주세요.
+
+원칙:
+- 명백한 STT 오인식 단어만 문맥·일반 업무 상식·아래 용어집을 기반으로 올바른 단어로 교체합니다.
+- 의미가 모호하면 원문을 유지합니다.
+- 새로운 사실/이름/숫자/일정/결정은 절대 추가하지 않습니다.
+- 발화 순서·정보·뉘앙스는 유지합니다. 요약하거나 재구성하지 마세요.
+- 명백한 군더더기(어, 음, 그, 그러니까 같은 필러 단어)는 가독성을 위해 제거 가능하지만 발화 흐름이 망가지면 그대로 둡니다.
+- 문장 부호와 줄바꿈은 자연스럽게 다듬어도 됩니다.
+- 화자 표시(예: "김부장:") 가 원문에 있으면 그대로 유지합니다.
+
+반드시 JSON으로 응답하세요.`;
+
+    const user = `${glossary ? `참고 용어집(STT 오인식이 잦은 회사·업무 용어):\n${glossary}\n\n` : ''}원본 녹취록:\n${transcript}\n\n다음 JSON 형식으로 응답하세요. \`refined\` 에는 정제된 전체 녹취록을, \`corrections\` 에는 실제로 바꾼 단어/표현만 적습니다(없으면 빈 배열).
+{
+  "refined": "정제된 녹취록 전체 텍스트",
+  "corrections": [
+    { "from": "원문", "to": "교정", "reason": "간단 사유" }
+  ]
+}`;
+
+    const result = await callAI({ system, user, model: 'openai', maxTokens: 8192 });
+    const parsed: any = result.parsed || {};
+    const refined = String(parsed?.refined || '').trim();
+    const corrections: Array<{ from?: string; to?: string; reason?: string }> = Array.isArray(parsed?.corrections)
+      ? parsed.corrections
+      : [];
+    if (!refined) {
+      throw new BadRequestException('정제 결과를 받지 못했습니다. 다시 시도해주세요.');
+    }
+
+    await this.prisma.meetingMinutes.update({
+      where: { id },
+      data: { transcript: refined },
+    });
+
+    return { transcript: refined, corrections };
+  }
+
   // ─── AI Summary ────────────────────────────────────────────
 
   @Post(':id/summarize')

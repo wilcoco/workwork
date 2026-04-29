@@ -198,6 +198,8 @@ export function MeetingMinutes() {
   // Detail view
   const [active, setActive] = useState<Meeting | null>(null);
   const [transcribing, setTranscribing] = useState(false);
+  const [refining, setRefining] = useState(false);
+  const [refineNote, setRefineNote] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [editTranscript, setEditTranscript] = useState('');
   const [editing, setEditing] = useState(false);
@@ -355,6 +357,27 @@ export function MeetingMinutes() {
       setEditing(false);
     } catch (e: any) {
       setError(e?.message || '저장 실패');
+    }
+  }
+
+  async function handleRefine() {
+    if (!active) return;
+    if (!confirm('AI가 녹취록의 STT 오인식 단어를 교정하고 가독성을 다듬습니다. 기존 녹취록을 덮어씁니다. 계속할까요?')) return;
+    setRefining(true);
+    setRefineNote(null);
+    try {
+      const res = await apiJson<{ transcript: string; corrections?: Array<{ from?: string; to?: string; reason?: string }> }>(
+        `/api/meeting-minutes/${active.id}/refine`,
+        { method: 'POST' },
+      );
+      setActive({ ...active, transcript: res.transcript });
+      setEditTranscript(res.transcript);
+      const n = (res.corrections || []).length;
+      setRefineNote(n > 0 ? `${n}개 단어를 교정했습니다.` : '교정할 항목이 없었습니다.');
+    } catch (e: any) {
+      setError(e?.message || '녹취록 정제 실패');
+    } finally {
+      setRefining(false);
     }
   }
 
@@ -558,17 +581,32 @@ export function MeetingMinutes() {
                   </button>
                 )}
                 {active.transcript && !editing && (
+                  <button style={primaryBtn} onClick={handleRefine} disabled={refining || transcribing}>
+                    {refining ? 'AI 정제중…' : 'AI 녹취 정제'}
+                  </button>
+                )}
+                {active.transcript && !editing && (
                   <button style={ghostBtn} onClick={() => setEditing(true)}>편집</button>
                 )}
                 {editing && (
                   <button style={primaryBtn} onClick={handleSaveTranscript}>저장</button>
                 )}
               </div>
+              {refineNote && (
+                <div style={{ marginBottom: 8, fontSize: 12, color: '#0369a1', background: '#e0f2fe', padding: '6px 10px', borderRadius: 6 }}>
+                  {refineNote}
+                </div>
+              )}
               {transcribing ? (
                 <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
                   <div style={{ fontSize: 24, marginBottom: 8 }}>🎙️</div>
                   AI가 음성을 텍스트로 변환하고 있습니다…<br />
                   <span style={{ fontSize: 12 }}>오디오 길이에 따라 수 분 소요될 수 있습니다.</span>
+                </div>
+              ) : refining ? (
+                <div style={{ textAlign: 'center', padding: 32, color: '#64748b' }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>✨</div>
+                  AI가 녹취록의 오인식 단어를 교정하고 다듬는 중…
                 </div>
               ) : editing ? (
                 <textarea
