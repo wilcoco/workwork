@@ -27,8 +27,45 @@ class LoginDto {
 export class AuthController {
   constructor(private prisma: PrismaService) {}
 
+  /**
+   * Domains permitted for self-service ID/password signup. Comma-separated
+   * env var ALLOWED_EXTERNAL_DOMAINS, e.g. "partner-a.com,partner-b.co.kr".
+   *
+   * The primary company's own users are expected to sign in via Microsoft
+   * SSO (Entra). This domain whitelist gates external partner self-signup
+   * so only companies we have explicitly approved can create accounts.
+   */
+  private getAllowedExternalDomains(): string[] {
+    const csv = String(process.env.ALLOWED_EXTERNAL_DOMAINS || '').trim();
+    if (!csv) return [];
+    return csv
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  private extractEmailDomain(email: string): string {
+    const at = String(email || '').lastIndexOf('@');
+    if (at < 0) return '';
+    return String(email).slice(at + 1).trim().toLowerCase();
+  }
+
+  private assertSignupEmailAllowed(email: string) {
+    const allowed = this.getAllowedExternalDomains();
+    if (allowed.length === 0) {
+      // No allowlist configured -> external self-signup is closed.
+      throw new BadRequestException('외부 가입이 허용되지 않았습니다');
+    }
+    const domain = this.extractEmailDomain(email);
+    if (!domain) throw new BadRequestException('이메일 형식이 올바르지 않습니다');
+    if (!allowed.includes(domain)) {
+      throw new BadRequestException(`허용되지 않은 도메인입니다 (${domain})`);
+    }
+  }
+
   @Post('signup')
   async signup(@Body() dto: SignupDto) {
+    this.assertSignupEmailAllowed(String(dto.username || ''));
     const teamsUpn = String(dto.teamsUpn || '').trim() || String(dto.username || '').trim() || null;
     let orgUnitId: string | null = null;
     // Prefer explicit teamId
