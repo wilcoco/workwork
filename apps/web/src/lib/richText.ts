@@ -12,6 +12,63 @@ function absolutizeUploads(html: string): string {
     .replace(/(src|href)=["'](\/api\/[^"']+)["']/g, (_m, attr, p) => `${attr}="${apiUrl(p)}"`);
 }
 
+/**
+ * Wrap bare URLs (http/https) that appear in plain-text nodes with <a> tags,
+ * so worklog content rendered from Quill or plain text becomes clickable.
+ * Existing anchors and nodes inside <a>, <code>, <pre>, <script>, <style>
+ * are skipped to avoid double-wrapping or corrupting code blocks.
+ */
+function autoLinkUrls(html: string): string {
+  if (!html) return html;
+  try {
+    if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+      return String(html);
+    }
+    const URL_RE = /\b(https?:\/\/[^\s<>"'`]+[^\s<>"'`.,;:!?)\]}])/g;
+    const SKIP = new Set(['A', 'CODE', 'PRE', 'SCRIPT', 'STYLE', 'TEXTAREA']);
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(String(html), 'text/html');
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+    const targets: Text[] = [];
+    let n: Node | null = walker.nextNode();
+    while (n) {
+      let skip = false;
+      for (let p: Node | null = n.parentNode; p && p !== doc.body; p = p.parentNode) {
+        if ((p as Element).tagName && SKIP.has((p as Element).tagName)) {
+          skip = true;
+          break;
+        }
+      }
+      if (!skip && n.nodeValue && URL_RE.test(n.nodeValue)) {
+        targets.push(n as Text);
+      }
+      URL_RE.lastIndex = 0;
+      n = walker.nextNode();
+    }
+    for (const t of targets) {
+      const text = t.nodeValue || '';
+      const frag = doc.createDocumentFragment();
+      let last = 0;
+      text.replace(URL_RE, (match, _g, offset: number) => {
+        if (offset > last) frag.appendChild(doc.createTextNode(text.slice(last, offset)));
+        const a = doc.createElement('a');
+        a.setAttribute('href', match);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noreferrer');
+        a.textContent = match;
+        frag.appendChild(a);
+        last = offset + match.length;
+        return match;
+      });
+      if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)));
+      t.parentNode?.replaceChild(frag, t);
+    }
+    return doc.body.innerHTML || '';
+  } catch {
+    return String(html);
+  }
+}
+
 function sanitizeRichHtml(html: string): string {
   if (!html) return html;
   try {
@@ -61,5 +118,5 @@ function sanitizeRichHtml(html: string): string {
 }
 
 export function toSafeHtml(html: string): string {
-  return rewriteOneDriveImagesInHtml(absolutizeUploads(sanitizeRichHtml(html)));
+  return rewriteOneDriveImagesInHtml(autoLinkUrls(absolutizeUploads(sanitizeRichHtml(html))));
 }

@@ -524,7 +524,11 @@ export function Home() {
                               initial={likeMap[w.id] || { count: 0, liked: false }}
                               onChange={(next) => setLikeMap((m) => ({ ...m, [w.id]: next }))}
                             />
-                            <CommentsBox worklogId={w.id} />
+                            <CommentsBox
+                              worklogId={w.id}
+                              worklogAuthorId={w.userId}
+                              worklogAuthorName={w.userName}
+                            />
                           </div>
                         </div>
                       );
@@ -616,7 +620,11 @@ export function Home() {
                               initial={likeMap[w.id] || { count: 0, liked: false }}
                               onChange={(next) => setLikeMap((m) => ({ ...m, [w.id]: next }))}
                             />
-                            <CommentsBox worklogId={w.id} />
+                            <CommentsBox
+                              worklogId={w.id}
+                              worklogAuthorId={w.userId}
+                              worklogAuthorName={w.userName}
+                            />
                           </div>
                         </div>
                       );
@@ -737,7 +745,11 @@ export function Home() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 1200, width: '96%', maxHeight: '90vh', overflowY: 'auto' }}>
             <WorklogDocument worklog={detail} variant="full" />
             <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
-              <CommentsBox worklogId={(detail as any).id} />
+              <CommentsBox
+                worklogId={(detail as any).id}
+                worklogAuthorId={(detail as any).userId || (detail as any).createdById}
+                worklogAuthorName={(detail as any).userName || (detail as any).createdBy?.name}
+              />
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button className="btn" onClick={() => setDetail(null)}>닫기</button>
@@ -963,18 +975,79 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
   );
 }
 
-function CommentsBox({ worklogId }: { worklogId: string }) {
-  const [items, setItems] = useState<Array<{ id: string; authorId?: string; authorName?: string; content: string; createdAt: string }>>([]);
+type CommentItem = {
+  id: string;
+  authorId?: string;
+  authorName?: string;
+  content: string;
+  createdAt: string;
+  type?: 'GENERAL' | 'RUBRIC' | 'INSTRUCTION';
+  instruction?: {
+    id: string;
+    assigneeId: string;
+    assigneeName: string;
+    dueDate: string | null;
+    status: 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+    completedWorklogId?: string | null;
+  } | null;
+};
+
+function CommentsBox({
+  worklogId,
+  worklogAuthorId,
+  worklogAuthorName,
+}: {
+  worklogId: string;
+  worklogAuthorId?: string;
+  worklogAuthorName?: string;
+}) {
+  const [items, setItems] = useState<CommentItem[]>([]);
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Instruction-mode state
+  const [mode, setMode] = useState<'GENERAL' | 'INSTRUCTION'>('GENERAL');
+  const defaultDue = useMemo(() => {
+    const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }, []);
+  const [assigneeId, setAssigneeId] = useState<string>(worklogAuthorId || '');
+  const [dueDate, setDueDate] = useState<string>(defaultDue);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
+  // Lazily fetch the active user list the first time the user enables INSTRUCTION mode.
+  useEffect(() => {
+    if (mode !== 'INSTRUCTION' || users.length > 0) return;
+    (async () => {
+      try {
+        const r = await apiJson<{ items: any[] }>('/api/users');
+        setUsers((r.items || []).map((u: any) => ({ id: u.id, name: u.name, orgName: u.orgName })));
+      } catch {}
+    })();
+  }, [mode, users.length]);
+  useEffect(() => {
+    if (worklogAuthorId && !assigneeId) setAssigneeId(worklogAuthorId);
+  }, [worklogAuthorId, assigneeId]);
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
       const r = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=${encodeURIComponent('Worklog')}&subjectId=${encodeURIComponent(worklogId)}&limit=100`);
-      setItems((r.items || []).map((x: any) => ({ id: x.id, authorId: x.authorId, authorName: x.authorName, content: x.content, createdAt: x.createdAt })));
+      setItems(
+        (r.items || []).map((x: any) => ({
+          id: x.id,
+          authorId: x.authorId,
+          authorName: x.authorName,
+          content: x.content,
+          createdAt: x.createdAt,
+          type: x.type,
+          instruction: x.instruction,
+        })),
+      );
     } catch (e) {
       setError('댓글 조회 실패');
     } finally {
@@ -988,16 +1061,39 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
     if (!uid) { alert('로그인이 필요합니다'); return; }
     setSubmitting(true);
     try {
-      await apiJson(`/api/feedbacks`, {
-        method: 'POST',
-        body: JSON.stringify({ subjectType: 'Worklog', subjectId: worklogId, authorId: uid, type: 'GENERAL', content: text.trim() }),
-      });
+      const body: any = {
+        subjectType: 'Worklog',
+        subjectId: worklogId,
+        authorId: uid,
+        type: mode,
+        content: text.trim(),
+      };
+      if (mode === 'INSTRUCTION') {
+        body.instructionAssigneeId = assigneeId || worklogAuthorId || '';
+        body.instructionTitle = text.trim().split('\n')[0];
+        if (dueDate) body.instructionDueDate = new Date(dueDate + 'T00:00:00').toISOString();
+      }
+      await apiJson(`/api/feedbacks`, { method: 'POST', body: JSON.stringify(body) });
       setText('');
+      // Reset back to General after sending instruction
+      if (mode === 'INSTRUCTION') {
+        setMode('GENERAL');
+        setDueDate(defaultDue);
+      }
       await load();
     } catch (e) {
-      alert('댓글 등록 실패');
+      alert(mode === 'INSTRUCTION' ? '업무 지시 등록 실패' : '댓글 등록 실패');
     } finally {
       setSubmitting(false);
+    }
+  }
+  function statusKo(s: string): string {
+    switch (s) {
+      case 'OPEN': return '대기';
+      case 'IN_PROGRESS': return '진행중';
+      case 'DONE': return '완료';
+      case 'CANCELLED': return '취소';
+      default: return s;
     }
   }
   return (
@@ -1005,28 +1101,94 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
       <div style={{ fontWeight: 700 }}>댓글</div>
       {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
         items.length ? (
-          <div style={{ display: 'grid', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
-            {items.map((c) => (
-              <div key={c.id} style={{ display: 'grid', gap: 2 }}>
-                <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span>{c.authorName || '익명'}</span>
-                  <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={14} />
-                  <span>· {formatKstYmd(c.createdAt)}</span>
+          <div style={{ display: 'grid', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
+            {items.map((c) => {
+              const isIns = c.type === 'INSTRUCTION';
+              return (
+                <div
+                  key={c.id}
+                  style={{
+                    display: 'grid',
+                    gap: 4,
+                    border: isIns ? '1px solid #fecaca' : '1px solid transparent',
+                    background: isIns ? '#fff1f2' : 'transparent',
+                    borderRadius: isIns ? 8 : 0,
+                    padding: isIns ? 8 : 0,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    {isIns && (
+                      <span style={{ background: '#dc2626', color: '#fff', borderRadius: 6, padding: '1px 6px', fontWeight: 700 }}>📌 업무 지시</span>
+                    )}
+                    <span>{c.authorName || '익명'}</span>
+                    <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={14} />
+                    <span>· {formatKstYmd(c.createdAt)}</span>
+                    {isIns && c.instruction && (
+                      <span style={{ marginLeft: 6, color: '#7c2d12' }}>
+                        → {c.instruction.assigneeName || '담당자'}
+                        {c.instruction.dueDate ? ` · 마감 ${formatKstYmd(c.instruction.dueDate)}` : ''}
+                        {' · '}
+                        <strong>{statusKo(c.instruction.status)}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</div>
                 </div>
-                <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : <div style={{ color: '#94a3b8' }}>등록된 댓글이 없습니다.</div>
       )}
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 0, border: '1px solid #CBD5E1', borderRadius: 8, overflow: 'hidden' }}>
+          <button
+            type="button"
+            className={mode === 'GENERAL' ? 'btn btn-primary' : 'btn'}
+            onClick={() => setMode('GENERAL')}
+            style={{ height: 30, padding: '0 10px', borderRadius: 0, border: 'none' }}
+          >댓글</button>
+          <button
+            type="button"
+            className={mode === 'INSTRUCTION' ? 'btn btn-primary' : 'btn'}
+            onClick={() => setMode('INSTRUCTION')}
+            style={{ height: 30, padding: '0 10px', borderRadius: 0, border: 'none' }}
+          >📌 업무 지시</button>
+        </div>
+        {mode === 'INSTRUCTION' && (
+          <>
+            <select
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              style={{ height: 30, border: '1px solid #CBD5E1', borderRadius: 8, padding: '0 6px' }}
+            >
+              {worklogAuthorId && (
+                <option value={worklogAuthorId}>{worklogAuthorName || '작성자'} (기본)</option>
+              )}
+              {users
+                .filter((u) => u.id !== worklogAuthorId)
+                .map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</option>
+                ))}
+            </select>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              style={{ height: 30, border: '1px solid #CBD5E1', borderRadius: 8, padding: '0 6px' }}
+            />
+          </>
+        )}
+      </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="댓글 입력..."
+          placeholder={mode === 'INSTRUCTION' ? '업무 지시 내용...' : '댓글 입력...'}
           style={{ flex: 1, border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 10px' }}
         />
-        <button className="btn btn-primary" disabled={submitting || !text.trim()} onClick={onSubmit}>{submitting ? '등록중…' : '등록'}</button>
+        <button className="btn btn-primary" disabled={submitting || !text.trim()} onClick={onSubmit}>
+          {submitting ? '등록중…' : mode === 'INSTRUCTION' ? '지시 등록' : '등록'}
+        </button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
     </div>

@@ -157,6 +157,8 @@ model User {
   companyDataUploads CompanyData[] @relation("CompanyDataUploader")
   companyDataChats CompanyDataChat[] @relation("CompanyDataChatUser")
   likes Like[]
+  instructionsAssigned WorklogInstruction[] @relation("InstructionAssignee")
+  instructionsGiven    WorklogInstruction[] @relation("InstructionAssigner")
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -386,6 +388,14 @@ enum ShareScope {
 enum FeedbackType {
   GENERAL
   RUBRIC
+  INSTRUCTION
+}
+
+enum WorklogInstructionStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
 }
 
 enum HelpStatus {
@@ -520,6 +530,30 @@ model Feedback {
   rating      Int?
   actionRequired Boolean    @default(false)
   createdAt   DateTime      @default(now())
+}
+
+// A lightweight task created from a worklog comment of type INSTRUCTION.
+// Assigner and assignee are users; the assignee can later "complete" the
+// instruction by writing a worklog and linking it via completedWorklogId.
+model WorklogInstruction {
+  id                 String                   @id @default(cuid())
+  sourceFeedbackId   String                   @unique
+  sourceWorklogId    String
+  assignerId         String
+  assigner           User                     @relation("InstructionAssigner", fields: [assignerId], references: [id])
+  assigneeId         String
+  assignee           User                     @relation("InstructionAssignee", fields: [assigneeId], references: [id])
+  title              String
+  description        String?
+  dueDate            DateTime?
+  status             WorklogInstructionStatus @default(OPEN)
+  completedWorklogId String?
+  completedAt        DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  @@index([assigneeId, status])
+  @@index([sourceWorklogId])
 }
 
 model Like {

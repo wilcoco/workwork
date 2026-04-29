@@ -11,6 +11,7 @@ import { NotificationsController } from './notifications.controller';
 import { SharesController } from './shares.controller';
 import { FeedbacksController } from './feedbacks.controller';
 import { LikesController } from './likes.controller';
+import { InstructionsController } from './instructions.controller';
 import { WorklogsController } from './worklogs.controller';
 import { AuthController } from './auth.controller';
 import { EntraAuthController } from './entra-auth.controller';
@@ -55,6 +56,7 @@ import { DataverseService } from './dataverse.service';
     SharesController,
     FeedbacksController,
     LikesController,
+    InstructionsController,
     WorklogsController,
     WorkManualsController,
     WeeklyReportsController,

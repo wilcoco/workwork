@@ -54,6 +54,7 @@ export function WorklogQuickNew() {
   const [visibility, setVisibility] = useState<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'>('ALL');
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
   const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; description?: string; instance: { id: string; title: string } }>>([])
+  const [myInstructions, setMyInstructions] = useState<Array<{ id: string; title: string; description?: string; assignerName?: string; sourceWorklogId?: string; dueDate?: string | null }>>([])
   const [plannerTasks, setPlannerTasks] = useState<Array<{ id: string; title: string; planName: string; percentComplete: number; dueDateTime: string | null }>>([])
   const [plannerSyncing, setPlannerSyncing] = useState(false);
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
@@ -269,6 +270,24 @@ export function WorklogQuickNew() {
     })();
   }, [myUserId, processInstanceId, taskInstanceId]);
 
+  // Load my open WorklogInstructions (assigned to me) for selection
+  useEffect(() => {
+    (async () => {
+      if (!myUserId) return;
+      try {
+        const r = await apiJson<{ items: any[] }>(`/api/instructions?assigneeId=${encodeURIComponent(myUserId)}&status=OPEN,IN_PROGRESS`);
+        setMyInstructions((r.items || []).map((x: any) => ({
+          id: x.id,
+          title: x.title,
+          description: x.description,
+          assignerName: x.assignerName,
+          sourceWorklogId: x.sourceWorklogId,
+          dueDate: x.dueDate,
+        })));
+      } catch {}
+    })();
+  }, [myUserId]);
+
   // Load Planner tasks for selection (silently skip if not connected)
   useEffect(() => {
     (async () => {
@@ -376,7 +395,7 @@ export function WorklogQuickNew() {
     try {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
-      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:') || selection.startsWith('new:') || selection.startsWith('planner:'))) throw new Error('대상을 선택하세요');
+      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:') || selection.startsWith('new:') || selection.startsWith('planner:') || selection.startsWith('inst:'))) throw new Error('대상을 선택하세요');
       if (Number(timeSpentHours) < 0) throw new Error('업무 소요 시간(시간)은 0 이상이어야 합니다');
       if (![0, 10, 20, 30, 40, 50].includes(Number(timeSpentMinutes10))) throw new Error('업무 소요 시간(분)은 10분 단위로 선택해 주세요');
       const computedMinutes = (Number(timeSpentHours) || 0) * 60 + (Number(timeSpentMinutes10) || 0);
@@ -396,8 +415,12 @@ export function WorklogQuickNew() {
               ? (title || 'KPI 보고')
               : (selection.startsWith('proc:')
                 ? (title || '프로세스 업무')
-                : (selection.startsWith('new:') || selection.startsWith('planner:')
-                  ? (title || (selection.startsWith('planner:') ? 'Planner 태스크' : '신규 과제'))
+                : (selection.startsWith('new:') || selection.startsWith('planner:') || selection.startsWith('inst:')
+                  ? (title || (selection.startsWith('planner:')
+                      ? 'Planner 태스크'
+                      : selection.startsWith('inst:')
+                        ? (myInstructions.find((x) => x.id === selection.substring(5))?.title || '업무 지시 처리')
+                        : '신규 과제'))
                   : undefined)),
             title,
             content: structuredMode
@@ -466,6 +489,7 @@ export function WorklogQuickNew() {
       const isProc = selection.startsWith('proc:');
       const isNew = selection.startsWith('new:');
       const isPlanner = selection.startsWith('planner:');
+      const isInst = selection.startsWith('inst:');
       const createdInitId = String((wl as any)?.initiativeId || '');
       const selectedId = isKR
         ? selection.substring(3)
@@ -554,6 +578,18 @@ export function WorklogQuickNew() {
             }
           }
         } catch {}
+      }
+      // Instruction: 처리한 업무 지시를 완료 처리하고 후속 업무일지를 연결한다.
+      if (isInst) {
+        const insId = selection.substring(5);
+        if (insId) {
+          try {
+            await apiJson(`/api/instructions/${encodeURIComponent(insId)}/complete`, {
+              method: 'POST',
+              body: JSON.stringify({ worklogId: wl.id, userId }),
+            });
+          } catch {}
+        }
       }
       // Planner: 업무일지 내용을 Planner 태스크 설명에 동기화
       if (isPlanner && selectedId) {
@@ -765,6 +801,17 @@ export function WorklogQuickNew() {
               setKrAchieved(false);
             }} style={{ ...input, appearance: 'auto' as any }} required>
               <option value="new:1">-- 과제 미선택 (키워드 직접 입력) --</option>
+              {myInstructions.length > 0 && (
+                <optgroup label="📌 업무 지시">
+                  {myInstructions.map((t) => {
+                    const due = t.dueDate ? ` · 마감 ${String(t.dueDate).slice(0, 10)}` : '';
+                    const giver = t.assignerName ? ` · ${t.assignerName}` : '';
+                    return (
+                      <option key={`inst-${t.id}`} value={`inst:${t.id}`}>지시: {t.title}{giver}{due}</option>
+                    );
+                  })}
+                </optgroup>
+              )}
               {myProcTasks.length > 0 && (
                 <optgroup label="프로세스 과제">
                   {myProcTasks.map((t) => (
