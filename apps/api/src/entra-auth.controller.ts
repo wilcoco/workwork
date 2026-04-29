@@ -114,6 +114,57 @@ export class EntraAuthController {
     return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----\n`;
   }
 
+  /**
+   * Place a primary-tenant user into the OrgUnit (type='TEAM') whose name
+   * matches one of the Microsoft Teams the user belongs to.
+   *
+   * Strategy:
+   *  - Call Graph /me/joinedTeams with the user's delegated access token.
+   *  - For each team displayName, look for an existing OrgUnit with the
+   *    same name (case-insensitive trim) AND type='TEAM'. We do NOT auto-
+   *    create OrgUnits to avoid polluting the org structure with channels
+   *    like "General". The admin must pre-create the matching team in
+   *    Org Management for the placement to take effect.
+   *  - Pick the first match and update user.orgUnitId.
+   *
+   * Caller must ensure the user has no orgUnitId yet so we never overwrite
+   * a manual assignment.
+   */
+  private async autoPlaceUserByTeamsMembership(userId: string, accessToken: string): Promise<void> {
+    if (!userId || !accessToken) return;
+    const res = await fetch('https://graph.microsoft.com/v1.0/me/joinedTeams?$select=id,displayName', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      throw new Error(`joinedTeams fetch failed (${res.status})`);
+    }
+    const json: any = await res.json().catch(() => ({}));
+    const teams: Array<{ id?: string; displayName?: string }> = Array.isArray(json?.value) ? json.value : [];
+    if (teams.length === 0) return;
+
+    const orgUnitModel: any = (this.prisma as any).orgUnit;
+    for (const t of teams) {
+      const name = String(t?.displayName || '').trim();
+      if (!name) continue;
+      const match = await orgUnitModel
+        .findFirst({
+          where: {
+            type: 'TEAM',
+            name: { equals: name, mode: 'insensitive' as any },
+          },
+        })
+        .catch(() => null);
+      if (match?.id) {
+        await (this.prisma as any).user
+          .update({ where: { id: userId }, data: { orgUnitId: match.id } })
+          .catch(() => null);
+        try { console.log('[entra] auto-placed user', userId, 'into orgUnit', match.id, `(${match.name})`); } catch {}
+        return;
+      }
+    }
+    // No team name matched any OrgUnit; leave user unassigned.
+  }
+
   private async verifyEntraIdToken(idToken: string, clientId: string, expectedNonce?: string) {
     const decoded: any = jwt.decode(idToken, { complete: true });
     const kid = String(decoded?.header?.kid || '');
@@ -306,13 +357,32 @@ export class EntraAuthController {
       } catch {}
     }
 
+    // Auto-place primary-tenant employees into the OrgUnit whose name
+    // matches one of the Microsoft Teams they belong to. Only runs for
+    // users from the primary tenant (i.e. our own employees), only when
+    // they don't yet have an org assignment, and never overwrites an
+    // existing one. Matching is by team displayName -> OrgUnit.name.
+    try {
+      const isPrimaryTenant = entraTid && entraTid === tenantId;
+      const fresh = await userModel.findUnique({ where: { id: user.id } }).catch(() => null);
+      if (isPrimaryTenant && graphAccessToken && fresh && !fresh.orgUnitId) {
+        await this.autoPlaceUserByTeamsMembership(String(user.id), graphAccessToken);
+      }
+    } catch (e) {
+      // Non-fatal: fall through to login completion even if Graph call fails.
+      try { console.warn('[entra] auto org placement failed:', (e as any)?.message || e); } catch {}
+    }
+
     // Gate: PENDING users must wait for CEO/admin approval
     if (String(user?.status || '') === 'PENDING') {
       return res.redirect(`${webBase}/auth/pending`);
     }
 
-    const team = user?.orgUnitId
-      ? await (this.prisma as any).orgUnit.findUnique({ where: { id: user.orgUnitId } }).catch(() => null)
+    // Reload user to pick up any orgUnitId set by the auto-placement above.
+    const reloaded = await userModel.findUnique({ where: { id: user.id } }).catch(() => null);
+    const effectiveOrgUnitId = reloaded?.orgUnitId || user?.orgUnitId || null;
+    const team = effectiveOrgUnitId
+      ? await (this.prisma as any).orgUnit.findUnique({ where: { id: effectiveOrgUnitId } }).catch(() => null)
       : null;
 
     const token = this.signToken(String(user.id));
