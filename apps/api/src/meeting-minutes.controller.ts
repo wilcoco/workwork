@@ -319,7 +319,11 @@ export class MeetingMinutesController {
   ]
 }`;
 
-    const result = await callAI({ system, user, model: 'openai', maxTokens: 8192 });
+    // Use Claude Opus (top-tier) for transcript refinement: it handles
+    // long Korean context, jargon, and minimal-edit constraints noticeably
+    // better than gpt-4.1 in our testing. Falls back to OpenAI in
+    // ai-client when ANTHROPIC_API_KEY is missing.
+    const result = await callAI({ system, user, model: 'claude', maxTokens: 8192, temperature: 0.1 });
     const parsed: any = result.parsed || {};
     const refined = String(parsed?.refined || '').trim();
     const corrections: Array<{ from?: string; to?: string; reason?: string }> = Array.isArray(parsed?.corrections)
