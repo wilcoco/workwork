@@ -80,7 +80,7 @@ export function WorklogAnalysis() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">과거 업무일지 분석</h1>
+      <h1 className="text-2xl font-bold mb-6">업무 자료 분석</h1>
       <p className="text-gray-600 mb-4">SharePoint 문서와 업무일지를 AI로 검색하고 질의할 수 있습니다.</p>
 
       {/* Mode Toggle */}

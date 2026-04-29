@@ -199,7 +199,7 @@ export function CompanyDataAI() {
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: 16 }}>
-      <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>회사 데이터 AI 분석</h2>
+      <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>주요 수치 자료 분석</h2>
 
       {/* Tab buttons */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
