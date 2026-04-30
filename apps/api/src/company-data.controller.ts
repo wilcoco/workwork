@@ -1125,8 +1125,10 @@ export class CompanyDataController {
 
     let provider: 'openai' | 'claude' | 'claude-opus' =
       body.provider === 'claude-opus' ? 'claude-opus' : body.provider === 'claude' ? 'claude' : 'openai';
-    // claude-opus (premium) is restricted to EXEC/CEO/admin
-    if (provider === 'claude-opus') {
+    // Premium Claude Opus (Extended Thinking) is available to all users —
+    // we give everyone the highest-quality analysis. If an admin wants to
+    // gate it again for cost reasons, set COMPANY_DATA_OPUS_EXEC_ONLY=1.
+    if (provider === 'claude-opus' && process.env.COMPANY_DATA_OPUS_EXEC_ONLY === '1') {
       const actor = await this.prisma.user.findUnique({ where: { id: body.userId } });
       const role = String((actor as any)?.role || '');
       const defaultAdmins = ['json@cams2002.onmicrosoft.com'];

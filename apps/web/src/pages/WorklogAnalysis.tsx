@@ -136,16 +136,14 @@ export function WorklogAnalysis() {
           >
             {asking === 'claude' ? '분석 중...' : 'Claude'}
           </button>
-          {isExecOrAbove && (
-            <button
-              onClick={() => askQuestion('claude-opus')}
-              disabled={!!asking || !question.trim()}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2 rounded-lg disabled:opacity-50 font-semibold shadow"
-              title="Claude Opus 4 + Extended Thinking (임원 전용)"
-            >
-              {asking === 'claude-opus' ? '심도 분석 중... (최대 3분)' : 'Opus (심도)'}
-            </button>
-          )}
+          <button
+            onClick={() => askQuestion('claude-opus')}
+            disabled={!!asking || !question.trim()}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2 rounded-lg disabled:opacity-50 font-semibold shadow"
+            title="Claude Opus 4 + Extended Thinking — 최고 품질 분석"
+          >
+            {asking === 'claude-opus' ? '심도 분석 중... (최대 3분)' : 'Opus (심도)'}
+          </button>
         </div>
 
         {/* Chat History — Google-style collapsible list */}
