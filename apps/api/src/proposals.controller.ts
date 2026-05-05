@@ -18,14 +18,14 @@ export class ProposalsController {
    */
   @Public()
   @Get('list')
-  async list(@Query('slpNo') slpNo: string) {
-    if (!slpNo || !String(slpNo).trim()) {
-      throw new BadRequestException('slpNo required');
-    }
-
+  async list(@Query('slpNo') slpNo?: string) {
     const base = process.env.CAMS_PROPOSAL_LIST_URL ||
       'http://cn.icams.co.kr/acco/masp_list.aspx';
-    const url = `${base}?slp_no=${encodeURIComponent(String(slpNo).trim())}`;
+    // Empty slp_no asks the upstream for the unfiltered (all-documents)
+    // list. The legacy ASP.NET page treats missing/empty slp_no as
+    // "show everything", which matches the user's expectation here.
+    const trimmed = String(slpNo || '').trim();
+    const url = trimmed ? `${base}?slp_no=${encodeURIComponent(trimmed)}` : base;
 
     let html = '';
     try {
@@ -47,7 +47,7 @@ export class ProposalsController {
     }
 
     const items = parseRows(html);
-    return { slpNo: String(slpNo).trim(), count: items.length, items, sourceUrl: url };
+    return { slpNo: trimmed, count: items.length, items, sourceUrl: url };
   }
 }
 

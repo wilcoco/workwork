@@ -16,32 +16,23 @@ interface ListResp {
   sourceUrl: string;
 }
 
-const STORAGE_KEY = 'proposals.lastSlpNo';
-
 export function Proposals() {
-  const [slpNo, setSlpNo] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ListResp | null>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setSlpNo(saved);
-        // Auto-fetch the saved slp_no so the user lands directly on the
-        // latest list without having to click 조회 again.
-        void fetchList(saved);
-      }
-    } catch {}
+    void fetchList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function fetchList(s: string) {
+  async function fetchList() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<ListResp>(`/api/proposals/list?slpNo=${encodeURIComponent(s)}`);
+      // No slp_no -> backend hits the unfiltered list endpoint and returns
+      // every proposal the upstream page exposes.
+      const res = await apiJson<ListResp>(`/api/proposals/list`);
       // Show latest first. Upstream typically renders oldest at the top of
       // its DataGrid, so we reverse by row index DESC.
       const sorted = {
@@ -49,22 +40,12 @@ export function Proposals() {
         items: [...(res.items || [])].sort((a, b) => Number(b.index) - Number(a.index)),
       };
       setData(sorted);
-      try { localStorage.setItem(STORAGE_KEY, s); } catch {}
     } catch (e: any) {
       setError(e?.message || '조회 실패');
       setData(null);
     } finally {
       setLoading(false);
     }
-  }
-
-  async function handleFetch() {
-    const s = slpNo.trim();
-    if (!s) {
-      setError('조회할 사번/번호(slp_no)를 입력하세요.');
-      return;
-    }
-    await fetchList(s);
   }
 
   // Build a stable column list across all rows so the table is uniform even
@@ -93,22 +74,13 @@ export function Proposals() {
         CAMS 회계 시스템(<code>cn.icams.co.kr</code>)에서 결재 품의서 리스트를 조회합니다.
       </p>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <input
-          type="text"
-          value={slpNo}
-          onChange={(e) => setSlpNo(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !loading) handleFetch(); }}
-          placeholder="사번 또는 slp_no 입력"
-          style={{ flex: '1 1 220px', minWidth: 200, padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14 }}
-          disabled={loading}
-        />
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <button
-          onClick={handleFetch}
-          disabled={loading || !slpNo.trim()}
+          onClick={fetchList}
+          disabled={loading}
           style={{ background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 14, opacity: loading ? 0.6 : 1 }}
         >
-          {loading ? '조회 중…' : '조회'}
+          {loading ? '조회 중…' : '새로고침'}
         </button>
       </div>
 
@@ -129,7 +101,7 @@ export function Proposals() {
 
           {data.items.length === 0 ? (
             <div style={{ textAlign: 'center', color: '#94a3b8', padding: 24, fontSize: 14, border: '1px dashed #cbd5e1', borderRadius: 12 }}>
-              해당 번호로 조회된 품의서가 없습니다.
+              조회된 품의서가 없습니다.
             </div>
           ) : (
             <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 12 }}>
