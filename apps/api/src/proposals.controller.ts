@@ -1,0 +1,102 @@
+import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import { Public } from './jwt-auth.guard';
+
+/**
+ * Read-only proxy + parser for the legacy CAMS approval list page
+ * (http://cn.icams.co.kr/acco/masp_list.aspx).
+ *
+ * The upstream is plain HTTP and CORS-less, so the browser cannot fetch it
+ * directly from the HTTPS web app. This controller fetches server-side and
+ * extracts the DataGrid rows (myDataGrid2_lblXXX_N spans) into a clean JSON
+ * list. Mirrors the PowerApps screen logic the user shared.
+ */
+@Controller('proposals')
+export class ProposalsController {
+  /**
+   * GET /api/proposals/list?slpNo=...
+   * Returns the parsed proposal list rows for the given slp_no.
+   */
+  @Public()
+  @Get('list')
+  async list(@Query('slpNo') slpNo: string) {
+    if (!slpNo || !String(slpNo).trim()) {
+      throw new BadRequestException('slpNo required');
+    }
+
+    const base = process.env.CAMS_PROPOSAL_LIST_URL ||
+      'http://cn.icams.co.kr/acco/masp_list.aspx';
+    const url = `${base}?slp_no=${encodeURIComponent(String(slpNo).trim())}`;
+
+    let html = '';
+    try {
+      const f: any = (globalThis as any).fetch;
+      const res = await f(url, {
+        method: 'GET',
+        headers: {
+          // Some legacy ASP.NET pages return 403 without a UA.
+          'User-Agent': 'Mozilla/5.0 (compatible; workwork-proxy/1.0)',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+      });
+      if (!res?.ok) {
+        throw new BadRequestException(`Upstream HTTP ${res?.status}`);
+      }
+      html = await res.text();
+    } catch (e: any) {
+      throw new BadRequestException(`Upstream fetch failed: ${e?.message || e}`);
+    }
+
+    const items = parseRows(html);
+    return { slpNo: String(slpNo).trim(), count: items.length, items, sourceUrl: url };
+  }
+}
+
+/**
+ * Parse all `<span id="myDataGrid2_lbl<FIELD>_<INDEX>">...</span>` cells in
+ * the HTML, group them by row index, and return the rows that have a
+ * non-empty title. Strips inner HTML tags and decodes the most common HTML
+ * entities so the caller gets plain Korean text.
+ */
+function parseRows(html: string): Array<Record<string, string | number>> {
+  const re = /<span[^>]*id=["']?myDataGrid2_lbl([A-Za-z0-9]+)_(\d+)["']?[^>]*>([\s\S]*?)<\/span>/gi;
+  const byRow: Record<number, Record<string, string>> = {};
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const field = m[1].toLowerCase();
+    const idx = Number(m[2]);
+    const text = decodeEntities(stripTags(m[3])).trim();
+    if (!byRow[idx]) byRow[idx] = {};
+    byRow[idx][field] = text;
+  }
+  const indices = Object.keys(byRow)
+    .map(Number)
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+
+  const rows: Array<Record<string, string | number>> = [];
+  for (const idx of indices) {
+    const row = byRow[idx];
+    // Mirror the PowerApps "downcount" rule: a row is real only if its title
+    // is non-blank.
+    if (!row.title || !row.title.trim()) continue;
+    rows.push({ index: idx, ...row });
+  }
+  return rows;
+}
+
+function stripTags(s: string): string {
+  return String(s || '').replace(/<[^>]+>/g, '');
+}
+
+function decodeEntities(s: string): string {
+  return String(s || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#(\d+);/g, (_m, n: string) => {
+      try { return String.fromCharCode(Number(n)); } catch { return ''; }
+    });
+}
