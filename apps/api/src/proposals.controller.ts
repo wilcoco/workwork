@@ -49,6 +49,48 @@ export class ProposalsController {
     const items = parseRows(html);
     return { slpNo: trimmed, count: items.length, items, sourceUrl: url };
   }
+
+  /**
+   * GET /api/proposals/debug?slpNo=...
+   * Returns the raw HTML (truncated) and a few quick diagnostics so we can
+   * see what the upstream page is actually returning when the parsed list
+   * comes back empty.
+   */
+  @Public()
+  @Get('debug')
+  async debug(@Query('slpNo') slpNo?: string) {
+    const base = process.env.CAMS_PROPOSAL_LIST_URL ||
+      'http://cn.icams.co.kr/acco/masp_list.aspx';
+    const trimmed = String(slpNo || '').trim();
+    const url = trimmed ? `${base}?slp_no=${encodeURIComponent(trimmed)}` : base;
+
+    const f: any = (globalThis as any).fetch;
+    const out: any = { url };
+    try {
+      const res = await f(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; workwork-proxy/1.0)',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+      });
+      out.status = res?.status;
+      out.contentType = res?.headers?.get?.('content-type');
+      const html = await res.text();
+      out.htmlLength = html.length;
+      // Detect any DataGrid id pattern (might differ from myDataGrid2).
+      const ids = Array.from(html.matchAll(/id=["']?([A-Za-z0-9_]*lblTITLE_\d+)["']?/gi))
+        .map((m: any) => m[1])
+        .slice(0, 10);
+      out.titleSpanIdsFound = ids;
+      const allLblIds = Array.from(html.matchAll(/id=["']?([A-Za-z0-9_]*lbl[A-Za-z0-9]+_\d+)["']?/gi))
+        .map((m: any) => m[1]);
+      out.lblIdsSampled = Array.from(new Set(allLblIds)).slice(0, 30);
+      out.htmlSnippet = html.slice(0, 4000);
+    } catch (e: any) {
+      out.error = e?.message || String(e);
+    }
+    return out;
+  }
 }
 
 /**
