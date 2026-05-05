@@ -27,21 +27,28 @@ export function Proposals() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setSlpNo(saved);
+      if (saved) {
+        setSlpNo(saved);
+        // Auto-fetch the saved slp_no so the user lands directly on the
+        // latest list without having to click 조회 again.
+        void fetchList(saved);
+      }
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleFetch() {
-    const s = slpNo.trim();
-    if (!s) {
-      setError('조회할 사번/번호(slp_no)를 입력하세요.');
-      return;
-    }
+  async function fetchList(s: string) {
     setLoading(true);
     setError(null);
     try {
       const res = await apiJson<ListResp>(`/api/proposals/list?slpNo=${encodeURIComponent(s)}`);
-      setData(res);
+      // Show latest first. Upstream typically renders oldest at the top of
+      // its DataGrid, so we reverse by row index DESC.
+      const sorted = {
+        ...res,
+        items: [...(res.items || [])].sort((a, b) => Number(b.index) - Number(a.index)),
+      };
+      setData(sorted);
       try { localStorage.setItem(STORAGE_KEY, s); } catch {}
     } catch (e: any) {
       setError(e?.message || '조회 실패');
@@ -49,6 +56,15 @@ export function Proposals() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleFetch() {
+    const s = slpNo.trim();
+    if (!s) {
+      setError('조회할 사번/번호(slp_no)를 입력하세요.');
+      return;
+    }
+    await fetchList(s);
   }
 
   // Build a stable column list across all rows so the table is uniform even
