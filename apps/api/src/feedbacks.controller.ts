@@ -151,7 +151,7 @@ export class FeedbacksController {
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
-      include: { author: true },
+      include: { author: { include: { orgUnit: { select: { id: true, name: true } } } } },
     });
     // Pull instructions linked to any of these feedbacks in one query.
     const fbIds = items.map((it: any) => it.id);
@@ -172,6 +172,7 @@ export class FeedbacksController {
           subjectId: it.subjectId,
           authorId: it.authorId,
           authorName: it.author?.name,
+          authorTeam: it.author?.orgUnit?.name || null,
           type: it.type,
           content: it.content,
           rating: it.rating ?? null,

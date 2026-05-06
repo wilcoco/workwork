@@ -6,7 +6,7 @@ import { WorklogDocument } from '../components/WorklogDocument';
 import { UserAvatar } from '../components/UserAvatar';
 
 type WL = { id: string; userId?: string; title: string; excerpt: string; userName?: string; teamName?: string; date: string; createdAt?: string; visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY' };
-type FB = { id: string; subjectId: string; authorId?: string; authorName?: string; content: string; createdAt: string };
+type FB = { id: string; subjectId: string; authorId?: string; authorName?: string; authorTeam?: string | null; content: string; createdAt: string };
 
 const VISIBILITY_LABEL: Record<string, string> = {
   ALL: '전체',
@@ -194,7 +194,7 @@ export function Home() {
     (async () => {
       try {
         const fb = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&limit=60`);
-        setComments((fb.items || []).map((x: any) => ({ id: x.id, subjectId: x.subjectId, authorId: x.authorId, authorName: x.authorName, content: x.content, createdAt: x.createdAt })));
+        setComments((fb.items || []).map((x: any) => ({ id: x.id, subjectId: x.subjectId, authorId: x.authorId, authorName: x.authorName, authorTeam: x.authorTeam ?? null, content: x.content, createdAt: x.createdAt })));
       } catch {
         // ignore
       }
@@ -906,7 +906,7 @@ function getWorklogFirstImage(w: any): string {
 
 function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; filterTeam?: string; filterName?: string; viewMode?: 'summary' | 'full' }) {
   const [wl, setWl] = useState<any | null>(null);
-  const [prev, setPrev] = useState<Array<{ id: string; authorId?: string; authorName?: string; content: string; createdAt: string }>>([]);
+  const [prev, setPrev] = useState<Array<{ id: string; authorId?: string; authorName?: string; authorTeam?: string | null; content: string; createdAt: string }>>([]);
   useEffect(() => {
     (async () => {
       try {
@@ -915,7 +915,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
       } catch {}
       try {
         const fbr = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&subjectId=${encodeURIComponent(c.subjectId)}&limit=20`);
-        const items = (fbr.items || []).map((x: any) => ({ id: x.id, authorId: x.authorId, authorName: x.authorName, content: x.content, createdAt: x.createdAt }));
+        const items = (fbr.items || []).map((x: any) => ({ id: x.id, authorId: x.authorId, authorName: x.authorName, authorTeam: x.authorTeam ?? null, content: x.content, createdAt: x.createdAt }));
         const before = items.filter((x) => x.id !== c.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         setPrev(before);
       } catch {}
@@ -954,19 +954,21 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
       <div style={{ display: 'grid', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
         {prev.map((p) => (
           <div key={p.id}>
-            <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>{p.authorName || '익명'}</span>
+            <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as any }}>
               <UserAvatar userId={String(p.authorId || '')} name={String(p.authorName || '익명')} size={14} />
-              <span>· {formatKstYmd(p.createdAt)}</span>
+              <span style={{ fontWeight: 700 }}>{p.authorName || '익명'}</span>
+              {p.authorTeam ? <span style={{ color: '#64748b' }}>· {p.authorTeam}</span> : null}
+              <span style={{ color: '#94a3b8' }}>· {formatKstYmd(p.createdAt)}</span>
             </div>
             <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{p.content}</div>
           </div>
         ))}
         <div>
-          <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span>{c.authorName || '익명'}</span>
+          <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as any }}>
             <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={14} />
-            <span>· {formatKstYmd(c.createdAt)}</span>
+            <span style={{ fontWeight: 700 }}>{c.authorName || '익명'}</span>
+            {c.authorTeam ? <span style={{ color: '#64748b' }}>· {c.authorTeam}</span> : null}
+            <span style={{ color: '#94a3b8' }}>· {formatKstYmd(c.createdAt)}</span>
           </div>
           <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</div>
         </div>
