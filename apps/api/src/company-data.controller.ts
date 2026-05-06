@@ -1299,9 +1299,15 @@ export class CompanyDataController {
   // ─── Chat History ──────────────────────────────────────
 
   @Get('chats')
-  async chatHistory(@Query('userId') userId: string, @Query('source') source?: string) {
-    if (!userId) throw new BadRequestException('userId required');
-    const where: any = { userId };
+  async chatHistory(
+    @Query('userId') userId: string,
+    @Query('source') source?: string,
+    @Query('shared') shared?: string,
+  ) {
+    const isShared = String(shared || '') === '1' || String(shared || '').toLowerCase() === 'true';
+    if (!isShared && !userId) throw new BadRequestException('userId required');
+    const where: any = {};
+    if (!isShared) where.userId = userId;
     if (source) {
       // Include legacy rows (source IS NULL) for the original 'company-data'
       // page so users don't lose their pre-existing history. Other sources
@@ -1315,7 +1321,8 @@ export class CompanyDataController {
     return this.prisma.companyDataChat.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 100,
+      include: { user: { select: { id: true, name: true } } },
     });
   }
 }

@@ -13,6 +13,8 @@ interface ChatMsg {
   sources?: number;
   debug?: any;
   provider?: 'openai' | 'claude' | 'claude-opus';
+  userId?: string;
+  user?: { id: string; name: string };
 }
 
 type Provider = 'openai' | 'claude' | 'claude-opus';
@@ -43,9 +45,8 @@ export function WorklogAnalysis() {
   }, []);
 
   async function loadChats() {
-    if (!userId) return;
     try {
-      const res = await apiJson<ChatMsg[]>(`/api/company-data/chats?userId=${encodeURIComponent(userId)}&source=worklog-analysis`);
+      const res = await apiJson<ChatMsg[]>(`/api/company-data/chats?source=worklog-analysis&shared=1${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`);
       setChatHistory(res || []);
     } catch {}
   }
@@ -72,6 +73,7 @@ export function WorklogAnalysis() {
         sources: data.sources,
         debug: data.debug,
         provider,
+        userId,
       }, ...prev]);
       setExpandedId(newId);
       setQuestion('');
@@ -197,6 +199,9 @@ export function WorklogAnalysis() {
                   )}
                   {typeof msg.sources === 'number' && msg.sources > 0 && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">참조 {msg.sources}건</span>
+                  )}
+                  {msg.user?.name && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">작성자: {msg.user.name}{msg.user.id === userId ? ' (나)' : ''}</span>
                   )}
                   <span className="ml-auto text-gray-400 text-xs">{isOpen ? '▲ 접기' : '▼ 펼치기'}</span>
                 </div>

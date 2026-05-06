@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { apiJson } from '../lib/api';
 import { formatKstYmd, todayKstYmd } from '../lib/time';
+
+type HistoryMsg = {
+  id: string;
+  question: string;
+  answer: string;
+  createdAt: string;
+  user?: { id: string; name: string };
+};
 
 type Me = {
   id: string;
@@ -61,6 +71,22 @@ export function WorklogAi() {
   const [teams, setTeams] = useState<OrgUnitItem[]>([]);
   const [managedTeams, setManagedTeams] = useState<OrgUnitItem[]>([]);
 
+  const [history, setHistory] = useState<HistoryMsg[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  async function loadHistory() {
+    try {
+      const res = await apiJson<HistoryMsg[]>(`/api/company-data/chats?source=worklog-ai-summary&shared=1${myUserId ? `&userId=${encodeURIComponent(myUserId)}` : ''}`);
+      setHistory(Array.isArray(res) ? res : []);
+    } catch {
+      setHistory([]);
+    }
+  }
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -78,9 +104,12 @@ export function WorklogAi() {
       params.set('includeApprovals', includeApprovals ? '1' : '0');
       params.set('includeEvaluation', includeEvaluation ? '1' : '0');
 
-      const r = await apiJson<{ from: string; to: string; days: number; summary: string }>(`/api/worklogs/ai/summary?${params.toString()}`);
+      const r = await apiJson<{ from: string; to: string; days: number; summary: string; chatId?: string | null }>(`/api/worklogs/ai/summary?${params.toString()}`);
       setSummary(r.summary || '');
       setRange({ from: r.from, to: r.to });
+      // Refresh shared history list and auto-expand the new entry.
+      await loadHistory();
+      if (r.chatId) setExpandedId(r.chatId);
     } catch (e: any) {
       setError(e?.message || '로드 실패');
     } finally {
@@ -269,8 +298,65 @@ export function WorklogAi() {
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ color: '#475569' }}>기간: {range.from ? formatKstYmd(range.from) : '-'} ~ {range.to ? formatKstYmd(range.to) : '-'}</div>
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, whiteSpace: 'pre-wrap' }}>
-        {summary || (loading ? '조회중…' : '요약이 없습니다. 좌측에서 필터를 선택하고 조회를 눌러주세요.')}
+
+      {/* Shared analysis history — Google-style collapsible list (newest first) */}
+      <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>분석 결과 히스토리 (공유)</h3>
+          <span style={{ fontSize: 12, color: '#64748b' }}>모든 사용자가 함께 볼 수 있습니다 · {history.length}건</span>
+        </div>
+        {loading && <div style={{ color: '#64748b', fontSize: 13 }}>조회중…</div>}
+        {!loading && history.length === 0 && (
+          <div style={{ color: '#94a3b8', fontSize: 13, padding: 16, textAlign: 'center' as any, border: '1px dashed #cbd5e1', borderRadius: 10, background: '#fff' }}>
+            아직 저장된 분석 결과가 없습니다. 위에서 필터를 선택하고 [조회] 를 눌러 분석해 보세요.
+          </div>
+        )}
+        {history.map((msg) => {
+          const isOpen = expandedId === msg.id;
+          const snippet = String(msg.answer || '')
+            .replace(/[#*_`>\-]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 180);
+          return (
+            <div key={msg.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff' }}>
+              <button
+                type="button"
+                onClick={() => setExpandedId(isOpen ? null : msg.id)}
+                style={{ width: '100%', textAlign: 'left' as any, padding: '12px 14px', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 10 }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as any, marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>{new Date(msg.createdAt).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                  {msg.user?.name && (
+                    <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 6, background: '#f1f5f9', color: '#334155' }}>
+                      작성자: {msg.user.name}{msg.user.id === myUserId ? ' (나)' : ''}
+                    </span>
+                  )}
+                  <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 12 }}>{isOpen ? '▲ 접기' : '▼ 펼치기'}</span>
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1d4ed8', whiteSpace: 'normal' as any }}>{msg.question}</div>
+                {!isOpen && (
+                  <div style={{ fontSize: 13, color: '#475569', marginTop: 4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+                    {snippet}{snippet.length >= 180 ? '…' : ''}
+                  </div>
+                )}
+              </button>
+              {isOpen && (
+                <div style={{ padding: '0 14px 14px' }}>
+                  <div style={{ border: '2px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                    <div style={{ background: 'linear-gradient(90deg,#334155,#475569)', color: '#fff', padding: '8px 14px', fontSize: 12, display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 700, letterSpacing: 1 }}>📑 업무일지 AI 분석 보고서</span>
+                      <span style={{ color: '#cbd5e1' }}>{new Date(msg.createdAt).toLocaleString('ko-KR')}</span>
+                    </div>
+                    <div className="prose prose-sm max-w-none" style={{ padding: '14px 18px', background: '#fff', color: '#0f172a', lineHeight: 1.65 }}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.answer}</ReactMarkdown>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       
 

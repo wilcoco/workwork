@@ -2222,7 +2222,33 @@ ${isSingleUser ? `
     }
     const data = await resp.json();
     const summary = String(data?.choices?.[0]?.message?.content || '').trim();
-    return { from: from.toISOString(), to: to.toISOString(), days, summary };
+
+    // Persist into shared CompanyDataChat history so that other users can
+    // browse/expand past worklog AI analyses on the 업무일지 AI 분석 page.
+    let chatId: string | null = null;
+    if (summary) {
+      const filterParts: string[] = [];
+      if (filterTeam) filterParts.push(`팀=${filterTeam}`);
+      if (filterUser) filterParts.push(`구성원=${filterUser}`);
+      const periodLabel = `${kstYmd(from)} ~ ${kstYmd(to)}`;
+      const filterLabel = filterParts.length ? filterParts.join(', ') : '전체';
+      const userQ = String(question || '').trim();
+      const qHeader = `[업무일지 AI 분석] ${periodLabel} | ${filterLabel}${userQ ? ` | 추가질의: ${userQ}` : ''}`;
+      try {
+        const chat = await (this.prisma as any).companyDataChat.create({
+          data: {
+            userId: viewerId,
+            question: qHeader,
+            answer: summary,
+            dataIds: [],
+            source: 'worklog-ai-summary',
+          },
+        });
+        chatId = String(chat?.id || '') || null;
+      } catch {}
+    }
+
+    return { from: from.toISOString(), to: to.toISOString(), days, summary, chatId };
   }
 
   /** 반복 업무 패턴 감지 → 매뉴얼 작성 제안 */
