@@ -285,6 +285,10 @@ export function ApprovalsSubmit() {
             contentHtml: contentHtml || undefined,
             attachments: { files: attachments },
             tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode) ? tags : undefined,
+            // Mark this worklog as an approval document so it does not pollute
+            // the regular 업무일지 list. The approval flow still uses it as the
+            // subject of the ApprovalRequest.
+            structuredData: { kind: 'APPROVAL_DOC' },
           }),
         }
       );

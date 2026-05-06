@@ -1160,8 +1160,13 @@ export class WorklogsController {
     @Query('urgent') urgentStr?: string,
     @Query('viewerId') viewerId?: string,
     @Query('tag') tagFilter?: string,
+    @Query('includeApprovalDocs') includeApprovalDocsStr?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '20', 10) || 20, 100);
+    const includeApprovalDocs = (() => {
+      const v = String(includeApprovalDocsStr || '').toLowerCase();
+      return v === '1' || v === 'true';
+    })();
     const offsetNum = Math.max(0, parseInt(offsetStr || '0', 10) || 0);
     const useOffset = !cursor && offsetNum > 0;
     const wantTotal = (() => {
@@ -1211,12 +1216,41 @@ export class WorklogsController {
       }
     }
 
+    // By default, hide worklogs that exist only to back an ApprovalRequest
+    // (created from the 결재 요청 page). They live in the worklog table for
+    // technical reasons but are not regular 업무일지 entries.
+    let approvalBackedIds: string[] = [];
+    if (!includeApprovalDocs) {
+      try {
+        const ar = await this.prisma.approvalRequest.findMany({
+          where: { subjectType: 'Worklog' },
+          select: { subjectId: true },
+        });
+        approvalBackedIds = Array.from(
+          new Set((ar || []).map((a: any) => String(a.subjectId)).filter(Boolean))
+        );
+      } catch {
+        approvalBackedIds = [];
+      }
+    }
+
+    const excludeApprovalNot: any[] = [];
+    if (!includeApprovalDocs) {
+      // Marker on newly created approval docs
+      excludeApprovalNot.push({ structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } });
+      // Legacy approval-backed worklogs without the marker
+      if (approvalBackedIds.length) {
+        excludeApprovalNot.push({ id: { in: approvalBackedIds } });
+      }
+    }
+
     const finalWhere = {
       ...where,
       ...(kind === 'OKR' ? { initiative: { keyResult: { objective: { pillar: null } } } } : {}),
       ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
       ...(krId ? { initiative: { keyResultId: krId } } : {}),
       ...(initiativeId ? { initiativeId } : {}),
+      ...(excludeApprovalNot.length ? { NOT: excludeApprovalNot } : {}),
       ...(viewerId
         ? {
             OR: [
@@ -1870,10 +1904,31 @@ export class WorklogsController {
       else visibilityIn = ['ALL'];
     }
 
+    // Exclude approval-backed worklog documents from AI analysis as well.
+    let approvalBackedIdsForAi: string[] = [];
+    try {
+      const ar = await this.prisma.approvalRequest.findMany({
+        where: { subjectType: 'Worklog' },
+        select: { subjectId: true },
+      });
+      approvalBackedIdsForAi = Array.from(
+        new Set((ar || []).map((a: any) => String(a.subjectId)).filter(Boolean))
+      );
+    } catch {
+      approvalBackedIdsForAi = [];
+    }
+    const excludeApprovalNotForAi: any[] = [
+      { structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } },
+    ];
+    if (approvalBackedIdsForAi.length) {
+      excludeApprovalNotForAi.push({ id: { in: approvalBackedIdsForAi } });
+    }
+
     const where = viewerId
       ? {
           AND: [
             baseWhere,
+            { NOT: excludeApprovalNotForAi },
             {
               OR: [
                 { createdById: viewerId },
@@ -1882,7 +1937,7 @@ export class WorklogsController {
             },
           ],
         }
-      : { ...baseWhere, visibility: { in: visibilityIn as any } };
+      : { ...baseWhere, NOT: excludeApprovalNotForAi, visibility: { in: visibilityIn as any } };
     const items = await (this.prisma as any).worklog.findMany({
       where,
       include: { createdBy: { include: { orgUnit: true } } },
