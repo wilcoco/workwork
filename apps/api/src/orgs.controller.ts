@@ -76,6 +76,12 @@ export class OrgsController {
     for (const ii of inits) {
       await this.deleteInitiativeCascade(ii.id, tx);
     }
+    // Drop remaining KR-level references that have no cascade in the schema:
+    //   - KeyResultAssignment(keyResultId)
+    //   - ProgressEntry(keyResultId) for entries not tied to an Initiative
+    // Without these, deleting the KR fails with a FK violation.
+    await tx.keyResultAssignment.deleteMany({ where: { keyResultId: id } });
+    try { await tx.progressEntry.deleteMany({ where: { keyResultId: id } }); } catch {}
     await tx.keyResult.deleteMany({ where: { id } });
   }
 
