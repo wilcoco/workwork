@@ -2122,43 +2122,80 @@ export class WorklogsController {
 
     const evaluationContext = evalLines.length ? evalLines.join('\n') : '';
     const q = String(question || '').trim();
+
+    // Build an explicit scope description so the LLM reports ONLY the
+    // filtered subset. Without this, the prompt's "각 팀에 대해 / 각 구성원에 대해"
+    // boilerplate makes the model write as if every team/member existed.
+    const filterTeam = String(teamName || '').trim();
+    const filterUser = String(userName || '').trim();
+    const teamsInData = Array.from(byTeamUser.keys());
+    const usersInData: string[] = [];
+    for (const inner of byTeamUser.values()) for (const u of inner.keys()) usersInData.push(u);
+    const scopeBits: string[] = [];
+    if (filterTeam) scopeBits.push(`팀=${filterTeam}`);
+    if (filterUser) scopeBits.push(`구성원=${filterUser}`);
+    const scopeLabel = scopeBits.length ? scopeBits.join(', ') : '전체';
+    const isSingleTeam = filterTeam || teamsInData.length === 1;
+    const isSingleUser = !!filterUser || usersInData.length === 1;
+    const dataIsEmpty = teamsInData.length === 0;
+
+    const teamSectionRule = isSingleTeam
+      ? `- **단일 팀(${filterTeam || teamsInData[0] || '대상 팀'})만 분석합니다.** 다른 팀은 데이터에 없으므로 절대 언급하지 마세요.`
+      : `- 데이터에 등장한 팀(${teamsInData.join(', ') || '없음'})만 분석합니다. 그 외 팀은 언급 금지.`;
+    const userSectionRule = isSingleUser
+      ? `- **단일 구성원(${filterUser || usersInData[0] || '대상 구성원'})만 평가합니다.** 다른 사람은 절대 언급하지 마세요.`
+      : `- 데이터에 등장한 구성원(${usersInData.slice(0, 20).join(', ') || '없음'})만 평가합니다. 그 외 사람은 언급 금지.`;
+
     const sys = `당신은 제조업(사출/도장/조립) 회사의 **경영진** 관점에서 업무를 분석·평가하는 경영 보좌 AI입니다.
+
+## 분석 범위 (반드시 준수)
+- 적용된 필터: **${scopeLabel}**
+- 아래 [업무일지 데이터] 에 등장한 팀/구성원만 다룹니다. 데이터에 없는 팀이나 사람은 절대 언급하거나 추정하지 마세요.
+${teamSectionRule}
+${userSectionRule}
+- 데이터가 비어있다면 "해당 범위에 업무일지 데이터가 없습니다" 라고만 답하고, 일반론을 만들지 마세요.
 
 ## 역할
 - 단순 취합/정리가 아니라, 경영진이 해당 팀과 구성원의 업무를 **검토·평가**하는 시각으로 작성하세요.
-- 각 팀/구성원의 업무 기여도, 업무량, 집중도, 지연 리스크를 평가하세요.
-- 긍정적 성과는 인정하되, 개선이 필요한 부분은 구체적인 **개선 지침(Directive)**으로 제시하세요.
+- 업무 기여도, 업무량, 집중도, 지연 리스크를 평가하세요.
+- 긍정적 성과는 인정하되, 개선이 필요한 부분은 구체적 **개선 지침(Directive)** 으로 제시하세요.
 
-## 출력 형식 (반드시 이 구조를 따르세요)
+## 출력 형식
 ### 📊 종합 경영 평가
-- 전체 조직 상태를 2~3문장으로 평가
-
+- 분석 대상(${scopeLabel})의 상태를 2~3문장으로 평가
+${isSingleTeam ? '' : `
 ### 📋 팀별 분석
-각 팀에 대해:
+데이터에 등장한 팀에 대해서만:
 - **[팀명]**
   - 평가: (잘한 점 / 부족한 점)
   - 주요 성과:
   - 우려 사항:
-  - 개선 지침:
-
+  - 개선 지침:`}
+${isSingleUser ? `
+### 👤 구성원 평가
+- **[이름]${filterTeam ? ` (${filterTeam})` : ''}**
+  - 업무량/기여도: (상/중/하)
+  - 핵심 업무:
+  - 평가 코멘트:` : `
 ### 👤 구성원별 평가
-각 구성원에 대해:
+데이터에 등장한 구성원에 대해서만:
 - **[이름] ([팀명])**
   - 업무량/기여도: (상/중/하)
   - 핵심 업무:
-  - 평가 코멘트:
+  - 평가 코멘트:`}
 
 ### ⚠️ 리스크 및 주의사항
 - 지연/병목/의존성 리스크
 
 ### 📌 경영진 개선 지침
-- 조직 차원에서 개선해야 할 사항을 구체적 지시 형태로 작성
+- 분석 대상 범위에서 개선해야 할 사항을 구체적 지시 형태로 작성
 
 ## 규칙
 - 넘겨받은 텍스트에 없는 추정은 하지 마세요.
 - 업무일지가 부실하거나 누락된 구성원이 있으면 해당 사실을 지적하세요.
 - 평가는 공정하고 건설적으로, 지침은 실행 가능하게 작성하세요.`;
-    const user = `기간: ${kstYmd(from)} ~ ${kstYmd(to)} (총 ${days}일)\n\n경영진 관점에서 해당 기간의 업무를 분석·평가해 주세요.\n\n${q ? `[경영진 추가 질의]\n${q}\n\n이 질의에 대해 별도 섹션에서 상세히 답변해 주세요.\n\n` : ''}${statusContext ? `[현재 진행 현황]\n${statusContext}\n\n` : ''}${evaluationContext ? `[업무 평가(팀장/임원)]\n${evaluationContext}\n\n` : ''}[업무일지 데이터]\n${context}`;
+
+    const user = `기간: ${kstYmd(from)} ~ ${kstYmd(to)} (총 ${days}일)\n적용된 필터: ${scopeLabel}\n\n경영진 관점에서 위 범위의 업무를 분석·평가해 주세요. 위 범위 밖의 팀/구성원은 절대 언급하지 마세요.\n\n${q ? `[경영진 추가 질의]\n${q}\n\n이 질의에 대해 별도 섹션에서 상세히 답변해 주세요.\n\n` : ''}${statusContext ? `[현재 진행 현황]\n${statusContext}\n\n` : ''}${evaluationContext ? `[업무 평가(팀장/임원)]\n${evaluationContext}\n\n` : ''}[업무일지 데이터]${dataIsEmpty ? '\n(해당 범위에 업무일지 데이터가 없습니다)' : `\n${context}`}`;
     // Call OpenAI
     const f: any = (globalThis as any).fetch;
     if (!f) {
