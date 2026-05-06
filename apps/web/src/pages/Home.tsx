@@ -55,9 +55,15 @@ export function Home() {
   }, [facetSample]);
   const nameOptions = useMemo(() => {
     const s = new Set<string>();
-    facetSample.forEach(w => { if (w.userName) s.add(w.userName); });
+    facetSample.forEach(w => {
+      if (!w.userName) return;
+      // When a team is selected, restrict the name dropdown to members
+      // who appear in that team's worklogs.
+      if (filterTeam && String(w.teamName || '') !== filterTeam) return;
+      s.add(w.userName);
+    });
     return Array.from(s).sort();
-  }, [facetSample]);
+  }, [facetSample, filterTeam]);
   const latestComments = useMemo(() => {
     const map = new Map<string, { c: FB; t: number }>();
     comments.forEach(c => {
@@ -78,6 +84,13 @@ export function Home() {
   useEffect(() => {
     setWorklogPage(1);
   }, [filterTeam, filterName]);
+
+  // When the team filter changes, clear the selected name if it no longer
+  // belongs to the selected team's member list.
+  useEffect(() => {
+    if (!filterTeam || !filterName) return;
+    if (!nameOptions.includes(filterName)) setFilterName('');
+  }, [filterTeam, nameOptions]);
 
   useEffect(() => {
     const update = () => {
