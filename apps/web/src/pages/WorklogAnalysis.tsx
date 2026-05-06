@@ -24,6 +24,7 @@ export function WorklogAnalysis() {
   const [question, setQuestion] = useState('');
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
   const [asking, setAsking] = useState<Provider | null>(null);
+  const [provider, setProvider] = useState<Provider>('openai');
   const [mode, setMode] = useState<'summary' | 'deep'>('deep');
   const [isExecOrAbove, setIsExecOrAbove] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -110,39 +111,59 @@ export function WorklogAnalysis() {
 
       {/* Chat Section */}
       <div className="mb-6">
+        {/* Step 1: Model selector (radio-style) */}
+        <div className="mb-3 flex items-center gap-3 flex-wrap">
+          <span className="text-sm font-medium text-gray-700">① AI 모델 선택:</span>
+          <div className="inline-flex rounded-lg border bg-white p-1">
+            {([
+              { key: 'openai',      label: 'OpenAI',     desc: 'GPT-4.1 — 빠르고 균형',                  active: 'bg-emerald-600 text-white' },
+              { key: 'claude',      label: 'Claude',     desc: 'Claude Opus 4 — 정확도 우수',             active: 'bg-orange-600 text-white' },
+              { key: 'claude-opus', label: 'Opus (심도)', desc: 'Opus 4 + Extended Thinking — 최고 품질', active: 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' },
+            ] as { key: Provider; label: string; desc: string; active: string }[]).map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setProvider(opt.key)}
+                disabled={!!asking}
+                className={`px-3 py-1 text-sm rounded transition ${provider === opt.key ? opt.active : 'text-gray-700 hover:bg-gray-100'}`}
+                title={opt.desc}
+              >
+                {provider === opt.key ? '● ' : ''}{opt.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-gray-500">
+            {provider === 'openai' ? 'GPT-4.1 — 빠르고 균형 잡힌 답변' : provider === 'claude' ? 'Claude Opus 4 — 정확도 우수' : 'Claude Opus 4 + Extended Thinking — 최고 품질 (최대 3분)'}
+          </span>
+        </div>
+
+        {/* Step 2: Question + submit */}
+        <div className="mb-1 text-sm font-medium text-gray-700">② 질문 입력 후 [질의하기] 버튼:</div>
         <div className="flex gap-2 mb-4">
           <input
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !asking && askQuestion('openai')}
+            onKeyPress={(e) => e.key === 'Enter' && !asking && askQuestion(provider)}
             placeholder="질문을 입력하세요..."
             className="flex-1 border rounded-lg px-4 py-2"
             disabled={!!asking}
           />
           <button
-            onClick={() => askQuestion('openai')}
+            onClick={() => askQuestion(provider)}
             disabled={!!asking || !question.trim()}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
-            title="OpenAI GPT-4.1 (최신)"
+            className={`text-white px-6 py-2 rounded-lg disabled:opacity-50 font-semibold shadow ${
+              provider === 'claude-opus'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'
+                : provider === 'claude'
+                ? 'bg-orange-600 hover:bg-orange-700'
+                : 'bg-emerald-600 hover:bg-emerald-700'
+            }`}
+            title={provider === 'claude-opus' ? 'Claude Opus 4 + Extended Thinking — 최고 품질 분석 (최대 3분)' : provider === 'claude' ? 'Claude Opus 4' : 'OpenAI GPT-4.1'}
           >
-            {asking === 'openai' ? '분석 중...' : 'OpenAI'}
-          </button>
-          <button
-            onClick={() => askQuestion('claude')}
-            disabled={!!asking || !question.trim()}
-            className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded-lg disabled:opacity-50"
-            title="Claude Opus 4 (최신)"
-          >
-            {asking === 'claude' ? '분석 중...' : 'Claude'}
-          </button>
-          <button
-            onClick={() => askQuestion('claude-opus')}
-            disabled={!!asking || !question.trim()}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2 rounded-lg disabled:opacity-50 font-semibold shadow"
-            title="Claude Opus 4 + Extended Thinking — 최고 품질 분석"
-          >
-            {asking === 'claude-opus' ? '심도 분석 중... (최대 3분)' : 'Opus (심도)'}
+            {asking
+              ? (provider === 'claude-opus' ? '심도 분석 중... (최대 3분)' : '분석 중...')
+              : `질의하기 (${provider === 'claude-opus' ? 'Opus 심도' : provider === 'claude' ? 'Claude' : 'OpenAI'})`}
           </button>
         </div>
 
