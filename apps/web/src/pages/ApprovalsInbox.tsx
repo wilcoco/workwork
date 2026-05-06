@@ -59,14 +59,42 @@ export function ApprovalsInbox() {
   }
 
   async function approve(requestId: string, cmt?: string) {
-    await apiJson(`/api/approvals/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: cmt || undefined }) });
-    await load();
+    setError(null);
+    try {
+      await apiJson(`/api/approvals/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: cmt || undefined }) });
+      await load();
+    } catch (e: any) {
+      const msg = e?.message || '승인 처리에 실패했습니다.';
+      setError(msg);
+      try { window.alert(`승인 실패: ${msg}`); } catch {}
+    }
   }
 
   async function reject(requestId: string, cmt?: string) {
     const bodyComment = typeof cmt === 'string' ? cmt : (window.prompt('반려 사유를 입력하세요') || '');
-    await apiJson(`/api/approvals/${requestId}/reject`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: bodyComment }) });
-    await load();
+    setError(null);
+    try {
+      await apiJson(`/api/approvals/${requestId}/reject`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: bodyComment }) });
+      await load();
+    } catch (e: any) {
+      const msg = e?.message || '반려 처리에 실패했습니다.';
+      setError(msg);
+      try { window.alert(`반려 실패: ${msg}`); } catch {}
+    }
+  }
+
+  // Determine whether the current user is the active approver for a request.
+  // The Approve/Reject endpoints only accept actions from the *current* step's
+  // approver, so showing the buttons to anyone else creates dead clicks.
+  function isCurrentApprover(a: any): boolean {
+    if (!userId) return false;
+    if (String(a?.status || '') !== 'PENDING') return false;
+    const steps = Array.isArray(a?.steps) ? a.steps : [];
+    if (steps.length > 0) {
+      const pending = steps.find((s: any) => s?.status === 'PENDING');
+      return Boolean(pending && String(pending.approverId || '') === userId);
+    }
+    return String(a?.currentApprover?.id || '') === userId;
   }
 
   return (
@@ -171,11 +199,16 @@ export function ApprovalsInbox() {
                 {reqName && <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, flexShrink: 0 }}>{reqName}</span>}
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
                 <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{when ? new Date(when).toLocaleDateString() : ''}</span>
-                {a.status === 'PENDING' && (
+                {a.status === 'PENDING' && isCurrentApprover(a) && (
                   <>
                     <button onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={compactPrimaryBtn}>승인</button>
                     <button onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={compactGhostBtn}>반려</button>
                   </>
+                )}
+                {a.status === 'PENDING' && !isCurrentApprover(a) && (
+                  <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0 }}>
+                    이전 결재자 대기 중{a?.currentApprover?.name ? ` · ${a.currentApprover.name}` : ''}
+                  </span>
                 )}
               </div>
             </div>
@@ -277,7 +310,7 @@ export function ApprovalsInbox() {
                       />
                     </div>
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      {n.status === 'PENDING' && (
+                      {n.status === 'PENDING' && isCurrentApprover(n) && (
                         <>
                           <button
                             onClick={async () => {
@@ -300,6 +333,11 @@ export function ApprovalsInbox() {
                             반려
                           </button>
                         </>
+                      )}
+                      {n.status === 'PENDING' && !isCurrentApprover(n) && (
+                        <div style={{ fontSize: 12, color: '#64748b' }}>
+                          이전 결재자의 승인을 기다리고 있습니다{n?.currentApprover?.name ? ` (현 차례: ${n.currentApprover.name})` : ''}.
+                        </div>
                       )}
                       <button onClick={() => { setComment(''); setActive(null); }} style={ghostBtn}>닫기</button>
                     </div>
