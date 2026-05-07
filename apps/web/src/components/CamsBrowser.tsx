@@ -336,15 +336,31 @@ function ListRow({
                 {error}
               </div>
             )}
-            {detail && (
-              config.format === 'proposal' ? (
-                <ProposalForm grids={Object.values(detail.grids || {})} config={config} />
+            {detail && (() => {
+              const detailGrids = Object.values(detail.grids || {});
+              const isEmpty = detailGrids.length === 0
+                || detailGrids.every((g) => !g.rows || g.rows.length === 0);
+              if (isEmpty) {
+                return (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 12, fontSize: 13, color: '#92400e' }}>
+                      서버가 CAMS 상세 페이지를 불러왔으나 파싱 가능한 데이터가 없습니다.
+                      {detail.sourceUrl && (
+                        <> <a href={detail.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1d4ed8', marginLeft: 6 }}>원본 페이지 열기 ↗</a></>
+                      )}
+                    </div>
+                    {detail.diagnostics && <DiagnosticsPanel d={detail.diagnostics} />}
+                  </div>
+                );
+              }
+              return config.format === 'proposal' ? (
+                <ProposalForm grids={detailGrids} config={config} fallbackHeader={row} />
               ) : config.format === 'voucher' ? (
-                <VoucherForm grids={Object.values(detail.grids || {})} config={config} />
+                <VoucherForm grids={detailGrids} config={config} fallbackHeader={row} />
               ) : (
-                <Doc grids={Object.values(detail.grids || {})} fallbackHeader={row} config={config} />
-              )
-            )}
+                <Doc grids={detailGrids} fallbackHeader={row} config={config} />
+              );
+            })()}
           </td>
         </tr>
       )}
@@ -611,7 +627,15 @@ function ApprovalBox({ grid }: { grid: ParsedGrid }) {
  * upstream grid shows up exactly once, regardless of whether our
  * `slpno` / `title` / `amount` aliases happen to match.
  */
-function ProposalForm({ grids, config }: { grids: ParsedGrid[]; config: CamsBrowserConfig }) {
+function ProposalForm({
+  grids,
+  config,
+  fallbackHeader,
+}: {
+  grids: ParsedGrid[];
+  config: CamsBrowserConfig;
+  fallbackHeader?: GridRow;
+}) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
   return (
     <article style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '32px 28px', position: 'relative' }}>
@@ -623,7 +647,7 @@ function ProposalForm({ grids, config }: { grids: ParsedGrid[]; config: CamsBrow
       <h1 style={{ fontSize: 30, fontWeight: 800, textAlign: 'center', letterSpacing: '0.5em', margin: '0 0 24px 0', color: '#0f172a', textIndent: '0.5em' }}>
         품 의 서
       </h1>
-      <Doc grids={grids} config={config} />
+      <Doc grids={grids} config={config} fallbackHeader={fallbackHeader} />
     </article>
   );
 }
@@ -636,7 +660,15 @@ function ProposalForm({ grids, config }: { grids: ParsedGrid[]; config: CamsBrow
  * and `VoucherLedger` falls back to a regular table if the
  * 차대구분 column shape is unfamiliar, so we never lose data.
  */
-function VoucherForm({ grids, config }: { grids: ParsedGrid[]; config: CamsBrowserConfig }) {
+function VoucherForm({
+  grids,
+  config,
+  fallbackHeader,
+}: {
+  grids: ParsedGrid[];
+  config: CamsBrowserConfig;
+  fallbackHeader?: GridRow;
+}) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
   return (
     <article style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '32px 28px', position: 'relative' }}>
@@ -648,7 +680,7 @@ function VoucherForm({ grids, config }: { grids: ParsedGrid[]; config: CamsBrows
       <h1 style={{ fontSize: 30, fontWeight: 800, textAlign: 'center', letterSpacing: '0.5em', margin: '0 0 24px 0', color: '#0f172a', textIndent: '0.5em' }}>
         전 표
       </h1>
-      <Doc grids={grids} config={config} />
+      <Doc grids={grids} config={config} fallbackHeader={fallbackHeader} />
     </article>
   );
 }
