@@ -620,12 +620,14 @@ function ApprovalBox({ grid }: { grid: ParsedGrid }) {
 }
 
 /**
- * Traditional Korean 품의서 layout. We *only* render the Korean
- * cosmetic chrome here — a centered "품 의 서" title and the
- * iconic top-right 결재란 stamp box — and then delegate the entire
- * body to the generic `Doc`. That way every field present on the
- * upstream grid shows up exactly once, regardless of whether our
- * `slpno` / `title` / `amount` aliases happen to match.
+ * Traditional Korean 품의서 layout, rendered in the specific field
+ * order the user requested:
+ *
+ *   번 · 품의번호 · 제목 · 목적 · 기안자 · 기안일자 · 완료예정일 ·
+ *   소요금액 · 지급조건 · 관련업체 · 내용
+ *
+ * 내용 is pulled out and rendered as a full-width bottom box, then
+ * 첨부파일. 결재선 / 입찰업체 are intentionally hidden in this view.
  */
 function ProposalForm({
   grids,
@@ -637,6 +639,40 @@ function ProposalForm({
   fallbackHeader?: GridRow;
 }) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
+  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
+  // Main info: prefer the explicit 품의 정보 grid; fall back to the
+  // first grid that has at least one row and isn't the approval line
+  // or the file list.
+  const main =
+    grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '품의 정보') ||
+    grids.find((g) => g !== approvers && g !== files && g.rows.length > 0) ||
+    grids[0];
+  const m: Record<string, any> = (main?.rows?.[0] as any) || {};
+  // Resolve a value across a list of candidate field codes; falls
+  // back to the list-level row data so an inline-expanded card still
+  // shows the columns the list already had.
+  const pick = (...keys: string[]): string => {
+    for (const k of keys) {
+      const v = m[k] ?? fallbackHeader?.[k];
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    return '';
+  };
+  const fmt = (raw: string, fieldHint = 'date') => formatValue(fieldHint, raw);
+
+  const seq = String(m._index != null ? Number(m._index) + 1 : (fallbackHeader as any)?._index != null ? Number((fallbackHeader as any)._index) + 1 : '');
+  const slpno = pick('slpno', 'no');
+  const title = pick('title', 'aspnote');
+  const purpose = pick('purpose');
+  const drafter = pick('sname', 'user', 'name', 'drafter', 'regname');
+  const writeDate = fmt(pick('date', 'regdt', 'slpdt'));
+  const dueDate = fmt(pick('duedate', 'delvdt'));
+  const amountRaw = pick('amount', 'amt');
+  const amount = amountRaw ? `${fmtAmt(parseAmt(amountRaw))} 원` : '';
+  const payterm = pick('payterm', 'paymethod');
+  const company = pick('company', 'vendor', 'vendornm');
+  const contents = pick('contents', 'content', 'detail', 'description');
+
   return (
     <article style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '32px 28px', position: 'relative' }}>
       {approvers && approvers.rows.length > 0 && (
@@ -647,7 +683,80 @@ function ProposalForm({
       <h1 style={{ fontSize: 30, fontWeight: 800, textAlign: 'center', letterSpacing: '0.5em', margin: '0 0 24px 0', color: '#0f172a', textIndent: '0.5em' }}>
         품 의 서
       </h1>
-      <Doc grids={grids} config={config} fallbackHeader={fallbackHeader} />
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: 110 }} />
+          <col />
+          <col style={{ width: 110 }} />
+          <col />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th style={formHeader}>번</th>
+            <td style={formCell}>{seq}</td>
+            <th style={formHeader}>품의번호</th>
+            <td style={{ ...formCell, fontFamily: 'monospace' }}>{slpno}</td>
+          </tr>
+          <tr>
+            <th style={formHeader}>제 목</th>
+            <td style={{ ...formCell, fontWeight: 700 }} colSpan={3}>{title || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+          </tr>
+          <tr>
+            <th style={formHeader}>목 적</th>
+            <td style={{ ...formCell, whiteSpace: 'pre-wrap' }} colSpan={3}>{purpose || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+          </tr>
+          <tr>
+            <th style={formHeader}>기 안 자</th>
+            <td style={formCell}>{drafter}</td>
+            <th style={formHeader}>기안일자</th>
+            <td style={formCell}>{writeDate}</td>
+          </tr>
+          <tr>
+            <th style={formHeader}>완료예정일</th>
+            <td style={formCell}>{dueDate}</td>
+            <th style={formHeader}>소요금액</th>
+            <td style={{ ...formCell, fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{amount}</td>
+          </tr>
+          <tr>
+            <th style={formHeader}>지급조건</th>
+            <td style={formCell}>{payterm}</td>
+            <th style={formHeader}>관련업체</th>
+            <td style={formCell}>{company}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* 내용 — 큰 박스 */}
+      <section style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>내 용</div>
+        <div
+          style={{
+            border: '1px solid #94a3b8',
+            borderRadius: 4,
+            padding: '14px 16px',
+            background: '#FAFAF7',
+            minHeight: 140,
+            fontSize: 13,
+            lineHeight: 1.7,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            color: contents ? '#1e293b' : '#cbd5e1',
+          }}
+        >
+          {contents || '— 내용 없음 —'}
+        </div>
+      </section>
+
+      {/* 첨부파일 */}
+      {files && files.rows.length > 0 && (
+        <section style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+            첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
+          </div>
+          <CompactTable grid={files} />
+        </section>
+      )}
     </article>
   );
 }
