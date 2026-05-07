@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+
+/** Context: the active page's `field code -> Korean label` resolver. */
+const LabelContext = createContext<(field: string) => string>((f) => defaultLabelFor(f));
+const useLabelFor = () => useContext(LabelContext);
 
 /**
  * Generic browser for CAMS document pages (proposals, vouchers, ...).
@@ -22,6 +26,12 @@ export interface CamsBrowserConfig {
   docNoun: string;
   /** Section label heuristic for the list grid (id === 'myDataGrid'). */
   listLabel: string;
+  /**
+   * Per-page label overrides applied on top of the shared default map.
+   * The same upstream field code can mean different things on different
+   * pages — e.g. `slpno` = 품의번호 on proposals but 전표번호 on vouchers.
+   */
+  labelOverrides?: Record<string, string>;
 }
 
 interface GridRow {
@@ -86,7 +96,15 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
   const grids = data?.grids ? Object.values(data.grids) : [];
   const isDetail = Boolean(data?.slpNo);
 
+  // Per-page label resolver (default map + optional config overrides).
+  const labelFor = useMemo(() => {
+    const overrides = config.labelOverrides;
+    if (!overrides || Object.keys(overrides).length === 0) return defaultLabelFor;
+    return (f: string) => overrides[f] ?? defaultLabelFor(f);
+  }, [config.labelOverrides]);
+
   return (
+    <LabelContext.Provider value={labelFor}>
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
       <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>{config.pageTitle}</h2>
       <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
@@ -156,12 +174,14 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
         </>
       )}
     </div>
+    </LabelContext.Provider>
   );
 }
 
 /* ---------- List with inline-expandable detail ---------- */
 
 function ListWithExpand({ grids, config }: { grids: ParsedGrid[]; config: CamsBrowserConfig }) {
+  const labelFor = useLabelFor();
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
   if (!listGrid) return null;
 
@@ -271,6 +291,7 @@ function Doc({
   fallbackHeader?: GridRow;
   config: CamsBrowserConfig;
 }) {
+  const labelFor = useLabelFor();
   const main =
     grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '품의 정보') ||
     grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 정보') ||
@@ -279,7 +300,12 @@ function Doc({
   const bidders = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '입찰업체');
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
   const lineItems = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 명세');
-  const others = grids.filter((g) => g !== main && g !== files && g !== bidders && g !== approvers && g !== lineItems);
+  const others = grids.filter((g) =>
+    g !== main && g !== files && g !== bidders && g !== approvers && g !== lineItems
+    // Skip the redundant single-row debit/credit totals grids; the
+    // voucher ledger already displays the totals on each side.
+    && sectionLabelFor(g.id, g.fields, config) !== '_totals',
+  );
 
   const mainRow: Record<string, any> = (main?.rows?.[0] as any) || {};
   const get = (k: string) => String(mainRow[k] ?? fallbackHeader?.[k] ?? '').trim();
@@ -415,6 +441,7 @@ function PropertySheet({
   skipFields?: Set<string>;
   highlight?: Record<string, string | undefined>;
 }) {
+  const labelFor = useLabelFor();
   const row = grid.rows[0] || {};
   const entries = grid.fields
     .filter((f) => !(skipFields && skipFields.has(f)))
@@ -486,13 +513,25 @@ function VoucherLedger({ grid }: { grid: ParsedGrid }) {
   const fields = new Set(grid.fields);
   const hasDebit = fields.has('debit');
   const hasCredit = fields.has('credit');
-  const hasDrcr = fields.has('drcr');
+  // The 차대구분 column has been seen as `drcr`, `drcrgb`, or `drcrgubun`
+  // depending on the upstream version. Try them in order.
+  const drcrKey = ['drcr', 'drcrgb', 'drcrgubun', 'gubun'].find((k) => fields.has(k));
   const acctCdKey = ['acctcd', 'accountcd', 'acctcode'].find((k) => fields.has(k));
   const acctNmKey = ['acctnm', 'accountnm', 'acctname'].find((k) => fields.has(k));
   const amtKey = ['amount', 'amt', 'totamt'].find((k) => fields.has(k));
   const noteKey = ['summary', 'aspnote', 'note', 'remarks', 'content', 'contents'].find((k) => fields.has(k));
+  const costGbKey = ['costgb', 'costgubun', 'cstgb'].find((k) => fields.has(k));
+  const costOwnKey = ['costown', 'costownr', 'cstown'].find((k) => fields.has(k));
 
-  type LedgerRow = { acctcd?: string; acctnm?: string; amt: number; note?: string; _index: number };
+  type LedgerRow = {
+    acctcd?: string;
+    acctnm?: string;
+    amt: number;
+    note?: string;
+    costgb?: string;
+    costown?: string;
+    _index: number;
+  };
   const debitRows: LedgerRow[] = [];
   const creditRows: LedgerRow[] = [];
 
@@ -500,17 +539,19 @@ function VoucherLedger({ grid }: { grid: ParsedGrid }) {
     const acctcd = acctCdKey ? String((row as any)[acctCdKey] ?? '') : undefined;
     const acctnm = acctNmKey ? String((row as any)[acctNmKey] ?? '') : undefined;
     const note = noteKey ? String((row as any)[noteKey] ?? '') : undefined;
+    const costgb = costGbKey ? String((row as any)[costGbKey] ?? '') : undefined;
+    const costown = costOwnKey ? String((row as any)[costOwnKey] ?? '') : undefined;
     if (hasDebit || hasCredit) {
       const d = parseAmt((row as any).debit);
       const c = parseAmt((row as any).credit);
-      if (d > 0) debitRows.push({ acctcd, acctnm, amt: d, note, _index: row._index });
-      if (c > 0) creditRows.push({ acctcd, acctnm, amt: c, note, _index: row._index });
-    } else if (hasDrcr) {
-      const flag = String((row as any).drcr ?? '').trim();
+      if (d > 0) debitRows.push({ acctcd, acctnm, amt: d, note, costgb, costown, _index: row._index });
+      if (c > 0) creditRows.push({ acctcd, acctnm, amt: c, note, costgb, costown, _index: row._index });
+    } else if (drcrKey) {
+      const flag = String((row as any)[drcrKey] ?? '').trim();
       const amt = amtKey ? parseAmt((row as any)[amtKey]) : 0;
-      const entry: LedgerRow = { acctcd, acctnm, amt, note, _index: row._index };
-      if (/^(차|D|DR|debit|1)$/i.test(flag)) debitRows.push(entry);
-      else if (/^(대|C|CR|credit|2)$/i.test(flag)) creditRows.push(entry);
+      const entry: LedgerRow = { acctcd, acctnm, amt, note, costgb, costown, _index: row._index };
+      if (/^(차|차변|D|DR|debit|1)$/i.test(flag)) debitRows.push(entry);
+      else if (/^(대|대변|C|CR|credit|2)$/i.test(flag)) creditRows.push(entry);
       else debitRows.push(entry); // default to debit if ambiguous
     } else {
       // No way to classify — fall back to plain table rendering.
@@ -520,11 +561,13 @@ function VoucherLedger({ grid }: { grid: ParsedGrid }) {
 
   const debitTotal = debitRows.reduce((s, r) => s + r.amt, 0);
   const creditTotal = creditRows.reduce((s, r) => s + r.amt, 0);
+  const showAcctNm = Boolean(acctNmKey);
+  const showCost = Boolean(costGbKey) || Boolean(costOwnKey);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-      <LedgerSide title="차변" rows={debitRows} total={debitTotal} />
-      <LedgerSide title="대변" rows={creditRows} total={creditTotal} borderLeft />
+      <LedgerSide title="차변" rows={debitRows} total={debitTotal} showAcctNm={showAcctNm} showCost={showCost} />
+      <LedgerSide title="대변" rows={creditRows} total={creditTotal} showAcctNm={showAcctNm} showCost={showCost} borderLeft />
     </div>
   );
 }
@@ -533,13 +576,19 @@ function LedgerSide({
   title,
   rows,
   total,
+  showAcctNm,
+  showCost,
   borderLeft,
 }: {
   title: string;
-  rows: Array<{ acctcd?: string; acctnm?: string; amt: number; note?: string; _index: number }>;
+  rows: Array<{ acctcd?: string; acctnm?: string; amt: number; note?: string; costgb?: string; costown?: string; _index: number }>;
   total: number;
+  showAcctNm: boolean;
+  showCost: boolean;
   borderLeft?: boolean;
 }) {
+  // Total table column count for the totals row's `colSpan`.
+  const totalCols = 1 /* 계정코드 */ + (showAcctNm ? 1 : 0) + 1 /* 적요 */ + (showCost ? 2 : 0) + 1 /* 금액 */;
   return (
     <div style={{ borderLeft: borderLeft ? '1px solid #e5e7eb' : 'none' }}>
       <div style={{ background: '#f8fafc', padding: '8px 12px', fontSize: 12, fontWeight: 800, color: title === '차변' ? '#0F3D73' : '#9F1239', borderBottom: '1px solid #e5e7eb' }}>
@@ -551,33 +600,36 @@ function LedgerSide({
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: 'left' }}>
-              <th style={{ ...th, width: 100 }}>계정</th>
-              <th style={th}>계정명</th>
-              <th style={{ ...th, textAlign: 'right' }}>금액</th>
+              <th style={{ ...th, width: 90 }}>계정코드</th>
+              {showAcctNm && <th style={th}>계정명</th>}
               <th style={th}>적요</th>
+              {showCost && <th style={th}>원가구분</th>}
+              {showCost && <th style={th}>원가소속</th>}
+              <th style={{ ...th, textAlign: 'right' }}>금액</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={`${r._index}-${i}`} style={{ borderTop: '1px solid #e5e7eb' }}>
                 <td style={{ ...td, fontFamily: 'monospace', color: '#64748b' }}>{r.acctcd || ''}</td>
-                <td style={td}>{r.acctnm || ''}</td>
+                {showAcctNm && <td style={td}>{r.acctnm || ''}</td>}
+                <td style={{ ...td, color: '#64748b' }}>{r.note || ''}</td>
+                {showCost && <td style={td}>{r.costgb || ''}</td>}
+                {showCost && <td style={td}>{r.costown || ''}</td>}
                 <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                   {fmtAmt(r.amt)}
                 </td>
-                <td style={{ ...td, color: '#64748b' }}>{r.note || ''}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr style={{ borderTop: '2px solid #cbd5e1', background: '#fafafa' }}>
-              <td style={td} colSpan={2}>
-                <span style={{ fontWeight: 700, color: '#475569' }}>합계</span>
+              <td style={td} colSpan={totalCols - 1}>
+                <span style={{ fontWeight: 700, color: '#475569' }}>{title}합계</span>
               </td>
               <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800 }}>
                 {fmtAmt(total)}
               </td>
-              <td style={td}></td>
             </tr>
           </tfoot>
         </table>
@@ -599,6 +651,7 @@ function fmtAmt(n: number): string {
 }
 
 function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: string[] }) {
+  const labelFor = useLabelFor();
   // If `onlyFields` is provided, restrict to that intersection while
   // preserving the requested order. Empty (no overlap) falls back to the
   // grid's own field order so we never end up with a 0-column table.
@@ -685,6 +738,15 @@ function sectionLabelFor(id: string, fields: string[], config: CamsBrowserConfig
   if (fset.has('bidamount') || fset.has('bidamt') || fset.has('biddername')) return '입찰업체';
   if (fset.has('filename') || fset.has('imgsort') || fset.has('sort')) return '첨부파일';
   // Voucher line items typically have an account/debit/credit shape.
+  // Single-row totals grids on the voucher detail page (one for debit
+  // total, one for credit total). VoucherLedger already shows totals
+  // beneath each side, so these grids are redundant — Doc filters them
+  // out by checking for this label.
+  if (
+    (fset.has('dramt') || fset.has('drsum') || fset.has('drtot') || fset.has('debitsum') ||
+     fset.has('cramt') || fset.has('crsum') || fset.has('crtot') || fset.has('creditsum'))
+    && !fset.has('acctcd')
+  ) return '_totals';
   if (fset.has('debit') || fset.has('credit') || fset.has('acctcd') || fset.has('acctnm')) return '전표 명세';
   if (fset.has('aspnote')) return '전표 정보';
   if (fset.has('title') || fset.has('purpose') || fset.has('amount') || fset.has('amt')) return '품의 정보';
@@ -696,19 +758,27 @@ function sectionLabelFor(id: string, fields: string[], config: CamsBrowserConfig
 const th: React.CSSProperties = { padding: '10px 12px', fontSize: 12, fontWeight: 700, color: '#475569', whiteSpace: 'nowrap' };
 const td: React.CSSProperties = { padding: '10px 12px', color: '#1e293b', verticalAlign: 'top' };
 
-function labelFor(field: string): string {
+function defaultLabelFor(field: string): string {
   // Korean labels for the field codes we've actually seen in the
   // PowerApps source plus the ones the upstream pages typically expose.
   // Unknown codes fall through to the raw key so we never hide data.
+  // Per-page overrides (see `CamsBrowserConfig.labelOverrides`) layer
+  // on top of this for codes whose meaning depends on the document
+  // family (e.g. `slpno` = 품의번호 on proposals but 전표번호 on vouchers).
   const map: Record<string, string> = {
     // — Identifiers / who / when
     slpno: '슬립번호',
     no: '번호',
     seq: '순번',
     sno: '순번',
+    seq2: '연번',
+    lineno: '연번',
+    lno: '연번',
     sname: '기안자',
     user: '기안자',
     name: '기안자',
+    drafter: '품의자',
+    regname: '품의자',
     empno: '사번',
     empname: '사원명',
     sabun: '사번',
@@ -721,10 +791,18 @@ function labelFor(field: string): string {
     date: '일자',
     sdate: '시작일',
     edate: '종료일',
+    slpdt: '기표일자',
+    accdate: '기표일자',
+    inpdt: '입력일',
+    inputdate: '입력일',
     duedate: '완료예정일',
     delvdt: '납기일',
     regdt: '등록일',
     updt: '수정일',
+    aprdt: '결재일',
+    apdt: '결재일',
+    signdt: '결재일',
+    signdate: '결재일',
     // — Subject / content
     title: '제목',
     aspnote: '적요',
@@ -738,6 +816,17 @@ function labelFor(field: string): string {
     memo: '메모',
     remarks: '비고',
     reason: '사유',
+    // — Transaction
+    trantype: '거래형태',
+    tranggu: '거래형태',
+    trgubun: '거래형태',
+    dealtype: '거래형태',
+    // — Approval / cancel flags
+    apryn: '결재여부',
+    signyn: '결재여부',
+    approveyn: '결재여부',
+    cancelyn: '취소여부',
+    canceln: '취소여부',
     // — Money / terms
     amount: '금액',
     amt: '금액',
@@ -766,23 +855,45 @@ function labelFor(field: string): string {
     final: '전결',
     // — Files
     filename: '파일명',
+    fname: '파일명',
     filesize: '파일크기',
     sort: '구분',
     imgsort: '구분',
+    gfile: 'GFILE',
     // — Approvals
     approvalorder: '결재순서',
     signorder: '결재순서',
     approvalstatus: '결재상태',
     signstatus: '결재상태',
-    signdate: '결재일',
     opinion: '결재의견',
     comment: '결재의견',
     // — Voucher accounting
     acctcd: '계정코드',
     acctnm: '계정명',
+    accountcd: '계정코드',
+    accountnm: '계정명',
+    acctcode: '계정코드',
+    acctname: '계정명',
     debit: '차변',
     credit: '대변',
-    drcr: '차/대',
+    drcr: '차대구분',
+    drcrgb: '차대구분',
+    drcrgubun: '차대구분',
+    gubun: '구분',
+    dramt: '차변합계',
+    drsum: '차변합계',
+    drtot: '차변합계',
+    debitsum: '차변합계',
+    cramt: '대변합계',
+    crsum: '대변합계',
+    crtot: '대변합계',
+    creditsum: '대변합계',
+    costgb: '원가구분',
+    costgubun: '원가구분',
+    cstgb: '원가구분',
+    costown: '원가소속',
+    costownr: '원가소속',
+    cstown: '원가소속',
     slpkind: '전표종류',
     slptype: '전표종류',
   };
