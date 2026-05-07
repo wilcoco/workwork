@@ -245,6 +245,12 @@ function ListWithExpand({
     ? listGrid.rows.filter((row) => cols.some((c) => String(row[c] ?? '').toLowerCase().includes(q)))
     : listGrid.rows;
 
+  // Single-open accordion: only one row may be expanded at a time so
+  // opening a new proposal automatically collapses the previous one.
+  // We key by the upstream row index since the underlying list is
+  // stable across renders.
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#475569' }}>
@@ -270,7 +276,17 @@ function ListWithExpand({
               </tr>
             ) : (
               visibleRows.map((row, i) => (
-                <ListRow key={row._index} row={row} cols={cols} index={i} config={config} />
+                <ListRow
+                  key={row._index}
+                  row={row}
+                  cols={cols}
+                  index={i}
+                  config={config}
+                  isOpen={openIndex === Number(row._index)}
+                  onToggle={() =>
+                    setOpenIndex((cur) => (cur === Number(row._index) ? null : Number(row._index)))
+                  }
+                />
               ))
             )}
           </tbody>
@@ -285,33 +301,43 @@ function ListRow({
   cols,
   index,
   config,
+  isOpen,
+  onToggle,
 }: {
   row: GridRow;
   cols: string[];
   index: number;
   config: CamsBrowserConfig;
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const open = isOpen;
   const [detail, setDetail] = useState<ListResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const slpNo = String(row['slpno'] ?? '').trim();
 
-  async function toggle() {
-    if (open) { setOpen(false); return; }
-    setOpen(true);
-    if (!slpNo || detail || loading) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiJson<ListResp>(`${config.apiPath}/list?slpNo=${encodeURIComponent(slpNo)}`);
-      setDetail(res);
-    } catch (e: any) {
-      setError(e?.message || '조회 실패');
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Lazily fetch the detail the first time the parent toggles us
+  // open. Cached afterwards so re-opening the same row is instant.
+  useEffect(() => {
+    if (!isOpen || !slpNo || detail || loading) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await apiJson<ListResp>(`${config.apiPath}/list?slpNo=${encodeURIComponent(slpNo)}`);
+        if (!cancelled) setDetail(res);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || '조회 실패');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, slpNo, config.apiPath, detail, loading]);
+
+  const toggle = onToggle;
 
   return (
     <>
