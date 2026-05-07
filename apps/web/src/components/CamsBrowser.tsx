@@ -228,6 +228,12 @@ function ListWithExpand({
   filterText: string;
 }) {
   const labelFor = useLabelFor();
+  // Single-open accordion: only one row may be expanded at a time so
+  // opening a new proposal automatically collapses the previous one.
+  // Declared BEFORE any conditional early-return so hook order is
+  // stable across renders (Rules of Hooks).
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
   if (!listGrid) return null;
 
@@ -244,12 +250,6 @@ function ListWithExpand({
   const visibleRows = q
     ? listGrid.rows.filter((row) => cols.some((c) => String(row[c] ?? '').toLowerCase().includes(q)))
     : listGrid.rows;
-
-  // Single-open accordion: only one row may be expanded at a time so
-  // opening a new proposal automatically collapses the previous one.
-  // We key by the upstream row index since the underlying list is
-  // stable across renders.
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
