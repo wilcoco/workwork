@@ -920,11 +920,12 @@ function getWorklogFirstImage(w: any): string {
 function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; filterTeam?: string; filterName?: string; viewMode?: 'summary' | 'full' }) {
   const [wl, setWl] = useState<any | null>(null);
   const [prev, setPrev] = useState<Array<{ id: string; authorId?: string; authorName?: string; authorTeam?: string | null; content: string; createdAt: string }>>([]);
-  // The worklog body is collapsed by default so comments stand out
-  // on the right rail. Users can expand on demand to read the full
-  // 업무일지 inside the card. `viewMode === 'full'` (used by the
-  // "전체 보기" modal) starts expanded.
-  const [bodyOpen, setBodyOpen] = useState<boolean>(viewMode === 'full');
+  // The worklog body is always collapsed by default so the comments
+  // stand out. Users opt-in via the 펼치기 toggle to read the full
+  // 업무일지. (Previously this was open in the "전체 보기" modal but
+  // the user wants 접기 to be the universal default.)
+  const [bodyOpen, setBodyOpen] = useState<boolean>(false);
+  void viewMode;
   useEffect(() => {
     (async () => {
       try {
