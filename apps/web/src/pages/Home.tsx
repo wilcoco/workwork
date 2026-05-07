@@ -1107,18 +1107,22 @@ function CommentsBox({
     setError(null);
     try {
       const r = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=${encodeURIComponent('Worklog')}&subjectId=${encodeURIComponent(worklogId)}&limit=100`);
-      setItems(
-        (r.items || []).map((x: any) => ({
-          id: x.id,
-          authorId: x.authorId,
-          authorName: x.authorName,
-          authorTeam: x.authorTeam ?? null,
-          content: x.content,
-          createdAt: x.createdAt,
-          type: x.type,
-          instruction: x.instruction,
-        })),
+      // Sort ascending by createdAt so the newest comment appears at
+      // the bottom — matches conventional chat/threaded comment UX.
+      const mapped = (r.items || []).map((x: any) => ({
+        id: x.id,
+        authorId: x.authorId,
+        authorName: x.authorName,
+        authorTeam: x.authorTeam ?? null,
+        content: x.content,
+        createdAt: x.createdAt,
+        type: x.type,
+        instruction: x.instruction,
+      }));
+      mapped.sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
+      setItems(mapped);
     } catch (e) {
       setError('댓글 조회 실패');
     } finally {
