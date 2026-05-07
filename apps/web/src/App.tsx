@@ -186,12 +186,20 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
   const [me, setMe] = useState<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' } | null | undefined>(undefined);
   const isCeo = me?.role === 'CEO';
+  // "대표 이상" — 임원/대표에게만 접근을 허용하는 메뉴 (품의서/전표 등).
+  const isExec = me?.role === 'CEO' || me?.role === 'EXEC';
   const canEvaluate = me?.role === 'CEO' || me?.role === 'EXEC' || me?.role === 'MANAGER' || me?.role === 'EXTERNAL';
 
   const adminGuard = (child: any) => {
     if (!token) return <Navigate to="/login" replace />;
     if (me === undefined) return <div style={{ color: '#64748b' }}>권한 확인중...</div>;
     return isCeo ? child : <Navigate to="/" replace />;
+  };
+
+  const execGuard = (child: any) => {
+    if (!token) return <Navigate to="/login" replace />;
+    if (me === undefined) return <div style={{ color: '#64748b' }}>권한 확인중...</div>;
+    return isExec ? child : <Navigate to="/" replace />;
   };
 
   const evalGuard = (child: any) => {
@@ -218,7 +226,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   return (
     <>
       {!isEmbed && <DeployBanner />}
-      {!isEmbed && <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} canEvaluate={!!canEvaluate} />}
+      {!isEmbed && <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} isExec={!!isExec} canEvaluate={!!canEvaluate} />}
       {!isEmbed && (
         <div className="container">
           <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} canEvaluate={!!canEvaluate} />
@@ -315,8 +323,8 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/worklogs/planner" element={<PlannerTasks />} />
           <Route path="/company-data" element={<CompanyDataAI />} />
           <Route path="/worklog-analysis" element={<WorklogAnalysis />} />
-          <Route path="/proposals" element={<Proposals />} />
-          <Route path="/vouchers" element={<Vouchers />} />
+          <Route path="/proposals" element={execGuard(<Proposals />)} />
+          <Route path="/vouchers" element={execGuard(<Vouchers />)} />
           {SHOW_COOPS && (
             <>
               <Route path="/coops/request" element={<CoopsRequest />} />
@@ -331,7 +339,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   );
 }
 
-function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean; canEvaluate: boolean }) {
+function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean; isExec: boolean; canEvaluate: boolean }) {
   const nav = useNavigate();
   const location = useLocation();
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
@@ -437,8 +445,12 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
         <NavDropdown label="회의록" active={location.pathname.startsWith('/meetings')}>
           <Link to="/meetings">회의록</Link>
         </NavDropdown>
-        <Link to="/proposals" className={location.pathname.startsWith('/proposals') ? 'active' : ''} style={{ marginLeft: 12 }}>품의서</Link>
-        <Link to="/vouchers" className={location.pathname.startsWith('/vouchers') ? 'active' : ''} style={{ marginLeft: 12 }}>전표</Link>
+        {isExec && (
+          <>
+            <Link to="/proposals" className={location.pathname.startsWith('/proposals') ? 'active' : ''} style={{ marginLeft: 12 }}>품의서</Link>
+            <Link to="/vouchers" className={location.pathname.startsWith('/vouchers') ? 'active' : ''} style={{ marginLeft: 12 }}>전표</Link>
+          </>
+        )}
         <NavDropdown label="데이터 AI" active={location.pathname.startsWith('/company-data') || location.pathname.startsWith('/worklog-analysis')}>
           <Link to="/company-data">주요 수치 자료 분석</Link>
           <Link to="/worklog-analysis">업무 자료 분석</Link>
