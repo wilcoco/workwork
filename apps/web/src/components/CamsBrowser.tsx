@@ -822,13 +822,32 @@ function ProposalForm({
 }
 
 /**
- * Traditional Korean 전표 layout. Same approach as `ProposalForm` —
- * keep the cosmetic Korean header + stamp box, delegate the body to
- * `Doc`. The body already includes the symmetric 차변/대변 ledger
- * because `Doc` recognises the line-items grid via `sectionLabelFor`
- * and `VoucherLedger` falls back to a regular table if the
- * 차대구분 column shape is unfamiliar, so we never lose data.
+ * Positional column mapping for the voucher detail header grid.
+ * The upstream emits its fields in this exact order:
+ *
+ *   index  ko-label    type
+ *   0      순번        sequence (hidden)
+ *   1      전표번호    identifier (mono)
+ *   2      기표일자    date (YYYYMMDD → YYYY-MM-DD)
+ *   3      입력일      datetime (already formatted, e.g. "2026-05-06 오전 10:36:58")
+ *   4      거래형태    string (대체/입금/출금/etc.)
+ *   5      결재여부    string (미결/결재/etc.)
+ *   6      취소여부    Y/N
+ *   7      품의자      string (e.g. "203347 정슬아")
+ *   8      결재일      date
  */
+const VOUCHER_HEADER_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'date' }> = [
+  { label: '순번',     kind: 'text' }, // index 0 — hidden in render
+  { label: '전표번호', kind: 'mono' },
+  { label: '기표일자', kind: 'date' },
+  { label: '입력일',   kind: 'text' },
+  { label: '거래형태', kind: 'text' },
+  { label: '결재여부', kind: 'text' },
+  { label: '취소여부', kind: 'text' },
+  { label: '품의자',   kind: 'text' },
+  { label: '결재일',   kind: 'date' },
+];
+
 function VoucherForm({
   grids,
   config,
@@ -839,6 +858,45 @@ function VoucherForm({
   fallbackHeader?: GridRow;
 }) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
+  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
+  const lineItems = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 명세');
+  // Header info: first non-hidden grid (skip approvers/files/lineItems
+  // and the single-row debit/credit totals grids).
+  const headerGrid =
+    grids.find((g) =>
+      g !== approvers && g !== files && g !== lineItems
+      && sectionLabelFor(g.id, g.fields, config) !== '_totals'
+      && g.rows.length > 0,
+    ) || grids[0];
+  const row: Record<string, any> = (headerGrid?.rows?.[0] as any) || {};
+  const fields = headerGrid?.fields || [];
+
+  const valueAt = (idx: number): string => {
+    const fc = fields[idx];
+    if (fc != null) {
+      const v = row[fc];
+      if (v != null && String(v).trim()) return String(v).trim();
+    }
+    if (fallbackHeader) {
+      const fbKeys = Object.keys(fallbackHeader).filter((k) => k !== '_index' && k !== '_grid');
+      const fk = fbKeys[idx];
+      if (fk) {
+        const v = (fallbackHeader as any)[fk];
+        if (v != null && String(v).trim()) return String(v).trim();
+      }
+    }
+    return '';
+  };
+
+  const fmtCell = (idx: number): string => {
+    const raw = valueAt(idx);
+    if (!raw) return '';
+    const layout = VOUCHER_HEADER_LAYOUT[idx];
+    if (!layout) return raw;
+    if (layout.kind === 'date') return formatValue('date', raw);
+    return raw;
+  };
+
   return (
     <article style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '32px 28px', position: 'relative' }}>
       {approvers && approvers.rows.length > 0 && (
@@ -849,7 +907,61 @@ function VoucherForm({
       <h1 style={{ fontSize: 30, fontWeight: 800, textAlign: 'center', letterSpacing: '0.5em', margin: '0 0 24px 0', color: '#0f172a', textIndent: '0.5em' }}>
         전 표
       </h1>
-      <Doc grids={grids} config={config} fallbackHeader={fallbackHeader} />
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, tableLayout: 'fixed' }}>
+        <colgroup>
+          <col style={{ width: 110 }} />
+          <col />
+          <col style={{ width: 110 }} />
+          <col />
+        </colgroup>
+        <tbody>
+          <tr>
+            <th style={formHeader}>{VOUCHER_HEADER_LAYOUT[1].label}</th>
+            <td style={{ ...formCell, fontFamily: 'monospace' }}>{fmtCell(1)}</td>
+            <th style={formHeader}>{VOUCHER_HEADER_LAYOUT[2].label}</th>
+            <td style={formCell}>{fmtCell(2)}</td>
+          </tr>
+          <tr>
+            <th style={formHeader}>{VOUCHER_HEADER_LAYOUT[3].label}</th>
+            <td style={formCell}>{fmtCell(3)}</td>
+            <th style={formHeader}>{VOUCHER_HEADER_LAYOUT[4].label}</th>
+            <td style={formCell}>{fmtCell(4)}</td>
+          </tr>
+          <tr>
+            <th style={formHeader}>{VOUCHER_HEADER_LAYOUT[5].label}</th>
+            <td style={formCell}>{fmtCell(5)}</td>
+            <th style={formHeader}>{VOUCHER_HEADER_LAYOUT[6].label}</th>
+            <td style={formCell}>{fmtCell(6)}</td>
+          </tr>
+          <tr>
+            <th style={formHeader}>{VOUCHER_HEADER_LAYOUT[7].label}</th>
+            <td style={formCell}>{fmtCell(7)}</td>
+            <th style={formHeader}>{VOUCHER_HEADER_LAYOUT[8].label}</th>
+            <td style={formCell}>{fmtCell(8)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* 차/대 명세 ledger */}
+      {lineItems && lineItems.rows.length > 0 && (
+        <section style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>전표 명세</div>
+          <div style={{ border: '1px solid #94a3b8', borderRadius: 4, overflow: 'hidden' }}>
+            <VoucherLedger grid={lineItems} />
+          </div>
+        </section>
+      )}
+
+      {/* 첨부파일 */}
+      {files && files.rows.length > 0 && (
+        <section style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+            첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
+          </div>
+          <CompactTable grid={files} />
+        </section>
+      )}
     </article>
   );
 }
@@ -937,11 +1049,14 @@ function VoucherLedger({ grid }: { grid: ParsedGrid }) {
   const hasCredit = fields.has('credit');
   // The 차대구분 column has been seen as `drcr`, `drcrgb`, or `drcrgubun`
   // depending on the upstream version. Try them in order.
-  const drcrKey = ['drcr', 'drcrgb', 'drcrgubun', 'gubun'].find((k) => fields.has(k));
-  const acctCdKey = ['acctcd', 'accountcd', 'acctcode'].find((k) => fields.has(k));
+  // Field-code aliases observed across CAMS versions. The `asp*`
+  // prefixed names are the ones the user confirmed for the current
+  // upstream (aspdcsg=차대구분, aspacd=계정코드/계정명, aspamt=금액).
+  const drcrKey = ['aspdcsg', 'drcr', 'drcrgb', 'drcrgubun', 'gubun'].find((k) => fields.has(k));
+  const acctCdKey = ['aspacd', 'acctcd', 'accountcd', 'acctcode'].find((k) => fields.has(k));
   const acctNmKey = ['acctnm', 'accountnm', 'acctname'].find((k) => fields.has(k));
-  const amtKey = ['amount', 'amt', 'totamt'].find((k) => fields.has(k));
-  const noteKey = ['summary', 'aspnote', 'note', 'remarks', 'content', 'contents'].find((k) => fields.has(k));
+  const amtKey = ['aspamt', 'amount', 'amt', 'totamt'].find((k) => fields.has(k));
+  const noteKey = ['aspnote', 'summary', 'note', 'remarks', 'content', 'contents'].find((k) => fields.has(k));
   const costGbKey = ['costgb', 'costgubun', 'cstgb'].find((k) => fields.has(k));
   const costOwnKey = ['costown', 'costownr', 'cstown'].find((k) => fields.has(k));
 
@@ -1212,10 +1327,19 @@ function sectionLabelFor(id: string, fields: string[], config: CamsBrowserConfig
   // out by checking for this label.
   if (
     (fset.has('dramt') || fset.has('drsum') || fset.has('drtot') || fset.has('debitsum') ||
-     fset.has('cramt') || fset.has('crsum') || fset.has('crtot') || fset.has('creditsum'))
-    && !fset.has('acctcd')
+     fset.has('cramt') || fset.has('crsum') || fset.has('crtot') || fset.has('creditsum') ||
+     // Some upstream versions use literal Korean field codes for the
+     // single-row totals grids (차변합계 / 대변합계).
+     fset.has('차변합계') || fset.has('대변합계'))
+    && !fset.has('acctcd') && !fset.has('aspacd')
   ) return '_totals';
-  if (fset.has('debit') || fset.has('credit') || fset.has('acctcd') || fset.has('acctnm')) return '전표 명세';
+  // 전표 명세: either the legacy debit/credit/acctcd shape or the
+  // current upstream's `asp*` field codes (aspdcsg=차대구분,
+  // aspacd=계정코드, aspamt=금액).
+  if (
+    fset.has('debit') || fset.has('credit') || fset.has('acctcd') || fset.has('acctnm') ||
+    fset.has('aspdcsg') || fset.has('aspacd') || fset.has('aspamt')
+  ) return '전표 명세';
   if (fset.has('aspnote')) return '전표 정보';
   if (fset.has('title') || fset.has('purpose') || fset.has('amount') || fset.has('amt')) return '품의 정보';
   // Fallback: never expose the raw upstream grid id (e.g. `myDataGrid7`)
