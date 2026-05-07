@@ -9,11 +9,21 @@ interface ProposalRow {
   [key: string]: string | number | undefined;
 }
 
+interface ListDiagnostics {
+  htmlLength: number;
+  lblIdsFoundSample: string[];
+  looksLikeLogin: boolean;
+  looksLikeError: boolean;
+  bodyTextSnippet: string;
+  hint: string;
+}
+
 interface ListResp {
   slpNo: string;
   count: number;
   items: ProposalRow[];
   sourceUrl: string;
+  diagnostics?: ListDiagnostics;
 }
 
 export function Proposals() {
@@ -100,8 +110,33 @@ export function Proposals() {
           </div>
 
           {data.items.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#94a3b8', padding: 24, fontSize: 14, border: '1px dashed #cbd5e1', borderRadius: 12 }}>
-              조회된 품의서가 없습니다.
+            <div style={{ padding: 16, fontSize: 13, border: '1px dashed #cbd5e1', borderRadius: 12, color: '#475569', display: 'grid', gap: 10 }}>
+              <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 14 }}>조회된 품의서가 없습니다.</div>
+              {data.diagnostics && (
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: 12, display: 'grid', gap: 6 }}>
+                  <div style={{ fontWeight: 700, color: '#334155' }}>업스트림 진단</div>
+                  <div><b>원인 추정:</b> {data.diagnostics.hint}</div>
+                  <div><b>HTML 크기:</b> {data.diagnostics.htmlLength.toLocaleString()} 바이트</div>
+                  <div><b>로그인 페이지 감지:</b> {data.diagnostics.looksLikeLogin ? '예' : '아니오'}</div>
+                  <div><b>에러 페이지 감지:</b> {data.diagnostics.looksLikeError ? '예' : '아니오'}</div>
+                  {data.diagnostics.lblIdsFoundSample.length > 0 && (
+                    <div>
+                      <b>발견된 lbl span id 샘플:</b>
+                      <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#64748b', marginTop: 4, wordBreak: 'break-all' }}>
+                        {data.diagnostics.lblIdsFoundSample.join(', ')}
+                      </div>
+                    </div>
+                  )}
+                  {data.diagnostics.bodyTextSnippet && (
+                    <div>
+                      <b>응답 본문 발췌:</b>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 4, whiteSpace: 'pre-wrap' }}>
+                        {data.diagnostics.bodyTextSnippet}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 12 }}>

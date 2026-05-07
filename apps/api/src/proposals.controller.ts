@@ -47,7 +47,36 @@ export class ProposalsController {
     }
 
     const items = parseRows(html);
-    return { slpNo: trimmed, count: items.length, items, sourceUrl: url };
+    // When nothing is parsed, attach lightweight diagnostics so the frontend
+    // can show *why* the list is empty (auth wall, structure change, etc.)
+    // rather than a silent zero state.
+    let diagnostics: any = undefined;
+    if (items.length === 0) {
+      const lblIds = Array.from(html.matchAll(/\bid=["']?([A-Za-z0-9_]*lbl[A-Za-z0-9]+_\d+)["']?/gi))
+        .map((m: any) => m[1]);
+      const lblSample = Array.from(new Set(lblIds)).slice(0, 20);
+      const looksLikeLogin = /login|\b(아이디|비밀번호)\b|j_username|loginForm/i.test(html);
+      const looksLikeError = /<title>\s*(error|에러|오류)/i.test(html);
+      // First piece of visible text in the body — often the upstream's own
+      // empty/error message which is the most actionable hint.
+      const bodyText = decodeEntities(stripTags(html))
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 400);
+      diagnostics = {
+        htmlLength: html.length,
+        lblIdsFoundSample: lblSample,
+        looksLikeLogin,
+        looksLikeError,
+        bodyTextSnippet: bodyText,
+        hint: looksLikeLogin
+          ? 'CAMS upstream returned a login page — the proxy may need session cookies.'
+          : (lblSample.length === 0
+            ? 'No lbl<FIELD>_<n> spans were found in the HTML — page structure likely changed.'
+            : 'lbl spans exist but no row had a non-empty title — title field id may have changed.'),
+      };
+    }
+    return { slpNo: trimmed, count: items.length, items, sourceUrl: url, ...(diagnostics ? { diagnostics } : {}) };
   }
 
   /**
@@ -94,13 +123,18 @@ export class ProposalsController {
 }
 
 /**
- * Parse all `<span id="myDataGrid2_lbl<FIELD>_<INDEX>">...</span>` cells in
- * the HTML, group them by row index, and return the rows that have a
- * non-empty title. Strips inner HTML tags and decodes the most common HTML
- * entities so the caller gets plain Korean text.
+ * Parse all `<span id="...lbl<FIELD>_<INDEX>">...</span>` cells in the HTML,
+ * group them by row index, and return the rows that have a non-empty title.
+ *
+ * The DataGrid id used by the upstream ASP.NET page has historically been
+ * `myDataGrid2`, but the page is occasionally re-skinned which changes that
+ * prefix. We therefore accept any prefix and only require the column-suffix
+ * `lbl<FIELD>_<INDEX>` portion. Strips inner HTML tags and decodes the most
+ * common HTML entities so the caller gets plain Korean text.
  */
 function parseRows(html: string): Array<Record<string, string | number>> {
-  const re = /<span[^>]*id=["']?myDataGrid2_lbl([A-Za-z0-9]+)_(\d+)["']?[^>]*>([\s\S]*?)<\/span>/gi;
+  // Accept any DataGrid prefix; only the `lbl<FIELD>_<INDEX>` suffix is fixed.
+  const re = /<span[^>]*\bid=["']?[A-Za-z0-9_]*lbl([A-Za-z0-9]+)_(\d+)["']?[^>]*>([\s\S]*?)<\/span>/gi;
   const byRow: Record<number, Record<string, string>> = {};
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
