@@ -940,54 +940,70 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
   const attachments = wl?.attachments || {};
   const authorId = getWorklogAuthorId(wl);
   const firstImg = getWorklogFirstImage(wl);
-  // The right-hand "최근 댓글" panel is a secondary surface, so we
-  // render it tighter than the main worklog feed: smaller thumbnail,
-  // smaller base font, denser spacing. We also lead with the comment
-  // author (이름 · 소속) — that's the actual subject of this card,
-  // not the worklog author.
+  // Right-hand "최근 댓글" card. Layout:
+  //   ┌─────────────────────────────────────────┐
+  //   │ [원본 일지 작성자]  팀  일자  조회권한    │  ← who wrote it
+  //   │ 일지 제목                                  │
+  //   │ ┌───────────────────────────────────────┐ │
+  //   │ │ 일지 본문 (max-height + scroll)       │ │  ← scrollable body
+  //   │ └───────────────────────────────────────┘ │
+  //   │ ─── 댓글 ─────────────────────────────── │
+  //   │ [작성자] 댓글내용                          │  ← comments + add input
+  //   │ [입력칸]                                   │
+  //   └─────────────────────────────────────────┘
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8, display: 'grid', gap: 6, background: '#FFFFFF', fontSize: 12 }}>
+    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', fontSize: 12 }}>
+      {/* 원본 일지 작성자 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={28} style={{ borderRadius: 6, flex: '0 0 auto' }} />
+        {authorId ? (
+          <UserAvatar userId={authorId} name={String(wl?.userName || title || '익명')} size={28} style={{ borderRadius: 6, flex: '0 0 auto' }} />
+        ) : firstImg ? (
+          <img src={firstImg} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover', flex: '0 0 auto' }} />
+        ) : (
+          <div style={{ width: 28, height: 28, borderRadius: 6, background: '#f1f5f9', flex: '0 0 auto' }} />
+        )}
         <div style={{ display: 'grid', gap: 1, flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, fontSize: 13 }}>{c.authorName || '익명'}</span>
-            {c.authorTeam ? <span style={{ color: '#64748b', fontSize: 11 }}>{c.authorTeam}</span> : null}
-            <span style={{ color: '#94a3b8', fontSize: 11 }}>· {formatKstYmd(c.createdAt)}</span>
+            <span style={{ fontWeight: 800, fontSize: 13 }}>{wl?.userName || '익명'}</span>
+            {wl?.teamName ? <span style={{ color: '#64748b', fontSize: 11 }}>{wl.teamName}</span> : null}
+            <span style={{ color: '#94a3b8', fontSize: 11 }}>· {formatKstYmd(wl?.createdAt || wl?.date || c.createdAt)}</span>
+            {(wl as any)?.visibility ? <span style={{ color: '#94a3b8', fontSize: 11 }}>· {visibilityKo((wl as any).visibility)}</span> : null}
           </div>
-          <div style={{ color: '#475569', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            <span style={{ color: '#94a3b8' }}>↳ </span>
-            {firstImg ? <img src={firstImg} alt="" style={{ width: 14, height: 14, borderRadius: 3, objectFit: 'cover', verticalAlign: 'middle', marginRight: 4 }} /> : null}
-            <span style={{ fontWeight: 600 }}>{title || '(제목 없음)'}</span>
-            {wl?.userName ? <span style={{ color: '#64748b' }}> · {wl.userName}{wl?.teamName ? `(${wl.teamName})` : ''}</span> : null}
-            {authorId ? <UserAvatar userId={authorId} name={String(wl?.userName || title || '')} size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} /> : null}
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {title || '(제목 없음)'}
           </div>
         </div>
       </div>
 
-      <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', fontSize: 12, color: '#1e293b' }}>{c.content}</div>
-
-      {viewMode === 'full' && wl && (
-        <div style={{ fontSize: 11 }}>
+      {/* 일지 본문 — 고정 높이 스크롤 박스 */}
+      {wl ? (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            border: '1px solid #e2e8f0',
+            borderRadius: 6,
+            background: '#fafaf7',
+            padding: 8,
+            maxHeight: 220,
+            overflowY: 'auto',
+            fontSize: 12,
+            lineHeight: 1.55,
+          }}
+        >
           <WorklogDocument worklog={wl} variant="content" />
         </div>
+      ) : (
+        <div style={{ color: '#94a3b8', fontSize: 11, padding: '8px 4px' }}>일지 내용을 불러오는 중…</div>
       )}
 
-      {prev.length > 0 && (
-        <div style={{ display: 'grid', gap: 4, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 6, fontSize: 11 }}>
-          {prev.map((p) => (
-            <div key={p.id}>
-              <div style={{ color: '#475569', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' as any }}>
-                <UserAvatar userId={String(p.authorId || '')} name={String(p.authorName || '익명')} size={12} />
-                <span style={{ fontWeight: 700 }}>{p.authorName || '익명'}</span>
-                {p.authorTeam ? <span style={{ color: '#64748b' }}>· {p.authorTeam}</span> : null}
-                <span style={{ color: '#94a3b8' }}>· {formatKstYmd(p.createdAt)}</span>
-              </div>
-              <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', color: '#475569' }}>{p.content}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* 댓글 영역 — 작성자/내용 + 새 댓글 입력 */}
+      <div onClick={(e) => e.stopPropagation()} style={{ borderTop: '1px solid #e5e7eb', paddingTop: 8, fontSize: 12 }}>
+        <CommentsBox
+          worklogId={c.subjectId}
+          worklogAuthorId={getWorklogAuthorId(wl)}
+          worklogAuthorName={wl?.userName}
+        />
+      </div>
     </div>
   );
 }
