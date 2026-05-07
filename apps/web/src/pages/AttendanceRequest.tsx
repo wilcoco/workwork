@@ -42,7 +42,11 @@ export function AttendanceRequest() {
   const [altRestDate, setAltRestDate] = useState(''); // 휴일 대체 신청용: 같은 주 평일 휴식일
 
   const [approvers, setApprovers] = useState<Approver[]>([]);
-  const [approverId, setApproverId] = useState('');
+  // Ordered approval line. Each entry is a userId; the first entry is
+  // the immediate approver, the last entry is the final approver. An
+  // empty string is allowed at the tail of the array as the
+  // not-yet-picked slot for the next stage.
+  const [approverIds, setApproverIds] = useState<string[]>(['']);
   const [members, setMembers] = useState<Approver[]>([]);
   const [filterUserId, setFilterUserId] = useState(''); // 캘린더용 구성원 필터 (''이면 전체)
   const [filterType, setFilterType] = useState<'ALL' | AttendanceType>('ALL');
@@ -87,9 +91,13 @@ export function AttendanceRequest() {
       setMembers(all);
       const cand = all.filter((u) => u.role === 'CEO' || u.role === 'EXEC' || u.role === 'MANAGER');
       setApprovers(cand);
-      if (!approverId && cand.length > 0) {
+      // Default the first slot to 홍정수 if available; fall back to
+      // the first candidate. Only fills empty slots so we don't
+      // clobber a user's in-progress edit on remount.
+      if (cand.length > 0) {
         const hong = cand.find((u) => u.name === '홍정수');
-        setApproverId((hong ?? cand[0]).id);
+        const def = (hong ?? cand[0]).id;
+        setApproverIds((prev) => (prev.length === 0 || !prev[0] ? [def] : prev));
       }
     } catch (e) {
       // 승인자 목록은 필수까지는 아니라서 조용히 무시
@@ -204,8 +212,9 @@ export function AttendanceRequest() {
         return;
       }
     }
-    if (!approverId) {
-      alert('승인자를 선택해 주세요');
+    const cleanedApprovers = approverIds.map((id) => String(id || '').trim()).filter(Boolean);
+    if (cleanedApprovers.length === 0) {
+      alert('결재선에 최소 한 명의 승인자를 선택해 주세요');
       return;
     }
     if ((type === 'OT' || type === 'EARLY_LEAVE' || type === 'FLEXIBLE' || type === 'HOLIDAY_WORK') && (!startTime || !endTime)) {
@@ -224,7 +233,10 @@ export function AttendanceRequest() {
         method: 'POST',
         body: JSON.stringify({
           userId,
-          approverId,
+          // First step is the legacy single approver field for
+          // backwards-compat; full ordered line goes in approverIds[].
+          approverId: cleanedApprovers[0],
+          approverIds: cleanedApprovers,
           type,
           date,
           startTime: type === 'VACATION' ? undefined : startTime,
@@ -413,15 +425,67 @@ export function AttendanceRequest() {
       </div>
       <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
         <h2>근태 신청</h2>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>승인자</span>
-          <select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
-            <option value="">선택</option>
-            {approvers.map((u) => (
-              <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>결재선</span>
+          {/* Ordered approval line. Stage 1 is the immediate approver,
+              the last stage is the final approver. Add/remove stages
+              as the org's policy requires. */}
+          <div style={{ display: 'grid', gap: 6 }}>
+            {approverIds.map((aid, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ minWidth: 56, fontSize: 12, color: '#475569', fontWeight: 700 }}>
+                  {idx + 1}단계
+                </span>
+                <select
+                  value={aid}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setApproverIds((prev) => prev.map((p, i) => (i === idx ? v : p)));
+                  }}
+                  style={{ flex: 1, padding: '6px 8px', borderRadius: 8, border: '1px solid #CBD5E1' }}
+                >
+                  <option value="">선택</option>
+                  {approvers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setApproverIds((prev) => prev.filter((_, i) => i !== idx))}
+                  disabled={approverIds.length <= 1}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 12,
+                    border: '1px solid #CBD5E1',
+                    borderRadius: 6,
+                    background: '#fff',
+                    cursor: approverIds.length <= 1 ? 'not-allowed' : 'pointer',
+                    color: approverIds.length <= 1 ? '#cbd5e1' : '#475569',
+                  }}
+                  title="이 단계 삭제"
+                >
+                  −
+                </button>
+              </div>
             ))}
-          </select>
-        </label>
+            <button
+              type="button"
+              onClick={() => setApproverIds((prev) => [...prev, ''])}
+              style={{
+                justifySelf: 'start',
+                padding: '4px 10px',
+                fontSize: 12,
+                border: '1px dashed #94a3b8',
+                borderRadius: 6,
+                background: '#fff',
+                color: '#475569',
+                cursor: 'pointer',
+              }}
+            >
+              + 결재자 추가
+            </button>
+          </div>
+        </div>
         <label style={{ display: 'grid', gap: 4 }}>
           <span>유형</span>
           <select value={type} onChange={(e) => setType(e.target.value as AttendanceType)}>

@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
 class CreateAttendanceDto {
@@ -9,6 +9,16 @@ class CreateAttendanceDto {
   @IsOptional()
   @IsString()
   approverId?: string;
+
+  // Multi-step approval line, in order. When provided, an
+  // ApprovalRequest is created with one ApprovalStep per id and the
+  // request flows step-by-step (same semantics as ApprovalsController).
+  // When omitted, the legacy single-approver flow (`approverId`) is
+  // used so existing callers keep working.
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  approverIds?: string[];
 
   @IsString()
   @IsIn(['OT', 'VACATION', 'EARLY_LEAVE', 'FLEXIBLE', 'HOLIDAY_WORK'])
@@ -61,7 +71,21 @@ export class AttendanceController {
         endAt = e;
       }
 
-      const approverId = dto.approverId || dto.userId;
+      // Resolve the approval line. Prefer the explicit ordered
+      // `approverIds[]` (결재선); fall back to the single legacy
+      // `approverId`; finally to self-approval if neither is set.
+      const lineRaw = Array.isArray(dto.approverIds)
+        ? dto.approverIds.map((s) => String(s || '').trim()).filter(Boolean)
+        : [];
+      // De-dupe consecutive duplicates so the user can't accidentally
+      // create "A → A → B" lines that would auto-progress in a weird
+      // way. Non-consecutive duplicates are preserved on purpose
+      // (some companies do require the same person at two stages).
+      const approverLine: string[] = [];
+      for (const id of lineRaw) {
+        if (approverLine[approverLine.length - 1] !== id) approverLine.push(id);
+      }
+      const firstApprover = approverLine[0] || dto.approverId || dto.userId;
 
       const rec = await (this.prisma as any).$transaction(async (tx: any) => {
         // 휴가와 다른 근태는 같은 날에 함께 신청할 수 없다.
@@ -216,23 +240,34 @@ export class AttendanceController {
           });
         }
 
+        // The ApprovalRequest's `approverId` always points at the
+        // *current* approver (i.e. the first step's approver at
+        // creation time). Subsequent steps move the pointer forward
+        // — see ApprovalsController#approve.
         const approval = await tx.approvalRequest.create({
           data: {
             subjectType: 'ATTENDANCE',
             subjectId: attendance.id,
-            approverId,
+            approverId: firstApprover,
             requestedById: dto.userId,
           },
         });
 
-        await tx.approvalStep.create({
-          data: {
-            requestId: approval.id,
-            stepNo: 1,
-            approverId,
-            status: 'PENDING' as any,
-          },
-        });
+        // Build the actual ordered step list. If the user passed an
+        // explicit `approverIds[]`, materialise one step per id.
+        // Otherwise fall back to a single self-or-legacy step (keeps
+        // backwards compatibility with older clients).
+        const stepsToCreate = approverLine.length > 0 ? approverLine : [firstApprover];
+        for (let i = 0; i < stepsToCreate.length; i += 1) {
+          await tx.approvalStep.create({
+            data: {
+              requestId: approval.id,
+              stepNo: i + 1,
+              approverId: stepsToCreate[i],
+              status: 'PENDING' as any,
+            },
+          });
+        }
 
         await tx.event.create({
           data: {
@@ -240,13 +275,21 @@ export class AttendanceController {
             subjectId: attendance.id,
             activity: 'ApprovalRequested',
             userId: dto.userId,
-            attrs: { approverId, requestId: approval.id, steps: 1 },
+            attrs: {
+              approverId: firstApprover,
+              requestId: approval.id,
+              steps: stepsToCreate.length,
+              line: stepsToCreate,
+            },
           },
         });
 
+        // Only notify the very first approver — later approvers will
+        // be notified in turn when each prior step is approved (see
+        // ApprovalsController#approve).
         await tx.notification.create({
           data: {
-            userId: approverId,
+            userId: firstApprover,
             type: 'ApprovalRequested',
             subjectType: 'ATTENDANCE',
             subjectId: attendance.id,
