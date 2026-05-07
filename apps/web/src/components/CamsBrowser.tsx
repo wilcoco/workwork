@@ -228,13 +228,13 @@ function ListWithExpand({
   filterText: string;
 }) {
   const labelFor = useLabelFor();
-  // Single-open accordion: only one row may be expanded at a time so
-  // opening a new proposal automatically collapses the previous one.
-  // We key by slpno (the document's natural unique identifier) which
-  // avoids the `Number(row._index)` -> NaN trap when `_index` is
-  // missing on some rows. Declared BEFORE any conditional early-return
-  // so hook order is stable across renders (Rules of Hooks).
-  const [openKey, setOpenKey] = useState<string | null>(null);
+  // Single-open accordion: each row keeps its own `open` boolean,
+  // and the parent assigns each row a stable `myKey`. When a row
+  // opens itself, it calls `requestExclusiveOpen(myKey)` which causes
+  // the parent to bump `closeSignal` and remember which key just
+  // opened. Every other row sees the new signal and closes itself.
+  // Declared above the early-return for stable hook order.
+  const [closeSignal, setCloseSignal] = useState({ n: 0, owner: '' });
 
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
   if (!listGrid) return null;
@@ -282,14 +282,13 @@ function ListWithExpand({
                 return (
                   <ListRow
                     key={key}
+                    rowKey={key}
                     row={row}
                     cols={cols}
                     index={i}
                     config={config}
-                    isOpen={openKey === key}
-                    onToggle={() =>
-                      setOpenKey((cur) => (cur === key ? null : key))
-                    }
+                    closeSignal={closeSignal}
+                    requestExclusiveOpen={(k) => setCloseSignal((s) => ({ n: s.n + 1, owner: k }))}
                   />
                 );
               })
@@ -302,47 +301,51 @@ function ListWithExpand({
 }
 
 function ListRow({
+  rowKey,
   row,
   cols,
   index,
   config,
-  isOpen,
-  onToggle,
+  closeSignal,
+  requestExclusiveOpen,
 }: {
+  rowKey: string;
   row: GridRow;
   cols: string[];
   index: number;
   config: CamsBrowserConfig;
-  isOpen: boolean;
-  onToggle: () => void;
+  closeSignal: { n: number; owner: string };
+  requestExclusiveOpen: (key: string) => void;
 }) {
-  const open = isOpen;
+  const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<ListResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const slpNo = String(row['slpno'] ?? '').trim();
 
-  // Lazily fetch the detail the first time the parent toggles us
-  // open. Cached afterwards so re-opening the same row is instant.
+  // Auto-close whenever the parent emits a new "open exclusive"
+  // signal owned by some other row. Skipping when `owner === rowKey`
+  // keeps the row that just opened, well, open.
   useEffect(() => {
-    if (!isOpen || !slpNo || detail || loading) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await apiJson<ListResp>(`${config.apiPath}/list?slpNo=${encodeURIComponent(slpNo)}`);
-        if (!cancelled) setDetail(res);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || '조회 실패');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isOpen, slpNo, config.apiPath, detail, loading]);
+    if (closeSignal.n > 0 && closeSignal.owner !== rowKey) setOpen(false);
+  }, [closeSignal, rowKey]);
 
-  const toggle = onToggle;
+  async function toggle() {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    requestExclusiveOpen(rowKey);
+    if (!slpNo || detail || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiJson<ListResp>(`${config.apiPath}/list?slpNo=${encodeURIComponent(slpNo)}`);
+      setDetail(res);
+    } catch (e: any) {
+      setError(e?.message || '조회 실패');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <>
