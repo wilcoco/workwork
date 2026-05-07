@@ -34,32 +34,26 @@ interface ListResp {
   diagnostics?: ListDiagnostics;
 }
 
-// Default `slp_no` to load when the page first opens. The user can change
-// this in the input field on the page.
-const DEFAULT_SLP_NO = '103485';
-
 export function Proposals() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ListResp | null>(null);
-  const [slpNoInput, setSlpNoInput] = useState<string>(DEFAULT_SLP_NO);
+  const [slpNoInput, setSlpNoInput] = useState<string>('');
 
   useEffect(() => {
-    void fetchList(DEFAULT_SLP_NO);
+    // First load: no slpNo → backend hits the list page (/boss/mpu.aspx)
+    // and returns the user's full proposal list.
+    void fetchList('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchList(slpNo: string) {
     const trimmed = String(slpNo || '').trim();
-    if (!trimmed) {
-      setError('품의서 번호(slp_no)를 입력하세요.');
-      setData(null);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<ListResp>(`/api/proposals/list?slpNo=${encodeURIComponent(trimmed)}`);
+      const qs = trimmed ? `?slpNo=${encodeURIComponent(trimmed)}` : '';
+      const res = await apiJson<ListResp>(`/api/proposals/list${qs}`);
       setData(res);
     } catch (e: any) {
       setError(e?.message || '조회 실패');
@@ -70,12 +64,13 @@ export function Proposals() {
   }
 
   const grids = data?.grids ? Object.values(data.grids) : [];
+  const isDetail = Boolean(data?.slpNo);
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
       <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>품의서</h2>
       <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-        CAMS 회계 시스템(<code>cn.icams.co.kr</code>)에서 단일 품의서 상세를 조회합니다. <code>slp_no</code>는 품의 번호입니다.
+        CAMS 회계 시스템(<code>cn.icams.co.kr</code>)에서 품의서를 조회합니다. 번호없이 조회하면 내 품의서 리스트가, <code>slp_no</code>를 넣으면 단일 품의서 상세가 나옵니다.
       </p>
 
       <form
@@ -87,8 +82,8 @@ export function Proposals() {
           <input
             value={slpNoInput}
             onChange={(e) => setSlpNoInput(e.target.value)}
-            placeholder="예: 103485"
-            style={{ marginLeft: 8, border: '1px solid #cbd5e1', borderRadius: 6, padding: '6px 10px', fontSize: 14, width: 140 }}
+            placeholder="비워두면 리스트 조회"
+            style={{ marginLeft: 8, border: '1px solid #cbd5e1', borderRadius: 6, padding: '6px 10px', fontSize: 14, width: 200 }}
           />
         </label>
         <button
@@ -98,6 +93,15 @@ export function Proposals() {
         >
           {loading ? '조회 중…' : '조회'}
         </button>
+        {isDetail && (
+          <button
+            type="button"
+            onClick={() => { setSlpNoInput(''); void fetchList(''); }}
+            style={{ background: '#fff', color: '#0F3D73', border: '1px solid #0F3D73', borderRadius: 8, padding: '8px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+          >
+            ← 리스트로
+          </button>
+        )}
       </form>
 
       {error && (
@@ -109,7 +113,11 @@ export function Proposals() {
       {!loading && data && (
         <>
           <div style={{ fontSize: 13, color: '#475569', marginBottom: 8 }}>
-            슬립번호 <strong>{data.slpNo}</strong> · 그리드 <strong>{grids.length}</strong>개 · 행 합계 <strong>{data.count}</strong>건
+            {isDetail ? (
+              <>슬립번호 <strong>{data.slpNo}</strong> · 그리드 <strong>{grids.length}</strong>개 · 행 합계 <strong>{data.count}</strong>건</>
+            ) : (
+              <>리스트 · <strong>{data.count}</strong>건</>
+            )}
             {data.sourceUrl && (
               <> · <a href={data.sourceUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1d4ed8' }}>원본 페이지 열기 ↗</a></>
             )}
@@ -176,7 +184,11 @@ export function Proposals() {
           ) : (
             <div style={{ display: 'grid', gap: 16 }}>
               {grids.map((g) => (
-                <GridSection key={g.id} grid={g} />
+                <GridSection
+                  key={g.id}
+                  grid={g}
+                  onOpenDetail={isDetail ? undefined : (slpNo) => { setSlpNoInput(slpNo); void fetchList(slpNo); }}
+                />
               ))}
             </div>
           )}
@@ -186,8 +198,17 @@ export function Proposals() {
   );
 }
 
-function GridSection({ grid }: { grid: ParsedGrid }) {
+function GridSection({
+  grid,
+  onOpenDetail,
+}: {
+  grid: ParsedGrid;
+  onOpenDetail?: (slpNo: string) => void;
+}) {
   const sectionLabel = sectionLabelFor(grid.id, grid.fields);
+  // On the list page each row exposes a `slpno` field. We make the row
+  // clickable so the user can drill into the detail view.
+  const slpNoKey = grid.fields.find((f) => f === 'slpno');
   return (
     <section style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
       <header style={{ background: '#f8fafc', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
@@ -205,17 +226,34 @@ function GridSection({ grid }: { grid: ParsedGrid }) {
                 {grid.fields.map((c) => (
                   <th key={c} style={th}>{labelFor(c)}</th>
                 ))}
+                {slpNoKey && onOpenDetail ? <th style={th}></th> : null}
               </tr>
             </thead>
             <tbody>
-              {grid.rows.map((row, i) => (
-                <tr key={row._index} style={{ borderTop: '1px solid #e5e7eb' }}>
-                  <td style={{ ...td, color: '#94a3b8', width: 40 }}>{i + 1}</td>
-                  {grid.fields.map((c) => (
-                    <td key={c} style={td}>{String(row[c] ?? '')}</td>
-                  ))}
-                </tr>
-              ))}
+              {grid.rows.map((row, i) => {
+                const slpVal = slpNoKey ? String(row[slpNoKey] ?? '').trim() : '';
+                const clickable = Boolean(slpVal && onOpenDetail);
+                return (
+                  <tr
+                    key={row._index}
+                    onClick={clickable ? () => onOpenDetail!(slpVal) : undefined}
+                    style={{
+                      borderTop: '1px solid #e5e7eb',
+                      cursor: clickable ? 'pointer' : 'default',
+                    }}
+                  >
+                    <td style={{ ...td, color: '#94a3b8', width: 40 }}>{i + 1}</td>
+                    {grid.fields.map((c) => (
+                      <td key={c} style={td}>{String(row[c] ?? '')}</td>
+                    ))}
+                    {slpNoKey && onOpenDetail ? (
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        {clickable ? <span style={{ color: '#1d4ed8', fontSize: 12 }}>상세 →</span> : null}
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -232,6 +270,8 @@ function GridSection({ grid }: { grid: ParsedGrid }) {
  */
 function sectionLabelFor(id: string, fields: string[]): string {
   const fset = new Set(fields.map((f) => f.toLowerCase()));
+  // List page: `myDataGrid` exposes slpno + sname + status + title + dname + amt.
+  if (id === 'myDataGrid' || fset.has('slpno')) return '내 품의서';
   if (fset.has('approvalstatus') || fset.has('approvalorder') || fset.has('empno') || fset.has('signorder')) return '결재선';
   if (fset.has('bidamount') || fset.has('bidamt') || fset.has('biddername')) return '입찰업체';
   if (fset.has('filename') || fset.has('imgsort') || fset.has('sort')) return '첨부파일';
@@ -246,6 +286,9 @@ function labelFor(field: string): string {
   // Map common upstream field codes to Korean labels. Unknown fields fall
   // through to the raw key so we don't hide data.
   const map: Record<string, string> = {
+    // List page (myDataGrid)
+    sname: '기안자',
+    dname: '부서',
     // Main info
     title: '제목',
     purpose: '목적',

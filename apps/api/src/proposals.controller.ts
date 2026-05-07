@@ -2,44 +2,49 @@ import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { Public } from './jwt-auth.guard';
 
 /**
- * Read-only proxy + parser for the legacy CAMS approval detail page
- * (http://cn.icams.co.kr/acco/masp_list.aspx?slp_no=<N>).
+ * Read-only proxy + parser for the legacy CAMS approval pages.
  *
- * Note: despite the URL name `masp_list.aspx`, this page is actually a
- * **single-document detail view** that requires `slp_no`. With no
- * `slp_no` the page returns an empty ASP.NET WebForms shell (~841 bytes,
- * just `__VIEWSTATE`). Calling it with a valid `slp_no` renders four
- * separate DataGrids on the same page:
+ * There are two distinct pages with different DataGrid layouts:
  *
- *   1. main info (single row, 14 fields)
- *   2. attached files
- *   3. bidder companies
- *   4. approval line
+ * 1. **List page** — `http://cn.icams.co.kr/boss/mpu.aspx` (no params).
+ *    Renders all of the current user's proposals as one DataGrid named
+ *    `myDataGrid`, with span ids of the form `myDataGrid_lbl<FIELD><N>`
+ *    (note: NO underscore between field and index). Fields observed:
+ *    `SLPNO`, `SNAME`, `STATUS`, `TITLE`, `DNAME`, `AMT`.
  *
- * Each grid renders cells as `<span id="<gridId>_lbl<FIELD>_<row>">`. The
- * upstream is plain HTTP and CORS-less, so the browser cannot fetch it
- * directly from the HTTPS web app — this controller fetches server-side
- * and groups the rows by grid id.
+ * 2. **Detail page** — `http://cn.icams.co.kr/acco/masp_list.aspx?slp_no=<N>`.
+ *    Despite the URL name it is a single-document detail view that
+ *    requires `slp_no`. With no `slp_no` the page returns an empty
+ *    ASP.NET WebForms shell (~841 bytes, just `__VIEWSTATE`). With a
+ *    valid `slp_no` it renders up to four DataGrids on the same page
+ *    (main info, attached files, bidder companies, approval line). Span
+ *    ids follow `myDataGrid2_lbl<FIELD>_<N>` (note: WITH underscore).
+ *
+ * The upstream is plain HTTP and CORS-less, so the browser cannot fetch
+ * either page directly from the HTTPS web app — this controller fetches
+ * server-side and groups the rows by grid id. The PowerApps source the
+ * legacy app uses confirms both URL/regex variants.
  */
 @Controller('proposals')
 export class ProposalsController {
   /**
-   * GET /api/proposals/list?slpNo=<N>
+   * GET /api/proposals/list[?slpNo=<N>]
    *
-   * `slpNo` is required. Returns the four DataGrids on the detail page,
-   * keyed by their grid id, with rows of `{ <fieldCode>: <text> }` plus a
-   * stable `_index` for ordering.
+   * - With no `slpNo`: fetch the list page (`/boss/mpu.aspx`) and parse
+   *   the single `myDataGrid` into one flat list of proposals.
+   * - With `slpNo`: fetch the detail page and return the four DataGrids
+   *   keyed by their grid id, with rows of `{ <fieldCode>: <text> }`.
+   *
+   * Both cases share the same response shape (`grids` + flat `items`)
+   * so the frontend can render either uniformly.
    */
   @Public()
   @Get('list')
   async list(@Query('slpNo') slpNo?: string) {
-    const base = process.env.CAMS_PROPOSAL_LIST_URL ||
-      'http://cn.icams.co.kr/acco/masp_list.aspx';
     const trimmed = String(slpNo || '').trim();
-    if (!trimmed) {
-      throw new BadRequestException('slpNo is required (e.g. ?slpNo=103485). The upstream page returns an empty form when called without one.');
-    }
-    const url = `${base}?slp_no=${encodeURIComponent(trimmed)}`;
+    const url = trimmed
+      ? `${process.env.CAMS_PROPOSAL_DETAIL_URL || process.env.CAMS_PROPOSAL_LIST_URL || 'http://cn.icams.co.kr/acco/masp_list.aspx'}?slp_no=${encodeURIComponent(trimmed)}`
+      : (process.env.CAMS_PROPOSAL_BOSS_URL || 'http://cn.icams.co.kr/boss/mpu.aspx');
 
     let html = '';
     try {
@@ -69,7 +74,7 @@ export class ProposalsController {
     // rather than a silent zero state.
     let diagnostics: any = undefined;
     if (items.length === 0) {
-      const lblIds = Array.from(html.matchAll(/\bid=["']?([A-Za-z0-9_]*lbl[A-Za-z0-9]+_\d+)["']?/gi))
+      const lblIds = Array.from(html.matchAll(/\bid=["']?([A-Za-z0-9_]*lbl[A-Za-z]+_?\d+)["']?/gi))
         .map((m: any) => m[1]);
       const lblSample = Array.from(new Set(lblIds)).slice(0, 20);
       const looksLikeLogin = /login|\b(아이디|비밀번호)\b|j_username|loginForm/i.test(html);
@@ -103,8 +108,10 @@ export class ProposalsController {
         hint: looksLikeLogin
           ? 'CAMS upstream returned a login page — the proxy may need session cookies.'
           : (lblSample.length === 0
-            ? 'No lbl<FIELD>_<n> spans were found in the HTML — page structure likely changed.'
-            : 'lbl spans exist but no row had a non-empty title — title field id may have changed.'),
+            ? (trimmed
+              ? 'No lbl<FIELD>_<n> spans found on the detail page — slp_no may not exist or page structure changed.'
+              : 'No lbl<FIELD><n> spans found on the list page — likely an authentication wall (CAMS expects a session).')
+            : 'lbl spans exist but parser produced no rows — field id pattern may have changed.'),
       };
     }
     return {
@@ -182,9 +189,12 @@ export interface ParsedGrid {
 }
 
 function parseGrids(html: string): Record<string, ParsedGrid> {
-  // Match `<span id="<gridId>_lbl<FIELD>_<INDEX>">...</span>` where gridId
-  // is anything up to the trailing `_lbl<FIELD>_<INDEX>` suffix.
-  const re = /<span[^>]*\bid=["']?([A-Za-z0-9_]+?)_lbl([A-Za-z0-9]+)_(\d+)["']?[^>]*>([\s\S]*?)<\/span>/gi;
+  // Match `<span id="<gridId>_lbl<FIELD><INDEX>">...</span>`. The field is
+  // letters only and the optional underscore between field and index
+  // covers both upstream variants seen in the PowerApps source:
+  //   - list page  (`/boss/mpu.aspx`):       `myDataGrid_lblTITLE3`
+  //   - detail page (`/acco/masp_list.aspx`): `myDataGrid2_lblTITLE_3`
+  const re = /<span[^>]*\bid=["']?([A-Za-z0-9]+?)_lbl([A-Za-z]+)_?(\d+)["']?[^>]*>([\s\S]*?)<\/span>/gi;
   const byGrid: Record<string, { fieldOrder: string[]; rows: Record<number, Record<string, string>> }> = {};
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
