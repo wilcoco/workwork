@@ -620,15 +620,42 @@ function ApprovalBox({ grid }: { grid: ParsedGrid }) {
 }
 
 /**
- * Traditional Korean 품의서 layout, rendered in the specific field
- * order the user requested:
+ * Positional column mapping declared by the user. The upstream main
+ * grid emits its fields in this exact order, so we map by position
+ * (`fields[i]`) and never guess by field-code alias.
  *
- *   번 · 품의번호 · 제목 · 목적 · 기안자 · 기안일자 · 완료예정일 ·
- *   소요금액 · 지급조건 · 관련업체 · 내용
+ *   index  ko-label      type
+ *   0      번            sequence (number, 1-based)
+ *   1      품의번호      identifier
+ *   2      제목          title
+ *   3      목적          purpose
+ *   4      기안자        drafter
+ *   5      기안일자      date (YYYYMMDD → YYYY-MM-DD)
+ *   6      완료예정일    date (YYYYMMDD → YYYY-MM-DD)
+ *   7      소요금액      amount (formatted as `1,234,567 원`)
+ *   8      지급조건      string
+ *   9      관련업체      string
+ *   10     내용          long text (rendered as the wide bottom box)
  *
- * 내용 is pulled out and rendered as a full-width bottom box, then
- * 첨부파일. 결재선 / 입찰업체 are intentionally hidden in this view.
+ * Anything past position 10 (파일명/imgsort/전결/etc.) is hidden in
+ * this view — file metadata is already shown via the dedicated
+ * 첨부파일 grid below.
  */
+const PROPOSAL_FIELD_LAYOUT: Array<{ label: string; kind: 'seq' | 'text' | 'mono' | 'date' | 'amount' }> = [
+  { label: '번',         kind: 'seq' },
+  { label: '품의번호',   kind: 'mono' },
+  { label: '제목',       kind: 'text' },
+  { label: '목적',       kind: 'text' },
+  { label: '기안자',     kind: 'text' },
+  { label: '기안일자',   kind: 'date' },
+  { label: '완료예정일', kind: 'date' },
+  { label: '소요금액',   kind: 'amount' },
+  { label: '지급조건',   kind: 'text' },
+  { label: '관련업체',   kind: 'text' },
+  { label: '내용',       kind: 'text' },
+];
+const PROPOSAL_CONTENTS_INDEX = 10; // 내용 — rendered separately at the bottom.
+
 function ProposalForm({
   grids,
   config,
@@ -640,38 +667,60 @@ function ProposalForm({
 }) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
   const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
-  // Main info: prefer the explicit 품의 정보 grid; fall back to the
-  // first grid that has at least one row and isn't the approval line
-  // or the file list.
+  // Main info: take the first grid that has any row and isn't the
+  // approval line or the files grid. We do NOT use a label heuristic
+  // here — the user said positions are authoritative.
   const main =
-    grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '품의 정보') ||
     grids.find((g) => g !== approvers && g !== files && g.rows.length > 0) ||
     grids[0];
-  const m: Record<string, any> = (main?.rows?.[0] as any) || {};
-  // Resolve a value across a list of candidate field codes; falls
-  // back to the list-level row data so an inline-expanded card still
-  // shows the columns the list already had.
-  const pick = (...keys: string[]): string => {
-    for (const k of keys) {
-      const v = m[k] ?? fallbackHeader?.[k];
+  const row: Record<string, any> = (main?.rows?.[0] as any) || {};
+  const mainFields = main?.fields || [];
+
+  // Resolve cell value by POSITION in the upstream `<grid>_lbl<FIELD>_<n>`
+  // sequence, with fallback to the row data we already had from the
+  // list view (so inline-expanded cards never look emptier than the
+  // outer list row).
+  const valueAt = (idx: number): string => {
+    const fieldCode = mainFields[idx];
+    if (fieldCode != null) {
+      const v = row[fieldCode];
       if (v != null && String(v).trim()) return String(v).trim();
+    }
+    // Fallback: try the same position on the list-level row.
+    if (fallbackHeader) {
+      const fbKeys = Object.keys(fallbackHeader).filter((k) => k !== '_index' && k !== '_grid');
+      const fk = fbKeys[idx];
+      if (fk) {
+        const v = (fallbackHeader as any)[fk];
+        if (v != null && String(v).trim()) return String(v).trim();
+      }
     }
     return '';
   };
-  const fmt = (raw: string, fieldHint = 'date') => formatValue(fieldHint, raw);
 
-  const seq = String(m._index != null ? Number(m._index) + 1 : (fallbackHeader as any)?._index != null ? Number((fallbackHeader as any)._index) + 1 : '');
-  const slpno = pick('slpno', 'no');
-  const title = pick('title', 'aspnote');
-  const purpose = pick('purpose');
-  const drafter = pick('sname', 'user', 'name', 'drafter', 'regname');
-  const writeDate = fmt(pick('date', 'regdt', 'slpdt'));
-  const dueDate = fmt(pick('duedate', 'delvdt'));
-  const amountRaw = pick('amount', 'amt');
-  const amount = amountRaw ? `${fmtAmt(parseAmt(amountRaw))} 원` : '';
-  const payterm = pick('payterm', 'paymethod');
-  const company = pick('company', 'vendor', 'vendornm');
-  const contents = pick('contents', 'content', 'detail', 'description');
+  const fmtCell = (idx: number): string => {
+    const raw = valueAt(idx);
+    if (!raw) return '';
+    const layout = PROPOSAL_FIELD_LAYOUT[idx];
+    if (!layout) return raw;
+    if (layout.kind === 'date') {
+      // Reuse the YYYYMMDD -> YYYY-MM-DD formatter via a date-like field hint.
+      return formatValue('date', raw);
+    }
+    if (layout.kind === 'amount') {
+      const n = parseAmt(raw);
+      return n ? `${fmtAmt(n)} 원` : raw;
+    }
+    return raw;
+  };
+
+  const seqNumber = (() => {
+    const explicit = valueAt(0);
+    if (explicit) return explicit;
+    const idx = row._index ?? (fallbackHeader as any)?._index;
+    return idx != null ? String(Number(idx) + 1) : '';
+  })();
+  const contents = valueAt(PROPOSAL_CONTENTS_INDEX);
 
   return (
     <article style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '32px 28px', position: 'relative' }}>
@@ -693,43 +742,49 @@ function ProposalForm({
         </colgroup>
         <tbody>
           <tr>
-            <th style={formHeader}>번</th>
-            <td style={formCell}>{seq}</td>
-            <th style={formHeader}>품의번호</th>
-            <td style={{ ...formCell, fontFamily: 'monospace' }}>{slpno}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[0].label}</th>
+            <td style={formCell}>{seqNumber}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[1].label}</th>
+            <td style={{ ...formCell, fontFamily: 'monospace' }}>{fmtCell(1)}</td>
           </tr>
           <tr>
-            <th style={formHeader}>제 목</th>
-            <td style={{ ...formCell, fontWeight: 700 }} colSpan={3}>{title || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[2].label}</th>
+            <td style={{ ...formCell, fontWeight: 700 }} colSpan={3}>
+              {fmtCell(2) || <span style={{ color: '#cbd5e1' }}>—</span>}
+            </td>
           </tr>
           <tr>
-            <th style={formHeader}>목 적</th>
-            <td style={{ ...formCell, whiteSpace: 'pre-wrap' }} colSpan={3}>{purpose || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[3].label}</th>
+            <td style={{ ...formCell, whiteSpace: 'pre-wrap' }} colSpan={3}>
+              {fmtCell(3) || <span style={{ color: '#cbd5e1' }}>—</span>}
+            </td>
           </tr>
           <tr>
-            <th style={formHeader}>기 안 자</th>
-            <td style={formCell}>{drafter}</td>
-            <th style={formHeader}>기안일자</th>
-            <td style={formCell}>{writeDate}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[4].label}</th>
+            <td style={formCell}>{fmtCell(4)}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[5].label}</th>
+            <td style={formCell}>{fmtCell(5)}</td>
           </tr>
           <tr>
-            <th style={formHeader}>완료예정일</th>
-            <td style={formCell}>{dueDate}</td>
-            <th style={formHeader}>소요금액</th>
-            <td style={{ ...formCell, fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{amount}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[6].label}</th>
+            <td style={formCell}>{fmtCell(6)}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[7].label}</th>
+            <td style={{ ...formCell, fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmtCell(7)}</td>
           </tr>
           <tr>
-            <th style={formHeader}>지급조건</th>
-            <td style={formCell}>{payterm}</td>
-            <th style={formHeader}>관련업체</th>
-            <td style={formCell}>{company}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[8].label}</th>
+            <td style={formCell}>{fmtCell(8)}</td>
+            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[9].label}</th>
+            <td style={formCell}>{fmtCell(9)}</td>
           </tr>
         </tbody>
       </table>
 
-      {/* 내용 — 큰 박스 */}
+      {/* 내용 — 큰 박스 (positional index 10, last) */}
       <section style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>내 용</div>
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+          {PROPOSAL_FIELD_LAYOUT[PROPOSAL_CONTENTS_INDEX].label}
+        </div>
         <div
           style={{
             border: '1px solid #94a3b8',
@@ -748,7 +803,7 @@ function ProposalForm({
         </div>
       </section>
 
-      {/* 첨부파일 */}
+      {/* 첨부파일 — 내용 바로 아래 */}
       {files && files.rows.length > 0 && (
         <section style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
