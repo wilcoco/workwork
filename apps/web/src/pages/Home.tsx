@@ -977,7 +977,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 800, fontSize: 13 }}>{wlUserName || '익명'}</span>
             {wlTeamName ? <span style={{ color: '#64748b', fontSize: 11 }}>{wlTeamName}</span> : null}
-            <span style={{ color: '#94a3b8', fontSize: 11 }}>· {formatKstYmd(wl?.createdAt || wl?.date || c.createdAt)}</span>
+            <span style={{ color: '#94a3b8', fontSize: 11 }}>· {formatKstDatetime(wl?.createdAt || wl?.date || c.createdAt)}</span>
             {(wl as any)?.visibility ? <span style={{ color: '#94a3b8', fontSize: 11 }}>· {visibilityKo((wl as any).visibility)}</span> : null}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
@@ -1199,7 +1199,7 @@ function CommentsBox({
                     <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={14} />
                     <span style={{ fontWeight: 700 }}>{c.authorName || '익명'}</span>
                     {c.authorTeam ? <span style={{ color: '#64748b' }}>· {c.authorTeam}</span> : null}
-                    <span style={{ color: '#94a3b8' }}>· {formatKstYmd(c.createdAt)}</span>
+                    <span style={{ color: '#94a3b8' }}>· {formatKstDatetime(c.createdAt)}</span>
                     {isIns && c.instruction && (
                       <span style={{ marginLeft: 6, color: '#7c2d12' }}>
                         → {c.instruction.assigneeName || '담당자'}
