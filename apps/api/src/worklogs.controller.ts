@@ -1216,23 +1216,20 @@ export class WorklogsController {
       }
     }
 
-    // By default, hide worklogs created **only** to back an
-    // ApprovalRequest. We rely on the explicit marker stamped by
-    // ApprovalsSubmit (`structuredData.kind === 'APPROVAL_DOC'`).
-    //
-    // We deliberately DO NOT use the broader "every worklog ever
-    // referenced by an ApprovalRequest" heuristic — historically a
-    // regular 업무일지 could have an approval attached to it, and
-    // hiding all of those would empty out the user's normal feed.
+    // NOTE: We previously tried to filter approval-doc worklogs at
+    // the DB level via `NOT: { structuredData: { path: ['kind'],
+    // equals: 'APPROVAL_DOC' } }`. That breaks for the (vast) set of
+    // legacy rows whose `structuredData` is NULL: in Postgres,
+    // `NOT (jsonb_path_query(NULL, ...) = 'X')` evaluates to NULL,
+    // which excludes the row from the WHERE result. The whole list
+    // ended up empty. We now apply this exclusion in JS after the
+    // fetch instead.
     const finalWhere = {
       ...where,
       ...(kind === 'OKR' ? { initiative: { keyResult: { objective: { pillar: null } } } } : {}),
       ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
       ...(krId ? { initiative: { keyResultId: krId } } : {}),
       ...(initiativeId ? { initiativeId } : {}),
-      ...(includeApprovalDocs
-        ? {}
-        : { NOT: { structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } } }),
       ...(viewerId
         ? {
             OR: [
@@ -1243,10 +1240,14 @@ export class WorklogsController {
         : { visibility: { in: visibilityIn as any } }),
     };
 
-    const [items, total] = await Promise.all([
+    // Fetch a wider page than `limit` so we still have `limit`-many
+    // rows after filtering out approval-doc worklogs in JS. The factor
+    // 3 is empirical: in practice approval docs are << 1/3 of the feed.
+    const fetchTake = includeApprovalDocs ? limit : limit * 3;
+    const [itemsRaw, total] = await Promise.all([
       this.prisma.worklog.findMany({
         where: finalWhere,
-        take: limit,
+        take: fetchTake,
         skip: cursor ? 1 : useOffset ? offsetNum : 0,
         ...(cursor ? { cursor: { id: cursor } } : {}),
         orderBy: { date: 'desc' },
@@ -1254,6 +1255,13 @@ export class WorklogsController {
       }),
       wantTotal ? this.prisma.worklog.count({ where: finalWhere }) : Promise.resolve(undefined),
     ]);
+    const items = (includeApprovalDocs
+      ? itemsRaw
+      : itemsRaw.filter((it: any) => {
+          const sd = (it as any).structuredData;
+          return !(sd && typeof sd === 'object' && (sd as any).kind === 'APPROVAL_DOC');
+        })
+    ).slice(0, limit);
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
     const mapped = items.map((it: any) => {
       const lines = (it.note || '').split(/\n+/);
@@ -1886,19 +1894,13 @@ export class WorklogsController {
       else visibilityIn = ['ALL'];
     }
 
-    // Exclude only worklogs explicitly marked as APPROVAL_DOC. See
-    // the long comment in `search()` for why we do not use the
-    // broader "any worklog ever referenced by an ApprovalRequest"
-    // heuristic.
-    const excludeApprovalDocMarker = {
-      structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' },
-    } as const;
-
+    // See the comment in `search()` — the JSON-path NOT filter empties
+    // the list when `structuredData` is NULL on legacy rows. Filter
+    // approval-doc worklogs out in JS after fetch instead.
     const where = viewerId
       ? {
           AND: [
             baseWhere,
-            { NOT: excludeApprovalDocMarker },
             {
               OR: [
                 { createdById: viewerId },
@@ -1907,12 +1909,16 @@ export class WorklogsController {
             },
           ],
         }
-      : { ...baseWhere, NOT: excludeApprovalDocMarker, visibility: { in: visibilityIn as any } };
-    const items = await (this.prisma as any).worklog.findMany({
+      : { ...baseWhere, visibility: { in: visibilityIn as any } };
+    const itemsRaw = await (this.prisma as any).worklog.findMany({
       where,
       include: { createdBy: { include: { orgUnit: true } } },
       orderBy: { date: 'desc' },
       take: 1000,
+    });
+    const items = itemsRaw.filter((it: any) => {
+      const sd = it?.structuredData;
+      return !(sd && typeof sd === 'object' && (sd as any).kind === 'APPROVAL_DOC');
     });
     // Build compact context (limit per user)
     const byTeamUser = new Map<string, Map<string, string[]>>();
