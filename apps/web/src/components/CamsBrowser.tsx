@@ -291,7 +291,14 @@ function Doc({
   const author = get('sname') || get('user') || get('name');
   const dept = get('dname') || get('dept');
 
+  // Fields already promoted to the header bar.
   const headerSkip = new Set(['title', 'aspnote', 'purpose', 'slpno', 'no', 'date', 'sname', 'dname', 'status', 'state', 'user', 'name', 'dept']);
+  // Long free-text fields are pulled out of the property sheet and
+  // rendered as full-width blocks at the bottom for readability.
+  const longTextFields = ['contents', 'content', 'remarks', 'memo', 'note', 'description', 'detail', 'reason', 'opinion', 'comment', 'aspnote'];
+  const longTexts = longTextFields
+    .map((k) => [k, get(k)] as const)
+    .filter(([k, v]) => v.length > 0 && !(k === 'aspnote' && v === title));
 
   return (
     <article style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20 }}>
@@ -308,7 +315,11 @@ function Doc({
       </header>
 
       {main && main.rows.length > 0 && (
-        <PropertySheet grid={main} skipFields={headerSkip} highlight={{ amount, amt: amount }} />
+        <PropertySheet
+          grid={main}
+          skipFields={new Set([...headerSkip, ...longTextFields])}
+          highlight={{ amount, amt: amount }}
+        />
       )}
 
       {lineItems && lineItems.rows.length > 0 && (
@@ -319,7 +330,10 @@ function Doc({
 
       {approvers && approvers.rows.length > 0 && (
         <DocSection title="결재선" gridId={approvers.id} count={approvers.rows.length}>
-          <CompactTable grid={approvers} />
+          {/* Approval line shown compactly: only the columns that matter
+              for understanding the chain. The raw grid often has 8+
+              columns (sabun, dept code, signed-on timestamp, ...). */}
+          <CompactTable grid={approvers} onlyFields={APPROVER_VISIBLE_FIELDS} />
         </DocSection>
       )}
 
@@ -340,7 +354,47 @@ function Doc({
           <CompactTable grid={g} />
         </DocSection>
       ))}
+
+      {/* Long free-text content goes at the bottom, full width, reading-friendly. */}
+      {longTexts.map(([k, v]) => (
+        <LongContent key={k} label={labelFor(k)} text={v} />
+      ))}
     </article>
+  );
+}
+
+/** Columns we deem worth showing in the approval line. Anything else
+ *  (sabun, dept codes, sign timestamps, internal flags) is hidden to
+ *  keep the table scannable. */
+const APPROVER_VISIBLE_FIELDS = [
+  'approvalorder', 'signorder',
+  'empname', 'sname', 'name',
+  'position',
+  'dname', 'dept',
+  'approvalstatus', 'signstatus', 'status',
+  'opinion', 'comment',
+];
+
+function LongContent({ label, text }: { label: string; text: string }) {
+  return (
+    <section style={{ marginTop: 20 }}>
+      <h3 style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>{label}</h3>
+      <div
+        style={{
+          background: '#FAFAF7',
+          border: '1px solid #e5e7eb',
+          borderRadius: 8,
+          padding: 16,
+          fontSize: 14,
+          lineHeight: 1.7,
+          color: '#1e293b',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+        }}
+      >
+        {text}
+      </div>
+    </section>
   );
 }
 
@@ -413,14 +467,23 @@ function DocSection({
   );
 }
 
-function CompactTable({ grid }: { grid: ParsedGrid }) {
+function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: string[] }) {
+  // If `onlyFields` is provided, restrict to that intersection while
+  // preserving the requested order. Empty (no overlap) falls back to the
+  // grid's own field order so we never end up with a 0-column table.
+  const cols = onlyFields
+    ? (() => {
+        const filtered = onlyFields.filter((f) => grid.fields.includes(f));
+        return filtered.length > 0 ? filtered : grid.fields;
+      })()
+    : grid.fields;
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ background: '#fafafa', textAlign: 'left' }}>
             <th style={th}>#</th>
-            {grid.fields.map((c) => (
+            {cols.map((c) => (
               <th key={c} style={th}>{labelFor(c)}</th>
             ))}
           </tr>
@@ -429,7 +492,7 @@ function CompactTable({ grid }: { grid: ParsedGrid }) {
           {grid.rows.map((row, i) => (
             <tr key={row._index} style={{ borderTop: '1px solid #e5e7eb' }}>
               <td style={{ ...td, color: '#94a3b8', width: 40 }}>{i + 1}</td>
-              {grid.fields.map((c) => (
+              {cols.map((c) => (
                 <td key={c} style={td}>{String(row[c] ?? '')}</td>
               ))}
             </tr>
@@ -501,54 +564,94 @@ const th: React.CSSProperties = { padding: '10px 12px', fontSize: 12, fontWeight
 const td: React.CSSProperties = { padding: '10px 12px', color: '#1e293b', verticalAlign: 'top' };
 
 function labelFor(field: string): string {
+  // Korean labels for the field codes we've actually seen in the
+  // PowerApps source plus the ones the upstream pages typically expose.
+  // Unknown codes fall through to the raw key so we never hide data.
   const map: Record<string, string> = {
-    // List grids (myDataGrid)
+    // — Identifiers / who / when
+    slpno: '슬립번호',
+    no: '번호',
+    seq: '순번',
+    sno: '순번',
     sname: '기안자',
+    user: '기안자',
+    name: '기안자',
+    empno: '사번',
+    empname: '사원명',
+    sabun: '사번',
+    position: '직책',
+    rank: '직급',
     dname: '부서',
-    // Common header
+    dept: '부서',
+    deptcd: '부서코드',
+    deptnm: '부서명',
+    date: '일자',
+    sdate: '시작일',
+    edate: '종료일',
+    duedate: '완료예정일',
+    delvdt: '납기일',
+    regdt: '등록일',
+    updt: '수정일',
+    // — Subject / content
     title: '제목',
     aspnote: '적요',
     purpose: '목적',
-    no: '번호',
-    slpno: '번호',
-    date: '일자',
-    duedate: '완료예정일',
-    amount: '금액',
-    amt: '금액',
-    payterm: '지급조건',
-    company: '관련업체',
+    summary: '적요',
     contents: '내용',
     content: '내용',
-    user: '기안자',
-    name: '기안자',
-    state: '상태',
-    status: '상태',
-    dept: '부서',
-    final: '전결',
-    // Files
-    filename: '파일명',
-    sort: 'SORT',
-    imgsort: 'imgsort',
-    // Bidders
+    description: '설명',
+    detail: '세부내용',
+    note: '비고',
+    memo: '메모',
+    remarks: '비고',
+    reason: '사유',
+    // — Money / terms
+    amount: '금액',
+    amt: '금액',
+    prdamt: '예산금액',
+    bplnno: '예산번호',
+    payterm: '지급조건',
+    paymethod: '지급방법',
+    paydate: '지급일',
+    currency: '통화',
+    rate: '환율',
+    vat: '부가세',
+    suptamt: '공급가액',
+    taxamt: '세액',
+    totamt: '합계금액',
+    // — Vendor / bidders
+    company: '관련업체',
+    vendor: '거래처',
+    vendornm: '거래처명',
+    bizno: '사업자번호',
     biddername: '업체명',
     bidamount: '입찰금액',
     bidamt: '입찰금액',
-    // Approvers
-    empno: '사번',
+    // — Status
+    state: '상태',
+    status: '상태',
+    final: '전결',
+    // — Files
+    filename: '파일명',
+    filesize: '파일크기',
+    sort: '구분',
+    imgsort: '구분',
+    // — Approvals
     approvalorder: '결재순서',
     signorder: '결재순서',
-    position: '직책',
-    empname: '사원명',
     approvalstatus: '결재상태',
     signstatus: '결재상태',
+    signdate: '결재일',
     opinion: '결재의견',
     comment: '결재의견',
-    // Voucher line items
+    // — Voucher accounting
     acctcd: '계정코드',
     acctnm: '계정명',
     debit: '차변',
     credit: '대변',
-    summary: '적요',
+    drcr: '차/대',
+    slpkind: '전표종류',
+    slptype: '전표종류',
   };
   return map[field] || field;
 }
