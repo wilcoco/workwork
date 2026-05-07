@@ -62,7 +62,30 @@ export class ProposalsController {
       if (!res?.ok) {
         throw new BadRequestException(`Upstream HTTP ${res?.status}`);
       }
-      html = await res.text();
+      // CAMS pages are served as EUC-KR (legacy ASP.NET on Windows-Korean).
+      // `res.text()` would assume UTF-8 and mangle Hangul, so we read raw
+      // bytes, detect the charset from the Content-Type header (and a
+      // <meta charset> tag as a fallback), and decode explicitly.
+      const buf = Buffer.from(await res.arrayBuffer());
+      const ct = String(res.headers?.get?.('content-type') || '');
+      let charset = /charset=([^;]+)/i.exec(ct)?.[1]?.trim().toLowerCase();
+      if (!charset) {
+        // Sniff first 1KB as ASCII to read any <meta charset=...>.
+        const head = buf.slice(0, 1024).toString('ascii');
+        const m = /<meta[^>]+charset\s*=\s*["']?([\w-]+)/i.exec(head);
+        if (m) charset = m[1].toLowerCase();
+      }
+      // Normalize the common Korean aliases to a label TextDecoder accepts.
+      const isKoreanLegacy = !charset || /^(euc-?kr|ks_c_5601-1987|ksc5601|cp949|windows-?949|x-?windows-?949)$/i.test(charset);
+      const decoderLabel = isKoreanLegacy ? 'euc-kr' : charset!;
+      try {
+        // Node 20+ exposes a TextDecoder with full ICU which supports
+        // 'euc-kr'. If the runtime ICU is small-icu, this throws and we
+        // fall back to UTF-8 below.
+        html = new TextDecoder(decoderLabel as any).decode(buf);
+      } catch {
+        html = buf.toString('utf8');
+      }
     } catch (e: any) {
       throw new BadRequestException(`Upstream fetch failed: ${e?.message || e}`);
     }
