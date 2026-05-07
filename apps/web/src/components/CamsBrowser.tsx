@@ -311,14 +311,18 @@ function Doc({
   const get = (k: string) => String(mainRow[k] ?? fallbackHeader?.[k] ?? '').trim();
   const title = get('title') || get('aspnote') || get('purpose') || '제목 없음';
   const slpNo = get('slpno') || get('no');
-  const date = get('date');
+  const date = formatValue('date', get('date') || get('slpdt') || get('accdate'));
   const amount = get('amount') || get('amt');
-  const status = get('status') || get('state');
+  const status = formatValue('status', get('status') || get('state'));
   const author = get('sname') || get('user') || get('name');
   const dept = get('dname') || get('dept');
 
-  // Fields already promoted to the header bar.
-  const headerSkip = new Set(['title', 'aspnote', 'purpose', 'slpno', 'no', 'date', 'sname', 'dname', 'status', 'state', 'user', 'name', 'dept']);
+  // Fields already promoted to the header bar (or pure ASP.NET noise).
+  const headerSkip = new Set([
+    'title', 'aspnote', 'purpose', 'slpno', 'no', 'date', 'sname', 'dname',
+    'status', 'state', 'user', 'name', 'dept',
+    ...PROPERTY_SHEET_SKIP,
+  ]);
   // Long free-text fields are pulled out of the property sheet and
   // rendered as full-width blocks at the bottom for readability.
   const longTextFields = ['contents', 'content', 'remarks', 'memo', 'note', 'description', 'detail', 'reason', 'opinion', 'comment', 'aspnote'];
@@ -445,7 +449,7 @@ function PropertySheet({
   const row = grid.rows[0] || {};
   const entries = grid.fields
     .filter((f) => !(skipFields && skipFields.has(f)))
-    .map((f) => [f, String((row as any)[f] ?? '').trim()] as const)
+    .map((f) => [f, formatValue(f, (row as any)[f])] as const)
     .filter(([, v]) => v.length > 0);
   if (entries.length === 0) return null;
   return (
@@ -650,6 +654,44 @@ function fmtAmt(n: number): string {
   return n.toLocaleString('ko-KR');
 }
 
+/**
+ * Convert raw upstream values into something a human can read:
+ *
+ *  - 8-digit dates (`20260507`) on date-like fields → `2026-05-07`.
+ *  - 2-digit approval status codes (`01`, `02`, …) → Korean labels.
+ *
+ * Anything else passes through. Returns an empty string for null/empty.
+ */
+function formatValue(field: string, raw: string | number | undefined): string {
+  if (raw == null) return '';
+  const v = String(raw).trim();
+  if (!v) return '';
+  // Date-like fields whose value is YYYYMMDD.
+  if (/(^date$|date$|^d?dt$|dt$|^day$|day$)/i.test(field) && /^\d{8}$/.test(v)) {
+    return `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`;
+  }
+  // Approval status codes — same scheme is used on both proposals and
+  // vouchers. Codes outside this list pass through so we never hide
+  // unknown values.
+  if (/^(approvalstatus|signstatus|status|state)$/i.test(field)) {
+    const map: Record<string, string> = {
+      '00': '미결',
+      '01': '대기',
+      '02': '완료',
+      '03': '반려',
+      '04': '취소',
+      '05': '회수',
+      '06': '진행중',
+    };
+    if (map[v]) return map[v];
+  }
+  return v;
+}
+
+/** Field codes that are pure ASP.NET internals and should never be
+ *  shown in the property sheet (they appear with junk values like `0`). */
+const PROPERTY_SHEET_SKIP = new Set(['imgsort', 'gfile']);
+
 function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: string[] }) {
   const labelFor = useLabelFor();
   // If `onlyFields` is provided, restrict to that intersection while
@@ -677,7 +719,7 @@ function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: str
             <tr key={row._index} style={{ borderTop: '1px solid #e5e7eb' }}>
               <td style={{ ...td, color: '#94a3b8', width: 40 }}>{i + 1}</td>
               {cols.map((c) => (
-                <td key={c} style={td}>{String(row[c] ?? '')}</td>
+                <td key={c} style={td}>{formatValue(c, row[c])}</td>
               ))}
             </tr>
           ))}
