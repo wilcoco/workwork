@@ -934,10 +934,15 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
       } catch {}
     })();
   }, [c.subjectId, c.id]);
-  const matches = (!filterTeam || ((wl?.teamName || '').toLowerCase().includes(filterTeam.toLowerCase()))) && (!filterName || ((wl?.userName || '').toLowerCase().includes(filterName.toLowerCase())));
+  // The single-record endpoint /api/worklogs/:id returns the row with
+  // its `createdBy` relation but does NOT flatten `userName`/`teamName`
+  // the way /search does. Resolve both shapes so we never fall back
+  // to "익명" / no team when the data is actually present.
+  const wlUserName = String(wl?.userName || wl?.createdBy?.name || '').trim();
+  const wlTeamName = String(wl?.teamName || wl?.createdBy?.orgUnit?.name || '').trim();
+  const matches = (!filterTeam || (wlTeamName.toLowerCase().includes(filterTeam.toLowerCase()))) && (!filterName || (wlUserName.toLowerCase().includes(filterName.toLowerCase())));
   if ((filterTeam || filterName) && !matches) return null;
   const title = (wl?.note || '').split('\n')[0] || '';
-  const attachments = wl?.attachments || {};
   const authorId = getWorklogAuthorId(wl);
   const firstImg = getWorklogFirstImage(wl);
   // Right-hand "최근 댓글" card. Layout:
@@ -956,7 +961,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
       {/* 원본 일지 작성자 헤더 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {authorId ? (
-          <UserAvatar userId={authorId} name={String(wl?.userName || title || '익명')} size={28} style={{ borderRadius: 6, flex: '0 0 auto' }} />
+          <UserAvatar userId={authorId} name={wlUserName || title || '익명'} size={28} style={{ borderRadius: 6, flex: '0 0 auto' }} />
         ) : firstImg ? (
           <img src={firstImg} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover', flex: '0 0 auto' }} />
         ) : (
@@ -964,8 +969,8 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
         )}
         <div style={{ display: 'grid', gap: 1, flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, fontSize: 13 }}>{wl?.userName || '익명'}</span>
-            {wl?.teamName ? <span style={{ color: '#64748b', fontSize: 11 }}>{wl.teamName}</span> : null}
+            <span style={{ fontWeight: 800, fontSize: 13 }}>{wlUserName || '익명'}</span>
+            {wlTeamName ? <span style={{ color: '#64748b', fontSize: 11 }}>{wlTeamName}</span> : null}
             <span style={{ color: '#94a3b8', fontSize: 11 }}>· {formatKstYmd(wl?.createdAt || wl?.date || c.createdAt)}</span>
             {(wl as any)?.visibility ? <span style={{ color: '#94a3b8', fontSize: 11 }}>· {visibilityKo((wl as any).visibility)}</span> : null}
           </div>
@@ -1001,7 +1006,7 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
         <CommentsBox
           worklogId={c.subjectId}
           worklogAuthorId={getWorklogAuthorId(wl)}
-          worklogAuthorName={wl?.userName}
+          worklogAuthorName={wlUserName}
         />
       </div>
     </div>
@@ -1012,6 +1017,7 @@ type CommentItem = {
   id: string;
   authorId?: string;
   authorName?: string;
+  authorTeam?: string | null;
   content: string;
   createdAt: string;
   type?: 'GENERAL' | 'RUBRIC' | 'INSTRUCTION';
@@ -1075,6 +1081,7 @@ function CommentsBox({
           id: x.id,
           authorId: x.authorId,
           authorName: x.authorName,
+          authorTeam: x.authorTeam ?? null,
           content: x.content,
           createdAt: x.createdAt,
           type: x.type,
@@ -1153,9 +1160,10 @@ function CommentsBox({
                     {isIns && (
                       <span style={{ background: '#dc2626', color: '#fff', borderRadius: 6, padding: '1px 6px', fontWeight: 700 }}>📌 업무 지시</span>
                     )}
-                    <span>{c.authorName || '익명'}</span>
                     <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={14} />
-                    <span>· {formatKstYmd(c.createdAt)}</span>
+                    <span style={{ fontWeight: 700 }}>{c.authorName || '익명'}</span>
+                    {c.authorTeam ? <span style={{ color: '#64748b' }}>· {c.authorTeam}</span> : null}
+                    <span style={{ color: '#94a3b8' }}>· {formatKstYmd(c.createdAt)}</span>
                     {isIns && c.instruction && (
                       <span style={{ marginLeft: 6, color: '#7c2d12' }}>
                         → {c.instruction.assigneeName || '담당자'}
