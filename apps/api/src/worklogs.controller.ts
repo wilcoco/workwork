@@ -1216,46 +1216,23 @@ export class WorklogsController {
       }
     }
 
-    // By default, hide worklogs that exist only to back an ApprovalRequest
-    // (created from the 결재 요청 page). They live in the worklog table for
-    // technical reasons but are not regular 업무일지 entries.
-    let approvalBackedIds: string[] = [];
-    if (!includeApprovalDocs) {
-      try {
-        const ar = await this.prisma.approvalRequest.findMany({
-          where: { subjectType: 'Worklog' },
-          select: { subjectId: true },
-        });
-        approvalBackedIds = Array.from(
-          new Set((ar || []).map((a: any) => String(a.subjectId)).filter(Boolean))
-        );
-      } catch {
-        approvalBackedIds = [];
-      }
-    }
-
-    // Build the approval-doc exclusion as an OR of independent
-    // conditions, then negate the whole thing. `NOT: [a, b]` in
-    // Prisma means `NOT (a AND b)` — too permissive — so the previous
-    // shape was both letting approval docs through AND, more
-    // critically, breaking the basic worklog list when the implicit
-    // AND collapsed in unexpected ways with the rest of the where
-    // clause. `NOT: { OR: [...] }` is the correct "exclude any match".
-    const excludeApprovalOr: any[] = [];
-    if (!includeApprovalDocs) {
-      excludeApprovalOr.push({ structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } });
-      if (approvalBackedIds.length) {
-        excludeApprovalOr.push({ id: { in: approvalBackedIds } });
-      }
-    }
-
+    // By default, hide worklogs created **only** to back an
+    // ApprovalRequest. We rely on the explicit marker stamped by
+    // ApprovalsSubmit (`structuredData.kind === 'APPROVAL_DOC'`).
+    //
+    // We deliberately DO NOT use the broader "every worklog ever
+    // referenced by an ApprovalRequest" heuristic — historically a
+    // regular 업무일지 could have an approval attached to it, and
+    // hiding all of those would empty out the user's normal feed.
     const finalWhere = {
       ...where,
       ...(kind === 'OKR' ? { initiative: { keyResult: { objective: { pillar: null } } } } : {}),
       ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
       ...(krId ? { initiative: { keyResultId: krId } } : {}),
       ...(initiativeId ? { initiativeId } : {}),
-      ...(excludeApprovalOr.length ? { NOT: { OR: excludeApprovalOr } } : {}),
+      ...(includeApprovalDocs
+        ? {}
+        : { NOT: { structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } } }),
       ...(viewerId
         ? {
             OR: [
@@ -1909,33 +1886,19 @@ export class WorklogsController {
       else visibilityIn = ['ALL'];
     }
 
-    // Exclude approval-backed worklog documents from AI analysis as well.
-    let approvalBackedIdsForAi: string[] = [];
-    try {
-      const ar = await this.prisma.approvalRequest.findMany({
-        where: { subjectType: 'Worklog' },
-        select: { subjectId: true },
-      });
-      approvalBackedIdsForAi = Array.from(
-        new Set((ar || []).map((a: any) => String(a.subjectId)).filter(Boolean))
-      );
-    } catch {
-      approvalBackedIdsForAi = [];
-    }
-    // Same OR-of-exclusions shape as the search endpoint, for the
-    // exact reasons described there.
-    const excludeApprovalOrForAi: any[] = [
-      { structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } },
-    ];
-    if (approvalBackedIdsForAi.length) {
-      excludeApprovalOrForAi.push({ id: { in: approvalBackedIdsForAi } });
-    }
+    // Exclude only worklogs explicitly marked as APPROVAL_DOC. See
+    // the long comment in `search()` for why we do not use the
+    // broader "any worklog ever referenced by an ApprovalRequest"
+    // heuristic.
+    const excludeApprovalDocMarker = {
+      structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' },
+    } as const;
 
     const where = viewerId
       ? {
           AND: [
             baseWhere,
-            { NOT: { OR: excludeApprovalOrForAi } },
+            { NOT: excludeApprovalDocMarker },
             {
               OR: [
                 { createdById: viewerId },
@@ -1944,7 +1907,7 @@ export class WorklogsController {
             },
           ],
         }
-      : { ...baseWhere, NOT: { OR: excludeApprovalOrForAi }, visibility: { in: visibilityIn as any } };
+      : { ...baseWhere, NOT: excludeApprovalDocMarker, visibility: { in: visibilityIn as any } };
     const items = await (this.prisma as any).worklog.findMany({
       where,
       include: { createdBy: { include: { orgUnit: true } } },
