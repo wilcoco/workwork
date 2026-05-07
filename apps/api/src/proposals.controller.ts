@@ -2,30 +2,44 @@ import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { Public } from './jwt-auth.guard';
 
 /**
- * Read-only proxy + parser for the legacy CAMS approval list page
- * (http://cn.icams.co.kr/acco/masp_list.aspx).
+ * Read-only proxy + parser for the legacy CAMS approval detail page
+ * (http://cn.icams.co.kr/acco/masp_list.aspx?slp_no=<N>).
  *
- * The upstream is plain HTTP and CORS-less, so the browser cannot fetch it
- * directly from the HTTPS web app. This controller fetches server-side and
- * extracts the DataGrid rows (myDataGrid2_lblXXX_N spans) into a clean JSON
- * list. Mirrors the PowerApps screen logic the user shared.
+ * Note: despite the URL name `masp_list.aspx`, this page is actually a
+ * **single-document detail view** that requires `slp_no`. With no
+ * `slp_no` the page returns an empty ASP.NET WebForms shell (~841 bytes,
+ * just `__VIEWSTATE`). Calling it with a valid `slp_no` renders four
+ * separate DataGrids on the same page:
+ *
+ *   1. main info (single row, 14 fields)
+ *   2. attached files
+ *   3. bidder companies
+ *   4. approval line
+ *
+ * Each grid renders cells as `<span id="<gridId>_lbl<FIELD>_<row>">`. The
+ * upstream is plain HTTP and CORS-less, so the browser cannot fetch it
+ * directly from the HTTPS web app — this controller fetches server-side
+ * and groups the rows by grid id.
  */
 @Controller('proposals')
 export class ProposalsController {
   /**
-   * GET /api/proposals/list?slpNo=...
-   * Returns the parsed proposal list rows for the given slp_no.
+   * GET /api/proposals/list?slpNo=<N>
+   *
+   * `slpNo` is required. Returns the four DataGrids on the detail page,
+   * keyed by their grid id, with rows of `{ <fieldCode>: <text> }` plus a
+   * stable `_index` for ordering.
    */
   @Public()
   @Get('list')
   async list(@Query('slpNo') slpNo?: string) {
     const base = process.env.CAMS_PROPOSAL_LIST_URL ||
       'http://cn.icams.co.kr/acco/masp_list.aspx';
-    // Empty slp_no asks the upstream for the unfiltered (all-documents)
-    // list. The legacy ASP.NET page treats missing/empty slp_no as
-    // "show everything", which matches the user's expectation here.
     const trimmed = String(slpNo || '').trim();
-    const url = trimmed ? `${base}?slp_no=${encodeURIComponent(trimmed)}` : base;
+    if (!trimmed) {
+      throw new BadRequestException('slpNo is required (e.g. ?slpNo=103485). The upstream page returns an empty form when called without one.');
+    }
+    const url = `${base}?slp_no=${encodeURIComponent(trimmed)}`;
 
     let html = '';
     try {
@@ -33,9 +47,11 @@ export class ProposalsController {
       const res = await f(url, {
         method: 'GET',
         headers: {
-          // Some legacy ASP.NET pages return 403 without a UA.
-          'User-Agent': 'Mozilla/5.0 (compatible; workwork-proxy/1.0)',
-          'Accept': 'text/html,application/xhtml+xml',
+          // Use a realistic desktop browser UA — some legacy ASP.NET pages
+          // gate non-browser UAs with a 403 or a stripped response.
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
         },
       });
       if (!res?.ok) {
@@ -46,7 +62,8 @@ export class ProposalsController {
       throw new BadRequestException(`Upstream fetch failed: ${e?.message || e}`);
     }
 
-    const items = parseRows(html);
+    const grids = parseGrids(html);
+    const items = flattenGrids(grids);
     // When nothing is parsed, attach lightweight diagnostics so the frontend
     // can show *why* the list is empty (auth wall, structure change, etc.)
     // rather than a silent zero state.
@@ -90,7 +107,17 @@ export class ProposalsController {
             : 'lbl spans exist but no row had a non-empty title — title field id may have changed.'),
       };
     }
-    return { slpNo: trimmed, count: items.length, items, sourceUrl: url, ...(diagnostics ? { diagnostics } : {}) };
+    return {
+      slpNo: trimmed,
+      sourceUrl: url,
+      // Each grid keyed by its DataGrid id, in document order, with rows
+      // ordered by their original row index.
+      grids,
+      // Backward-compatible flat list across all grids.
+      count: items.length,
+      items,
+      ...(diagnostics ? { diagnostics } : {}),
+    };
   }
 
   /**
@@ -137,41 +164,60 @@ export class ProposalsController {
 }
 
 /**
- * Parse all `<span id="...lbl<FIELD>_<INDEX>">...</span>` cells in the HTML,
- * group them by row index, and return the rows that have a non-empty title.
+ * Parse all `<span id="<gridId>_lbl<FIELD>_<INDEX>">...</span>` cells in the HTML and
+ * group them first by `<gridId>` (each ASP.NET DataGrid on the page) and
+ * then by `<INDEX>` (row within that grid). Strips inner HTML tags and
+ * decodes the common HTML entities so the caller gets plain Korean text.
  *
- * The DataGrid id used by the upstream ASP.NET page has historically been
- * `myDataGrid2`, but the page is occasionally re-skinned which changes that
- * prefix. We therefore accept any prefix and only require the column-suffix
- * `lbl<FIELD>_<INDEX>` portion. Strips inner HTML tags and decodes the most
- * common HTML entities so the caller gets plain Korean text.
+ * The detail page has up to four DataGrids on it (main info, files,
+ * bidders, approvers), each with its own grid id. We expose all of them
+ * keyed by id and let the frontend label them.
  */
-function parseRows(html: string): Array<Record<string, string | number>> {
-  // Accept any DataGrid prefix; only the `lbl<FIELD>_<INDEX>` suffix is fixed.
-  const re = /<span[^>]*\bid=["']?[A-Za-z0-9_]*lbl([A-Za-z0-9]+)_(\d+)["']?[^>]*>([\s\S]*?)<\/span>/gi;
-  const byRow: Record<number, Record<string, string>> = {};
+export interface ParsedGrid {
+  id: string;
+  /** Field codes (lowercase) seen in this grid, in their first-seen order. */
+  fields: string[];
+  /** Rows ordered by ascending row-index, each row is { _index, [field]: text }. */
+  rows: Array<Record<string, string | number>>;
+}
+
+function parseGrids(html: string): Record<string, ParsedGrid> {
+  // Match `<span id="<gridId>_lbl<FIELD>_<INDEX>">...</span>` where gridId
+  // is anything up to the trailing `_lbl<FIELD>_<INDEX>` suffix.
+  const re = /<span[^>]*\bid=["']?([A-Za-z0-9_]+?)_lbl([A-Za-z0-9]+)_(\d+)["']?[^>]*>([\s\S]*?)<\/span>/gi;
+  const byGrid: Record<string, { fieldOrder: string[]; rows: Record<number, Record<string, string>> }> = {};
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
-    const field = m[1].toLowerCase();
-    const idx = Number(m[2]);
-    const text = decodeEntities(stripTags(m[3])).trim();
-    if (!byRow[idx]) byRow[idx] = {};
-    byRow[idx][field] = text;
+    const gridId = m[1];
+    const field = m[2].toLowerCase();
+    const idx = Number(m[3]);
+    const text = decodeEntities(stripTags(m[4])).trim();
+    if (!byGrid[gridId]) byGrid[gridId] = { fieldOrder: [], rows: {} };
+    const g = byGrid[gridId];
+    if (!g.fieldOrder.includes(field)) g.fieldOrder.push(field);
+    if (!g.rows[idx]) g.rows[idx] = {};
+    g.rows[idx][field] = text;
   }
-  const indices = Object.keys(byRow)
-    .map(Number)
-    .filter((n) => Number.isFinite(n))
-    .sort((a, b) => a - b);
+  const out: Record<string, ParsedGrid> = {};
+  for (const [gridId, g] of Object.entries(byGrid)) {
+    const indices = Object.keys(g.rows).map(Number).filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+    const rows = indices.map((idx) => ({ _index: idx, ...g.rows[idx] }));
+    out[gridId] = { id: gridId, fields: g.fieldOrder, rows };
+  }
+  return out;
+}
 
-  const rows: Array<Record<string, string | number>> = [];
-  for (const idx of indices) {
-    const row = byRow[idx];
-    // Mirror the PowerApps "downcount" rule: a row is real only if its title
-    // is non-blank.
-    if (!row.title || !row.title.trim()) continue;
-    rows.push({ index: idx, ...row });
+/**
+ * Flatten all grids into a single list (for the legacy `items` field on
+ * the response). Each row is tagged with `_grid` so consumers can tell
+ * which DataGrid it came from.
+ */
+function flattenGrids(grids: Record<string, ParsedGrid>): Array<Record<string, string | number>> {
+  const out: Array<Record<string, string | number>> = [];
+  for (const g of Object.values(grids)) {
+    for (const r of g.rows) out.push({ _grid: g.id, ...r });
   }
-  return rows;
+  return out;
 }
 
 function stripTags(s: string): string {
