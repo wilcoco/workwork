@@ -9,6 +9,7 @@ export function Proposals() {
         docHeading: '품 의 서',
         docNoun: '품의서',
         listLabel: '내 품의서',
+        format: 'proposal',
         // Proposal pages use 품의 vocabulary; the same field codes mean
         // 품의-specific things here.
         labelOverrides: {

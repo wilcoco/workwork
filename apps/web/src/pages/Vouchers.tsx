@@ -9,6 +9,7 @@ export function Vouchers() {
         docHeading: '전 표',
         docNoun: '전표',
         listLabel: '내 전표',
+        format: 'voucher',
         // Voucher pages use the same field codes as proposals but with
         // accounting-specific meanings — override the default labels.
         labelOverrides: {
