@@ -460,7 +460,6 @@ function DocSection({
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
         <h3 style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: 0 }}>{title}</h3>
         <span style={{ fontSize: 11, color: '#94a3b8' }}>({count})</span>
-        <span style={{ fontSize: 10, color: '#cbd5e1', marginLeft: 'auto', fontFamily: 'monospace' }}>{gridId}</span>
       </div>
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>{children}</div>
     </section>
@@ -557,7 +556,9 @@ function sectionLabelFor(id: string, fields: string[], config: CamsBrowserConfig
   if (fset.has('debit') || fset.has('credit') || fset.has('acctcd') || fset.has('acctnm')) return '전표 명세';
   if (fset.has('aspnote')) return '전표 정보';
   if (fset.has('title') || fset.has('purpose') || fset.has('amount') || fset.has('amt')) return '품의 정보';
-  return id;
+  // Fallback: never expose the raw upstream grid id (e.g. `myDataGrid7`)
+  // to the user — they don't care about ASP.NET internals.
+  return '기타 정보';
 }
 
 const th: React.CSSProperties = { padding: '10px 12px', fontSize: 12, fontWeight: 700, color: '#475569', whiteSpace: 'nowrap' };
