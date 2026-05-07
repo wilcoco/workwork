@@ -620,29 +620,24 @@ function ApprovalBox({ grid }: { grid: ParsedGrid }) {
 }
 
 /**
- * Positional column mapping declared by the user. The upstream main
- * grid emits its fields in this exact order, so we map by position
- * (`fields[i]`) and never guess by field-code alias.
+ * Positional column mapping declared by the user, off-by-one fixed:
+ * the upstream detail grid does NOT emit a leading "번" sequence
+ * column, and 지급조건 / 관련업체 are absent. The layout is:
  *
  *   index  ko-label      type
- *   0      번            sequence (number, 1-based)
- *   1      품의번호      identifier
- *   2      제목          title
- *   3      목적          purpose
- *   4      기안자        drafter
- *   5      기안일자      date (YYYYMMDD → YYYY-MM-DD)
- *   6      완료예정일    date (YYYYMMDD → YYYY-MM-DD)
- *   7      소요금액      amount (formatted as `1,234,567 원`)
- *   8      지급조건      string
- *   9      관련업체      string
- *   10     내용          long text (rendered as the wide bottom box)
+ *   0      품의번호      identifier (mono)
+ *   1      제목          title
+ *   2      목적          purpose
+ *   3      기안자        drafter
+ *   4      기안일자      date (YYYYMMDD → YYYY-MM-DD)
+ *   5      완료예정일    date
+ *   6      소요금액      amount (`1,234,567 원`)
+ *   7      내용          long text — rendered as wide bottom box
  *
- * Anything past position 10 (파일명/imgsort/전결/etc.) is hidden in
- * this view — file metadata is already shown via the dedicated
- * 첨부파일 grid below.
+ * Index 8+ (파일명/imgsort/전결/etc.) is hidden; file metadata is
+ * shown via the separate 첨부파일 grid below.
  */
-const PROPOSAL_FIELD_LAYOUT: Array<{ label: string; kind: 'seq' | 'text' | 'mono' | 'date' | 'amount' }> = [
-  { label: '번',         kind: 'seq' },
+const PROPOSAL_FIELD_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'date' | 'amount' }> = [
   { label: '품의번호',   kind: 'mono' },
   { label: '제목',       kind: 'text' },
   { label: '목적',       kind: 'text' },
@@ -650,11 +645,9 @@ const PROPOSAL_FIELD_LAYOUT: Array<{ label: string; kind: 'seq' | 'text' | 'mono
   { label: '기안일자',   kind: 'date' },
   { label: '완료예정일', kind: 'date' },
   { label: '소요금액',   kind: 'amount' },
-  { label: '지급조건',   kind: 'text' },
-  { label: '관련업체',   kind: 'text' },
   { label: '내용',       kind: 'text' },
 ];
-const PROPOSAL_CONTENTS_INDEX = 10; // 내용 — rendered separately at the bottom.
+const PROPOSAL_CONTENTS_INDEX = 7; // 내용 — rendered separately at the bottom.
 
 function ProposalForm({
   grids,
@@ -714,12 +707,6 @@ function ProposalForm({
     return raw;
   };
 
-  const seqNumber = (() => {
-    const explicit = valueAt(0);
-    if (explicit) return explicit;
-    const idx = row._index ?? (fallbackHeader as any)?._index;
-    return idx != null ? String(Number(idx) + 1) : '';
-  })();
   const contents = valueAt(PROPOSAL_CONTENTS_INDEX);
 
   return (
@@ -743,39 +730,31 @@ function ProposalForm({
         <tbody>
           <tr>
             <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[0].label}</th>
-            <td style={formCell}>{seqNumber}</td>
+            <td style={{ ...formCell, fontFamily: 'monospace' }} colSpan={3}>{fmtCell(0)}</td>
+          </tr>
+          <tr>
             <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[1].label}</th>
-            <td style={{ ...formCell, fontFamily: 'monospace' }}>{fmtCell(1)}</td>
+            <td style={{ ...formCell, fontWeight: 700 }} colSpan={3}>
+              {fmtCell(1) || <span style={{ color: '#cbd5e1' }}>—</span>}
+            </td>
           </tr>
           <tr>
             <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[2].label}</th>
-            <td style={{ ...formCell, fontWeight: 700 }} colSpan={3}>
+            <td style={{ ...formCell, whiteSpace: 'pre-wrap' }} colSpan={3}>
               {fmtCell(2) || <span style={{ color: '#cbd5e1' }}>—</span>}
             </td>
           </tr>
           <tr>
             <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[3].label}</th>
-            <td style={{ ...formCell, whiteSpace: 'pre-wrap' }} colSpan={3}>
-              {fmtCell(3) || <span style={{ color: '#cbd5e1' }}>—</span>}
-            </td>
-          </tr>
-          <tr>
+            <td style={formCell}>{fmtCell(3)}</td>
             <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[4].label}</th>
             <td style={formCell}>{fmtCell(4)}</td>
+          </tr>
+          <tr>
             <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[5].label}</th>
             <td style={formCell}>{fmtCell(5)}</td>
-          </tr>
-          <tr>
             <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[6].label}</th>
-            <td style={formCell}>{fmtCell(6)}</td>
-            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[7].label}</th>
-            <td style={{ ...formCell, fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmtCell(7)}</td>
-          </tr>
-          <tr>
-            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[8].label}</th>
-            <td style={formCell}>{fmtCell(8)}</td>
-            <th style={formHeader}>{PROPOSAL_FIELD_LAYOUT[9].label}</th>
-            <td style={formCell}>{fmtCell(9)}</td>
+            <td style={{ ...formCell, fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmtCell(6)}</td>
           </tr>
         </tbody>
       </table>
