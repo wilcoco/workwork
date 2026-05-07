@@ -372,12 +372,15 @@ function Doc({
   const bidders = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '입찰업체');
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
   const lineItems = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 명세');
-  const others = grids.filter((g) =>
-    g !== main && g !== files && g !== bidders && g !== approvers && g !== lineItems
-    // Skip the redundant single-row debit/credit totals grids; the
-    // voucher ledger already displays the totals on each side.
-    && sectionLabelFor(g.id, g.fields, config) !== '_totals',
-  );
+  const others = grids.filter((g) => {
+    if (g === main || g === files || g === bidders || g === approvers || g === lineItems) return false;
+    // Only suppress the redundant single-row debit/credit totals grids
+    // when the voucher ledger above has already rendered the totals.
+    // If we couldn't identify a line-items grid, keep the totals grid
+    // visible so the user never silently loses data.
+    if (lineItems && sectionLabelFor(g.id, g.fields, config) === '_totals') return false;
+    return true;
+  });
 
   const mainRow: Record<string, any> = (main?.rows?.[0] as any) || {};
   const get = (k: string) => String(mainRow[k] ?? fallbackHeader?.[k] ?? '').trim();
@@ -600,166 +603,41 @@ function ApprovalBox({ grid }: { grid: ParsedGrid }) {
   );
 }
 
+/**
+ * Traditional Korean 품의서 layout. We *only* render the Korean
+ * cosmetic chrome here — a centered "품 의 서" title and the
+ * iconic top-right 결재란 stamp box — and then delegate the entire
+ * body to the generic `Doc`. That way every field present on the
+ * upstream grid shows up exactly once, regardless of whether our
+ * `slpno` / `title` / `amount` aliases happen to match.
+ */
 function ProposalForm({ grids, config }: { grids: ParsedGrid[]; config: CamsBrowserConfig }) {
-  const main =
-    grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '품의 정보') || grids[0];
-  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
-  const bidders = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '입찰업체');
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
-
-  const m: Record<string, any> = (main?.rows?.[0] as any) || {};
-  const get = (k: string) => String(m[k] ?? '').trim();
-  const fmt = (k: string) => formatValue(k, m[k]);
-
-  const slpno = get('slpno') || get('no');
-  const date = fmt('date') || fmt('slpdt') || fmt('regdt');
-  const sname = get('sname') || get('user') || get('name');
-  const dept = get('dname') || get('dept') || get('deptnm');
-  const title = get('title') || get('aspnote');
-  const purpose = get('purpose');
-  const duedate = fmt('duedate') || fmt('delvdt');
-  const amountRaw = get('amount') || get('amt');
-  const amount = amountRaw ? `${fmtAmt(parseAmt(amountRaw))} 원` : '';
-  const payterm = get('payterm');
-  const company = get('company') || get('vendor') || get('vendornm');
-  const contents = get('contents') || get('content');
-
   return (
     <article style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '32px 28px', position: 'relative' }}>
-      {/* Approval stamp box anchored top-right. */}
       {approvers && approvers.rows.length > 0 && (
         <div style={{ position: 'absolute', top: 24, right: 24 }}>
           <ApprovalBox grid={approvers} />
         </div>
       )}
-
-      <h1 style={{ fontSize: 30, fontWeight: 800, textAlign: 'center', letterSpacing: '0.5em', margin: '0 0 32px 0', color: '#0f172a', textIndent: '0.5em' }}>
+      <h1 style={{ fontSize: 30, fontWeight: 800, textAlign: 'center', letterSpacing: '0.5em', margin: '0 0 24px 0', color: '#0f172a', textIndent: '0.5em' }}>
         품 의 서
       </h1>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12, tableLayout: 'fixed' }}>
-        <colgroup>
-          <col style={{ width: 110 }} />
-          <col />
-          <col style={{ width: 110 }} />
-          <col />
-        </colgroup>
-        <tbody>
-          <tr>
-            <th style={formHeader}>품의번호</th>
-            <td style={{ ...formCell, fontFamily: 'monospace' }}>{slpno}</td>
-            <th style={formHeader}>기안일자</th>
-            <td style={formCell}>{date}</td>
-          </tr>
-          <tr>
-            <th style={formHeader}>기 안 자</th>
-            <td style={formCell}>{sname}</td>
-            <th style={formHeader}>부 서</th>
-            <td style={formCell}>{dept}</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12, tableLayout: 'fixed' }}>
-        <colgroup>
-          <col style={{ width: 110 }} />
-          <col />
-          <col style={{ width: 110 }} />
-          <col />
-        </colgroup>
-        <tbody>
-          <tr>
-            <th style={formHeader}>제 목</th>
-            <td style={{ ...formCell, fontWeight: 700, fontSize: 14 }} colSpan={3}>{title || <span style={{ color: '#cbd5e1' }}>—</span>}</td>
-          </tr>
-          {purpose && (
-            <tr>
-              <th style={formHeader}>목 적</th>
-              <td style={formCell} colSpan={3}>{purpose}</td>
-            </tr>
-          )}
-          {(amount || payterm) && (
-            <tr>
-              <th style={formHeader}>소요금액</th>
-              <td style={{ ...formCell, fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{amount}</td>
-              <th style={formHeader}>지급조건</th>
-              <td style={formCell}>{payterm}</td>
-            </tr>
-          )}
-          {(duedate || company) && (
-            <tr>
-              <th style={formHeader}>완료예정일</th>
-              <td style={formCell}>{duedate}</td>
-              <th style={formHeader}>관련업체</th>
-              <td style={formCell}>{company}</td>
-            </tr>
-          )}
-          {contents && (
-            <tr>
-              <th style={formHeader}>내 용</th>
-              <td style={{ ...formCell, whiteSpace: 'pre-wrap', lineHeight: 1.7 }} colSpan={3}>{contents}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {files && files.rows.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-            첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
-          </h3>
-          <CompactTable grid={files} />
-        </section>
-      )}
-
-      {bidders && bidders.rows.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-            입찰업체 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({bidders.rows.length})</span>
-          </h3>
-          <CompactTable grid={bidders} />
-        </section>
-      )}
-
-      {/* Approval line table at bottom — gives the full audit trail
-          in addition to the iconic stamp box at the top. */}
-      {approvers && approvers.rows.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-            결재선 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({approvers.rows.length})</span>
-          </h3>
-          <CompactTable
-            grid={approvers}
-            onlyFields={['signorder', 'approvalorder', 'position', 'rank', 'empname', 'sname', 'name', 'approvalstatus', 'signstatus', 'opinion', 'comment']}
-          />
-        </section>
-      )}
+      <Doc grids={grids} config={config} />
     </article>
   );
 }
 
+/**
+ * Traditional Korean 전표 layout. Same approach as `ProposalForm` —
+ * keep the cosmetic Korean header + stamp box, delegate the body to
+ * `Doc`. The body already includes the symmetric 차변/대변 ledger
+ * because `Doc` recognises the line-items grid via `sectionLabelFor`
+ * and `VoucherLedger` falls back to a regular table if the
+ * 차대구분 column shape is unfamiliar, so we never lose data.
+ */
 function VoucherForm({ grids, config }: { grids: ParsedGrid[]; config: CamsBrowserConfig }) {
-  const main =
-    grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 정보') ||
-    grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '품의 정보') ||
-    grids[0];
-  const lineItems = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 명세');
-  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
-
-  const m: Record<string, any> = (main?.rows?.[0] as any) || {};
-  const get = (k: string) => String(m[k] ?? '').trim();
-  const fmt = (k: string) => formatValue(k, m[k]);
-
-  const slpno = get('slpno') || get('no');
-  const slpdt = fmt('slpdt') || fmt('accdate') || fmt('date');
-  const inpdt = fmt('inpdt') || fmt('inputdate');
-  const sname = get('sname') || get('drafter') || get('regname');
-  const trtype = get('trantype') || get('tranggu') || get('trgubun') || get('dealtype');
-  const apryn = get('apryn') || get('signyn') || get('approveyn');
-  const cancelyn = get('cancelyn') || get('canceln');
-  const aprdt = fmt('aprdt') || fmt('apdt') || fmt('signdt') || fmt('signdate');
-
   return (
     <article style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, padding: '32px 28px', position: 'relative' }}>
       {approvers && approvers.rows.length > 0 && (
@@ -767,78 +645,10 @@ function VoucherForm({ grids, config }: { grids: ParsedGrid[]; config: CamsBrows
           <ApprovalBox grid={approvers} />
         </div>
       )}
-
-      <h1 style={{ fontSize: 30, fontWeight: 800, textAlign: 'center', letterSpacing: '0.5em', margin: '0 0 32px 0', color: '#0f172a', textIndent: '0.5em' }}>
+      <h1 style={{ fontSize: 30, fontWeight: 800, textAlign: 'center', letterSpacing: '0.5em', margin: '0 0 24px 0', color: '#0f172a', textIndent: '0.5em' }}>
         전 표
       </h1>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12, tableLayout: 'fixed' }}>
-        <colgroup>
-          <col style={{ width: 110 }} />
-          <col />
-          <col style={{ width: 110 }} />
-          <col />
-        </colgroup>
-        <tbody>
-          <tr>
-            <th style={formHeader}>전표번호</th>
-            <td style={{ ...formCell, fontFamily: 'monospace' }}>{slpno}</td>
-            <th style={formHeader}>기표일자</th>
-            <td style={formCell}>{slpdt}</td>
-          </tr>
-          <tr>
-            <th style={formHeader}>품의자</th>
-            <td style={formCell}>{sname}</td>
-            <th style={formHeader}>거래형태</th>
-            <td style={formCell}>{trtype}</td>
-          </tr>
-          {(inpdt || aprdt) && (
-            <tr>
-              <th style={formHeader}>입력일</th>
-              <td style={formCell}>{inpdt}</td>
-              <th style={formHeader}>결재일</th>
-              <td style={formCell}>{aprdt}</td>
-            </tr>
-          )}
-          {(apryn || cancelyn) && (
-            <tr>
-              <th style={formHeader}>결재여부</th>
-              <td style={formCell}>{apryn}</td>
-              <th style={formHeader}>취소여부</th>
-              <td style={formCell}>{cancelyn}</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {lineItems && lineItems.rows.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <div style={{ border: '1px solid #94a3b8', borderRadius: 4, overflow: 'hidden' }}>
-            <VoucherLedger grid={lineItems} />
-          </div>
-        </section>
-      )}
-
-      {files && files.rows.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-            첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
-          </h3>
-          <CompactTable grid={files} />
-        </section>
-      )}
-
-      {approvers && approvers.rows.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-            결재선 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({approvers.rows.length})</span>
-          </h3>
-          <CompactTable
-            grid={approvers}
-            onlyFields={['signorder', 'approvalorder', 'position', 'rank', 'empname', 'sname', 'name', 'approvalstatus', 'signstatus', 'opinion', 'comment']}
-          />
-        </section>
-      )}
+      <Doc grids={grids} config={config} />
     </article>
   );
 }
