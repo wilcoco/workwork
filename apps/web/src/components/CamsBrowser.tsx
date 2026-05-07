@@ -79,6 +79,10 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ListResp | null>(null);
   const [slpNoInput, setSlpNoInput] = useState<string>('');
+  // Client-side filter applied to the already-fetched list. CAMS
+  // upstream returns the page-sized batch as-is, so any further
+  // narrowing has to happen here.
+  const [filterText, setFilterText] = useState<string>('');
 
   useEffect(() => {
     void fetchList('');
@@ -116,12 +120,12 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
       <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>{config.pageTitle}</h2>
       <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-        CAMS 회계 시스템(<code>cn.icams.co.kr</code>)에서 {config.docNoun}를 조회합니다. 번호없이 조회하면 내 {config.docNoun} 리스트가, <code>slp_no</code>를 넣으면 단일 {config.docNoun} 상세가 나옵니다.
+        CAMS 회계 시스템(<code>cn.icams.co.kr</code>)에서 {config.docNoun}를 조회합니다. 번호없이 조회하면 내 {config.docNoun} 리스트가, <code>slp_no</code>를 넣으면 단일 {config.docNoun} 상세가 나옵니다. 리스트는 업스트림이 반환하는 만큼 한 번에 보여주며, 제목/이름/번호로 화면 내 검색이 가능합니다.
       </p>
 
       <form
         onSubmit={(e) => { e.preventDefault(); void fetchList(slpNoInput); }}
-        style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}
+        style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}
       >
         <label style={{ fontSize: 13, color: '#475569' }}>
           slp_no
@@ -149,6 +153,26 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
           </button>
         )}
       </form>
+
+      {!isDetail && data && data.count > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            placeholder="제목 / 이름 / 부서 / 번호로 화면 내 검색"
+            style={{ flex: 1, minWidth: 240, border: '1px solid #cbd5e1', borderRadius: 6, padding: '6px 10px', fontSize: 14 }}
+          />
+          {filterText && (
+            <button
+              type="button"
+              onClick={() => setFilterText('')}
+              style={{ background: '#fff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 6, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }}
+            >
+              지우기
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: 10, borderRadius: 8, marginBottom: 12, fontSize: 13 }}>
@@ -183,7 +207,7 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
               <Doc grids={grids} config={config} />
             )
           ) : (
-            <ListWithExpand grids={grids} config={config} />
+            <ListWithExpand grids={grids} config={config} filterText={filterText} />
           )}
         </>
       )}
@@ -194,7 +218,15 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
 
 /* ---------- List with inline-expandable detail ---------- */
 
-function ListWithExpand({ grids, config }: { grids: ParsedGrid[]; config: CamsBrowserConfig }) {
+function ListWithExpand({
+  grids,
+  config,
+  filterText,
+}: {
+  grids: ParsedGrid[];
+  config: CamsBrowserConfig;
+  filterText: string;
+}) {
   const labelFor = useLabelFor();
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
   if (!listGrid) return null;
@@ -206,8 +238,18 @@ function ListWithExpand({ grids, config }: { grids: ParsedGrid[]; config: CamsBr
     ...listGrid.fields.filter((c) => !colOrder.includes(c)),
   ];
 
+  // Client-side filter: case-insensitive substring across every visible
+  // cell so a user can search by title, drafter, dept or any free text.
+  const q = filterText.trim().toLowerCase();
+  const visibleRows = q
+    ? listGrid.rows.filter((row) => cols.some((c) => String(row[c] ?? '').toLowerCase().includes(q)))
+    : listGrid.rows;
+
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#475569' }}>
+        총 <strong>{listGrid.rows.length}</strong>건{q && <> · 검색결과 <strong>{visibleRows.length}</strong>건</>}
+      </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -220,9 +262,17 @@ function ListWithExpand({ grids, config }: { grids: ParsedGrid[]; config: CamsBr
             </tr>
           </thead>
           <tbody>
-            {listGrid.rows.map((row, i) => (
-              <ListRow key={row._index} row={row} cols={cols} index={i} config={config} />
-            ))}
+            {visibleRows.length === 0 ? (
+              <tr>
+                <td colSpan={cols.length + 2} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+                  검색 결과 없음
+                </td>
+              </tr>
+            ) : (
+              visibleRows.map((row, i) => (
+                <ListRow key={row._index} row={row} cols={cols} index={i} config={config} />
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -286,7 +336,15 @@ function ListRow({
                 {error}
               </div>
             )}
-            {detail && <Doc grids={Object.values(detail.grids || {})} fallbackHeader={row} config={config} />}
+            {detail && (
+              config.format === 'proposal' ? (
+                <ProposalForm grids={Object.values(detail.grids || {})} config={config} />
+              ) : config.format === 'voucher' ? (
+                <VoucherForm grids={Object.values(detail.grids || {})} config={config} />
+              ) : (
+                <Doc grids={Object.values(detail.grids || {})} fallbackHeader={row} config={config} />
+              )
+            )}
           </td>
         </tr>
       )}
