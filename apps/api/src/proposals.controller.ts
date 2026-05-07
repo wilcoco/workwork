@@ -63,12 +63,26 @@ export class ProposalsController {
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, 400);
+      // Sample some of the structural id/class attributes so we can spot a
+      // new grid pattern at a glance without dumping the full HTML.
+      const idSample = Array.from(html.matchAll(/\bid=["']([^"']{1,80})["']/gi))
+        .map((m: any) => m[1])
+        .slice(0, 30);
+      const classSample = Array.from(html.matchAll(/\bclass=["']([^"']{1,80})["']/gi))
+        .map((m: any) => m[1])
+        .slice(0, 30);
       diagnostics = {
         htmlLength: html.length,
         lblIdsFoundSample: lblSample,
+        idSample,
+        classSample,
         looksLikeLogin,
         looksLikeError,
         bodyTextSnippet: bodyText,
+        // Raw HTML head so we can see the actual new grid markup directly
+        // from the empty state on the page (avoids Service Worker eating
+        // the /debug navigation).
+        htmlSnippet: html.slice(0, 4000),
         hint: looksLikeLogin
           ? 'CAMS upstream returned a login page — the proxy may need session cookies.'
           : (lblSample.length === 0

@@ -12,9 +12,12 @@ interface ProposalRow {
 interface ListDiagnostics {
   htmlLength: number;
   lblIdsFoundSample: string[];
+  idSample?: string[];
+  classSample?: string[];
   looksLikeLogin: boolean;
   looksLikeError: boolean;
   bodyTextSnippet: string;
+  htmlSnippet?: string;
   hint: string;
 }
 
@@ -134,6 +137,35 @@ export function Proposals() {
                         {data.diagnostics.bodyTextSnippet}
                       </div>
                     </div>
+                  )}
+                  {(data.diagnostics.idSample?.length || data.diagnostics.classSample?.length) ? (
+                    <details>
+                      <summary style={{ cursor: 'pointer', color: '#1d4ed8' }}>구조 ID/Class 샘플</summary>
+                      {data.diagnostics.idSample?.length ? (
+                        <div style={{ marginTop: 6 }}>
+                          <b>id 샘플:</b>
+                          <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#64748b', wordBreak: 'break-all' }}>
+                            {data.diagnostics.idSample.join(' | ')}
+                          </div>
+                        </div>
+                      ) : null}
+                      {data.diagnostics.classSample?.length ? (
+                        <div style={{ marginTop: 6 }}>
+                          <b>class 샘플:</b>
+                          <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#64748b', wordBreak: 'break-all' }}>
+                            {data.diagnostics.classSample.join(' | ')}
+                          </div>
+                        </div>
+                      ) : null}
+                    </details>
+                  ) : null}
+                  {data.diagnostics.htmlSnippet && (
+                    <details>
+                      <summary style={{ cursor: 'pointer', color: '#1d4ed8' }}>원시 HTML 발췌 (앞 4000자)</summary>
+                      <pre style={{ fontFamily: 'monospace', fontSize: 11, color: '#334155', background: '#0f172a0a', padding: 8, borderRadius: 6, marginTop: 6, maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
+                        {data.diagnostics.htmlSnippet}
+                      </pre>
+                    </details>
                   )}
                 </div>
               )}
