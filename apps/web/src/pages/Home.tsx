@@ -920,6 +920,11 @@ function getWorklogFirstImage(w: any): string {
 function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; filterTeam?: string; filterName?: string; viewMode?: 'summary' | 'full' }) {
   const [wl, setWl] = useState<any | null>(null);
   const [prev, setPrev] = useState<Array<{ id: string; authorId?: string; authorName?: string; authorTeam?: string | null; content: string; createdAt: string }>>([]);
+  // The worklog body is collapsed by default so comments stand out
+  // on the right rail. Users can expand on demand to read the full
+  // 업무일지 inside the card. `viewMode === 'full'` (used by the
+  // "전체 보기" modal) starts expanded.
+  const [bodyOpen, setBodyOpen] = useState<boolean>(viewMode === 'full');
   useEffect(() => {
     (async () => {
       try {
@@ -974,31 +979,57 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
             <span style={{ color: '#94a3b8', fontSize: 11 }}>· {formatKstYmd(wl?.createdAt || wl?.date || c.createdAt)}</span>
             {(wl as any)?.visibility ? <span style={{ color: '#94a3b8', fontSize: 11 }}>· {visibilityKo((wl as any).visibility)}</span> : null}
           </div>
-          <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {title || '(제목 없음)'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+              {title || '(제목 없음)'}
+            </div>
+            {/* Toggle to expand/collapse the worklog body. We surface
+                this on the title row so the right rail emphasises the
+                comments below; users opt-in to read the full 일지. */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setBodyOpen((v) => !v); }}
+              style={{
+                flex: '0 0 auto',
+                padding: '2px 8px',
+                fontSize: 11,
+                lineHeight: 1.4,
+                border: '1px solid #CBD5E1',
+                borderRadius: 999,
+                background: bodyOpen ? '#E0F2FE' : '#fff',
+                color: '#475569',
+                cursor: 'pointer',
+              }}
+              aria-expanded={bodyOpen}
+              title={bodyOpen ? '내용 접기' : '내용 펼치기'}
+            >
+              {bodyOpen ? '접기 ▴' : '펼치기 ▾'}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 일지 본문 — 고정 높이 스크롤 박스 */}
-      {wl ? (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            border: '1px solid #e2e8f0',
-            borderRadius: 6,
-            background: '#fafaf7',
-            padding: 8,
-            maxHeight: 220,
-            overflowY: 'auto',
-            fontSize: 12,
-            lineHeight: 1.55,
-          }}
-        >
-          <WorklogDocument worklog={wl} variant="content" />
-        </div>
-      ) : (
-        <div style={{ color: '#94a3b8', fontSize: 11, padding: '8px 4px' }}>일지 내용을 불러오는 중…</div>
+      {/* 일지 본문 — 펼치기 토글로만 보여서 댓글이 부각되게 한다. */}
+      {bodyOpen && (
+        wl ? (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              border: '1px solid #e2e8f0',
+              borderRadius: 6,
+              background: '#fafaf7',
+              padding: 8,
+              maxHeight: 220,
+              overflowY: 'auto',
+              fontSize: 12,
+              lineHeight: 1.55,
+            }}
+          >
+            <WorklogDocument worklog={wl} variant="content" />
+          </div>
+        ) : (
+          <div style={{ color: '#94a3b8', fontSize: 11, padding: '8px 4px' }}>일지 내용을 불러오는 중…</div>
+        )
       )}
 
       {/* 댓글 영역 — 작성자/내용 + 새 댓글 입력 */}
