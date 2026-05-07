@@ -1234,13 +1234,18 @@ export class WorklogsController {
       }
     }
 
-    const excludeApprovalNot: any[] = [];
+    // Build the approval-doc exclusion as an OR of independent
+    // conditions, then negate the whole thing. `NOT: [a, b]` in
+    // Prisma means `NOT (a AND b)` — too permissive — so the previous
+    // shape was both letting approval docs through AND, more
+    // critically, breaking the basic worklog list when the implicit
+    // AND collapsed in unexpected ways with the rest of the where
+    // clause. `NOT: { OR: [...] }` is the correct "exclude any match".
+    const excludeApprovalOr: any[] = [];
     if (!includeApprovalDocs) {
-      // Marker on newly created approval docs
-      excludeApprovalNot.push({ structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } });
-      // Legacy approval-backed worklogs without the marker
+      excludeApprovalOr.push({ structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } });
       if (approvalBackedIds.length) {
-        excludeApprovalNot.push({ id: { in: approvalBackedIds } });
+        excludeApprovalOr.push({ id: { in: approvalBackedIds } });
       }
     }
 
@@ -1250,7 +1255,7 @@ export class WorklogsController {
       ...(kind === 'KPI' ? { initiative: { keyResult: { NOT: { objective: { pillar: null } } } } } : {}),
       ...(krId ? { initiative: { keyResultId: krId } } : {}),
       ...(initiativeId ? { initiativeId } : {}),
-      ...(excludeApprovalNot.length ? { NOT: excludeApprovalNot } : {}),
+      ...(excludeApprovalOr.length ? { NOT: { OR: excludeApprovalOr } } : {}),
       ...(viewerId
         ? {
             OR: [
@@ -1917,18 +1922,20 @@ export class WorklogsController {
     } catch {
       approvalBackedIdsForAi = [];
     }
-    const excludeApprovalNotForAi: any[] = [
+    // Same OR-of-exclusions shape as the search endpoint, for the
+    // exact reasons described there.
+    const excludeApprovalOrForAi: any[] = [
       { structuredData: { path: ['kind'], equals: 'APPROVAL_DOC' } },
     ];
     if (approvalBackedIdsForAi.length) {
-      excludeApprovalNotForAi.push({ id: { in: approvalBackedIdsForAi } });
+      excludeApprovalOrForAi.push({ id: { in: approvalBackedIdsForAi } });
     }
 
     const where = viewerId
       ? {
           AND: [
             baseWhere,
-            { NOT: excludeApprovalNotForAi },
+            { NOT: { OR: excludeApprovalOrForAi } },
             {
               OR: [
                 { createdById: viewerId },
@@ -1937,7 +1944,7 @@ export class WorklogsController {
             },
           ],
         }
-      : { ...baseWhere, NOT: excludeApprovalNotForAi, visibility: { in: visibilityIn as any } };
+      : { ...baseWhere, NOT: { OR: excludeApprovalOrForAi }, visibility: { in: visibilityIn as any } };
     const items = await (this.prisma as any).worklog.findMany({
       where,
       include: { createdBy: { include: { orgUnit: true } } },
