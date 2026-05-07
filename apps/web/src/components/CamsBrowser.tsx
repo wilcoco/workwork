@@ -324,7 +324,7 @@ function Doc({
 
       {lineItems && lineItems.rows.length > 0 && (
         <DocSection title="전표 명세" gridId={lineItems.id} count={lineItems.rows.length}>
-          <CompactTable grid={lineItems} />
+          <VoucherLedger grid={lineItems} />
         </DocSection>
       )}
 
@@ -464,6 +464,138 @@ function DocSection({
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>{children}</div>
     </section>
   );
+}
+
+/**
+ * Render voucher line items in the traditional Korean 전표 (T-account)
+ * layout: 차변 (debit) on the left, 대변 (credit) on the right, with
+ * matching account name / amount / 적요 columns and a totals row at
+ * the bottom that should be equal on both sides.
+ *
+ * Two upstream shapes are supported:
+ *
+ *  - Separate `debit` and `credit` columns per row. Rows with a
+ *    non-zero debit appear on the left; rows with a non-zero credit
+ *    appear on the right. A single row can show on both sides if it
+ *    has values in both columns.
+ *
+ *  - A single `drcr` flag column plus an amount column. The flag
+ *    classifies the row to one side.
+ */
+function VoucherLedger({ grid }: { grid: ParsedGrid }) {
+  const fields = new Set(grid.fields);
+  const hasDebit = fields.has('debit');
+  const hasCredit = fields.has('credit');
+  const hasDrcr = fields.has('drcr');
+  const acctCdKey = ['acctcd', 'accountcd', 'acctcode'].find((k) => fields.has(k));
+  const acctNmKey = ['acctnm', 'accountnm', 'acctname'].find((k) => fields.has(k));
+  const amtKey = ['amount', 'amt', 'totamt'].find((k) => fields.has(k));
+  const noteKey = ['summary', 'aspnote', 'note', 'remarks', 'content', 'contents'].find((k) => fields.has(k));
+
+  type LedgerRow = { acctcd?: string; acctnm?: string; amt: number; note?: string; _index: number };
+  const debitRows: LedgerRow[] = [];
+  const creditRows: LedgerRow[] = [];
+
+  for (const row of grid.rows) {
+    const acctcd = acctCdKey ? String((row as any)[acctCdKey] ?? '') : undefined;
+    const acctnm = acctNmKey ? String((row as any)[acctNmKey] ?? '') : undefined;
+    const note = noteKey ? String((row as any)[noteKey] ?? '') : undefined;
+    if (hasDebit || hasCredit) {
+      const d = parseAmt((row as any).debit);
+      const c = parseAmt((row as any).credit);
+      if (d > 0) debitRows.push({ acctcd, acctnm, amt: d, note, _index: row._index });
+      if (c > 0) creditRows.push({ acctcd, acctnm, amt: c, note, _index: row._index });
+    } else if (hasDrcr) {
+      const flag = String((row as any).drcr ?? '').trim();
+      const amt = amtKey ? parseAmt((row as any)[amtKey]) : 0;
+      const entry: LedgerRow = { acctcd, acctnm, amt, note, _index: row._index };
+      if (/^(차|D|DR|debit|1)$/i.test(flag)) debitRows.push(entry);
+      else if (/^(대|C|CR|credit|2)$/i.test(flag)) creditRows.push(entry);
+      else debitRows.push(entry); // default to debit if ambiguous
+    } else {
+      // No way to classify — fall back to plain table rendering.
+      return <CompactTable grid={grid} />;
+    }
+  }
+
+  const debitTotal = debitRows.reduce((s, r) => s + r.amt, 0);
+  const creditTotal = creditRows.reduce((s, r) => s + r.amt, 0);
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+      <LedgerSide title="차변" rows={debitRows} total={debitTotal} />
+      <LedgerSide title="대변" rows={creditRows} total={creditTotal} borderLeft />
+    </div>
+  );
+}
+
+function LedgerSide({
+  title,
+  rows,
+  total,
+  borderLeft,
+}: {
+  title: string;
+  rows: Array<{ acctcd?: string; acctnm?: string; amt: number; note?: string; _index: number }>;
+  total: number;
+  borderLeft?: boolean;
+}) {
+  return (
+    <div style={{ borderLeft: borderLeft ? '1px solid #e5e7eb' : 'none' }}>
+      <div style={{ background: '#f8fafc', padding: '8px 12px', fontSize: 12, fontWeight: 800, color: title === '차변' ? '#0F3D73' : '#9F1239', borderBottom: '1px solid #e5e7eb' }}>
+        {title}
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ padding: 14, fontSize: 12, color: '#cbd5e1' }}>—</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ textAlign: 'left' }}>
+              <th style={{ ...th, width: 100 }}>계정</th>
+              <th style={th}>계정명</th>
+              <th style={{ ...th, textAlign: 'right' }}>금액</th>
+              <th style={th}>적요</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={`${r._index}-${i}`} style={{ borderTop: '1px solid #e5e7eb' }}>
+                <td style={{ ...td, fontFamily: 'monospace', color: '#64748b' }}>{r.acctcd || ''}</td>
+                <td style={td}>{r.acctnm || ''}</td>
+                <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                  {fmtAmt(r.amt)}
+                </td>
+                <td style={{ ...td, color: '#64748b' }}>{r.note || ''}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: '2px solid #cbd5e1', background: '#fafafa' }}>
+              <td style={td} colSpan={2}>
+                <span style={{ fontWeight: 700, color: '#475569' }}>합계</span>
+              </td>
+              <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800 }}>
+                {fmtAmt(total)}
+              </td>
+              <td style={td}></td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function parseAmt(v: any): number {
+  if (v == null) return 0;
+  const s = String(v).replace(/[,\s₩]/g, '');
+  if (!s) return 0;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function fmtAmt(n: number): string {
+  return n.toLocaleString('ko-KR');
 }
 
 function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: string[] }) {
