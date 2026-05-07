@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
 import { UserAvatar } from '../components/UserAvatar';
+import { ApprovalStepLadder, type ApprovalStep } from '../components/ApprovalSteps';
 
 export function ApprovalsStatus() {
   const [filters, setFilters] = useState<{ requestedById?: string; approverId?: string; query?: string; from?: string; to?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' }>({});
@@ -63,7 +64,27 @@ export function ApprovalsStatus() {
       if (f.status) params.set('status', f.status);
       const qs = params.toString() ? `?${params.toString()}` : '';
       const l = await apiJson<{ items: any[] }>(`/api/approvals${qs}`);
-      setItems(l.items || []);
+      const base = l.items || [];
+      // Batch-fetch subject documents so we can show real titles instead of raw IDs.
+      let docMap: Record<string, any> = {};
+      try {
+        const batchItems = base.map((a: any) => ({ subjectType: String(a.subjectType || ''), subjectId: String(a.subjectId || '') }));
+        if (batchItems.length) {
+          const batchRes = await apiJson<{ results: Record<string, any> }>(`/api/approvals/batch-subjects`, {
+            method: 'POST',
+            body: JSON.stringify({ items: batchItems }),
+          });
+          docMap = batchRes.results || {};
+        }
+      } catch {}
+      const enriched = base.map((a: any) => {
+        const stNorm = String(a.subjectType || '').toUpperCase();
+        const key = `${a.subjectType}::${a.subjectId}`;
+        const doc = docMap[key] ?? null;
+        const finalDoc = stNorm === 'PROCESS' && doc ? { process: doc, summaryTasks: [], pendingTask: null } : doc;
+        return { ...a, _doc: finalDoc, _stNorm: stNorm };
+      });
+      setItems(enriched);
     } catch (e: any) {
       setError(e?.message || '로드 실패');
     } finally {
@@ -162,27 +183,52 @@ export function ApprovalsStatus() {
       <div style={{ display: 'grid', gap: 6 }}>
         <h3 style={{ margin: '8px 0 0' }}>최근 결재 요청</h3>
         <div style={{ display: 'grid', gap: 6 }}>
-          {items.map((it) => (
-            <div key={it.id} style={card}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <b>{it.subjectType}</b>
-                <span style={{ color: '#64748b' }}>/ {it.subjectId}</span>
-                <span style={chip}>{statusLabel(it.status)}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
-              </div>
-              <div style={{ fontSize: 12, color: '#334155' }}>
-                요청자: {it.requestedBy?.name || '-'} <UserAvatar userId={String(it.requestedBy?.id || '')} name={String(it.requestedBy?.name || '')} size={14} style={{ marginLeft: 4 }} /> ({it.requestedBy?.id || '-'})
-                {' '}· 현재 결재자: {it.currentApprover?.name || '-'} <UserAvatar userId={String(it.currentApprover?.id || '')} name={String(it.currentApprover?.name || '')} size={14} style={{ marginLeft: 4 }} /> ({it.currentApprover?.id || '-'})
-              </div>
-              {it.steps?.length ? (
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                  {it.steps.map((s: any) => (
-                    <span key={s.id} style={tinyChip}>{s.stepNo}. {s.approverId} · {s.status}</span>
-                  ))}
+          {items.map((it) => {
+            const { title, meta } = describeSubject(it);
+            const reqName = String(it.requestedBy?.name || '-');
+            const reqId = String(it.requestedBy?.id || '');
+            const reqOrg = userOrg(users, reqId);
+            const curName = String(it.currentApprover?.name || '');
+            const curId = String(it.currentApprover?.id || '');
+            const curOrg = userOrg(users, curId);
+            return (
+              <div key={it.id} style={card}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={subjectTypeChip}>{subjectTypeLabel(it.subjectType)}</span>
+                  <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+                  <span style={chip}>{statusLabel(it.status)}</span>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>{new Date(it.createdAt).toLocaleString()}</span>
                 </div>
-              ) : null}
-            </div>
-          ))}
+                {meta && (
+                  <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>{meta}</div>
+                )}
+                <div style={{ fontSize: 12, color: '#334155', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ color: '#64748b' }}>요청자</span>
+                  {reqId && <UserAvatar userId={reqId} name={reqName} size={16} />}
+                  <b>{reqName}</b>
+                  {reqOrg && <span style={{ color: '#64748b' }}>· {reqOrg}</span>}
+                  {it.status === 'PENDING' && curName && (
+                    <>
+                      <span style={{ color: '#cbd5e1' }}>·</span>
+                      <span style={{ color: '#64748b' }}>현재 결재자</span>
+                      {curId && <UserAvatar userId={curId} name={curName} size={16} />}
+                      <b>{curName}</b>
+                      {curOrg && <span style={{ color: '#64748b' }}>· {curOrg}</span>}
+                    </>
+                  )}
+                </div>
+                {(it.steps?.length || curId) ? (
+                  <div style={{ marginTop: 8 }}>
+                    <ApprovalStepLadder
+                      steps={(it.steps || []) as ApprovalStep[]}
+                      currentApproverId={curId}
+                      variant="row"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
           {!items.length && <div>표시할 항목 없음</div>}
         </div>
       </div>
@@ -258,3 +304,84 @@ function statusLabel(s?: string): string {
   if (s === 'EXPIRED') return '만료';
   return '미결재';
 }
+
+function subjectTypeLabel(t?: string): string {
+  const v = String(t || '').toUpperCase();
+  if (v === 'WORKLOG' || v === 'WORKLOGS') return '업무일지';
+  if (v === 'CAR_DISPATCH') return '배차 신청';
+  if (v === 'ATTENDANCE') return '근태 신청';
+  if (v === 'PROCESS') return '프로세스';
+  return String(t || '문서');
+}
+
+function userOrg(users: Array<{ id: string; name: string; orgName?: string }>, id: string): string {
+  if (!id) return '';
+  const u = users.find((x) => x.id === id);
+  return u?.orgName || '';
+}
+
+function describeSubject(it: any): { title: string; meta: string } {
+  const stNorm = String(it._stNorm || it.subjectType || '').toUpperCase();
+  const doc = it._doc;
+  if (!doc) {
+    return { title: '문서 정보 없음', meta: `ID: ${String(it.subjectId || '')}` };
+  }
+  if (stNorm === 'WORKLOG' || stNorm === 'WORKLOGS') {
+    const wl = doc;
+    const title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)').trim();
+    const who = wl?.createdBy?.name || wl.userName || '';
+    const team = wl?.createdBy?.orgUnit?.name || wl.teamName || '';
+    const meta = [who, team].filter(Boolean).join(' · ');
+    return { title, meta };
+  }
+  if (stNorm === 'CAR_DISPATCH') {
+    const title = `배차 신청${doc.carName ? ` - ${doc.carName}` : ''}`;
+    const timeRange = doc.startAt && doc.endAt
+      ? `${new Date(doc.startAt).toLocaleString()} ~ ${new Date(doc.endAt).toLocaleString()}`
+      : '';
+    const meta = [
+      timeRange,
+      doc.destination || '',
+      doc.purpose || '',
+      doc.coRiders ? `동승자: ${doc.coRiders}` : '',
+    ].filter(Boolean).join(' · ');
+    return { title, meta };
+  }
+  if (stNorm === 'ATTENDANCE') {
+    let kind = String(doc.type || '');
+    if (doc.type === 'OT') kind = 'OT';
+    else if (doc.type === 'VACATION') kind = '휴가';
+    else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
+    else if (doc.type === 'FLEXIBLE') kind = '유연근무';
+    else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
+    const title = `근태 신청${kind ? ` - ${kind}` : ''}`;
+    const dateStr = doc.date ? new Date(doc.date).toLocaleDateString() : '';
+    const timeRange = doc.startAt && doc.endAt
+      ? `${new Date(doc.startAt).toLocaleTimeString()} ~ ${new Date(doc.endAt).toLocaleTimeString()}`
+      : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
+    const meta = [dateStr, timeRange, doc.reason || ''].filter(Boolean).join(' · ');
+    return { title, meta };
+  }
+  if (stNorm === 'PROCESS') {
+    const inst = doc.process;
+    const title = `프로세스 결재${inst?.title ? ` - ${inst.title}` : ''}`;
+    const meta = [
+      inst?.startedBy?.name ? `시작자: ${inst.startedBy.name}` : '',
+      inst?.startAt ? `시작: ${new Date(inst.startAt).toLocaleString()}` : '',
+      inst?.status ? `상태: ${inst.status}` : '',
+    ].filter(Boolean).join(' · ');
+    return { title, meta };
+  }
+  return { title: subjectTypeLabel(it.subjectType), meta: `ID: ${String(it.subjectId || '')}` };
+}
+
+const subjectTypeChip: React.CSSProperties = {
+  background: '#EFF6FF',
+  color: '#1D4ED8',
+  border: '1px solid #BFDBFE',
+  borderRadius: 999,
+  padding: '1px 8px',
+  fontSize: 11,
+  fontWeight: 700,
+  whiteSpace: 'nowrap',
+};
