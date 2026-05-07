@@ -940,52 +940,54 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
   const attachments = wl?.attachments || {};
   const authorId = getWorklogAuthorId(wl);
   const firstImg = getWorklogFirstImage(wl);
+  // The right-hand "최근 댓글" panel is a secondary surface, so we
+  // render it tighter than the main worklog feed: smaller thumbnail,
+  // smaller base font, denser spacing. We also lead with the comment
+  // author (이름 · 소속) — that's the actual subject of this card,
+  // not the worklog author.
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {firstImg ? (
-          <img src={firstImg} alt="thumb" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
-        ) : (
-          <div style={{ width: 40, height: 40, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
-        )}
-        <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'grid', gap: 2 }}>
-            <div style={{ fontWeight: 700 }}>{title || '(제목 없음)'}</div>
-            <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span>· {(wl?.userName || '')}</span>
-              {authorId ? <UserAvatar userId={authorId} name={String(wl?.userName || title || '')} size={14} /> : null}
-              {wl?.teamName ? <span>· {wl.teamName}</span> : null}
-              <span>· {formatKstYmd(c.createdAt)}</span>
-              {(wl as any)?.visibility ? <span>· 조회권한 {visibilityKo((wl as any).visibility)}</span> : null}
-            </div>
+    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 8, display: 'grid', gap: 6, background: '#FFFFFF', fontSize: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={28} style={{ borderRadius: 6, flex: '0 0 auto' }} />
+        <div style={{ display: 'grid', gap: 1, flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 800, fontSize: 13 }}>{c.authorName || '익명'}</span>
+            {c.authorTeam ? <span style={{ color: '#64748b', fontSize: 11 }}>{c.authorTeam}</span> : null}
+            <span style={{ color: '#94a3b8', fontSize: 11 }}>· {formatKstYmd(c.createdAt)}</span>
+          </div>
+          <div style={{ color: '#475569', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ color: '#94a3b8' }}>↳ </span>
+            {firstImg ? <img src={firstImg} alt="" style={{ width: 14, height: 14, borderRadius: 3, objectFit: 'cover', verticalAlign: 'middle', marginRight: 4 }} /> : null}
+            <span style={{ fontWeight: 600 }}>{title || '(제목 없음)'}</span>
+            {wl?.userName ? <span style={{ color: '#64748b' }}> · {wl.userName}{wl?.teamName ? `(${wl.teamName})` : ''}</span> : null}
+            {authorId ? <UserAvatar userId={authorId} name={String(wl?.userName || title || '')} size={12} style={{ marginLeft: 4, verticalAlign: 'middle' }} /> : null}
           </div>
         </div>
       </div>
+
+      <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', fontSize: 12, color: '#1e293b' }}>{c.content}</div>
+
       {viewMode === 'full' && wl && (
-        <WorklogDocument worklog={wl} variant="content" />
-      )}
-      <div style={{ display: 'grid', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 8 }}>
-        {prev.map((p) => (
-          <div key={p.id}>
-            <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as any }}>
-              <UserAvatar userId={String(p.authorId || '')} name={String(p.authorName || '익명')} size={14} />
-              <span style={{ fontWeight: 700 }}>{p.authorName || '익명'}</span>
-              {p.authorTeam ? <span style={{ color: '#64748b' }}>· {p.authorTeam}</span> : null}
-              <span style={{ color: '#94a3b8' }}>· {formatKstYmd(p.createdAt)}</span>
-            </div>
-            <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{p.content}</div>
-          </div>
-        ))}
-        <div>
-          <div style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' as any }}>
-            <UserAvatar userId={String(c.authorId || '')} name={String(c.authorName || '익명')} size={14} />
-            <span style={{ fontWeight: 700 }}>{c.authorName || '익명'}</span>
-            {c.authorTeam ? <span style={{ color: '#64748b' }}>· {c.authorTeam}</span> : null}
-            <span style={{ color: '#94a3b8' }}>· {formatKstYmd(c.createdAt)}</span>
-          </div>
-          <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{c.content}</div>
+        <div style={{ fontSize: 11 }}>
+          <WorklogDocument worklog={wl} variant="content" />
         </div>
-      </div>
+      )}
+
+      {prev.length > 0 && (
+        <div style={{ display: 'grid', gap: 4, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: 6, fontSize: 11 }}>
+          {prev.map((p) => (
+            <div key={p.id}>
+              <div style={{ color: '#475569', display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' as any }}>
+                <UserAvatar userId={String(p.authorId || '')} name={String(p.authorName || '익명')} size={12} />
+                <span style={{ fontWeight: 700 }}>{p.authorName || '익명'}</span>
+                {p.authorTeam ? <span style={{ color: '#64748b' }}>· {p.authorTeam}</span> : null}
+                <span style={{ color: '#94a3b8' }}>· {formatKstYmd(p.createdAt)}</span>
+              </div>
+              <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'break-word', color: '#475569' }}>{p.content}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
