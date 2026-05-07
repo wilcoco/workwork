@@ -57,6 +57,7 @@ import { PlannerTasks } from './pages/PlannerTasks';
 import { CompanyDataAI } from './pages/CompanyDataAI';
 import { WorklogAnalysis } from './pages/WorklogAnalysis';
 import { Proposals } from './pages/Proposals';
+import { Vouchers } from './pages/Vouchers';
 
 function DeployBanner() {
   const gitDate = String(import.meta.env.VITE_GIT_DATE ?? '').trim().replace(/^['"]+|['"]+$/g, '');
@@ -315,6 +316,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/company-data" element={<CompanyDataAI />} />
           <Route path="/worklog-analysis" element={<WorklogAnalysis />} />
           <Route path="/proposals" element={<Proposals />} />
+          <Route path="/vouchers" element={<Vouchers />} />
           {SHOW_COOPS && (
             <>
               <Route path="/coops/request" element={<CoopsRequest />} />
@@ -436,6 +438,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_AP
           <Link to="/meetings">회의록</Link>
         </NavDropdown>
         <Link to="/proposals" className={location.pathname.startsWith('/proposals') ? 'active' : ''} style={{ marginLeft: 12 }}>품의서</Link>
+        <Link to="/vouchers" className={location.pathname.startsWith('/vouchers') ? 'active' : ''} style={{ marginLeft: 12 }}>전표</Link>
         <NavDropdown label="데이터 AI" active={location.pathname.startsWith('/company-data') || location.pathname.startsWith('/worklog-analysis')}>
           <Link to="/company-data">주요 수치 자료 분석</Link>
           <Link to="/worklog-analysis">업무 자료 분석</Link>

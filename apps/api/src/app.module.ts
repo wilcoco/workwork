@@ -43,6 +43,7 @@ import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
 import { ProposalsController } from './proposals.controller';
+import { VouchersController } from './vouchers.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 import { DataverseService } from './dataverse.service';
 
@@ -88,6 +89,7 @@ import { DataverseService } from './dataverse.service';
     CompanyDataController,
     SharePointSyncController,
     ProposalsController,
+    VouchersController,
   ],
   providers: [
     PrismaService,
