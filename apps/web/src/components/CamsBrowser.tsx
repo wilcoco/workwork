@@ -230,9 +230,11 @@ function ListWithExpand({
   const labelFor = useLabelFor();
   // Single-open accordion: only one row may be expanded at a time so
   // opening a new proposal automatically collapses the previous one.
-  // Declared BEFORE any conditional early-return so hook order is
-  // stable across renders (Rules of Hooks).
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // We key by slpno (the document's natural unique identifier) which
+  // avoids the `Number(row._index)` -> NaN trap when `_index` is
+  // missing on some rows. Declared BEFORE any conditional early-return
+  // so hook order is stable across renders (Rules of Hooks).
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
   if (!listGrid) return null;
@@ -275,19 +277,22 @@ function ListWithExpand({
                 </td>
               </tr>
             ) : (
-              visibleRows.map((row, i) => (
-                <ListRow
-                  key={row._index}
-                  row={row}
-                  cols={cols}
-                  index={i}
-                  config={config}
-                  isOpen={openIndex === Number(row._index)}
-                  onToggle={() =>
-                    setOpenIndex((cur) => (cur === Number(row._index) ? null : Number(row._index)))
-                  }
-                />
-              ))
+              visibleRows.map((row, i) => {
+                const key = String(row['slpno'] ?? row._index ?? i);
+                return (
+                  <ListRow
+                    key={key}
+                    row={row}
+                    cols={cols}
+                    index={i}
+                    config={config}
+                    isOpen={openKey === key}
+                    onToggle={() =>
+                      setOpenKey((cur) => (cur === key ? null : key))
+                    }
+                  />
+                );
+              })
             )}
           </tbody>
         </table>
