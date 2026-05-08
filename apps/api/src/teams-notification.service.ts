@@ -324,17 +324,22 @@ export class TeamsNotificationService {
   }
 
   async sendForNotification(recipient: AppUserLike, notification: AppNotificationLike): Promise<void> {
+    const uid = String(recipient?.id || '').trim();
+    const nType = String(notification?.type || '').trim();
+    this.logger.log(`[notify] triggered type=${nType} userId=${uid}`);
     try {
       const token = await this.getGraphToken();
-      if (!token) return;
+      if (!token) {
+        this.logger.error(`[notify] graph token failed — type=${nType} userId=${uid}`);
+        return;
+      }
 
       const upnOrEmail = String(recipient?.teamsUpn || recipient?.email || '').trim();
       const directAadId = String(recipient?.entraOid || '').trim();
+      this.logger.log(`[notify] resolving aadId directOid=${directAadId || 'none'} upn=${upnOrEmail || 'none'}`);
       const resolvedAadId = directAadId || (upnOrEmail ? await this.lookupAadUserId(token, upnOrEmail) : null);
       if (!resolvedAadId) {
-        const uid = String(recipient?.id || '').trim();
-        const nType = String(notification?.type || '').trim();
-        this.logger.error(`teams notification recipient missing entraOid (user=${uid || 'unknown'} type=${nType || 'unknown'})`);
+        this.logger.error(`[notify] cannot resolve aadId — user=${uid} upn=${upnOrEmail} type=${nType}`);
         return;
       }
 
@@ -352,7 +357,9 @@ export class TeamsNotificationService {
         },
       };
 
+      this.logger.log(`[notify] sending type=${nType} to aadId=${resolvedAadId}`);
       await this.sendActivityNotificationWithToken(resolvedAadId, token, body);
+      this.logger.log(`[notify] sent ok type=${nType} to aadId=${resolvedAadId}`);
     } catch (e) {
       this.logger.error(`teams notification failed: ${this.formatError(e)}`, (e as any)?.stack);
     }
