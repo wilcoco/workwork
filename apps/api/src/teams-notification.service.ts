@@ -339,10 +339,8 @@ export class TeamsNotificationService {
       }
 
       const topicValue = this.buildTopicValue(notification);
-      // TEAMS_APP_ID 환경변수가 설정되면 탭 딥링크 사용, 아니면 채팅 링크 fallback
-      const webUrl = process.env.TEAMS_APP_ID
-        ? this.buildTeamsTabDeepLink(notification)
-        : this.buildTeamsTopicWebUrl(recipient);
+      // 항상 채팅 딥링크 사용 (탭 딥링크는 앱 전파 완료 후 전환 가능)
+      const webUrl = this.buildTeamsTopicWebUrl(recipient);
 
       const body: GraphSendActivityNotificationRequestBody = {
         topic: { source: 'text', value: topicValue, webUrl },
