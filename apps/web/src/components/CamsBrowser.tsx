@@ -1109,10 +1109,13 @@ function VoucherLedger({ grid }: { grid: ParsedGrid }) {
   const showAcctNm = Boolean(acctNmKey);
   const showCost = Boolean(costGbKey) || Boolean(costOwnKey);
 
+  // Pad both sides to the same row count so the heights match.
+  const maxRows = Math.max(debitRows.length, creditRows.length);
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-      <LedgerSide title="차변" rows={debitRows} total={debitTotal} showAcctNm={showAcctNm} showCost={showCost} />
-      <LedgerSide title="대변" rows={creditRows} total={creditTotal} showAcctNm={showAcctNm} showCost={showCost} borderLeft />
+      <LedgerSide title="차변" rows={debitRows} total={debitTotal} showAcctNm={showAcctNm} showCost={showCost} minRows={maxRows} />
+      <LedgerSide title="대변" rows={creditRows} total={creditTotal} showAcctNm={showAcctNm} showCost={showCost} borderLeft minRows={maxRows} />
     </div>
   );
 }
@@ -1124,6 +1127,7 @@ function LedgerSide({
   showAcctNm,
   showCost,
   borderLeft,
+  minRows,
 }: {
   title: string;
   rows: Array<{ acctcd?: string; acctnm?: string; amt: number; note?: string; costgb?: string; costown?: string; _index: number }>;
@@ -1131,6 +1135,7 @@ function LedgerSide({
   showAcctNm: boolean;
   showCost: boolean;
   borderLeft?: boolean;
+  minRows?: number;
 }) {
   // Total table column count for the totals row's `colSpan`.
   const totalCols = 1 /* 계정코드 */ + (showAcctNm ? 1 : 0) + 1 /* 적요 */ + (showCost ? 2 : 0) + 1 /* 금액 */;
@@ -1139,7 +1144,7 @@ function LedgerSide({
       <div style={{ background: '#f8fafc', padding: '8px 12px', fontSize: 12, fontWeight: 800, color: title === '차변' ? '#0F3D73' : '#9F1239', borderBottom: '1px solid #e5e7eb' }}>
         {title}
       </div>
-      {rows.length === 0 ? (
+      {rows.length === 0 && !minRows ? (
         <div style={{ padding: 14, fontSize: 12, color: '#cbd5e1' }}>—</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
@@ -1172,6 +1177,12 @@ function LedgerSide({
                 <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                   {fmtAmt(r.amt)}
                 </td>
+              </tr>
+            ))}
+            {/* Pad with empty rows so 차변/대변 heights match */}
+            {minRows != null && rows.length < minRows && Array.from({ length: minRows - rows.length }).map((_, i) => (
+              <tr key={`pad-${i}`} style={{ borderTop: '1px solid #e5e7eb' }}>
+                <td style={td} colSpan={totalCols}>&nbsp;</td>
               </tr>
             ))}
           </tbody>
