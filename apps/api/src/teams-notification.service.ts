@@ -155,6 +155,12 @@ export class TeamsNotificationService {
     return /^https:\/\/([a-z0-9-]+\.)?teams\.microsoft\.com\/l\//i.test(u);
   }
 
+  private buildTeamsTabDeepLink(n: AppNotificationLike): string {
+    const appId = String(process.env.TEAMS_APP_ID || '9408e1af-1dae-4fba-8626-1938b9531207').trim();
+    const appUrl = this.buildWebUrlForNotification(n);
+    return `https://teams.microsoft.com/l/entity/${appId}/index?webUrl=${encodeURIComponent(appUrl)}`;
+  }
+
   private buildTeamsTopicWebUrl(recipient: AppUserLike): string {
     const configured = String(process.env.TEAMS_ACTIVITY_WEB_URL || process.env.TEAMS_NOTIFICATION_WEB_URL || '').trim();
     if (this.isTeamsDeepLink(configured)) return configured;
@@ -332,10 +338,9 @@ export class TeamsNotificationService {
         return;
       }
 
-      // Graph API only accepts Teams deep links for topic.webUrl.
-      // Regular HTTPS URLs (even valid ones) are rejected.
+      // Use Teams tab deep link so clicking the notification opens the app page inside Teams.
       const topicValue = this.buildTopicValue(notification);
-      const webUrl = this.buildTeamsTopicWebUrl(recipient);
+      const webUrl = this.buildTeamsTabDeepLink(notification);
 
       const body: GraphSendActivityNotificationRequestBody = {
         topic: { source: 'text', value: topicValue, webUrl },
