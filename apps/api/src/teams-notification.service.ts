@@ -332,10 +332,11 @@ export class TeamsNotificationService {
       }
 
       const preview = this.buildPreviewText(notification);
-      // topic.webUrl MUST be a valid Teams deep link — Graph API rejects
-      // regular HTTP URLs. Always use buildTeamsTopicWebUrl for this field.
-      // The human-readable web URL is included inside previewText.content instead.
-      const webUrl = this.buildTeamsTopicWebUrl(recipient);
+      // topic.webUrl must be a valid public HTTPS URL.
+      // Use the web app deep link if WEB_BASE_URL is a proper https URL;
+      // otherwise fall back to a Teams deep link (guaranteed valid).
+      const appUrl = this.buildWebUrlForNotification(notification);
+      const webUrl = appUrl.startsWith('https://') ? appUrl : this.buildTeamsTopicWebUrl(recipient);
 
       // Graph API limits: topic.value max 128 chars, previewText.content max 400 chars.
       const topicValue = this.buildTopicValue(notification);
