@@ -156,7 +156,7 @@ export class TeamsNotificationService {
   }
 
   private buildTeamsTabDeepLink(n: AppNotificationLike): string {
-    const appId = String(process.env.TEAMS_APP_ID || '9408e1af-1dae-4fba-8626-1938b9531207').trim();
+    const appId = String(process.env.TEAMS_APP_ID || '7b60883f-4dca-4663-9783-fb76b6224169').trim();
     const appUrl = this.buildWebUrlForNotification(n);
     return `https://teams.microsoft.com/l/entity/${appId}/index?webUrl=${encodeURIComponent(appUrl)}`;
   }
@@ -339,7 +339,7 @@ export class TeamsNotificationService {
       }
 
       const topicValue = this.buildTopicValue(notification);
-      const webUrl = this.buildTeamsTopicWebUrl(recipient);
+      const webUrl = this.buildTeamsTabDeepLink(notification);
 
       const body: GraphSendActivityNotificationRequestBody = {
         topic: { source: 'text', value: topicValue, webUrl },
