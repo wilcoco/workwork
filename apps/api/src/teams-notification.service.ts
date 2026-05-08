@@ -338,9 +338,8 @@ export class TeamsNotificationService {
         return;
       }
 
-      // Use Teams tab deep link so clicking the notification opens the app page inside Teams.
       const topicValue = this.buildTopicValue(notification);
-      const webUrl = this.buildTeamsTabDeepLink(notification);
+      const webUrl = this.buildTeamsTopicWebUrl(recipient);
 
       const body: GraphSendActivityNotificationRequestBody = {
         topic: { source: 'text', value: topicValue, webUrl },
