@@ -195,8 +195,10 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
     let cancelled = false;
     (async () => {
       await initTeams();
+      console.log('[teams-sso] inTeams:', isInTeams());
       if (!isInTeams() || cancelled) { setTeamsSsoAttempted(true); return; }
       const ssoToken = await getTeamsSsoToken();
+      console.log('[teams-sso] got ssoToken:', ssoToken ? 'yes' : 'no');
       if (!ssoToken || cancelled) { setTeamsSsoAttempted(true); return; }
       try {
         const res = await fetch(apiUrl('/api/auth/teams-sso'), {
@@ -205,6 +207,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           body: JSON.stringify({ ssoToken }),
         });
         const json: any = await res.json().catch(() => ({}));
+        console.log('[teams-sso] server response:', res.status, json);
         if (res.ok && json?.token) {
           localStorage.setItem('token', json.token);
           if (json.user?.id) localStorage.setItem('userId', String(json.user.id));

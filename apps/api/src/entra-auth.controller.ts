@@ -211,10 +211,19 @@ export class EntraAuthController {
     if (!decoded?.payload) throw new BadRequestException('invalid ssoToken');
 
     const payload = decoded.payload;
-    // Verify audience matches our app
+    // Verify audience matches our app.
+    // Teams SSO token aud can be: clientId, api://clientId, or api://domain/clientId
     const aud = String(payload.aud || '').trim();
-    if (aud !== clientId && aud !== `api://${clientId}`) {
-      throw new BadRequestException('token audience mismatch');
+    const validAudiences = [
+      clientId,
+      `api://${clientId}`,
+      `api://worklog.icams.co.kr/${clientId}`,
+    ];
+    // Also accept any api://*/{clientId} pattern
+    const audMatchesApp = validAudiences.includes(aud) || aud.endsWith(`/${clientId}`);
+    if (!audMatchesApp) {
+      console.error(`[teams-sso] audience mismatch: got "${aud}", expected one of`, validAudiences);
+      throw new BadRequestException(`token audience mismatch: ${aud}`);
     }
 
     // Verify tenant
