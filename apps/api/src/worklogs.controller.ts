@@ -1048,16 +1048,18 @@ export class WorklogsController {
         if (user.orgUnitId) {
           team = await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } });
         }
-        if (!team && dto.teamName) {
-          team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
-          if (team) {
-            user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
-          }
-        }
-        // If no team found, skip OKR scaffolding — approval still works without initiative
         if (!team) {
-          // No OKR scaffolding possible without a team; leave initiativeId as null
-        } else {
+          // Try to find existing team by teamName; only create if truly none exists
+          if (dto.teamName) {
+            team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
+          }
+          if (!team) {
+            const safeName = String(dto.teamName || `Auto-${user.id.slice(0, 8)}`).trim();
+            team = await this.prisma.orgUnit.create({ data: { name: safeName, type: 'TEAM' } });
+          }
+          user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
+        }
+        if (team) {
           const periodStart = new Date();
           const periodEnd = new Date(periodStart.getTime() + 1000 * 60 * 60 * 24 * 365);
           let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
@@ -1117,9 +1119,7 @@ export class WorklogsController {
           ...(photos.length ? { photos } : {}),
         }
       : undefined;
-    if (!initiativeId) {
-      throw new BadRequestException('initiativeId or taskName required');
-    }
+    if (!initiativeId) throw new BadRequestException('initiativeId 해결 실패: 팀/과제 설정을 확인하세요');
     // Resolve Worklog.date in KST
     let dateValSimple: Date;
     if (dto.date) {
