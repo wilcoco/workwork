@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Query, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import * as jwt from 'jsonwebtoken';
 import type { Request, Response } from 'express';
@@ -197,6 +197,78 @@ export class EntraAuthController {
       throw new Error('invalid nonce');
     }
     return verified as any;
+  }
+
+  @Post('teams-sso')
+  async teamsSso(@Body() body: { ssoToken: string }) {
+    const ssoToken = String(body?.ssoToken || '').trim();
+    if (!ssoToken) throw new BadRequestException('ssoToken required');
+
+    // Decode and verify the Teams SSO token (issued by Azure AD)
+    // The token is a JWT signed by Microsoft; we verify the audience matches our client ID.
+    const { clientId } = this.getEntraConfig();
+    const decoded: any = jwt.decode(ssoToken, { complete: true });
+    if (!decoded?.payload) throw new BadRequestException('invalid ssoToken');
+
+    const payload = decoded.payload;
+    // Verify audience matches our app
+    const aud = String(payload.aud || '').trim();
+    if (aud !== clientId && aud !== `api://${clientId}`) {
+      throw new BadRequestException('token audience mismatch');
+    }
+
+    // Verify tenant
+    const tid = String(payload.tid || '').trim();
+    const allowed = this.getAllowedTenants();
+    if (allowed.length > 0 && !allowed.includes(tid)) {
+      throw new BadRequestException('tenant not allowed');
+    }
+
+    // Find or create user by oid/email
+    const oid = String(payload.oid || '').trim();
+    const preferred = String(payload.preferred_username || payload.upn || '').trim();
+    const displayName = String(payload.name || '').trim();
+
+    const userModel = this.prisma.user as any;
+    let user = oid
+      ? await userModel.findFirst({ where: { entraOid: oid } })
+      : null;
+    if (!user && preferred) {
+      user = await userModel.findFirst({ where: { email: preferred } });
+    }
+    if (!user) {
+      user = await userModel.create({
+        data: {
+          email: preferred || `teams-${oid}`,
+          name: displayName || preferred || 'Teams User',
+          entraOid: oid || undefined,
+          teamsUpn: preferred || undefined,
+          status: 'PENDING',
+        },
+      });
+    }
+    // Update entraOid if missing
+    if (oid && !user.entraOid) {
+      await userModel.update({ where: { id: user.id }, data: { entraOid: oid } }).catch(() => {});
+    }
+
+    if (String(user?.status || '') === 'PENDING') {
+      throw new BadRequestException('계정 승인 대기 중입니다');
+    }
+
+    const team = user.orgUnitId
+      ? await (this.prisma as any).orgUnit.findUnique({ where: { id: user.orgUnitId } }).catch(() => null)
+      : null;
+
+    const token = this.signToken(String(user.id));
+    return {
+      token,
+      user: {
+        id: user.id,
+        name: user.name || displayName,
+        teamName: team?.name || '',
+      },
+    };
   }
 
   @Get('entra/start')

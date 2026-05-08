@@ -2,8 +2,10 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useLocation 
 import { useEffect, useRef, useState, CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { apiJson } from './lib/api';
+import { apiUrl } from './lib/api';
 import { ToastContainer } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { initTeams, isInTeams, getTeamsSsoToken } from './lib/teams';
 import { Home } from './pages/Home';
 import { WorklogNew } from './pages/WorklogNew';
 import { WorklogDetail } from './pages/WorklogDetail';
@@ -182,9 +184,42 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   const isEmbed = params.get('embed') === '1' || params.get('embed') === 'true';
   const guide = getPageGuide(location.pathname || '/', SHOW_APPROVALS, SHOW_COOPS);
 
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-  const myUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+  const [token, setToken] = useState<string | null>(typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null);
+  const [myUserId, setMyUserId] = useState(typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '');
   const [me, setMe] = useState<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' } | null | undefined>(undefined);
+  const [teamsSsoAttempted, setTeamsSsoAttempted] = useState(false);
+
+  // Teams SSO: auto-login when inside Teams and no token
+  useEffect(() => {
+    if (token || teamsSsoAttempted) return;
+    let cancelled = false;
+    (async () => {
+      await initTeams();
+      if (!isInTeams() || cancelled) { setTeamsSsoAttempted(true); return; }
+      const ssoToken = await getTeamsSsoToken();
+      if (!ssoToken || cancelled) { setTeamsSsoAttempted(true); return; }
+      try {
+        const res = await fetch(apiUrl('/api/auth/teams-sso'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ssoToken }),
+        });
+        const json: any = await res.json().catch(() => ({}));
+        if (res.ok && json?.token) {
+          localStorage.setItem('token', json.token);
+          if (json.user?.id) localStorage.setItem('userId', String(json.user.id));
+          if (json.user?.name) localStorage.setItem('userName', String(json.user.name));
+          if (json.user?.teamName !== undefined) localStorage.setItem('teamName', String(json.user.teamName || ''));
+          setToken(json.token);
+          setMyUserId(String(json.user?.id || ''));
+        }
+      } catch (e) {
+        console.error('Teams SSO login failed:', e);
+      }
+      setTeamsSsoAttempted(true);
+    })();
+    return () => { cancelled = true; };
+  }, [token, teamsSsoAttempted]);
   const isCeo = me?.role === 'CEO';
   // "대표 이상" — 임원/대표에게만 접근을 허용하는 메뉴 (품의서/전표 등).
   const isExec = me?.role === 'CEO' || me?.role === 'EXEC';
