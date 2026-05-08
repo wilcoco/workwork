@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiUrl } from '../lib/api';
+import { isInTeams, teamsPopupLogin } from '../lib/teams';
 
 type Mode = 'login' | 'signup';
 
@@ -37,8 +38,32 @@ export function Login() {
     }
   }, [location.search]);
 
-  function onMicrosoftLogin() {
+  async function onMicrosoftLogin() {
     setSsoLoading(true);
+    setError(null);
+
+    // Inside Teams: use popup-based auth (redirect doesn't work in iframe)
+    if (isInTeams()) {
+      try {
+        const popupUrl = apiUrl('/api/auth/entra/start?return=/auth/teams-popup-complete');
+        const result = await teamsPopupLogin(popupUrl);
+        if (result?.token) {
+          localStorage.setItem('token', result.token);
+          if (result.userId) localStorage.setItem('userId', result.userId);
+          if (result.userName) localStorage.setItem('userName', result.userName);
+          if (result.teamName !== undefined) localStorage.setItem('teamName', result.teamName || '');
+          nav(returnTo || '/');
+          return;
+        }
+        setError('Teams 로그인이 취소되었거나 실패했습니다');
+      } catch (e: any) {
+        setError(String(e?.message || 'Teams 로그인 실패'));
+      }
+      setSsoLoading(false);
+      return;
+    }
+
+    // Outside Teams: normal redirect
     const url = apiUrl(`/api/auth/entra/start?return=${encodeURIComponent(returnTo)}`);
     window.location.href = url;
   }

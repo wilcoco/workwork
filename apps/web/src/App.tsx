@@ -226,21 +226,8 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
         }
       }
 
-      // Fallback: popup-based login (opens a real popup where OAuth works)
-      if (!loginDone && !cancelled) {
-        console.log('[teams-sso] SSO failed, trying popup login...');
-        const popupUrl = apiUrl('/api/auth/entra/start?return=/auth/teams-popup-complete');
-        const result = await teamsPopupLogin(popupUrl);
-        console.log('[teams-sso] popup result:', result);
-        if (result?.token) {
-          localStorage.setItem('token', result.token);
-          if (result.userId) localStorage.setItem('userId', result.userId);
-          if (result.userName) localStorage.setItem('userName', result.userName);
-          if (result.teamName !== undefined) localStorage.setItem('teamName', result.teamName || '');
-          setToken(result.token);
-          setMyUserId(result.userId || '');
-        }
-      }
+      // If SSO failed, don't auto-popup (may be blocked).
+      // User will see login page with a Teams-aware button.
 
       setTeamsSsoAttempted(true);
     })();
