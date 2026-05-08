@@ -166,6 +166,27 @@ export class TeamsNotificationService {
     return 'https://teams.microsoft.com/l/chat/0/0';
   }
 
+  private buildTopicValue(n: AppNotificationLike): string {
+    const t = String(n?.type || '').trim();
+    const sender = String((n as any)?._senderName || '').trim();
+    let msg: string;
+    if (t === 'ApprovalRequested') {
+      msg = sender ? `[${sender}] 결재 요청` : '결재 요청이 도착했습니다.';
+    } else if (t === 'HelpRequested') {
+      msg = sender ? `[${sender}] 업무협조 요청` : '업무협조 요청이 도착했습니다.';
+    } else if (t === 'Delegated') {
+      msg = sender ? `[${sender}] 업무 위임` : '업무가 위임되었습니다.';
+    } else if (t === 'ProcessStarted') {
+      msg = sender ? `[${sender}] 프로세스 시작` : '프로세스가 시작되었습니다.';
+    } else if (t === 'ProcessTaskReady') {
+      msg = '내 단계가 시작되었습니다.';
+    } else {
+      msg = '새 알림';
+    }
+    // Graph API topic.value max 128 chars
+    return msg.slice(0, 128);
+  }
+
   private buildPreviewText(n: AppNotificationLike): string {
     const t = String(n?.type || '').trim();
     const sender = String((n as any)?._senderName || '').trim();
@@ -318,10 +339,15 @@ export class TeamsNotificationService {
       const deepUrl = this.buildWebUrlForNotification(notification);
       const webUrl = deepUrl || this.buildTeamsTopicWebUrl(recipient);
 
+      // Graph API limits: topic.value max 128 chars, previewText.content max 400 chars.
+      // Use a short single-line string for topic.value and the full multi-line
+      // preview (with sender, title, link) for previewText.content.
+      const topicValue = this.buildTopicValue(notification);
+
       const body: GraphSendActivityNotificationRequestBody = {
-        topic: { source: 'text', value: preview, webUrl },
+        topic: { source: 'text', value: topicValue, webUrl },
         activityType: String(notification?.type || 'Notification'),
-        previewText: { content: preview },
+        previewText: { content: preview.slice(0, 400) },
         recipient: {
           '@odata.type': '#microsoft.graph.aadUserNotificationRecipient',
           userId: resolvedAadId,
