@@ -332,11 +332,11 @@ export class TeamsNotificationService {
         return;
       }
 
-      // Keep it simple — matches the format that was working before 9:39.
-      // topic.webUrl = Teams deep link (always valid).
-      // topic.value & previewText.content = single short line, no newlines, no URL.
+      // topic.value & previewText.content = short text, NO URL strings inside.
+      // topic.webUrl = app URL so clicking notification opens the correct page.
       const topicValue = this.buildTopicValue(notification);
-      const webUrl = this.buildTeamsTopicWebUrl(recipient);
+      const appUrl = this.buildWebUrlForNotification(notification);
+      const webUrl = appUrl.startsWith('https://') ? appUrl : this.buildTeamsTopicWebUrl(recipient);
 
       const body: GraphSendActivityNotificationRequestBody = {
         topic: { source: 'text', value: topicValue, webUrl },
