@@ -332,20 +332,16 @@ export class TeamsNotificationService {
         return;
       }
 
-      const preview = this.buildPreviewText(notification);
-      // topic.webUrl must be a valid public HTTPS URL.
-      // Use the web app deep link if WEB_BASE_URL is a proper https URL;
-      // otherwise fall back to a Teams deep link (guaranteed valid).
-      const appUrl = this.buildWebUrlForNotification(notification);
-      const webUrl = appUrl.startsWith('https://') ? appUrl : this.buildTeamsTopicWebUrl(recipient);
-
-      // Graph API limits: topic.value max 128 chars, previewText.content max 400 chars.
+      // Keep it simple — matches the format that was working before 9:39.
+      // topic.webUrl = Teams deep link (always valid).
+      // topic.value & previewText.content = single short line, no newlines, no URL.
       const topicValue = this.buildTopicValue(notification);
+      const webUrl = this.buildTeamsTopicWebUrl(recipient);
 
       const body: GraphSendActivityNotificationRequestBody = {
         topic: { source: 'text', value: topicValue, webUrl },
         activityType: String(notification?.type || 'Notification'),
-        previewText: { content: preview.slice(0, 400) },
+        previewText: { content: topicValue },
         recipient: {
           '@odata.type': '#microsoft.graph.aadUserNotificationRecipient',
           userId: resolvedAadId,
