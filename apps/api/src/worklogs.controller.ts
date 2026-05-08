@@ -1040,12 +1040,18 @@ export class WorklogsController {
         }
         initiativeId = initiative.id;
       } else {
-        // Ensure team & OKR scaffolding exists
+        // Ensure team & OKR scaffolding exists.
+        // IMPORTANT: Only assign the user to the team when the user
+        // has NO team yet. Previously this always overwrote
+        // `orgUnitId`, which meant changing the team dropdown in the
+        // approval form would silently reassign the user's org unit.
         let team = await this.prisma.orgUnit.findFirst({ where: { name: dto.teamName, type: 'TEAM' } });
         if (!team) {
           team = await this.prisma.orgUnit.create({ data: { name: dto.teamName, type: 'TEAM' } });
         }
-        user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
+        if (!user.orgUnitId) {
+          user = await this.prisma.user.update({ where: { id: dto.userId }, data: { orgUnitId: team.id } });
+        }
         const periodStart = new Date();
         const periodEnd = new Date(periodStart.getTime() + 1000 * 60 * 60 * 24 * 365);
         let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
