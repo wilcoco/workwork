@@ -223,24 +223,31 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
     })();
     return () => { cancelled = true; };
   }, [token, teamsSsoAttempted]);
+
+  // While Teams SSO is being attempted, show loading instead of redirecting to login
+  const ssoInProgress = !token && !teamsSsoAttempted;
+
   const isCeo = me?.role === 'CEO';
   // "대표 이상" — 임원/대표에게만 접근을 허용하는 메뉴 (품의서/전표 등).
   const isExec = me?.role === 'CEO' || me?.role === 'EXEC';
   const canEvaluate = me?.role === 'CEO' || me?.role === 'EXEC' || me?.role === 'MANAGER' || me?.role === 'EXTERNAL';
 
   const adminGuard = (child: any) => {
+    if (ssoInProgress) return <div style={{ color: '#64748b', textAlign: 'center', padding: 40 }}>로그인 중...</div>;
     if (!token) return <Navigate to="/login" replace />;
     if (me === undefined) return <div style={{ color: '#64748b' }}>권한 확인중...</div>;
     return isCeo ? child : <Navigate to="/" replace />;
   };
 
   const execGuard = (child: any) => {
+    if (ssoInProgress) return <div style={{ color: '#64748b', textAlign: 'center', padding: 40 }}>로그인 중...</div>;
     if (!token) return <Navigate to="/login" replace />;
     if (me === undefined) return <div style={{ color: '#64748b' }}>권한 확인중...</div>;
     return isExec ? child : <Navigate to="/" replace />;
   };
 
   const evalGuard = (child: any) => {
+    if (ssoInProgress) return <div style={{ color: '#64748b', textAlign: 'center', padding: 40 }}>로그인 중...</div>;
     if (!token) return <Navigate to="/login" replace />;
     if (me === undefined) return <div style={{ color: '#64748b' }}>권한 확인중...</div>;
     return canEvaluate ? child : <Navigate to="/worklogs/stats" replace />;
@@ -301,7 +308,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/worklogs/weekly" element={<WeeklyReport />} />
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />
-          <Route path="/login" element={<Login />} />
+          <Route path="/login" element={ssoInProgress ? <div style={{ color: '#64748b', textAlign: 'center', padding: 40 }}>로그인 중...</div> : (token ? <Navigate to="/" replace /> : <Login />)} />
           <Route path="/quick" element={<WorklogQuickNew />} />
           <Route path="/search" element={<WorklogSearch />} />
           <Route path="/worklogs/stats" element={<WorklogStatsDaily />} />
