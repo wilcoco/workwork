@@ -201,8 +201,9 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
 
       // Try SSO first
       let loginDone = false;
-      const ssoToken = await getTeamsSsoToken();
-      console.log('[teams-sso] got ssoToken:', ssoToken ? 'yes' : 'no');
+      let ssoError = '';
+      const ssoToken = await getTeamsSsoToken().catch((e: any) => { ssoError = String(e?.message || e); return null; });
+      console.log('[teams-sso] got ssoToken:', ssoToken ? 'yes' : 'no', 'error:', ssoError);
       if (ssoToken && !cancelled) {
         try {
           const res = await fetch(apiUrl('/api/auth/teams-sso'), {

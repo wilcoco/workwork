@@ -50,9 +50,13 @@ export async function getTeamsSsoToken(): Promise<string | null> {
   if (!_inTeams) return null;
   try {
     const result = await microsoftTeams.authentication.getAuthToken();
+    console.log('[teams-sso] getAuthToken success');
     return result || null;
-  } catch (e) {
-    console.error('Teams SSO token failed:', e);
+  } catch (e: any) {
+    const msg = e?.message || e?.errorCode || JSON.stringify(e);
+    console.error('[teams-sso] getAuthToken FAILED:', msg, e);
+    // Store error for debugging display
+    (window as any).__teamsSsoError = msg;
     return null;
   }
 }

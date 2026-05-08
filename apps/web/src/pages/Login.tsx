@@ -135,10 +135,15 @@ export function Login() {
       <div className="card" style={{ maxWidth: 420, margin: '24px auto' }}>
         <h2 style={{ margin: 0 }}>로그인</h2>
         {(qsError || error) && <div className="error" style={{ marginTop: 8 }}>{qsError || error}</div>}
+        {isInTeams() && (window as any).__teamsSsoError && (
+          <div style={{ marginTop: 8, padding: 8, background: '#fef3c7', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
+            SSO 오류: {(window as any).__teamsSsoError}
+          </div>
+        )}
 
         <div className="actions" style={{ marginTop: 12 }}>
           <button type="button" className="btn" onClick={onMicrosoftLogin} disabled={ssoLoading}>
-            Microsoft로 로그인
+            {isInTeams() ? 'Microsoft로 로그인 (팝업)' : 'Microsoft로 로그인'}
           </button>
         </div>
         <div style={{ marginTop: 6, color: '#6b7280', fontSize: 13 }}>
