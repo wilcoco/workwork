@@ -455,6 +455,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/company-data">주요 수치 자료 분석</Link>
           <Link to="/worklog-analysis">업무 자료 분석</Link>
         </NavDropdown>
+        <Link to="/inbox" className={location.pathname.startsWith('/inbox') ? 'active' : ''} style={{ marginLeft: 12 }}>🔔 알림</Link>
 {(() => { const url = String((import.meta as any)?.env?.VITE_POWERAPPS_APPROVAL_URL || '').trim(); return url ? <a href={url} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>내부결재</a> : null; })()}
         {/* 품의전표: Power Apps 스크린 딥링크 해결 후 활성화 */}
         {/* <a href="https://apps.powerapps.com/play/e/e6d2c7be-41f5-e499-abb9-1107d4194381/a/bb3e1bf6-70d1-4192-844e-a04c3e7d1916?tenantId=c0cb4e4b-345c-43eb-859b-eb9397bfbbde&hint=68fbe35f-6a7e-449f-84cf-86b0f2625178&screen=oracle" target="_blank" rel="noopener noreferrer" style={{ marginLeft: 12 }}>품의전표</a> */}
