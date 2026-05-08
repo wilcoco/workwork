@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiUrl } from '../lib/api';
-import { isInTeams, teamsPopupLogin } from '../lib/teams';
+import { isInTeams } from '../lib/teams';
 
 type Mode = 'login' | 'signup';
 
@@ -42,24 +42,35 @@ export function Login() {
     setSsoLoading(true);
     setError(null);
 
-    // Inside Teams: use popup-based auth (redirect doesn't work in iframe)
+    // Inside Teams (iframe): open a popup window for OAuth
     if (isInTeams()) {
-      try {
-        const popupUrl = apiUrl('/api/auth/entra/start?return=/auth/teams-popup-complete');
-        const result = await teamsPopupLogin(popupUrl);
-        if (result?.token) {
-          localStorage.setItem('token', result.token);
-          if (result.userId) localStorage.setItem('userId', result.userId);
-          if (result.userName) localStorage.setItem('userName', result.userName);
-          if (result.teamName !== undefined) localStorage.setItem('teamName', result.teamName || '');
-          nav(returnTo || '/');
-          return;
-        }
-        setError('Teams 로그인이 취소되었거나 실패했습니다');
-      } catch (e: any) {
-        setError(String(e?.message || 'Teams 로그인 실패'));
+      const popupUrl = apiUrl('/api/auth/entra/start?return=/auth/teams-popup-complete');
+      const popup = window.open(popupUrl, '_blank', 'width=600,height=600');
+      if (!popup) {
+        setError('팝업이 차단되었습니다. 팝업을 허용해주세요.');
+        setSsoLoading(false);
+        return;
       }
-      setSsoLoading(false);
+      // Listen for message from popup
+      const handler = (event: MessageEvent) => {
+        if (event.data?.type === 'teams-auth-complete' && event.data?.token) {
+          window.removeEventListener('message', handler);
+          localStorage.setItem('token', event.data.token);
+          if (event.data.userId) localStorage.setItem('userId', event.data.userId);
+          if (event.data.userName) localStorage.setItem('userName', event.data.userName);
+          if (event.data.teamName !== undefined) localStorage.setItem('teamName', event.data.teamName || '');
+          nav(returnTo || '/');
+        }
+      };
+      window.addEventListener('message', handler);
+      // Poll to detect if popup was closed without completing
+      const pollTimer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(pollTimer);
+          window.removeEventListener('message', handler);
+          setSsoLoading(false);
+        }
+      }, 500);
       return;
     }
 
