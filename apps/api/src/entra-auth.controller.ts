@@ -475,6 +475,10 @@ export class EntraAuthController {
       `teamName=${encodeURIComponent(String(team?.name || ''))}`,
       `userLogin=${encodeURIComponent(String(preferred))}`,
     ].join('&');
-    return res.redirect(`${webBase}/auth/entra/complete#${hash}`);
+    // If return path is the Teams popup completion page, redirect there instead
+    const completePage = returnPath === '/auth/teams-popup-complete'
+      ? '/auth/teams-popup-complete'
+      : '/auth/entra/complete';
+    return res.redirect(`${webBase}${completePage}#${hash}`);
   }
 }

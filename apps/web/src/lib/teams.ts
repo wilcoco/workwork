@@ -56,3 +56,29 @@ export async function getTeamsSsoToken(): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Open a popup-based authentication flow inside Teams.
+ * This works even when SSO fails because it opens a real browser popup
+ * where normal OAuth redirect works fine.
+ * Returns the token/session info or null if user cancelled/failed.
+ */
+export async function teamsPopupLogin(authUrl: string): Promise<{ token: string; userId: string; userName: string; teamName: string } | null> {
+  if (!_inTeams) return null;
+  try {
+    const result = await microsoftTeams.authentication.authenticate({
+      url: authUrl,
+      width: 600,
+      height: 535,
+      isExternal: false,
+    });
+    // result is whatever was passed to authentication.notifySuccess()
+    if (typeof result === 'string') {
+      try { return JSON.parse(result); } catch { return null; }
+    }
+    return result as any || null;
+  } catch (e) {
+    console.error('Teams popup login failed/cancelled:', e);
+    return null;
+  }
+}

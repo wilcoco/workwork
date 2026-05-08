@@ -5,7 +5,7 @@ import { apiJson } from './lib/api';
 import { apiUrl } from './lib/api';
 import { ToastContainer } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { initTeams, isInTeams, getTeamsSsoToken } from './lib/teams';
+import { initTeams, isInTeams, getTeamsSsoToken, teamsPopupLogin } from './lib/teams';
 import { Home } from './pages/Home';
 import { WorklogNew } from './pages/WorklogNew';
 import { WorklogDetail } from './pages/WorklogDetail';
@@ -49,6 +49,7 @@ import { ProcessDashboard } from './pages/ProcessDashboard';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
+import { AuthTeamsPopupComplete } from './pages/AuthTeamsPopupComplete';
 import { AuthPending } from './pages/AuthPending';
 import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 import { WorkManuals } from './pages/WorkManuals';
@@ -197,28 +198,50 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
       await initTeams();
       console.log('[teams-sso] inTeams:', isInTeams());
       if (!isInTeams() || cancelled) { setTeamsSsoAttempted(true); return; }
+
+      // Try SSO first
+      let loginDone = false;
       const ssoToken = await getTeamsSsoToken();
       console.log('[teams-sso] got ssoToken:', ssoToken ? 'yes' : 'no');
-      if (!ssoToken || cancelled) { setTeamsSsoAttempted(true); return; }
-      try {
-        const res = await fetch(apiUrl('/api/auth/teams-sso'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ssoToken }),
-        });
-        const json: any = await res.json().catch(() => ({}));
-        console.log('[teams-sso] server response:', res.status, json);
-        if (res.ok && json?.token) {
-          localStorage.setItem('token', json.token);
-          if (json.user?.id) localStorage.setItem('userId', String(json.user.id));
-          if (json.user?.name) localStorage.setItem('userName', String(json.user.name));
-          if (json.user?.teamName !== undefined) localStorage.setItem('teamName', String(json.user.teamName || ''));
-          setToken(json.token);
-          setMyUserId(String(json.user?.id || ''));
+      if (ssoToken && !cancelled) {
+        try {
+          const res = await fetch(apiUrl('/api/auth/teams-sso'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ssoToken }),
+          });
+          const json: any = await res.json().catch(() => ({}));
+          console.log('[teams-sso] server response:', res.status, json);
+          if (res.ok && json?.token) {
+            localStorage.setItem('token', json.token);
+            if (json.user?.id) localStorage.setItem('userId', String(json.user.id));
+            if (json.user?.name) localStorage.setItem('userName', String(json.user.name));
+            if (json.user?.teamName !== undefined) localStorage.setItem('teamName', String(json.user.teamName || ''));
+            setToken(json.token);
+            setMyUserId(String(json.user?.id || ''));
+            loginDone = true;
+          }
+        } catch (e) {
+          console.error('Teams SSO login failed:', e);
         }
-      } catch (e) {
-        console.error('Teams SSO login failed:', e);
       }
+
+      // Fallback: popup-based login (opens a real popup where OAuth works)
+      if (!loginDone && !cancelled) {
+        console.log('[teams-sso] SSO failed, trying popup login...');
+        const popupUrl = apiUrl('/api/auth/entra/start?return=/auth/teams-popup-complete');
+        const result = await teamsPopupLogin(popupUrl);
+        console.log('[teams-sso] popup result:', result);
+        if (result?.token) {
+          localStorage.setItem('token', result.token);
+          if (result.userId) localStorage.setItem('userId', result.userId);
+          if (result.userName) localStorage.setItem('userName', result.userName);
+          if (result.teamName !== undefined) localStorage.setItem('teamName', result.teamName || '');
+          setToken(result.token);
+          setMyUserId(result.userId || '');
+        }
+      }
+
       setTeamsSsoAttempted(true);
     })();
     return () => { cancelled = true; };
@@ -300,6 +323,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/auth/entra/complete" element={<AuthEntraComplete />} />
+          <Route path="/auth/teams-popup-complete" element={<AuthTeamsPopupComplete />} />
           <Route path="/auth/pending" element={<AuthPending />} />
           <Route path="/worklogs/new" element={<WorklogNew />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
