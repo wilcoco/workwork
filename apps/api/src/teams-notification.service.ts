@@ -117,27 +117,7 @@ export class TeamsNotificationService {
     const subjectType = String(n?.subjectType || '').trim();
     const subjectId = String(n?.subjectId || '').trim();
 
-    // Try to deep-link to the specific subject page first.
-    if (subjectType === 'Worklog' && subjectId) {
-      return `${base}/worklogs/${encodeURIComponent(subjectId)}`;
-    }
-    if (subjectType === 'ATTENDANCE' && subjectId) {
-      return `${base}/attendance/request`;
-    }
-    if (subjectType === 'CAR_DISPATCH' && subjectId) {
-      return `${base}/dispatch/corporate`;
-    }
-    if (subjectType === 'PROCESS' && subjectId) {
-      return `${base}/process/instances/${encodeURIComponent(subjectId)}?return=${encodeURIComponent('/process/my')}`;
-    }
-    if (subjectType === 'HelpTicket' && subjectId) {
-      return `${base}/coops/inbox`;
-    }
-    if (subjectType === 'Delegation') {
-      return `${base}/me/goals`;
-    }
-
-    // Fall back to generic pages by notification type.
+    // Route by notification TYPE first (the action the user should take).
     if (t === 'ApprovalRequested') return `${base}/approvals/inbox`;
     if (t === 'HelpRequested') return `${base}/coops/inbox`;
     if (t === 'Delegated') return `${base}/me/goals`;
@@ -145,6 +125,27 @@ export class TeamsNotificationService {
       if (subjectId) return `${base}/process/instances/${encodeURIComponent(subjectId)}?return=${encodeURIComponent('/process/my')}`;
       return `${base}/process/my`;
     }
+
+    // For other types, route by subject.
+    if (subjectType === 'Worklog' && subjectId) {
+      return `${base}/worklogs/${encodeURIComponent(subjectId)}`;
+    }
+    if (subjectType === 'ATTENDANCE') {
+      return `${base}/attendance/request`;
+    }
+    if (subjectType === 'CAR_DISPATCH') {
+      return `${base}/dispatch/corporate`;
+    }
+    if (subjectType === 'PROCESS' && subjectId) {
+      return `${base}/process/instances/${encodeURIComponent(subjectId)}?return=${encodeURIComponent('/process/my')}`;
+    }
+    if (subjectType === 'HelpTicket') {
+      return `${base}/coops/inbox`;
+    }
+    if (subjectType === 'Delegation') {
+      return `${base}/me/goals`;
+    }
+
     return base;
   }
 
