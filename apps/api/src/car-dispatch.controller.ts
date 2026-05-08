@@ -116,7 +116,7 @@ export class CarDispatchController {
             type: 'ApprovalRequested',
             subjectType: 'CAR_DISPATCH',
             subjectId: dispatch.id,
-            payload: { requestId: approval.id },
+            payload: { requestId: approval.id, requestedById: dto.requesterId },
           },
         });
 

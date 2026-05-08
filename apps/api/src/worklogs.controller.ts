@@ -871,7 +871,7 @@ export class WorklogsController {
           type: 'ApprovalRequested',
           subjectType: 'Worklog',
           subjectId: wl.id,
-          payload: { requestId: req.id },
+          payload: { requestId: req.id, requestedById: dto.createdById },
         },
       });
     }

@@ -238,7 +238,7 @@ export class ApprovalsController {
         type: 'ApprovalRequested',
         subjectType: dto.subjectType,
         subjectId: dto.subjectId,
-        payload: { requestId: req.id },
+        payload: { requestId: req.id, requestedById: dto.requestedById },
       },
     });
     return req;
@@ -342,7 +342,7 @@ export class ApprovalsController {
         await (tx as any).approvalStep.update({ where: { id: pending.id }, data: { status: 'APPROVED' as any, comment: dto.comment, actedAt: new Date() } });
         await (tx as any).event.create({ data: { subjectType: 'ApprovalStep', subjectId: pending.id, activity: 'ApprovalStepApproved', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo } } });
         await (tx as any).approvalRequest.update({ where: { id }, data: { approverId: next.approverId } });
-        await (tx as any).notification.create({ data: { userId: next.approverId, type: 'ApprovalRequested', subjectType: req.subjectType, subjectId: req.subjectId, payload: { requestId: id } } });
+        await (tx as any).notification.create({ data: { userId: next.approverId, type: 'ApprovalRequested', subjectType: req.subjectType, subjectId: req.subjectId, payload: { requestId: id, requestedById: req.requestedById } } });
         await (tx as any).event.create({ data: { subjectType: req.subjectType, subjectId: req.subjectId, activity: 'ApprovalRequested', userId: dto.actorId, attrs: { requestId: id, nextStepNo: next.stepNo } } });
       });
       return await this.prisma.approvalRequest.findUnique({ where: { id }, include: { steps: true } });

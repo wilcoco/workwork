@@ -6,6 +6,7 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import '../styles/editor.css';
 import { todayKstYmd } from '../lib/time';
+import { toast } from '../components/Toast';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
@@ -662,9 +663,11 @@ export function WorklogQuickNew() {
           alert(`업무일지는 저장되었습니다.\n\nPlanner 태스크 동기화 실패: ${syncErr?.message || '알 수 없는 오류'}\n\n(Teams에서 직접 업데이트해주세요)`);
         }
       }
+      toast('업무일지가 저장되었습니다.', 'success', 4000);
       nav('/search?mode=list');
     } catch (err: any) {
       setError(err?.message || '저장 실패');
+      toast(err?.message || '업무일지 저장에 실패했습니다.', 'error');
     } finally {
       setLoading(false);
     }

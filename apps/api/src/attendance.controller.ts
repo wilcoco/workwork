@@ -293,7 +293,7 @@ export class AttendanceController {
             type: 'ApprovalRequested',
             subjectType: 'ATTENDANCE',
             subjectId: attendance.id,
-            payload: { requestId: approval.id, subjectType: 'ATTENDANCE' },
+            payload: { requestId: approval.id, subjectType: 'ATTENDANCE', requestedById: dto.userId },
           },
         });
 

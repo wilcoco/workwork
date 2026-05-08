@@ -10,6 +10,7 @@ import { toSafeHtml } from '../lib/richText';
 import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { UserAvatar } from '../components/UserAvatar';
+import { toast } from '../components/Toast';
 
 export function ApprovalsSubmit() {
   const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -308,6 +309,7 @@ export function ApprovalsSubmit() {
         } catch {}
       }
       setOkMsg(`요청 완료: ${res2?.id || ''}`);
+      toast('결재 요청이 완료되었습니다.', 'success', 5000);
       setSteps([]);
       setDueAt('');
       setTitle('');
@@ -317,6 +319,7 @@ export function ApprovalsSubmit() {
       setTags({});
     } catch (e: any) {
       setError(e?.message || '요청 실패');
+      toast(e?.message || '결재 요청에 실패했습니다.', 'error');
     } finally {
       setLoading(false);
     }
