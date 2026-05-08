@@ -332,16 +332,12 @@ export class TeamsNotificationService {
       }
 
       const preview = this.buildPreviewText(notification);
-      // Use the subject-specific deep link so clicking the Teams
-      // notification opens the exact page (e.g. /worklogs/:id).
-      // Fall back to the generic Teams topic URL if for some reason
-      // the notification-level URL is empty.
-      const deepUrl = this.buildWebUrlForNotification(notification);
-      const webUrl = deepUrl || this.buildTeamsTopicWebUrl(recipient);
+      // topic.webUrl MUST be a valid Teams deep link — Graph API rejects
+      // regular HTTP URLs. Always use buildTeamsTopicWebUrl for this field.
+      // The human-readable web URL is included inside previewText.content instead.
+      const webUrl = this.buildTeamsTopicWebUrl(recipient);
 
       // Graph API limits: topic.value max 128 chars, previewText.content max 400 chars.
-      // Use a short single-line string for topic.value and the full multi-line
-      // preview (with sender, title, link) for previewText.content.
       const topicValue = this.buildTopicValue(notification);
 
       const body: GraphSendActivityNotificationRequestBody = {
