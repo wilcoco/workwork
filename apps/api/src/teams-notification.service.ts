@@ -168,17 +168,37 @@ export class TeamsNotificationService {
 
   private buildPreviewText(n: AppNotificationLike): string {
     const t = String(n?.type || '').trim();
-    if (t === 'ApprovalRequested') return '결재 요청이 도착했습니다.';
-    if (t === 'HelpRequested') return '업무협조 요청이 도착했습니다.';
-    if (t === 'Delegated') return '업무가 위임되었습니다.';
-    if (t === 'ProcessStarted') return '프로세스가 시작되었습니다.';
-    if (t === 'ProcessTaskReady') {
+    const sender = String((n as any)?._senderName || '').trim();
+    const title = String((n as any)?._subjectTitle || '').trim();
+    const deepUrl = this.buildWebUrlForNotification(n);
+
+    const parts: string[] = [];
+
+    // Line 1: main message with sender
+    if (t === 'ApprovalRequested') {
+      parts.push(sender ? `[${sender}] 결재 요청이 도착했습니다.` : '결재 요청이 도착했습니다.');
+    } else if (t === 'HelpRequested') {
+      parts.push(sender ? `[${sender}] 업무협조 요청이 도착했습니다.` : '업무협조 요청이 도착했습니다.');
+    } else if (t === 'Delegated') {
+      parts.push(sender ? `[${sender}] 업무가 위임되었습니다.` : '업무가 위임되었습니다.');
+    } else if (t === 'ProcessStarted') {
+      parts.push(sender ? `[${sender}] 프로세스가 시작되었습니다.` : '프로세스가 시작되었습니다.');
+    } else if (t === 'ProcessTaskReady') {
       const name = String(n?.payload?.taskName || '').trim();
       const stage = String(n?.payload?.stageLabel || '').trim();
       const label = [name, stage].filter(Boolean).join(' · ');
-      return label ? `내 단계 시작: ${label}` : '내 단계가 시작되었습니다.';
+      parts.push(label ? `내 단계 시작: ${label}` : '내 단계가 시작되었습니다.');
+    } else {
+      parts.push('새 알림이 도착했습니다.');
     }
-    return '새 알림이 도착했습니다.';
+
+    // Line 2: subject title if available
+    if (title) parts.push(`제목: ${title}`);
+
+    // Line 3: explicit clickable link
+    if (deepUrl) parts.push(deepUrl);
+
+    return parts.join('\n');
   }
 
   private async formatGraphFailure(res: Response, token: string): Promise<string> {

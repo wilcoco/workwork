@@ -30,24 +30,58 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         const userId = String(data?.userId || data?.user?.connect?.id || (result as any)?.userId || '').trim();
         if (!userId) return result;
 
-        const notification = {
+        const subjectType = String(data?.subjectType || (result as any)?.subjectType || '').trim();
+        const subjectId = String(data?.subjectId || (result as any)?.subjectId || '').trim();
+        const payload = (data as any)?.payload ?? (result as any)?.payload;
+
+        const notification: any = {
           id: String((result as any)?.id || ''),
           userId,
           type,
-          subjectType: String(data?.subjectType || (result as any)?.subjectType || '').trim(),
-          subjectId: String(data?.subjectId || (result as any)?.subjectId || '').trim(),
-          payload: (data as any)?.payload ?? (result as any)?.payload,
+          subjectType,
+          subjectId,
+          payload,
         };
 
         setImmediate(() => {
           void (async () => {
             try {
+              // Resolve the recipient
               const user = await this.user.findUnique({
                 where: { id: userId },
                 select: { id: true, email: true, teamsUpn: true, entraOid: true, name: true },
               });
               if (!user) return;
-              await this.teamsNotificationService.sendForNotification(user as any, notification as any);
+
+              // Enrich: who triggered this notification (sender name).
+              // Try payload.requestedById first; fall back to the
+              // linked ApprovalRequest's requestedById when present.
+              let senderId = String(payload?.requestedById || '').trim();
+              if (!senderId && payload?.requestId) {
+                try {
+                  const ar = await (this as any).approvalRequest.findUnique({
+                    where: { id: String(payload.requestId) },
+                    select: { requestedById: true },
+                  });
+                  if (ar?.requestedById) senderId = String(ar.requestedById);
+                } catch {}
+              }
+              if (senderId) {
+                try {
+                  const sender = await this.user.findUnique({ where: { id: senderId }, select: { name: true } });
+                  if (sender?.name) notification._senderName = sender.name;
+                } catch {}
+              }
+
+              // Enrich: subject title (e.g. worklog note first line)
+              if (subjectType === 'Worklog' && subjectId) {
+                try {
+                  const wl = await (this as any).worklog.findUnique({ where: { id: subjectId }, select: { note: true } });
+                  if (wl?.note) notification._subjectTitle = String(wl.note).split('\n')[0].slice(0, 80);
+                } catch {}
+              }
+
+              await this.teamsNotificationService.sendForNotification(user as any, notification);
             } catch (e) {
               this.logger.error(
                 `teams notification middleware failed: ${String((e as any)?.message || e || 'error')}`,
