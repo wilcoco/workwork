@@ -114,12 +114,35 @@ export class TeamsNotificationService {
   private buildWebUrlForNotification(n: AppNotificationLike): string {
     const base = this.getWebBase();
     const t = String(n?.type || '').trim();
+    const subjectType = String(n?.subjectType || '').trim();
+    const subjectId = String(n?.subjectId || '').trim();
+
+    // Try to deep-link to the specific subject page first.
+    if (subjectType === 'Worklog' && subjectId) {
+      return `${base}/worklogs/${encodeURIComponent(subjectId)}`;
+    }
+    if (subjectType === 'ATTENDANCE' && subjectId) {
+      return `${base}/attendance/request`;
+    }
+    if (subjectType === 'CAR_DISPATCH' && subjectId) {
+      return `${base}/dispatch/corporate`;
+    }
+    if (subjectType === 'PROCESS' && subjectId) {
+      return `${base}/process/instances/${encodeURIComponent(subjectId)}?return=${encodeURIComponent('/process/my')}`;
+    }
+    if (subjectType === 'HelpTicket' && subjectId) {
+      return `${base}/coops/inbox`;
+    }
+    if (subjectType === 'Delegation') {
+      return `${base}/me/goals`;
+    }
+
+    // Fall back to generic pages by notification type.
     if (t === 'ApprovalRequested') return `${base}/approvals/inbox`;
     if (t === 'HelpRequested') return `${base}/coops/inbox`;
     if (t === 'Delegated') return `${base}/me/goals`;
     if (t === 'ProcessStarted' || t === 'ProcessTaskReady') {
-      const id = String(n?.subjectId || '').trim();
-      if (id) return `${base}/process/instances/${encodeURIComponent(id)}?return=${encodeURIComponent('/process/my')}`;
+      if (subjectId) return `${base}/process/instances/${encodeURIComponent(subjectId)}?return=${encodeURIComponent('/process/my')}`;
       return `${base}/process/my`;
     }
     return base;
@@ -268,7 +291,12 @@ export class TeamsNotificationService {
       }
 
       const preview = this.buildPreviewText(notification);
-      const webUrl = this.buildTeamsTopicWebUrl(recipient);
+      // Use the subject-specific deep link so clicking the Teams
+      // notification opens the exact page (e.g. /worklogs/:id).
+      // Fall back to the generic Teams topic URL if for some reason
+      // the notification-level URL is empty.
+      const deepUrl = this.buildWebUrlForNotification(notification);
+      const webUrl = deepUrl || this.buildTeamsTopicWebUrl(recipient);
 
       const body: GraphSendActivityNotificationRequestBody = {
         topic: { source: 'text', value: preview, webUrl },
