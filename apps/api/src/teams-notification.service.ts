@@ -332,11 +332,10 @@ export class TeamsNotificationService {
         return;
       }
 
-      // topic.value & previewText.content = short text, NO URL strings inside.
-      // topic.webUrl = app URL so clicking notification opens the correct page.
+      // Graph API only accepts Teams deep links for topic.webUrl.
+      // Regular HTTPS URLs (even valid ones) are rejected.
       const topicValue = this.buildTopicValue(notification);
-      const appUrl = this.buildWebUrlForNotification(notification);
-      const webUrl = appUrl.startsWith('https://') ? appUrl : this.buildTeamsTopicWebUrl(recipient);
+      const webUrl = this.buildTeamsTopicWebUrl(recipient);
 
       const body: GraphSendActivityNotificationRequestBody = {
         topic: { source: 'text', value: topicValue, webUrl },
