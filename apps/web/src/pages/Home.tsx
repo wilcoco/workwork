@@ -35,6 +35,7 @@ export function Home() {
   const [detail, setDetail] = useState<any | null>(null);
   const [urgentOpen, setUrgentOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<'worklogs' | 'comments'>('comments');
   const [filterTeam, setFilterTeam] = useState('');
   const [filterName, setFilterName] = useState('');
   const [viewMode, setViewMode] = useState<'summary'|'full'>('full');
@@ -240,8 +241,8 @@ export function Home() {
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
-      {/* 기한 경과 과제 섹션 */}
-      {(() => {
+      {/* 기한 경과 과제 섹션 - 숨김 */}
+      {false && (() => {
         const filteredOverdue = overdueTasks.filter((t: any) => {
           if (overdueYear === 'all') return true;
           const d = new Date(t.dueDateTime);
@@ -388,7 +389,7 @@ export function Home() {
         );
       })()}
 
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1.8fr) minmax(0, 1fr)', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gap: 12 }}>
         {isMobile ? (
           <>
             {/* 모바일: 긴급 보고 / 최근 댓글 먼저, 그 다음 최근 업무일지 */}
@@ -571,9 +572,59 @@ export function Home() {
           </>
         ) : (
           <>
-            {/* 데스크탑: 최근 업무일지 왼쪽, 긴급 보고 / 최근 댓글 오른쪽 */}
+            {/* 데스크탑: 긴급보고 위, 탭(최근업무일지|최근댓글) 아래 */}
             <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12 }}>
-              <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
+              <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {urgentWls
+                  .filter((w) => { const d = new Date((w as any).createdAt || w.date).getTime(); return Date.now() - d <= 3 * 24 * 60 * 60 * 1000; })
+                  .sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime())
+                  .map((w) => {
+                    const anyW: any = w as any;
+                    const authorId = getWorklogAuthorId(anyW);
+                    const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
+                    const attachments = anyW.attachments || {};
+                    const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
+                    const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
+                    const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
+                    const snippet = (snippetSrc || '').trim();
+                    return (
+                      <div key={w.id} style={{ border: '1px solid #fecaca', borderRadius: 10, padding: 10, display: 'grid', gap: 4, background: '#fff7f7', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <UserAvatar userId={authorId} name={authorName || w.title} size={36} style={{ borderRadius: 8 }} />
+                          <div style={{ display: 'grid', gap: 2, flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontWeight: 800, color: '#dc2626', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.title || '(제목 없음)'}</span>
+                              <span style={{ fontSize: 12, color: '#475569', whiteSpace: 'nowrap', marginLeft: 'auto' }}>{w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{snippet}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                {urgentWls.filter((w) => Date.now() - new Date((w as any).createdAt || w.date).getTime() <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
+                  <div style={{ color: '#94a3b8', fontSize: 13 }}>최근 3일간 긴급보고 없음</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
+              </div>
+            </div>
+
+            {/* 탭 */}
+            <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid #CBD5E1' }}>
+                {(['worklogs', 'comments'] as const).map((tab) => (
+                  <button key={tab} onClick={() => setMainTab(tab)} style={{ flex: 1, padding: '10px 0', fontWeight: 700, fontSize: 14, border: 'none', background: mainTab === tab ? '#fff' : '#F8FAFC', borderBottom: mainTab === tab ? '2px solid #3b82f6' : '2px solid transparent', color: mainTab === tab ? '#2563eb' : '#64748b', cursor: 'pointer' }}>
+                    {tab === 'worklogs' ? '최근 업무일지' : '최근 댓글'}
+                  </button>
+                ))}
+              </div>
+              <div style={{ padding: 12 }}>
+            {mainTab === 'worklogs' ? (
+            <div style={{ }}
+              ><div style={{ display: 'none' }}>최근 업무일지</div>
               {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
                 <div style={{ display: 'grid', gap: 8 }}>
                   {pagedWorklogs.map((w) => {
@@ -645,94 +696,29 @@ export function Home() {
                   {worklogTotal === 0 && <div style={{ color: '#94a3b8' }}>표시할 항목이 없습니다.</div>}
                   {worklogTotal > WORKLOG_PAGE_SIZE && (
                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                      <button
-                        className="btn"
-                        disabled={worklogPage <= 1}
-                        onClick={() => setWorklogPage((p) => Math.max(1, p - 1))}
-                      >이전</button>
-                      <div style={{ fontSize: 13, color: '#475569' }}>
-                        {worklogPage} / {totalWorklogPages} 페이지 · 총 {worklogTotal}건
-                      </div>
-                      <button
-                        className="btn"
-                        disabled={worklogPage >= totalWorklogPages}
-                        onClick={() => setWorklogPage((p) => Math.min(totalWorklogPages, p + 1))}
-                      >다음</button>
+                      <button className="btn" disabled={worklogPage <= 1} onClick={() => setWorklogPage((p) => Math.max(1, p - 1))}>이전</button>
+                      <div style={{ fontSize: 13, color: '#475569' }}>{worklogPage} / {totalWorklogPages} 페이지 · 총 {worklogTotal}건</div>
+                      <button className="btn" disabled={worklogPage >= totalWorklogPages} onClick={() => setWorklogPage((p) => Math.min(totalWorklogPages, p + 1))}>다음</button>
                     </div>
                   )}
                 </div>
               )}
             </div>
-            <div style={{ display: 'grid', gap: 12, alignContent: 'start', alignItems: 'start', alignSelf: 'start', minWidth: 0 }}>
-              <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
-                <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {urgentWls
-                    .filter((w) => {
-                      const d = new Date((w as any).createdAt || w.date).getTime();
-                      const threeDays = 3 * 24 * 60 * 60 * 1000;
-                      return Date.now() - d <= threeDays;
-                    })
-                    .sort((a, b) => new Date((b as any).createdAt || b.date).getTime() - new Date((a as any).createdAt || a.date).getTime())
-                    .map((w) => {
-                      const anyW: any = w as any;
-                      const authorId = getWorklogAuthorId(anyW);
-                      const authorName = String(anyW.createdBy?.name || w.userName || anyW.userName || '').trim();
-                      const attachments = anyW.attachments || {};
-                      const firstImg = getWorklogFirstImage(anyW);
-                      const contentHtml = String(anyW.contentHtml || attachments.contentHtml || '').trim();
-                      const contentText = (anyW.note || '').split('\n').slice(1).join('\n');
-                      const snippetSrc = contentHtml ? htmlToText(stripImgs(contentHtml)) : contentText;
-                      const snippet = (snippetSrc || '').trim();
-                      return (
-                        <div key={w.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#FFFFFF', cursor: 'pointer' }} onClick={() => setDetail(anyW)}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {viewMode === 'full' ? (
-                              <UserAvatar userId={authorId} name={authorName || w.title} size={40} style={{ borderRadius: 8 }} />
-                            ) : firstImg ? (
-                              <img src={firstImg} alt="thumb" style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', flex: '0 0 auto' }} />
-                            ) : (
-                              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#f1f5f9', flex: '0 0 auto' }} />
-                            )}
-                            <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'grid', gap: 2 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
-                                  {viewMode === 'summary' ? (
-                                    <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
-                                  ) : null}
-                                </div>
-                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
-                              </div>
-                              <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  {urgentWls.filter((w) => (Date.now() - new Date((w as any).createdAt || w.date).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
-                    <div style={{ color: '#94a3b8' }}>최근 3일간 긴급보고 없음</div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                  <button className="btn" onClick={() => setUrgentOpen(true)}>더보기</button>
-                </div>
+            ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {latestComments
+                .filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 7 * 24 * 60 * 60 * 1000)
+                .map((c) => (
+                  <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
+                ))}
+              {latestComments.filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 7 * 24 * 60 * 60 * 1000).length === 0 && (
+                <div style={{ color: '#94a3b8' }}>최근 7일간 댓글 없음</div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                <button className="btn" onClick={() => setCommentsOpen(true)}>더보기</button>
               </div>
-              <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
-                <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 댓글</div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {latestComments
-                    .filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3 * 24 * 60 * 60 * 1000)
-                    .map((c) => (
-                      <CommentWithContext key={c.subjectId} c={c} filterTeam={filterTeam} filterName={filterName} viewMode={viewMode} />
-                    ))}
-                  {latestComments.filter((c) => (Date.now() - new Date(c.createdAt).getTime()) <= 3 * 24 * 60 * 60 * 1000).length === 0 && (
-                    <div style={{ color: '#94a3b8' }}>최근 3일간 댓글 없음</div>
-                  )}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                  <button className="btn" onClick={() => setCommentsOpen(true)}>더보기</button>
-                </div>
+            </div>
+            )}
               </div>
             </div>
           </>
