@@ -39,6 +39,7 @@ export function CarDispatchCorporate() {
   const [carId, setCarId] = useState('');
   const [approvers, setApprovers] = useState<Approver[]>([]);
   const [approverId, setApproverId] = useState('');
+  // 1차 결재자는 배차 담당 홍규현으로 서버에서 고정
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('18:00');
@@ -53,7 +54,6 @@ export function CarDispatchCorporate() {
 
   useEffect(() => {
     void loadCars();
-    void loadApprovers();
   }, []);
 
   useEffect(() => {
@@ -83,21 +83,6 @@ export function CarDispatchCorporate() {
       setCars(res.items || []);
       if (!carId && res.items && res.items.length > 0) setCarId(res.items[0].id);
     } catch (e: any) {
-      console.error(e);
-    }
-  }
-
-  async function loadApprovers() {
-    try {
-      const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>(`/api/users`);
-      const cand = (res.items || []).filter((u) => u.role === 'CEO' || u.role === 'EXEC');
-      setApprovers(cand);
-      if (!approverId && cand.length > 0) {
-        const hong = cand.find((u) => u.name === '홍정수');
-        setApproverId((hong ?? cand[0]).id);
-      }
-    } catch (e) {
-      // 승인자 목록은 필수까지는 아니라서 조용히 무시
       console.error(e);
     }
   }
@@ -256,15 +241,12 @@ export function CarDispatchCorporate() {
               ))}
             </select>
           </label>
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span>승인자</span>
-            <select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
-              <option value="">선택</option>
-              {approvers.map((u) => (
-                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-              ))}
-            </select>
-          </label>
+          <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+            <span style={{ fontWeight: 600 }}>1차 결재자</span>
+            <div style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569', fontSize: 13 }}>
+              홍규현 <span style={{ color: '#94a3b8', fontSize: 11 }}>(배차 담당 — 자동 지정)</span>
+            </div>
+          </div>
           <label style={{ display: 'grid', gap: 4 }}>
             <span>필요 일자</span>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />

@@ -64,14 +64,24 @@ export class CarDispatchController {
         throw new BadRequestException('이미 배차된 시간입니다');
       }
 
-      const approverId = dto.approverId || dto.requesterId;
+      // 배차 담당(홍규현)을 1차 결재자로 고정
+      const CAR_MANAGER_NAME = '홍규현';
+      const carManager = await this.prisma.user.findFirst({ where: { name: CAR_MANAGER_NAME }, select: { id: true } });
+      const carManagerId = carManager?.id;
+      if (!carManagerId) throw new BadRequestException(`배차 담당자(${CAR_MANAGER_NAME})를 찾을 수 없습니다`);
+
+      // 결재 라인: 1차=홍규현, 2차=프론트에서 넘긴 approverId (다를 경우)
+      const extraApprover = dto.approverId && dto.approverId !== carManagerId ? dto.approverId : null;
+      const approvalLine = extraApprover ? [carManagerId, extraApprover] : [carManagerId];
+      const firstApprover = carManagerId;
+
       const rec = await this.prisma.$transaction(async (tx) => {
         // 1) 배차 요청 생성
         const dispatch = await tx.carDispatchRequest.create({
           data: {
             carId: dto.carId,
             requesterId: dto.requesterId,
-            approverId,
+            approverId: firstApprover,
             coRiders: dto.coRiders,
             startAt,
             endAt,
@@ -81,38 +91,35 @@ export class CarDispatchController {
           include: { car: true },
         });
 
-        // 2) 결재 요청 생성 (단일 단계)
+        // 2) 결재 요청 생성
         const approval = await tx.approvalRequest.create({
           data: {
             subjectType: 'CAR_DISPATCH',
             subjectId: dispatch.id,
-            approverId,
+            approverId: firstApprover,
             requestedById: dto.requesterId,
           },
         });
 
-        await tx.approvalStep.create({
-          data: {
-            requestId: approval.id,
-            stepNo: 1,
-            approverId,
-            status: 'PENDING' as any,
-          },
-        });
+        for (let i = 0; i < approvalLine.length; i++) {
+          await tx.approvalStep.create({
+            data: { requestId: approval.id, stepNo: i + 1, approverId: approvalLine[i], status: 'PENDING' as any },
+          });
+        }
 
-        // 3) 이벤트 & 알림 (기존 결재 모듈 패턴과 동일)
+        // 3) 이벤트 & 알림
         await tx.event.create({
           data: {
             subjectType: 'CAR_DISPATCH',
             subjectId: dispatch.id,
             activity: 'ApprovalRequested',
             userId: dto.requesterId,
-            attrs: { approverId, requestId: approval.id, steps: 1 },
+            attrs: { approverId: firstApprover, requestId: approval.id, steps: approvalLine.length, line: approvalLine },
           },
         });
         await tx.notification.create({
           data: {
-            userId: approverId,
+            userId: firstApprover,
             type: 'ApprovalRequested',
             subjectType: 'CAR_DISPATCH',
             subjectId: dispatch.id,
