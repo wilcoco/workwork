@@ -138,6 +138,8 @@ model User {
   carDispatchRequestsRequested CarDispatchRequest[] @relation("CarDispatchRequester")
   carDispatchRequestsToApprove CarDispatchRequest[] @relation("CarDispatchApprover")
   attendanceRequests AttendanceRequest[]
+  businessTripRequestsMade BusinessTripRequest[] @relation("TripRequester")
+  businessTripRequestsToApprove BusinessTripRequest[] @relation("TripApprover")
   processTemplatesOwned ProcessTemplate[] @relation("ProcessTemplateOwner")
   processTemplatesCreated ProcessTemplate[] @relation("ProcessTemplateCreatedBy")
   processTemplatesUpdated ProcessTemplate[] @relation("ProcessTemplateUpdatedBy")
@@ -711,6 +713,24 @@ model CarDispatchRequest {
   status      DispatchStatus  @default(PENDING)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+}
+
+model BusinessTripRequest {
+  id            String   @id @default(cuid())
+  requesterId   String
+  requester     User     @relation("TripRequester", fields: [requesterId], references: [id])
+  approverId    String
+  approver      User     @relation("TripApprover", fields: [approverId], references: [id])
+  destination   String
+  purpose       String
+  departureAt   DateTime
+  returnAt      DateTime
+  transportation String?  // 자가용/대중교통/항공/기타
+  accommodation Boolean  @default(false)
+  notes         String?
+  status        String   @default("PENDING") // PENDING/APPROVED/REJECTED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model AttendanceRequest {

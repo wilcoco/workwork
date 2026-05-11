@@ -39,6 +39,7 @@ import { AdminTools } from './pages/AdminTools';
 import { CarAdmin } from './pages/CarAdmin';
 import { CarDispatchCorporate } from './pages/CarDispatchCorporate';
 import { AttendanceRequest } from './pages/AttendanceRequest';
+import { BusinessTripRequest } from './pages/BusinessTripRequest';
 import { AttendanceReport } from './pages/AttendanceReport';
 import { AdminHolidays } from './pages/AdminHolidays';
 import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
@@ -362,6 +363,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
           <Route path="/attendance/request" element={<AttendanceRequest />} />
           <Route path="/attendance/report" element={<AttendanceReport />} />
+          <Route path="/business-trip/request" element={<BusinessTripRequest />} />
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
           <Route path="/process/dashboard" element={<ProcessDashboard />} />
           <Route path="/process/my" element={<ProcessMy />} />
@@ -484,10 +486,11 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
             <Link to="/coops/status">업무 요청 통계</Link>
           </NavDropdown>
         )}
-        <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance')}>
+        <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance') || location.pathname.startsWith('/business-trip')}>
           <Link to="/dispatch/corporate">법인차량 신청</Link>
           <Link to="/attendance/request">근태 신청</Link>
           <Link to="/attendance/report">근태 리포트</Link>
+          <Link to="/business-trip/request">출장 신청</Link>
         </NavDropdown>
         <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
           <Link to={`/process/start?return=${encodeURIComponent(location.pathname + location.search)}`}>새 프로세스 시작</Link>
