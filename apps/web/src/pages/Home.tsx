@@ -587,7 +587,7 @@ export function Home() {
           <>
             {/* 데스크탑: 최근 업무일지 왼쪽, 긴급 보고 / 최근 댓글 오른쪽 — 각 컬럼 독립 스크롤 */}
             <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0, 1.8fr) minmax(0, 1fr)', height: 'calc(100vh - 160px)', alignItems: 'stretch' }}>
-            <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, overflowY: 'auto' }}>
+            <div className="always-scroll" style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, overflowY: 'auto' }}>
               <div style={{ fontWeight: 800, marginBottom: 8 }}>최근 업무일지</div>
               {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -668,7 +668,7 @@ export function Home() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'grid', gap: 12, alignContent: 'start', minWidth: 0, overflowY: 'auto' }}>
+            <div className="always-scroll" style={{ display: 'grid', gap: 12, alignContent: 'start', minWidth: 0, overflowY: 'auto' }}>
               <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 12, padding: 12, alignSelf: 'start' }}>
                 <div style={{ fontWeight: 800, marginBottom: 8 }}>긴급 보고</div>
                 <div style={{ display: 'grid', gap: 8 }}>
