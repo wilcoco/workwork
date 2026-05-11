@@ -78,7 +78,15 @@ function useAudioRecorder(meetingId: string | null) {
 
   async function start() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
       streamRef.current = stream;
       chunkOrderRef.current = 0;
       startTimeRef.current = Date.now();
@@ -205,6 +213,7 @@ export function MeetingMinutes() {
   const [editing, setEditing] = useState(false);
   const [editingSummary, setEditingSummary] = useState(false);
   const [editSummary, setEditSummary] = useState('');
+  const [corrections, setCorrections] = useState<Array<{ from?: string; to?: string; reason?: string }>>([]);
   const [showFilePicker, setShowFilePicker] = useState(false);
 
   // Action items assignee + Planner integration
@@ -347,6 +356,7 @@ export function MeetingMinutes() {
       }>(`/api/meeting-minutes/${active.id}/transcribe`, { method: 'POST' });
       setActive({ ...active, transcript: res.transcript, status: 'draft' });
       setEditTranscript(res.transcript);
+      setCorrections(res.corrections || []);
       if (res.refined) {
         const n = (res.corrections || []).length;
         setRefineNote(n > 0
@@ -388,6 +398,7 @@ export function MeetingMinutes() {
       );
       setActive({ ...active, transcript: res.transcript });
       setEditTranscript(res.transcript);
+      setCorrections(res.corrections || []);
       const n = (res.corrections || []).length;
       setRefineNote(n > 0 ? `${n}개 단어를 교정했습니다.` : '교정할 항목이 없었습니다.');
     } catch (e: any) {
@@ -645,8 +656,25 @@ export function MeetingMinutes() {
                   style={{ width: '100%', minHeight: 300, borderRadius: 8, border: '1px solid #CBD5E1', padding: 12, fontSize: 14, fontFamily: 'inherit', lineHeight: 1.6 }}
                 />
               ) : active.transcript ? (
-                <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.7, maxHeight: 400, overflow: 'auto', color: '#1e293b' }}>
-                  {active.transcript}
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.7, maxHeight: 400, overflow: 'auto', color: '#1e293b' }}>
+                    {active.transcript}
+                  </div>
+                  {corrections.length > 0 && (
+                    <details style={{ border: '1px solid #bae6fd', borderRadius: 8, padding: '6px 10px', background: '#f0f9ff' }}>
+                      <summary style={{ fontSize: 12, fontWeight: 700, color: '#0369a1', cursor: 'pointer' }}>AI 교정 내역 {corrections.length}건 보기</summary>
+                      <div style={{ marginTop: 8, display: 'grid', gap: 4 }}>
+                        {corrections.map((c, i) => (
+                          <div key={i} style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                            <span style={{ background: '#fee2e2', color: '#991b1b', padding: '1px 6px', borderRadius: 4, textDecoration: 'line-through', whiteSpace: 'nowrap' }}>{c.from}</span>
+                            <span style={{ color: '#64748b' }}>→</span>
+                            <span style={{ background: '#dcfce7', color: '#166534', padding: '1px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{c.to}</span>
+                            {c.reason && <span style={{ color: '#64748b', fontSize: 11 }}>{c.reason}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               ) : (
                 <div style={{ color: '#94a3b8', fontSize: 13 }}>

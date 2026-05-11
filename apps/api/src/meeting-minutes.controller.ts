@@ -265,11 +265,10 @@ export class MeetingMinutesController {
       const blob = new Blob([Buffer.from(upload.data as any)], { type: upload.contentType || 'audio/webm' });
       const formData = new FormData();
       formData.append('file', blob, upload.originalName || 'audio.webm');
-      formData.append('model', 'whisper-1');
+      formData.append('model', 'gpt-4o-transcribe');
       formData.append('language', 'ko');
       formData.append('response_format', 'text');
-      // Lower temperature -> Whisper sticks closer to high-confidence words
-      // instead of paraphrasing unclear audio into wild guesses.
+      // temperature=0 → deterministic, high-confidence output
       formData.append('temperature', '0');
       if (promptText) formData.append('prompt', promptText);
 
