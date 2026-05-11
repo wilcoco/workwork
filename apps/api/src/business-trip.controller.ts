@@ -13,6 +13,7 @@ class CreateBusinessTripDto {
   @IsDateString() departureAt!: string;
   @IsDateString() returnAt!: string;
   @IsOptional() @IsString() transportation?: string;
+  @IsOptional() @IsString() carId?: string; // required when transportation === '회사 차량'
   @IsOptional() @IsBoolean() accommodation?: boolean;
   @IsOptional() @IsString() notes?: string;
 }
@@ -70,6 +71,26 @@ export class BusinessTripController {
     const firstApprover = approverLine[0];
     if (!firstApprover) throw new BadRequestException('결재선에 최소 한 명의 결재자가 필요합니다');
 
+    // 회사 차량 선택 시 사전 중복 체크 (트랜잭션 밖에서 빠르게 확인)
+    const isCompanyCar = dto.transportation === '회사 차량';
+    if (isCompanyCar) {
+      if (!dto.carId) throw new BadRequestException('회사 차량 선택 시 차량을 지정해야 합니다');
+      const depAt = new Date(dto.departureAt);
+      const retAt = new Date(dto.returnAt);
+      const conflict = await this.prisma.carDispatchRequest.findFirst({
+        where: {
+          carId: dto.carId,
+          status: { in: ['PENDING', 'APPROVED'] as any },
+          NOT: { OR: [{ endAt: { lte: depAt } }, { startAt: { gte: retAt } }] },
+        },
+        include: { car: { select: { name: true } } },
+      });
+      if (conflict) {
+        const car = (conflict as any).car?.name || '해당 차량';
+        throw new BadRequestException(`${car}은(는) 해당 시간에 이미 배차된 차량입니다`);
+      }
+    }
+
     return (this.prisma as any).$transaction(async (tx: any) => {
       const trip = await tx.businessTripRequest.create({
         data: {
@@ -125,6 +146,21 @@ export class BusinessTripController {
           payload: { requestId: approval.id, subjectType: 'BUSINESS_TRIP', requestedById: dto.requesterId },
         },
       });
+
+      // 회사 차량이면 CarDispatchRequest 자동 생성 (선점)
+      if (isCompanyCar && dto.carId) {
+        await tx.carDispatchRequest.create({
+          data: {
+            carId: dto.carId,
+            requesterId: dto.requesterId,
+            approverId: firstApprover,
+            startAt: new Date(dto.departureAt),
+            endAt: new Date(dto.returnAt),
+            destination: dto.destination,
+            purpose: `[출장] ${dto.purpose}`,
+          },
+        });
+      }
 
       return trip;
     });

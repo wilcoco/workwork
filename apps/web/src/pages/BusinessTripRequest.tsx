@@ -19,6 +19,7 @@ type Trip = {
 };
 
 type Member = { id: string; name: string; role: string };
+type Car = { id: string; name: string; type?: string | null };
 
 const statusLabel: Record<TripStatus, string> = { PENDING: '대기중', APPROVED: '승인', REJECTED: '반려' };
 const statusColor: Record<TripStatus, React.CSSProperties> = {
@@ -50,6 +51,8 @@ export function BusinessTripRequest() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [approverTrips, setApproverTrips] = useState<Trip[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [cars, setCars] = useState<Car[]>([]);
+  const [carId, setCarId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'mine' | 'approve'>('mine');
@@ -66,7 +69,7 @@ export function BusinessTripRequest() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (userId) { void load(); void loadMembers(); }
+    if (userId) { void load(); void loadMembers(); void loadCars(); }
   }, [userId]);
 
   async function load() {
@@ -83,6 +86,13 @@ export function BusinessTripRequest() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadCars() {
+    try {
+      const res = await apiJson<{ items: Car[] }>('/api/cars');
+      setCars(res.items || []);
+    } catch {}
   }
 
   async function loadMembers() {
@@ -107,6 +117,10 @@ export function BusinessTripRequest() {
       setError('결재선에 최소 한 명의 결재자를 선택해주세요.');
       return;
     }
+    if (transportation === '회사 차량' && !carId) {
+      setError('회사 차량 이용 시 차량을 선택해주세요.');
+      return;
+    }
     if (new Date(returnAt) <= new Date(departureAt)) {
       setError('귀임 일시는 출발 일시보다 이후여야 합니다.');
       return;
@@ -116,10 +130,11 @@ export function BusinessTripRequest() {
     try {
       await apiJson('/api/business-trips', {
         method: 'POST',
-        body: JSON.stringify({ requesterId: userId, approverIds: cleanedApprovers, destination, purpose, departureAt, returnAt, transportation, accommodation, notes }),
+        body: JSON.stringify({ requesterId: userId, approverIds: cleanedApprovers, destination, purpose, departureAt, returnAt, transportation, carId: transportation === '회사 차량' ? carId : undefined, accommodation, notes }),
       });
       setDestination(''); setPurpose(''); setDepartureAt(''); setReturnAt('');
       setTransportation('대중교통'); setAccommodation(false); setNotes('');
+      setCarId('');
       setApproverIds(['']);
       await load();
     } catch (e: any) {
@@ -166,7 +181,7 @@ export function BusinessTripRequest() {
           </div>
           <div style={{ display: 'grid', gap: 6 }}>
             <label style={{ fontSize: 13, fontWeight: 600 }}>교통편</label>
-            <select value={transportation} onChange={(e) => setTransportation(e.target.value)} style={input}>
+            <select value={transportation} onChange={(e) => { setTransportation(e.target.value); setCarId(''); }} style={input}>
               <option>대중교통</option>
               <option>자가용</option>
               <option>회사 차량</option>
@@ -184,6 +199,16 @@ export function BusinessTripRequest() {
             <input type="datetime-local" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} style={input} />
           </div>
         </div>
+        {transportation === '회사 차량' && (
+          <div style={{ display: 'grid', gap: 6, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 12px' }}>
+            <label style={{ fontSize: 13, fontWeight: 700, color: '#0369a1' }}>차량 선택 * <span style={{ fontWeight: 400, fontSize: 12 }}>(해당 시간 자동 선점됩니다)</span></label>
+            <select value={carId} onChange={(e) => setCarId(e.target.value)} style={input}>
+              <option value="">차량 선택</option>
+              {cars.map((c) => <option key={c.id} value={c.id}>{c.name}{c.type ? ` (${c.type})` : ''}</option>)}
+            </select>
+            {cars.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>등록된 차량이 없습니다. 관리자에게 문의하세요.</div>}
+          </div>
+        )}
         <div style={{ display: 'grid', gap: 6 }}>
           <label style={{ fontSize: 13, fontWeight: 600 }}>출장 목적 *</label>
           <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} style={{ ...input, minHeight: 72, resize: 'vertical' }} placeholder="출장 목적을 간략히 기술해주세요" />
