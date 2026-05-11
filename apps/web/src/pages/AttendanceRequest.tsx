@@ -222,10 +222,6 @@ export function AttendanceRequest() {
       return;
     }
 
-    if (weeklyHours !== null && weeklyHours > 52) {
-      alert('해당 주 업무시간이 52시간을 초과하여 신청할 수 없습니다');
-      return;
-    }
     setSubmitting(true);
     setError(null);
     try {
