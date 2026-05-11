@@ -55,7 +55,6 @@ export function BusinessTripRequest() {
   const [tab, setTab] = useState<'mine' | 'approve'>('mine');
 
   // Form
-  const [approverId, setApproverId] = useState('');
   const [destination, setDestination] = useState('');
   const [purpose, setPurpose] = useState('');
   const [departureAt, setDepartureAt] = useState('');
@@ -63,6 +62,7 @@ export function BusinessTripRequest() {
   const [transportation, setTransportation] = useState('대중교통');
   const [accommodation, setAccommodation] = useState(false);
   const [notes, setNotes] = useState('');
+  const [approverIds, setApproverIds] = useState<string[]>(['']);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -88,13 +88,23 @@ export function BusinessTripRequest() {
   async function loadMembers() {
     try {
       const res = await apiJson<{ users: Member[] }>('/api/users?limit=200');
-      setMembers((res.users || []).filter((m) => m.id !== userId));
+      const all = (res.users || []).filter((m) => m.id !== userId);
+      setMembers(all);
+      const cand = all.filter((m) => m.role === 'CEO' || m.role === 'EXEC' || m.role === 'MANAGER');
+      if (cand.length > 0) {
+        setApproverIds((prev) => (prev.length === 0 || !prev[0] ? [cand[0].id] : prev));
+      }
     } catch {}
   }
 
   async function handleSubmit() {
-    if (!destination.trim() || !purpose.trim() || !departureAt || !returnAt || !approverId) {
-      setError('목적지, 출장 목적, 출발/귀임 일시, 결재자를 모두 입력해주세요.');
+    const cleanedApprovers = approverIds.map((id) => id.trim()).filter(Boolean);
+    if (!destination.trim() || !purpose.trim() || !departureAt || !returnAt) {
+      setError('목적지, 출장 목적, 출발/귀임 일시를 입력해주세요.');
+      return;
+    }
+    if (cleanedApprovers.length === 0) {
+      setError('결재선에 최소 한 명의 결재자를 선택해주세요.');
       return;
     }
     if (new Date(returnAt) <= new Date(departureAt)) {
@@ -106,10 +116,11 @@ export function BusinessTripRequest() {
     try {
       await apiJson('/api/business-trips', {
         method: 'POST',
-        body: JSON.stringify({ requesterId: userId, approverId, destination, purpose, departureAt, returnAt, transportation, accommodation, notes }),
+        body: JSON.stringify({ requesterId: userId, approverIds: cleanedApprovers, destination, purpose, departureAt, returnAt, transportation, accommodation, notes }),
       });
       setDestination(''); setPurpose(''); setDepartureAt(''); setReturnAt('');
       setTransportation('대중교통'); setAccommodation(false); setNotes('');
+      setApproverIds(['']);
       await load();
     } catch (e: any) {
       setError(e?.message || '신청 실패');
@@ -158,6 +169,7 @@ export function BusinessTripRequest() {
             <select value={transportation} onChange={(e) => setTransportation(e.target.value)} style={input}>
               <option>대중교통</option>
               <option>자가용</option>
+              <option>회사 차량</option>
               <option>항공</option>
               <option>렌터카</option>
               <option>기타</option>
@@ -176,21 +188,36 @@ export function BusinessTripRequest() {
           <label style={{ fontSize: 13, fontWeight: 600 }}>출장 목적 *</label>
           <textarea value={purpose} onChange={(e) => setPurpose(e.target.value)} style={{ ...input, minHeight: 72, resize: 'vertical' }} placeholder="출장 목적을 간략히 기술해주세요" />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>결재선 *</span>
           <div style={{ display: 'grid', gap: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>결재자 *</label>
-            <select value={approverId} onChange={(e) => setApproverId(e.target.value)} style={input}>
-              <option value="">결재자 선택</option>
-              {members.map((m) => <option key={m.id} value={m.id}>{m.name}{m.role ? ` (${m.role})` : ''}</option>)}
-            </select>
+            {approverIds.map((aid, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ minWidth: 52, fontSize: 12, color: '#475569', fontWeight: 700 }}>{idx + 1}단계</span>
+                <select
+                  value={aid}
+                  onChange={(e) => setApproverIds((prev) => prev.map((p, i) => i === idx ? e.target.value : p))}
+                  style={{ flex: 1, padding: '6px 8px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                >
+                  <option value="">결재자 선택</option>
+                  {members.map((m) => <option key={m.id} value={m.id}>{m.name}{m.role ? ` (${m.role})` : ''}</option>)}
+                </select>
+                <button type="button" onClick={() => setApproverIds((prev) => prev.filter((_, i) => i !== idx))} disabled={approverIds.length <= 1}
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #CBD5E1', borderRadius: 6, background: '#fff', cursor: approverIds.length <= 1 ? 'not-allowed' : 'pointer', color: approverIds.length <= 1 ? '#cbd5e1' : '#475569' }}
+                >−</button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setApproverIds((prev) => [...prev, ''])}
+              style={{ justifySelf: 'start', padding: '4px 10px', fontSize: 12, border: '1px dashed #94a3b8', borderRadius: 6, background: '#f8fafc', cursor: 'pointer', color: '#475569' }}
+            >+ 결재자 추가</button>
           </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>숙박 여부</label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, paddingTop: 8 }}>
-              <input type="checkbox" checked={accommodation} onChange={(e) => setAccommodation(e.target.checked)} />
-              숙박 필요
-            </label>
-          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>숙박 여부</label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
+            <input type="checkbox" checked={accommodation} onChange={(e) => setAccommodation(e.target.checked)} />
+            숙박 필요
+          </label>
         </div>
         <div style={{ display: 'grid', gap: 6 }}>
           <label style={{ fontSize: 13, fontWeight: 600 }}>비고</label>
@@ -224,9 +251,11 @@ export function BusinessTripRequest() {
                 <span style={{ marginLeft: 12 }}>📅 {fmtRange(t.departureAt, t.returnAt)}</span>
               </div>
               <div style={{ fontSize: 13, color: '#334155' }}>{t.purpose}</div>
-              <div style={{ fontSize: 12, color: '#64748b', display: 'flex', gap: 16 }}>
+              <div style={{ fontSize: 12, color: '#64748b', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <span>신청자: {t.requester.name}</span>
-                <span>결재자: {t.approver.name}</span>
+                <span>결재선: {Array.isArray((t as any).approvalLine) && (t as any).approvalLine.length > 1
+                  ? (t as any).approvalLine.map((_: any, i: number) => `${i + 1}단계`).join(' → ')
+                  : t.approver.name}</span>
                 {t.notes && <span>비고: {t.notes}</span>}
               </div>
               {tab === 'approve' && t.status === 'PENDING' && (

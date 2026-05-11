@@ -721,11 +721,12 @@ model BusinessTripRequest {
   requester     User     @relation("TripRequester", fields: [requesterId], references: [id])
   approverId    String
   approver      User     @relation("TripApprover", fields: [approverId], references: [id])
+  approvalLine  Json?    // ordered array of approver userIds
   destination   String
   purpose       String
   departureAt   DateTime
   returnAt      DateTime
-  transportation String?  // 자가용/대중교통/항공/기타
+  transportation String?  // 자가용/대중교통/항공/회사차량/기타
   accommodation Boolean  @default(false)
   notes         String?
   status        String   @default("PENDING") // PENDING/APPROVED/REJECTED
