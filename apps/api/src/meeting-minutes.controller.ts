@@ -238,15 +238,34 @@ export class MeetingMinutesController {
     const f: any = (globalThis as any).fetch;
     if (!f) throw new BadRequestException('Server fetch not available');
 
-    // Whisper accepts an optional `prompt` that biases recognition toward
-    // the vocabulary used in the prompt (works as a soft style/lexicon
-    // hint). Admins can supply company-specific terms via STT_PROMPT,
-    // otherwise we fall back to MEETING_GLOSSARY (which is also used by
-    // the summariser). Keep it short — Whisper truncates beyond ~224
-    // tokens of prompt text.
-    const baseHint = String(
-      process.env.STT_PROMPT || process.env.MEETING_GLOSSARY || '',
-    ).trim().slice(0, 800);
+    // Build vocabulary hint from two sources (combined):
+    // 1) STT_PROMPT / MEETING_GLOSSARY env (manually curated)
+    // 2) Auto-extracted terms from recent worklogs (keywords field + first line of note)
+    const envHint = String(process.env.STT_PROMPT || process.env.MEETING_GLOSSARY || '').trim();
+
+    let autoTerms = '';
+    try {
+      const recentWls = await this.prisma.worklog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select: { keywords: true, note: true },
+      });
+      const termSet = new Set<string>();
+      for (const w of recentWls) {
+        // keywords field (comma/space/newline separated)
+        if (w.keywords) {
+          String(w.keywords).split(/[,\n]+/).map(t => t.trim()).filter(t => t.length >= 2 && t.length <= 30).forEach(t => termSet.add(t));
+        }
+        // first line of note (worklog title)
+        if (w.note) {
+          const firstLine = String(w.note).split('\n')[0].trim();
+          if (firstLine.length >= 2 && firstLine.length <= 40) termSet.add(firstLine);
+        }
+      }
+      if (termSet.size > 0) autoTerms = Array.from(termSet).slice(0, 120).join(', ');
+    } catch {}
+
+    const baseHint = [envHint, autoTerms].filter(Boolean).join('\n').slice(0, 800);
 
     // Transcribe each chunk via Whisper API.
     // For continuity across chunks, also feed the tail of the previous
@@ -364,7 +383,22 @@ export class MeetingMinutesController {
    */
   private async runRefineOnText(meetingId: string, transcript: string) {
     const { callAI } = await import('./llm/ai-client');
-    const glossary = String(process.env.MEETING_GLOSSARY || '').trim();
+    const envGlossary = String(process.env.MEETING_GLOSSARY || '').trim();
+    let autoTerms = '';
+    try {
+      const recentWls = await this.prisma.worklog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select: { keywords: true, note: true },
+      });
+      const termSet = new Set<string>();
+      for (const w of recentWls) {
+        if (w.keywords) String(w.keywords).split(/[,\n]+/).map(t => t.trim()).filter(t => t.length >= 2 && t.length <= 30).forEach(t => termSet.add(t));
+        if (w.note) { const fl = String(w.note).split('\n')[0].trim(); if (fl.length >= 2 && fl.length <= 40) termSet.add(fl); }
+      }
+      if (termSet.size > 0) autoTerms = Array.from(termSet).slice(0, 120).join(', ');
+    } catch {}
+    const glossary = [envGlossary, autoTerms ? `업무일지 자동 추출 용어: ${autoTerms}` : ''].filter(Boolean).join('\n');
 
     const system = `당신은 한국어 회의 녹취록 정제 전문가입니다. 입력은 STT(음성→텍스트)로 자동 변환된 회의 녹취록입니다. 다음 원칙으로 "녹취록 자체"를 최소 침습으로 다듬어 주세요.
 
