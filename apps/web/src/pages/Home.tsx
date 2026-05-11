@@ -20,6 +20,19 @@ function visibilityKo(v: any): string {
   return VISIBILITY_LABEL[key] || key;
 }
 
+function fmtDatetime(createdAt: any, date: any): string {
+  const src = createdAt || date;
+  if (!src) return '';
+  const d = new Date(src);
+  if (isNaN(d.getTime())) return String(src);
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
 export function Home() {
   const nav = useNavigate();
   const [worklogs, setWorklogs] = useState<WL[]>([]);
@@ -439,7 +452,7 @@ export function Home() {
                                     <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
                                   ) : null}
                                 </div>
-                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {fmtDatetime(anyW.createdAt, w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
                             </div>
@@ -517,7 +530,7 @@ export function Home() {
                                     <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
                                   ) : null}
                                 </div>
-                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {fmtDatetime(anyW.createdAt, w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
                                 <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
@@ -663,7 +676,7 @@ export function Home() {
                                     <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
                                   ) : null}
                                 </div>
-                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                                <div style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {fmtDatetime(anyW.createdAt, w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                               </div>
                               {viewMode==='summary' && (
                                 <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
@@ -788,7 +801,7 @@ export function Home() {
                             <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
                           ) : null}
                         </div>
-                        <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {formatKstYmd(anyW.createdAt || w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
+                        <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {fmtDatetime(anyW.createdAt, w.date)} · 조회권한 {visibilityKo(anyW.visibility || (w as any).visibility)}</div>
                       </div>
                       <div style={{ color: '#334155', overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{snippet}</div>
                     </div>
