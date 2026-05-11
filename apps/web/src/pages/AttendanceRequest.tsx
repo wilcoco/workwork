@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ApproverIdPicker } from '../components/MemberSearchPicker';
 import { apiJson } from '../lib/api';
 
 type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'HOLIDAY_REST';
@@ -432,19 +433,12 @@ export function AttendanceRequest() {
                 <span style={{ minWidth: 56, fontSize: 12, color: '#475569', fontWeight: 700 }}>
                   {idx + 1}단계
                 </span>
-                <select
+                <ApproverIdPicker
                   value={aid}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setApproverIds((prev) => prev.map((p, i) => (i === idx ? v : p)));
-                  }}
-                  style={{ flex: 1, padding: '6px 8px', borderRadius: 8, border: '1px solid #CBD5E1' }}
-                >
-                  <option value="">선택</option>
-                  {approvers.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                  ))}
-                </select>
+                  onChange={(v) => setApproverIds((prev) => prev.map((p, i) => (i === idx ? v : p)))}
+                  members={members}
+                  placeholder="이름 검색"
+                />
                 <button
                   type="button"
                   onClick={() => setApproverIds((prev) => prev.filter((_, i) => i !== idx))}

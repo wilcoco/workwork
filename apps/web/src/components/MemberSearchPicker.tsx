@@ -149,6 +149,82 @@ export function MemberSearchPicker({ selected, onAdd, onRemove, allowManual = tr
   );
 }
 
+/** ID-based single approver picker with search dropdown.
+ *  Accepts a pre-loaded members array so the parent controls the list. */
+export function ApproverIdPicker({
+  value,
+  onChange,
+  members,
+  placeholder,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  members: { id: string; name: string; role?: string }[];
+  placeholder?: string;
+}) {
+  const selected = members.find((m) => m.id === value);
+  const [query, setQuery] = useState(selected?.name || '');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const found = members.find((m) => m.id === value);
+    setQuery(found?.name || '');
+  }, [value, members]);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+        const found = members.find((m) => m.id === value);
+        setQuery(found?.name || '');
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [value, members]);
+
+  const filtered = query.trim()
+    ? members.filter((m) => m.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 10)
+    : members.slice(0, 10);
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', flex: 1 }}>
+      <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setShowDropdown(true); if (!e.target.value.trim()) onChange(''); }}
+          onFocus={() => setShowDropdown(true)}
+          placeholder={placeholder || '\uc774\ub984 \uac80\uc0c9'}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        {value && (
+          <button type="button" onClick={() => { setQuery(''); onChange(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 14 }}>✕</button>
+        )}
+      </div>
+      {showDropdown && filtered.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
+          {filtered.map((m) => (
+            <div
+              key={m.id}
+              onClick={() => { onChange(m.id); setQuery(m.name); setShowDropdown(false); }}
+              style={{ padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
+            >
+              <div style={{ width: 26, height: 26, borderRadius: 999, background: '#e2e8f0', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                {m.name.charAt(0)}
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</span>
+              {m.role && <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 'auto' }}>{m.role}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Simpler single-member picker — returns one member selection */
 export function SingleMemberPicker({ value, onChange, placeholder }: {
   value: string;

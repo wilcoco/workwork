@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ApproverIdPicker } from '../components/MemberSearchPicker';
 import { apiJson } from '../lib/api';
 
 type TripStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -219,14 +220,12 @@ export function BusinessTripRequest() {
             {approverIds.map((aid, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ minWidth: 52, fontSize: 12, color: '#475569', fontWeight: 700 }}>{idx + 1}단계</span>
-                <select
+                <ApproverIdPicker
                   value={aid}
-                  onChange={(e) => setApproverIds((prev) => prev.map((p, i) => i === idx ? e.target.value : p))}
-                  style={{ flex: 1, padding: '6px 8px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
-                >
-                  <option value="">결재자 선택</option>
-                  {members.map((m) => <option key={m.id} value={m.id}>{m.name}{m.role ? ` (${m.role})` : ''}</option>)}
-                </select>
+                  onChange={(id) => setApproverIds((prev) => prev.map((p, i) => i === idx ? id : p))}
+                  members={members}
+                  placeholder="이름 검색"
+                />
                 <button type="button" onClick={() => setApproverIds((prev) => prev.filter((_, i) => i !== idx))} disabled={approverIds.length <= 1}
                   style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #CBD5E1', borderRadius: 6, background: '#fff', cursor: approverIds.length <= 1 ? 'not-allowed' : 'pointer', color: approverIds.length <= 1 ? '#cbd5e1' : '#475569' }}
                 >−</button>
