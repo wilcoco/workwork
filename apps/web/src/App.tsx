@@ -38,6 +38,7 @@ import { AdminMembers } from './pages/AdminMembers';
 import { AdminTools } from './pages/AdminTools';
 import { CarAdmin } from './pages/CarAdmin';
 import { CarDispatchCorporate } from './pages/CarDispatchCorporate';
+import { CarDispatchLogistics } from './pages/CarDispatchLogistics';
 import { AttendanceRequest } from './pages/AttendanceRequest';
 import { BusinessTripRequest } from './pages/BusinessTripRequest';
 import { AttendanceReport } from './pages/AttendanceReport';
@@ -361,6 +362,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
             element={adminGuard(<MasterManagement />)}
           />
           <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
+          <Route path="/dispatch/logistics" element={<CarDispatchLogistics />} />
           <Route path="/attendance/request" element={<AttendanceRequest />} />
           <Route path="/attendance/report" element={<AttendanceReport />} />
           <Route path="/business-trip/request" element={<BusinessTripRequest />} />
@@ -488,6 +490,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
         )}
         <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance') || location.pathname.startsWith('/business-trip')}>
           <Link to="/dispatch/corporate">법인차량 신청</Link>
+          <Link to="/dispatch/logistics">물류 배차 신청</Link>
           <Link to="/attendance/request">근태 신청</Link>
           <Link to="/attendance/report">근태 리포트</Link>
           <Link to="/business-trip/request">출장 신청</Link>
@@ -691,6 +694,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
     if (path.startsWith('/dispatch') || path.startsWith('/attendance')) {
       return [
         { to: '/dispatch/corporate', label: '법인차량 신청' },
+        { to: '/dispatch/logistics', label: '물류 배차 신청' },
         { to: '/attendance/request', label: '근태 신청' },
         { to: '/attendance/report', label: '근태 리포트' },
       ];

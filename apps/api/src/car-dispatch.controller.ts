@@ -28,6 +28,14 @@ class CreateCarDispatchDto {
 
   @IsString()
   purpose!: string;
+
+  @IsOptional()
+  @IsString()
+  dispatchType?: string; // CORPORATE | LOGISTICS
+
+  @IsOptional()
+  @IsString()
+  cargoDetails?: string;
 }
 
 @Controller('car-dispatch')
@@ -87,6 +95,8 @@ export class CarDispatchController {
             endAt,
             destination: dto.destination,
             purpose: dto.purpose,
+            dispatchType: dto.dispatchType || 'CORPORATE',
+            cargoDetails: dto.cargoDetails,
           },
           include: { car: true },
         });
@@ -137,6 +147,47 @@ export class CarDispatchController {
       if (e instanceof BadRequestException) throw e;
       throw new BadRequestException(e?.message || '배차 신청에 실패했습니다');
     }
+  }
+
+  // 물류 배차 리스트
+  @Get('logistics')
+  async logisticsList(
+    @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const where: any = { dispatchType: 'LOGISTICS' };
+    if (status) where.status = status;
+    if (from || to) {
+      where.startAt = {};
+      if (from) where.startAt.gte = new Date(from);
+      if (to) where.startAt.lte = new Date(to);
+    }
+    const items = await this.prisma.carDispatchRequest.findMany({
+      where,
+      orderBy: { startAt: 'desc' },
+      take: 200,
+      include: { car: true, requester: true, approver: true },
+    });
+    return {
+      items: items.map((r) => ({
+        id: r.id,
+        carId: r.carId,
+        carName: (r as any).car?.name ?? '',
+        requesterId: r.requesterId,
+        requesterName: (r as any).requester?.name ?? '',
+        approverId: r.approverId,
+        approverName: (r as any).approver?.name ?? '',
+        coRiders: r.coRiders,
+        startAt: r.startAt,
+        endAt: r.endAt,
+        destination: r.destination,
+        purpose: r.purpose,
+        cargoDetails: (r as any).cargoDetails,
+        status: r.status,
+        createdAt: r.createdAt,
+      })),
+    };
   }
 
   // 월별 전체 배차 캘린더 (모든 차량)

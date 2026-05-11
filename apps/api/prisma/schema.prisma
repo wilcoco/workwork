@@ -698,21 +698,23 @@ model Car {
 }
 
 model CarDispatchRequest {
-  id          String          @id @default(cuid())
-  carId       String
-  car         Car             @relation(fields: [carId], references: [id])
-  requesterId String
-  requester   User            @relation("CarDispatchRequester", fields: [requesterId], references: [id])
-  approverId  String
-  approver    User            @relation("CarDispatchApprover", fields: [approverId], references: [id])
-  coRiders    String?
-  startAt     DateTime
-  endAt       DateTime
-  destination String
-  purpose     String
-  status      DispatchStatus  @default(PENDING)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id           String         @id @default(cuid())
+  carId        String
+  car          Car            @relation(fields: [carId], references: [id])
+  requesterId  String
+  requester    User           @relation("CarDispatchRequester", fields: [requesterId], references: [id])
+  approverId   String
+  approver     User           @relation("CarDispatchApprover", fields: [approverId], references: [id])
+  coRiders     String?
+  startAt      DateTime
+  endAt        DateTime
+  destination  String
+  purpose      String
+  dispatchType String         @default("CORPORATE") // CORPORATE | LOGISTICS
+  cargoDetails String?        // 화물 내용 (물류 전용)
+  status       DispatchStatus @default(PENDING)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 }
 
 model BusinessTripRequest {
