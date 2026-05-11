@@ -267,50 +267,99 @@ export class MeetingMinutesController {
 
     const baseHint = [envHint, autoTerms].filter(Boolean).join('\n').slice(0, 800);
 
-    // Transcribe each chunk via Whisper API.
-    // For continuity across chunks, also feed the tail of the previous
-    // transcript as part of the prompt so spelling/style stays consistent.
+    // ── CLOVA Speech (Naver) — activated when CLOVA_SPEECH_SECRET is set ──
+    // Superior Korean accuracy + speaker diarization. Falls back to
+    // gpt-4o-transcribe when the env var is absent.
+    const clovaSecret = process.env.CLOVA_SPEECH_SECRET || '';
+    const clovaInvokeUrl = (process.env.CLOVA_SPEECH_INVOKE_URL || 'https://clovaspeech-gw.ncloud.com/external/v1/recognizer/upload').replace(/\/$/, '');
+
     const transcriptParts: string[] = [];
     let prevTail = '';
     for (const chunk of chunks) {
       const upload = await this.prisma.upload.findUnique({ where: { id: chunk.uploadId } });
       if (!upload || !upload.data) continue;
 
-      const promptParts: string[] = [];
-      if (baseHint) promptParts.push(baseHint);
-      if (prevTail) promptParts.push(prevTail);
-      const promptText = promptParts.join('\n').slice(-1000); // hard cap
+      const audioBlob = new Blob([Buffer.from(upload.data as any)], { type: upload.contentType || 'audio/webm' });
 
-      const blob = new Blob([Buffer.from(upload.data as any)], { type: upload.contentType || 'audio/webm' });
-      const formData = new FormData();
-      formData.append('file', blob, upload.originalName || 'audio.webm');
-      formData.append('model', 'gpt-4o-transcribe');
-      formData.append('language', 'ko');
-      formData.append('response_format', 'text');
-      // temperature=0 → deterministic, high-confidence output
-      formData.append('temperature', '0');
-      if (promptText) formData.append('prompt', promptText);
-
-      try {
-        const resp = await f('https://api.openai.com/v1/audio/transcriptions', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}` },
-          body: formData,
-        });
-        if (!resp.ok) {
-          const errText = await resp.text().catch(() => '');
-          console.error('[meeting-minutes] Whisper error:', resp.status, errText);
+      if (clovaSecret) {
+        // ── CLOVA Speech path ──
+        try {
+          const clovaForm = new FormData();
+          clovaForm.append('media', audioBlob, upload.originalName || 'audio.webm');
+          clovaForm.append('params', JSON.stringify({
+            language: 'ko-KR',
+            completion: 'sync',
+            diarization: { enable: true },
+            format: 'JSON',
+          }));
+          const resp = await f(clovaInvokeUrl, {
+            method: 'POST',
+            headers: { 'X-CLOVASPEECH-API-GW-SERVICE-SECRET': clovaSecret },
+            body: clovaForm,
+          });
+          if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            console.error('[meeting-minutes] CLOVA error:', resp.status, errText);
+            transcriptParts.push(`[전사 실패: chunk ${chunk.order}]`);
+            continue;
+          }
+          const json = await resp.json();
+          // Build transcript with speaker labels from diarization segments
+          const segments: any[] = Array.isArray(json.segments) ? json.segments : [];
+          if (segments.length) {
+            let out = '';
+            let lastSpeaker = '';
+            for (const seg of segments) {
+              const speaker = seg.speaker?.label ? `화자${seg.speaker.label}` : '';
+              if (speaker && speaker !== lastSpeaker) {
+                out += `\n[${speaker}] `;
+                lastSpeaker = speaker;
+              }
+              out += (seg.text || '') + ' ';
+            }
+            transcriptParts.push(out.trim());
+          } else {
+            transcriptParts.push(String(json.text || '').trim());
+          }
+          prevTail = transcriptParts[transcriptParts.length - 1].slice(-300);
+        } catch (err: any) {
+          console.error('[meeting-minutes] CLOVA exception:', err?.message);
           transcriptParts.push(`[전사 실패: chunk ${chunk.order}]`);
-          continue;
         }
-        const text = (await resp.text()).trim();
-        transcriptParts.push(text);
-        // Carry tail of this chunk into the next chunk's prompt for
-        // cross-chunk continuity (names, terminology, sentence flow).
-        prevTail = text.slice(-300);
-      } catch (err: any) {
-        console.error('[meeting-minutes] Whisper exception:', err?.message);
-        transcriptParts.push(`[전사 실패: chunk ${chunk.order}]`);
+      } else {
+        // ── gpt-4o-transcribe (OpenAI Whisper) path ──
+        const promptParts: string[] = [];
+        if (baseHint) promptParts.push(baseHint);
+        if (prevTail) promptParts.push(prevTail);
+        const promptText = promptParts.join('\n').slice(-1000);
+
+        const formData = new FormData();
+        formData.append('file', audioBlob, upload.originalName || 'audio.webm');
+        formData.append('model', 'gpt-4o-transcribe');
+        formData.append('language', 'ko');
+        formData.append('response_format', 'text');
+        formData.append('temperature', '0');
+        if (promptText) formData.append('prompt', promptText);
+
+        try {
+          const resp = await f('https://api.openai.com/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}` },
+            body: formData,
+          });
+          if (!resp.ok) {
+            const errText = await resp.text().catch(() => '');
+            console.error('[meeting-minutes] Whisper error:', resp.status, errText);
+            transcriptParts.push(`[전사 실패: chunk ${chunk.order}]`);
+            continue;
+          }
+          const text = (await resp.text()).trim();
+          transcriptParts.push(text);
+          prevTail = text.slice(-300);
+        } catch (err: any) {
+          console.error('[meeting-minutes] Whisper exception:', err?.message);
+          transcriptParts.push(`[전사 실패: chunk ${chunk.order}]`);
+        }
       }
     }
 
