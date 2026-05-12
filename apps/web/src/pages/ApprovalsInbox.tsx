@@ -154,6 +154,17 @@ export function ApprovalsInbox() {
             ].filter(Boolean);
             meta = parts.join(' · ');
             when = doc.createdAt || doc.date || when;
+          } else if (stNorm === 'LOGISTICS_DISPATCH' && doc) {
+            const fmtDt = (iso: string) => iso ? new Date(iso).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+            title = `물류 배차 신청 — ${doc.vehicleType || ''}`.trim();
+            const parts = [
+              doc.requester?.name || doc.requesterName || '',
+              doc.loadingPlace ? `상차: ${doc.loadingPlace} ${fmtDt(doc.loadingAt)}` : '',
+              doc.unloadingPlace ? `하차: ${doc.unloadingPlace} ${fmtDt(doc.unloadingAt)}` : '',
+              doc.cargoDetails ? `화물: ${doc.cargoDetails}` : '',
+            ].filter(Boolean);
+            meta = parts.join(' · ');
+            when = doc.createdAt || when;
           } else if (stNorm === 'WORKLOG' && doc) {
             const wl = doc;
             title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
@@ -270,6 +281,17 @@ export function ApprovalsInbox() {
                 ].filter(Boolean);
                 meta = parts.join(' · ');
                 when = doc.createdAt || doc.date || when;
+              } else if (stNorm === 'LOGISTICS_DISPATCH' && doc) {
+                const fmtDt = (iso: string) => iso ? new Date(iso).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+                title = `물류 배차 신청 — ${doc.vehicleType || ''}`.trim();
+                const parts = [
+                  doc.requester?.name || doc.requesterName || '',
+                  doc.loadingPlace ? `상차: ${doc.loadingPlace} ${fmtDt(doc.loadingAt)}` : '',
+                  doc.unloadingPlace ? `하차: ${doc.unloadingPlace} ${fmtDt(doc.unloadingAt)}` : '',
+                  doc.cargoDetails ? `화물: ${doc.cargoDetails}` : '',
+                ].filter(Boolean);
+                meta = parts.join(' · ');
+                when = doc.createdAt || when;
               } else if (stNorm === 'WORKLOG' && doc) {
                 const wl = doc;
                 title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
