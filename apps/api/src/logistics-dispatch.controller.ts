@@ -7,8 +7,7 @@ class CreateLogisticsDispatchDto {
   requesterId!: string;
 
   @IsOptional()
-  @IsString()
-  approverId?: string;
+  approvalLine?: string[]; // ordered list of approver userIds; 홍규현 auto-prepended if not first
 
   @IsString()
   vehicleType!: string;
@@ -55,17 +54,22 @@ export class LogisticsDispatchController {
         throw new BadRequestException('유효하지 않은 일시입니다');
       }
 
-      // 배차 담당(홍규현)을 1차 결재자로 고정
+      // 1차는 항상 홍규현, 이후 프론트에서 넘긴 순서대로
       const CAR_MANAGER_NAME = '홍규현';
       const carManager = await this.prisma.user.findFirst({ where: { name: CAR_MANAGER_NAME }, select: { id: true } });
-      const approverId = carManager?.id;
-      if (!approverId) throw new BadRequestException(`배차 담당자(${CAR_MANAGER_NAME})를 찾을 수 없습니다`);
+      const carManagerId = carManager?.id;
+      if (!carManagerId) throw new BadRequestException(`배차 담당자(${CAR_MANAGER_NAME})를 찾을 수 없습니다`);
+
+      // 결재라인 구성: 홍규현이 1번째 없으면 앞에 추가
+      const rawLine: string[] = (dto.approvalLine || []).filter(Boolean);
+      const approvalLine = rawLine[0] === carManagerId ? rawLine : [carManagerId, ...rawLine];
+      const firstApprover = approvalLine[0];
 
       const rec = await this.prisma.$transaction(async (tx) => {
         const dispatch = await (tx as any).logisticsDispatchRequest.create({
           data: {
             requesterId: dto.requesterId,
-            approverId,
+            approverId: firstApprover,
             vehicleType: dto.vehicleType,
             loadingPlace: dto.loadingPlace,
             loadingAt,
@@ -83,14 +87,16 @@ export class LogisticsDispatchController {
           data: {
             subjectType: 'LOGISTICS_DISPATCH',
             subjectId: dispatch.id,
-            approverId,
+            approverId: firstApprover,
             requestedById: dto.requesterId,
           },
         });
 
-        await tx.approvalStep.create({
-          data: { requestId: approval.id, stepNo: 1, approverId, status: 'PENDING' as any },
-        });
+        for (let i = 0; i < approvalLine.length; i++) {
+          await tx.approvalStep.create({
+            data: { requestId: approval.id, stepNo: i + 1, approverId: approvalLine[i], status: 'PENDING' as any },
+          });
+        }
 
         await tx.event.create({
           data: {
@@ -98,13 +104,13 @@ export class LogisticsDispatchController {
             subjectId: dispatch.id,
             activity: 'ApprovalRequested',
             userId: dto.requesterId,
-            attrs: { approverId, requestId: approval.id },
+            attrs: { approverId: firstApprover, requestId: approval.id, steps: approvalLine.length, line: approvalLine },
           },
         });
 
         await tx.notification.create({
           data: {
-            userId: approverId,
+            userId: firstApprover,
             type: 'ApprovalRequested',
             subjectType: 'LOGISTICS_DISPATCH',
             subjectId: dispatch.id,

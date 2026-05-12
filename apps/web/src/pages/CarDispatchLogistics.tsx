@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { ApproverIdPicker } from '../components/MemberSearchPicker';
 
 type Status = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
@@ -88,6 +89,9 @@ export function CarDispatchLogistics() {
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
 
+  const [members, setMembers] = useState<{ id: string; name: string; role?: string }[]>([]);
+  const [approverIds, setApproverIds] = useState<string[]>(['']);
+
   const [vehicleType, setVehicleType] = useState('');
   const [loadingPlace, setLoadingPlace] = useState('');
   const [loadingAt, setLoadingAt] = useState('');
@@ -102,7 +106,17 @@ export function CarDispatchLogistics() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { loadCalendar(); }, [calMonth]);
-  useEffect(() => { loadList(); }, []);
+  useEffect(() => { loadList(); loadMembers(); }, []);
+
+  async function loadMembers() {
+    try {
+      const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>('/api/users');
+      const all = res.items || [];
+      setMembers(all);
+      const hongGyuHyeon = all.find((m) => m.name === '홍규현');
+      if (hongGyuHyeon) setApproverIds([hongGyuHyeon.id]);
+    } catch {}
+  }
 
   async function loadCalendar() {
     setCalLoading(true);
@@ -153,10 +167,12 @@ export function CarDispatchLogistics() {
     }
     setSubmitting(true);
     try {
+      const cleanedApprovers = approverIds.filter(Boolean);
       await apiJson('/api/logistics-dispatch', {
         method: 'POST',
         body: JSON.stringify({
           requesterId: userId,
+          approvalLine: cleanedApprovers,
           vehicleType,
           loadingPlace, loadingAt: toIso(loadingAt), loadingContact, loadingPhone,
           unloadingPlace, unloadingAt: toIso(unloadingAt), unloadingContact, unloadingPhone,
@@ -165,6 +181,8 @@ export function CarDispatchLogistics() {
       });
       setVehicleType(''); setLoadingPlace(''); setLoadingAt(''); setLoadingContact(''); setLoadingPhone('');
       setUnloadingPlace(''); setUnloadingAt(''); setUnloadingContact(''); setUnloadingPhone(''); setCargoDetails('');
+      const hongGyuHyeon = members.find((m) => m.name === '홍규현');
+      setApproverIds(hongGyuHyeon ? [hongGyuHyeon.id] : ['']);
       await loadCalendar();
       await loadList();
     } catch (err: any) {
@@ -253,8 +271,27 @@ export function CarDispatchLogistics() {
             </div>
           </div>
           <div><label style={lbl}>화물 내용</label><input value={cargoDetails} onChange={(e) => setCargoDetails(e.target.value)} style={inp} placeholder="예: 금형 2개 약 200kg" /></div>
-          <div style={{ fontSize: 12, color: '#475569', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, padding: '6px 10px' }}>
-            📋 1차 결재자: 홍규현 (배차 담당 — 자동 지정)
+          <div style={{ display: 'grid', gap: 6 }}>
+            <span style={lbl}>결재선 *</span>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {approverIds.map((aid, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ minWidth: 52, fontSize: 12, color: '#475569', fontWeight: 700 }}>{idx + 1}단계{idx === 0 ? ' 🔒' : ''}</span>
+                  <ApproverIdPicker
+                    value={aid}
+                    onChange={(id) => setApproverIds((prev) => prev.map((p, i) => i === idx ? id : p))}
+                    members={members}
+                    placeholder="이름 검색"
+                  />
+                  <button type="button" onClick={() => setApproverIds((prev) => prev.filter((_, i) => i !== idx))} disabled={approverIds.length <= 1}
+                    style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #CBD5E1', borderRadius: 6, background: '#fff', cursor: approverIds.length <= 1 ? 'not-allowed' : 'pointer', color: approverIds.length <= 1 ? '#cbd5e1' : '#475569' }}
+                  >−</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setApproverIds((prev) => [...prev, ''])}
+                style={{ justifySelf: 'start', padding: '4px 10px', fontSize: 12, border: '1px dashed #94a3b8', borderRadius: 6, background: '#f8fafc', cursor: 'pointer', color: '#475569' }}
+              >+ 결재자 추가</button>
+            </div>
           </div>
           <button type="submit" disabled={submitting} style={{ background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 8, padding: 10, fontSize: 14, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1 }}>
             {submitting ? '신청중…' : '물류 배차 신청'}
