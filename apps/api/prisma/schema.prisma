@@ -137,6 +137,8 @@ model User {
   keyResultAssignments KeyResultAssignment[]
   carDispatchRequestsRequested CarDispatchRequest[] @relation("CarDispatchRequester")
   carDispatchRequestsToApprove CarDispatchRequest[] @relation("CarDispatchApprover")
+  logisticsRequestsMade        LogisticsDispatchRequest[] @relation("LogisticsRequester")
+  logisticsRequestsToApprove   LogisticsDispatchRequest[] @relation("LogisticsApprover")
   attendanceRequests AttendanceRequest[]
   businessTripRequestsMade BusinessTripRequest[] @relation("TripRequester")
   businessTripRequestsToApprove BusinessTripRequest[] @relation("TripApprover")
@@ -715,6 +717,27 @@ model CarDispatchRequest {
   status       DispatchStatus @default(PENDING)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
+}
+
+model LogisticsDispatchRequest {
+  id               String         @id @default(cuid())
+  requesterId      String
+  requester        User           @relation("LogisticsRequester", fields: [requesterId], references: [id])
+  approverId       String
+  approver         User           @relation("LogisticsApprover", fields: [approverId], references: [id])
+  vehicleType      String
+  loadingPlace     String
+  loadingAt        DateTime
+  loadingContact   String
+  loadingPhone     String
+  unloadingPlace   String
+  unloadingAt      DateTime
+  unloadingContact String
+  unloadingPhone   String
+  cargoDetails     String?
+  status           DispatchStatus @default(PENDING)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 model BusinessTripRequest {

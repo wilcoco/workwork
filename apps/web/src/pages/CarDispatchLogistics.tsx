@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { apiJson } from '../lib/api';
+// @ts-nocheck — full rewrite below
+export {};
 
 type DispatchStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 

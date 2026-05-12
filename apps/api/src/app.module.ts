@@ -26,6 +26,7 @@ import { AdminController } from './admin.controller';
 import { ProgressController } from './progress.controller';
 import { CarsController } from './cars.controller';
 import { CarDispatchController } from './car-dispatch.controller';
+import { LogisticsDispatchController } from './logistics-dispatch.controller';
 import { AttendanceController } from './attendance.controller';
 import { BusinessTripController } from './business-trip.controller';
 import { HolidaysController } from './holidays.controller';
@@ -76,6 +77,7 @@ import { DataverseService } from './dataverse.service';
     ProgressController,
     CarsController,
     CarDispatchController,
+    LogisticsDispatchController,
     AttendanceController,
     BusinessTripController,
     HolidaysController,
