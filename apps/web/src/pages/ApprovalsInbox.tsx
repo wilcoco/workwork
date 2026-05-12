@@ -141,14 +141,17 @@ export function ApprovalsInbox() {
             else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
             else kind = doc.type;
 
-            title = `근태 신청 - ${kind}`.trim();
-            const dateStr = doc.date ? new Date(doc.date).toLocaleDateString() : '';
+            const dateShort = doc.date ? new Date(doc.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+            const otMins = doc.type === 'OT' && doc.startAt && doc.endAt
+              ? Math.round((new Date(doc.endAt).getTime() - new Date(doc.startAt).getTime()) / 60000)
+              : 0;
+            const otStr = otMins > 0 ? ` | ${otMins >= 60 ? `${Math.floor(otMins / 60)}시간${otMins % 60 ? ` ${otMins % 60}분` : ''}` : `${otMins}분`}` : '';
+            title = `근태 신청 - ${kind}${dateShort ? ` | ${dateShort}` : ''}${otStr}`.trim();
             const timeRange = doc.startAt && doc.endAt
-              ? `${new Date(doc.startAt).toLocaleTimeString()} ~ ${new Date(doc.endAt).toLocaleTimeString()}`
+              ? `${new Date(doc.startAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} ~ ${new Date(doc.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
               : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
             const parts = [
               doc.requesterName || '',
-              dateStr,
               timeRange,
               doc.reason || '',
             ].filter(Boolean);
@@ -268,14 +271,17 @@ export function ApprovalsInbox() {
                 else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
                 else kind = doc.type;
 
-                title = `근태 신청 - ${kind}`.trim();
-                const dateStr = doc.date ? new Date(doc.date).toLocaleDateString() : '';
+                const dateShort = doc.date ? new Date(doc.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+                const otMins = doc.type === 'OT' && doc.startAt && doc.endAt
+                  ? Math.round((new Date(doc.endAt).getTime() - new Date(doc.startAt).getTime()) / 60000)
+                  : 0;
+                const otStr = otMins > 0 ? ` | ${otMins >= 60 ? `${Math.floor(otMins / 60)}시간${otMins % 60 ? ` ${otMins % 60}분` : ''}` : `${otMins}분`}` : '';
+                title = `근태 신청 - ${kind}${dateShort ? ` | ${dateShort}` : ''}${otStr}`.trim();
                 const timeRange = doc.startAt && doc.endAt
-                  ? `${new Date(doc.startAt).toLocaleTimeString()} ~ ${new Date(doc.endAt).toLocaleTimeString()}`
+                  ? `${new Date(doc.startAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} ~ ${new Date(doc.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
                   : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
                 const parts = [
                   doc.requesterName || '',
-                  dateStr,
                   timeRange,
                   doc.reason || '',
                 ].filter(Boolean);
