@@ -1,8 +1,40 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 import { formatKstDatetime } from '../lib/time';
 
+function getNotificationUrl(n: any): string {
+  const t = String(n?.type || '').trim();
+  const st = String(n?.subjectType || '').toUpperCase();
+  const sid = String(n?.subjectId || '');
+  if (t === 'ApprovalRequested' || t === 'ApprovalGranted' || t === 'ApprovalRejected') return '/approvals/inbox';
+  if (t === 'HelpRequested') return '/coops/inbox';
+  if (t === 'Delegated') return '/me/goals';
+  if (t === 'ProcessStarted' || t === 'ProcessTaskReady') return sid ? `/process/instances/${encodeURIComponent(sid)}` : '/process/my';
+  if (st === 'ATTENDANCE') return '/attendance/request';
+  if (st === 'CAR_DISPATCH') return '/dispatch/corporate';
+  if (st === 'LOGISTICS_DISPATCH') return '/dispatch/logistics';
+  if (st === 'PROCESS' && sid) return `/process/instances/${encodeURIComponent(sid)}`;
+  if (st === 'WORKLOG' || st === 'WORKLOGS') return sid ? `/worklogs/${encodeURIComponent(sid)}` : '/';
+  if (st === 'HELPTICKET') return '/coops/inbox';
+  return '/';
+}
+
+function typeLabel(n: any): string {
+  const t = String(n?.type || '');
+  const st = String(n?.subjectType || '').toUpperCase();
+  if (t === 'ApprovalRequested') return '결재 요청';
+  if (t === 'ApprovalGranted') return '결재 승인';
+  if (t === 'ApprovalRejected') return '결재 반려';
+  if (t === 'HelpRequested') return '업무 요청';
+  if (st === 'LOGISTICS_DISPATCH') return '물류 배차';
+  if (st === 'CAR_DISPATCH') return '법인차 배차';
+  if (st === 'ATTENDANCE') return '근태 신청';
+  return t || st;
+}
+
 export function Inbox() {
+  const navigate = useNavigate();
   const [userId, setUserId] = useState<string>(() => {
     return typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
   });
@@ -70,14 +102,27 @@ export function Inbox() {
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.map((n) => (
-          <div key={n.id} style={card}>
-            <div><b>유형:</b> {n.type}</div>
-            <div><b>대상:</b> {n.subjectType} / {n.subjectId}</div>
-            <div><b>시간:</b> {formatKstDatetime(n.createdAt)}</div>
-            <button onClick={() => markRead(n.id)} disabled={!!n.readAt} style={ghostBtn}>표시: 읽음</button>
-          </div>
-        ))}
+        {items.map((n) => {
+          const url = getNotificationUrl(n);
+          const unread = !n.readAt;
+          return (
+            <div
+              key={n.id}
+              style={{ ...card, cursor: 'pointer', borderLeft: unread ? '3px solid #0F3D73' : '3px solid transparent', opacity: unread ? 1 : 0.7 }}
+              onClick={async () => {
+                if (unread) await markRead(n.id);
+                navigate(url);
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                {unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#0F3D73', flexShrink: 0, display: 'inline-block' }} />}
+                <b style={{ fontSize: 14 }}>{typeLabel(n)}</b>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>{formatKstDatetime(n.createdAt)}</span>
+              </div>
+              <div style={{ fontSize: 12, color: '#475569' }}>{n.subjectType}{n.subjectId ? ` · ${n.subjectId.slice(0, 8)}…` : ''}</div>
+            </div>
+          );
+        })}
         {!items.length && <div>알림 없음</div>}
       </div>
     </div>
