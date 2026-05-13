@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -395,14 +395,17 @@ export class AttendanceController {
       }
     }
 
-    const result = items.map((it: { id: string; type: string; date: Date; startAt: Date | null; endAt: Date | null; reason: string | null; user: { name: string } }) => {
+    const result = items.map((it: { id: string; userId: string; type: string; date: Date; startAt: Date | null; endAt: Date | null; reason: string | null; status: string | null; user: { name: string } }) => {
       const weekKey = getWeekKey(it.date as any as Date);
       const agg = weekMap.get(weekKey) || { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
       const totalHours = 40 + agg.otHours - agg.vacationHours - agg.earlyLeaveHours;
       const overLimit = totalHours > 52;
-      const status = statusMap.get(it.id) || 'PENDING';
+      const recordStatus = it.status;
+      const approvalStatus = statusMap.get(it.id);
+      const status = recordStatus === 'CANCELLED' ? 'CANCELLED' : (approvalStatus || 'PENDING');
       return {
         id: it.id,
+        userId: it.userId,
         type: it.type,
         date: it.date,
         startAt: it.startAt,
@@ -702,6 +705,18 @@ export class AttendanceController {
     }
 
     return { month: month || `${year}-${String(mon + 1).padStart(2, '0')}`, items: result };
+  }
+
+  @Patch(':id/cancel')
+  async cancel(@Param('id') id: string, @Body('userId') userId: string) {
+    const rec = await (this.prisma as any).attendanceRequest.findUnique({ where: { id } });
+    if (!rec) throw new BadRequestException('신청 건을 찾을 수 없습니다');
+    if (rec.status !== 'PENDING') throw new BadRequestException('대기 중인 신청만 취소할 수 있습니다');
+    if (userId && rec.userId !== userId) throw new BadRequestException('본인의 신청만 취소할 수 있습니다');
+    return (this.prisma as any).attendanceRequest.update({
+      where: { id },
+      data: { status: 'CANCELLED' as any },
+    });
   }
 
   @Get(':id')

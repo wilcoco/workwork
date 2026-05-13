@@ -6,13 +6,14 @@ type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_
 
 type CalendarItem = {
   id: string;
+  userId?: string;
   type: AttendanceType;
   date: string; // ISO date string
   startAt?: string | null;
   endAt?: string | null;
   reason?: string | null;
   requesterName?: string | null;
-  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED';
   overLimit: boolean;
 };
 
@@ -597,7 +598,25 @@ export function AttendanceRequest() {
                 </>
               );
             })()}
-            <div style={{ marginTop: 12, textAlign: 'right' }}>
+            <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              {selectedEvent && (selectedEvent.ev.status === 'PENDING') && selectedEvent.ev.userId === userId && (
+                <button
+                  type="button"
+                  style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #f87171', background: '#fff', color: '#dc2626', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                  onClick={async () => {
+                    if (!confirm('신청을 취소하시겠습니까?')) return;
+                    try {
+                      await apiJson(`/api/attendance/${selectedEvent.ev.id}/cancel`, { method: 'PATCH', body: JSON.stringify({ userId }) });
+                      setSelectedEvent(null);
+                      void loadCalendar();
+                    } catch (e: any) {
+                      alert(e?.message || '취소 실패');
+                    }
+                  }}
+                >
+                  신청 취소
+                </button>
+              )}
               <button type="button" className="btn btn-sm" onClick={() => setSelectedEvent(null)}>닫기</button>
             </div>
           </div>
@@ -686,6 +705,7 @@ function getBg(ev: CalendarItem): string {
   // 결재 상태별 색상
   if (ev.status === 'APPROVED') return '#dcfce7'; // 초록
   if (ev.status === 'REJECTED') return '#fee2e2'; // 빨강
+  if (ev.status === 'CANCELLED') return '#f1f5f9'; // 회색
   // PENDING, EXPIRED 등은 노랑
   return '#fef9c3';
 }
