@@ -94,6 +94,7 @@ export class AttendanceController {
             where: {
               userId: dto.userId,
               date: baseDate,
+              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
             },
           });
           if (existing) {
@@ -105,6 +106,7 @@ export class AttendanceController {
               userId: dto.userId,
               type: 'VACATION',
               date: baseDate,
+              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
             },
           });
           if (vacation) {
@@ -150,6 +152,7 @@ export class AttendanceController {
               userId: dto.userId,
               type: 'VACATION',
               date: workDateUtc,
+              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
             },
           });
           if (vacationOnWork) {
@@ -160,6 +163,7 @@ export class AttendanceController {
               userId: dto.userId,
               type: 'VACATION',
               date: restDateUtc,
+              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
             },
           });
           if (vacationOnRest) {
@@ -184,6 +188,7 @@ export class AttendanceController {
               userId: dto.userId,
               type: 'HOLIDAY_REST',
               date: restDateUtc,
+              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
             },
           });
           if (restReq) {
@@ -205,6 +210,7 @@ export class AttendanceController {
               date: workDateUtc,
               startAt: { lt: endAt },
               endAt: { gt: startAt },
+              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
             },
           });
           if (workOverlap) {
@@ -222,6 +228,7 @@ export class AttendanceController {
                 date: baseDate,
                 startAt: { lt: endAt },
                 endAt: { gt: startAt },
+                status: { notIn: ['REJECTED', 'CANCELLED'] as any },
               },
             });
             if (overlap) {
