@@ -355,6 +355,11 @@ export function WorklogStatsDaily() {
           gridTemplateColumns: isMobile ? '1fr' : 'minmax(220px, 1fr) minmax(220px, 1fr) minmax(220px, 1fr) auto',
           alignItems: 'center',
           width: '100%',
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          background: '#f8fafc',
+          padding: '8px 0',
         }}
       >
         <select
