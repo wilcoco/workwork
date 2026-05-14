@@ -1298,6 +1298,7 @@ export class WorklogsController {
           const { contentHtml: _drop, ...rest } = (typeof a === 'object' ? a : {}) as any;
           return Object.keys(rest).length ? rest : undefined;
         })(),
+        note: it.note ?? undefined,
         urgent: (it as any).urgent ?? false,
         structuredData: (it as any).structuredData ?? undefined,
         tags: (it as any).tags ?? undefined,
