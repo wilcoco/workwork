@@ -1292,8 +1292,12 @@ export class WorklogsController {
         userName: it.createdBy?.name,
         teamName: it.createdBy?.orgUnit?.name,
         taskName: it.initiative?.title,
-        attachments: (it as any).attachments ?? undefined,
-        note: it.note ?? undefined,
+        attachments: (() => {
+          const a = (it as any).attachments;
+          if (!a) return undefined;
+          const { contentHtml: _drop, ...rest } = (typeof a === 'object' ? a : {}) as any;
+          return Object.keys(rest).length ? rest : undefined;
+        })(),
         urgent: (it as any).urgent ?? false,
         structuredData: (it as any).structuredData ?? undefined,
         tags: (it as any).tags ?? undefined,

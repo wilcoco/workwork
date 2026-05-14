@@ -142,6 +142,7 @@ export function WorklogSearch() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'feed' | 'list'>('feed');
   const [detail, setDetail] = useState<Item | null>(null);
+  const [detailFull, setDetailFull] = useState<any>(null);
   const [kind, setKind] = useState<'' | 'OKR' | 'KPI'>('');
   const location = useLocation();
   const [isCeo, setIsCeo] = useState(false);
@@ -509,7 +510,7 @@ export function WorklogSearch() {
                 key={it.id}
                 className="feed-tile"
                 style={imgUrl ? { backgroundImage: `url(${imgUrl})`, cursor: 'pointer' } : { cursor: 'pointer' }}
-                onClick={() => setDetail(it)}
+                onClick={async () => { setDetail(it); setDetailFull(null); try { const full = await apiJson<any>(`/api/worklogs/${it.id}`); setDetailFull(full); } catch {} }}
                 title="내용 보기"
               >
                 {imgUrl ? (
@@ -555,19 +556,19 @@ export function WorklogSearch() {
         </div>
       )}
       {detail && (
-        <div className="image-overlay" onClick={() => setDetail(null)}>
+        <div className="image-overlay" onClick={() => { setDetail(null); setDetailFull(null); }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 720, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
             {isCeo ? (
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
                 <button className="btn" type="button" onClick={() => onDeleteWorklog(detail.id)} style={{ color: '#b91c1c' }}>삭제</button>
               </div>
             ) : null}
-            <WorklogDocument worklog={detail} variant="full" />
+            {detailFull ? <WorklogDocument worklog={detailFull} variant="full" /> : <WorklogDocument worklog={detail} variant="full" />}
             <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
               <CommentsBox worklogId={detail.id} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-              <button className="btn" onClick={() => setDetail(null)}>닫기</button>
+              <button className="btn" onClick={() => { setDetail(null); setDetailFull(null); }}>닫기</button>
             </div>
           </div>
         </div>
