@@ -282,6 +282,21 @@ export class OrgsController {
     }
   }
 
+  @Get('members/all')
+  async allMembers(@Query('q') q?: string) {
+    const where: any = { role: { not: 'EXTERNAL' } };
+    if (q && q.trim()) {
+      where.name = { contains: q.trim(), mode: 'insensitive' };
+    }
+    const users = await this.prisma.user.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      take: 50,
+      include: { orgUnit: { select: { name: true } } },
+    });
+    return { items: users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, orgName: (u as any).orgUnit?.name || '' })) };
+  }
+
   @Get(':id/members')
   async members(@Param('id') id: string) {
     const users = await this.prisma.user.findMany({ where: { orgUnitId: id, role: { not: 'EXTERNAL' } as any }, orderBy: { name: 'asc' } });
