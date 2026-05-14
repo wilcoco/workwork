@@ -456,60 +456,6 @@ export function WorklogSearch() {
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
 
-      {isCeo && mode === 'list' && items.length > 0 ? (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '8px 12px',
-          marginBottom: 8,
-          background: selectedIds.size > 0 ? '#FEF2F2' : '#F1F5F9',
-          border: `1px solid ${selectedIds.size > 0 ? '#FCA5A5' : '#CBD5E1'}`,
-          borderRadius: 10,
-          position: 'sticky',
-          top: 0,
-          zIndex: 5,
-        }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={items.length > 0 && items.every((it) => selectedIds.has(it.id))}
-              ref={(el) => {
-                if (el) {
-                  const some = items.some((it) => selectedIds.has(it.id));
-                  const all = items.length > 0 && items.every((it) => selectedIds.has(it.id));
-                  el.indeterminate = some && !all;
-                }
-              }}
-              onChange={toggleSelectAllVisible}
-            />
-            전체 선택 ({selectedIds.size} / {items.length})
-          </label>
-          <div style={{ flex: 1 }} />
-          {selectedIds.size > 0 ? (
-            <>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => setSelectedIds(new Set())}
-                style={{ fontSize: 12 }}
-              >
-                선택 해제
-              </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={onBulkDelete}
-                style={{ background: '#DC2626', color: '#fff', fontWeight: 600 }}
-              >
-                선택 {selectedIds.size}건 일괄 삭제
-              </button>
-            </>
-          ) : (
-            <span style={{ fontSize: 12, color: '#64748B' }}>관리자: 항목 좌측 체크박스로 선택 후 일괄 삭제 가능</span>
-          )}
-        </div>
-      ) : null}
 
       {mode === 'feed' ? (
         <div className="feed-grid">
@@ -552,15 +498,7 @@ export function WorklogSearch() {
         {items.map((it) => (
           <div key={it.id} style={card}>
             {isCeo ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(it.id)}
-                    onChange={() => toggleSelect(it.id)}
-                  />
-                  선택
-                </label>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
                 <button className="btn" type="button" onClick={() => onDeleteWorklog(it.id)} style={{ color: '#b91c1c' }}>삭제</button>
               </div>
             ) : null}

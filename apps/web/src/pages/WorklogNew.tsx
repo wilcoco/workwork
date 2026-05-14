@@ -739,7 +739,6 @@ export function WorklogNew() {
         >
           링크 추가
         </button>
-        <button type="button" className="btn btn-ghost" onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}>OneDrive 열기</button>
       </div>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
         <input type="checkbox" checked={attachOneDriveOk} onChange={(e) => setAttachOneDriveOk(e.target.checked)} />
