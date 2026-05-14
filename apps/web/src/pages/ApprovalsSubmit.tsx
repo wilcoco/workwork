@@ -5,6 +5,7 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
 import '../styles/editor.css';
+import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
@@ -31,8 +32,7 @@ export function ApprovalsSubmit() {
   const [teams, setTeams] = useState<string[]>([]);
   const editorEl = useRef<HTMLDivElement | null>(null);
   const quillRef = useRef<Quill | null>(null);
-  const attachInputRef = useRef<HTMLInputElement | null>(null);
-  const [attachOneDriveOk, setAttachOneDriveOk] = useState<boolean>(false);
+  const [showFilePicker, setShowFilePicker] = useState(false);
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
   const [tags, setTags] = useState<DocumentTagsValue>({});
@@ -252,7 +252,7 @@ export function ApprovalsSubmit() {
         const up = await uploadFile(f);
         setAttachments((prev) => [...prev, { url: up.url, name: up.name || f.name, filename: up.filename || f.name }]);
       }
-    } catch (e: any) {
+    } catch (e: any) { // kept for editor paste/drop upload
       setError(e?.message || '첨부 파일 업로드 실패');
     }
   }
@@ -407,40 +407,13 @@ export function ApprovalsSubmit() {
           <div ref={(r) => (editorEl.current = r)} style={{ minHeight: 240, width: '100%' }} />
         </div>
         <label>첨부 파일</label>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            ref={attachInputRef}
-            type="file"
-            multiple
-            style={{ position: 'fixed', left: -9999, top: 0, width: 1, height: 1, opacity: 0 }}
-            onChange={(e) => {
-              addAttachmentFiles(e.currentTarget.files);
-              e.currentTarget.value = '';
-            }}
-          />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button
             type="button"
-            style={ghostBtn}
-            onClick={() => {
-              if (!attachOneDriveOk) {
-                const ok = window.confirm('원드라이브(회사)에서 받은 파일만 업로드하세요. 계속할까요?');
-                if (!ok) return;
-                setAttachOneDriveOk(true);
-              }
-              attachInputRef.current?.click();
-            }}
-          >파일 선택</button>
-          <button
-            type="button"
-            style={ghostBtn}
-            onClick={() => window.open('https://office.com/launch/onedrive', '_blank', 'noopener,noreferrer')}
-          >OneDrive 열기</button>
+            style={{ ...ghostBtn, background: '#0078d4', color: '#fff', border: 'none' }}
+            onClick={() => setShowFilePicker(true)}
+          >OneDrive에서 파일 선택</button>
         </div>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#64748b' }}>
-          <input type="checkbox" checked={attachOneDriveOk} onChange={(e) => setAttachOneDriveOk(e.target.checked)} />
-          원드라이브 파일만 업로드합니다
-        </label>
-        <div style={{ fontSize: 12, color: '#64748b' }}>원드라이브 파일만 올려주세요. (브라우저 제한으로 원드라이브 폴더를 자동으로 열 수는 없습니다)</div>
         {attachments.length > 0 && (
           <div className="attachments">
             {attachments.map((f, i) => (
@@ -450,6 +423,17 @@ export function ApprovalsSubmit() {
               </div>
             ))}
           </div>
+        )}
+        {showFilePicker && (
+          <OneDriveFilePicker
+            userId={requestedById}
+            multiple
+            onSelect={(files) => {
+              setAttachments((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name || f.url }))]);
+              setShowFilePicker(false);
+            }}
+            onClose={() => setShowFilePicker(false)}
+          />
         )}
         <DocumentTags value={tags} onChange={setTags} compact />
         <button onClick={submit} disabled={!requestedById || loading} style={primaryBtn}>
