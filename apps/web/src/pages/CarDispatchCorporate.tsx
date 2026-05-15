@@ -244,7 +244,7 @@ export function CarDispatchCorporate() {
           <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
             <span style={{ fontWeight: 600 }}>1차 결재자</span>
             <div style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569', fontSize: 13 }}>
-              홍정수 <span style={{ color: '#94a3b8', fontSize: 11 }}>(배차 담당 — 자동 지정)</span>
+              홍정수
             </div>
           </div>
           <label style={{ display: 'grid', gap: 4 }}>
