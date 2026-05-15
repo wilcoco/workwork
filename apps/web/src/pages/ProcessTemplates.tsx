@@ -34,6 +34,9 @@ interface ProcessTemplateDto {
   orgUnitId?: string;
   recurrenceType?: string;
   recurrenceDetail?: string;
+  scheduleEnabled?: boolean;
+  scheduleNextRunAt?: string | null;
+  scheduleLastRunAt?: string | null;
   bpmnJson?: any;
   resultInputRequired?: boolean;
   expectedDurationDays?: number;
@@ -440,8 +443,9 @@ export function ProcessTemplates() {
       type: 'PROJECT',
       ownerId: userId,
       visibility: 'PUBLIC',
-      recurrenceType: '',
-      recurrenceDetail: '',
+      recurrenceType: 'MONTHLY',
+      recurrenceDetail: JSON.stringify({ dayOfMonth: 1, hour: 9 }),
+      scheduleEnabled: false,
       resultInputRequired: false,
       expectedDurationDays: undefined,
       expectedCompletionCriteria: '',
@@ -944,29 +948,15 @@ export function ProcessTemplates() {
               </div>
             </div>
             {editing.type === 'RECURRING' ? (
-              <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-                <div>
-                  <label>주기</label>
-                  <select
-                    value={editing.recurrenceType || ''}
-                    onChange={(e) => setEditing({ ...editing, recurrenceType: e.target.value })}
-                  >
-                    <option value="">선택</option>
-                    <option value="DAILY">일간</option>
-                    <option value="WEEKLY">주간</option>
-                    <option value="MONTHLY">월간</option>
-                    <option value="QUARTERLY">분기</option>
-                    <option value="YEARLY">연간</option>
-                  </select>
-                </div>
-                <div>
-                  <label>주기 상세</label>
-                  <input
-                    placeholder="예: 매월 10일 보고"
-                    value={editing.recurrenceDetail || ''}
-                    onChange={(e) => setEditing({ ...editing, recurrenceDetail: e.target.value })}
-                  />
-                </div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                <ScheduleEditor
+                  scheduleEnabled={editing.scheduleEnabled ?? false}
+                  recurrenceType={editing.recurrenceType || 'MONTHLY'}
+                  recurrenceDetail={editing.recurrenceDetail || ''}
+                  scheduleNextRunAt={editing.scheduleNextRunAt}
+                  scheduleLastRunAt={editing.scheduleLastRunAt}
+                  onChange={(patch) => setEditing({ ...editing, ...patch })}
+                />
                 <div>
                   <label>주기적 결과 입력 필요</label>
                   <select
@@ -1158,6 +1148,88 @@ export function ProcessTemplates() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+const DOW_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+
+function parseDetail(json: string): { hour: number; dayOfWeek: number; dayOfMonth: number } {
+  try { const d = JSON.parse(json || '{}'); return { hour: d.hour ?? 9, dayOfWeek: d.dayOfWeek ?? 1, dayOfMonth: d.dayOfMonth ?? 1 }; } catch { return { hour: 9, dayOfWeek: 1, dayOfMonth: 1 }; }
+}
+
+function ScheduleEditor({ scheduleEnabled, recurrenceType, recurrenceDetail, scheduleNextRunAt, scheduleLastRunAt, onChange }: {
+  scheduleEnabled: boolean;
+  recurrenceType: string;
+  recurrenceDetail: string;
+  scheduleNextRunAt?: string | null;
+  scheduleLastRunAt?: string | null;
+  onChange: (patch: Partial<{ scheduleEnabled: boolean; recurrenceType: string; recurrenceDetail: string }>) => void;
+}) {
+  const detail = parseDetail(recurrenceDetail);
+
+  function updateDetail(patch: Partial<typeof detail>) {
+    const next = { ...detail, ...patch };
+    onChange({ recurrenceDetail: JSON.stringify(next) });
+  }
+
+  const box: React.CSSProperties = { border: '1px solid #e2e8f0', borderRadius: 10, padding: 14, background: scheduleEnabled ? '#f0f9ff' : '#f8fafc', display: 'grid', gap: 12 };
+  const row: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' };
+  const lbl: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: '#374151', minWidth: 80 };
+  const sel: React.CSSProperties = { padding: '5px 10px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, background: '#fff' };
+
+  return (
+    <div style={box}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>자동 시작 스케줄</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}>
+          <input type="checkbox" checked={scheduleEnabled} onChange={(e) => onChange({ scheduleEnabled: e.target.checked })} />
+          {scheduleEnabled ? '활성화됨' : '비활성'}
+        </label>
+      </div>
+      {scheduleEnabled && (
+        <>
+          <div style={row}>
+            <span style={lbl}>주기</span>
+            <select style={sel} value={recurrenceType} onChange={(e) => onChange({ recurrenceType: e.target.value })}>
+              <option value="DAILY">매일</option>
+              <option value="WEEKLY">매주</option>
+              <option value="MONTHLY">매월</option>
+            </select>
+          </div>
+          {recurrenceType === 'WEEKLY' && (
+            <div style={row}>
+              <span style={lbl}>요일</span>
+              {DOW_LABELS.map((d, i) => (
+                <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="radio" name="dow" value={i} checked={detail.dayOfWeek === i} onChange={() => updateDetail({ dayOfWeek: i })} />
+                  {d}
+                </label>
+              ))}
+            </div>
+          )}
+          {recurrenceType === 'MONTHLY' && (
+            <div style={row}>
+              <span style={lbl}>매월</span>
+              <select style={sel} value={detail.dayOfMonth} onChange={(e) => updateDetail({ dayOfMonth: Number(e.target.value) })}>
+                {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}일</option>)}
+              </select>
+            </div>
+          )}
+          <div style={row}>
+            <span style={lbl}>시작 시간</span>
+            <select style={sel} value={detail.hour} onChange={(e) => updateDetail({ hour: Number(e.target.value) })}>
+              {Array.from({ length: 24 }, (_, i) => i).map((h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+            </select>
+          </div>
+          {(scheduleNextRunAt || scheduleLastRunAt) && (
+            <div style={{ fontSize: 12, color: '#64748b', display: 'grid', gap: 2 }}>
+              {scheduleLastRunAt && <span>마지막 실행: {new Date(scheduleLastRunAt).toLocaleString('ko-KR')}</span>}
+              {scheduleNextRunAt && <span>다음 실행 예정: {new Date(scheduleNextRunAt).toLocaleString('ko-KR')}</span>}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

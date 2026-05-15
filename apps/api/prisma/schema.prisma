@@ -789,6 +789,9 @@ model ProcessTemplate {
   orgUnit                    OrgUnit?           @relation(fields: [orgUnitId], references: [id])
   recurrenceType             String?
   recurrenceDetail           String?
+  scheduleEnabled            Boolean            @default(false)
+  scheduleNextRunAt          DateTime?
+  scheduleLastRunAt          DateTime?
   bpmnJson                   Json?
   resultInputRequired        Boolean            @default(false)
   expectedDurationDays       Int?

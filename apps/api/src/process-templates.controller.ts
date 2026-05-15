@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
 @Controller('process-templates')
@@ -581,6 +581,7 @@ export class ProcessTemplatesController {
       orgUnitId,
       recurrenceType,
       recurrenceDetail,
+      scheduleEnabled,
       resultInputRequired,
       expectedDurationDays,
       expectedCompletionCriteria,
@@ -635,7 +636,7 @@ export class ProcessTemplatesController {
           include: { tasks: { orderBy: { orderHint: 'asc' } } },
         });
 
-        await tx.processTemplate.update({
+        await (tx as any).processTemplate.update({
           where: { id },
           data: {
             title,
@@ -647,6 +648,7 @@ export class ProcessTemplatesController {
             orgUnitId: safeOrgUnitId,
             recurrenceType,
             recurrenceDetail,
+            scheduleEnabled: scheduleEnabled != null ? Boolean(scheduleEnabled) : undefined,
             bpmnJson,
             resultInputRequired,
             expectedDurationDays,
@@ -880,6 +882,60 @@ export class ProcessTemplatesController {
       });
       return updated;
     });
+  }
+
+  @Patch(':id/schedule')
+  async setSchedule(@Param('id') id: string, @Body() body: any) {
+    const { actorId, scheduleEnabled, recurrenceType, recurrenceDetail } = body || {};
+    if (!actorId) throw new BadRequestException('actorId required');
+    const tmpl = await (this.prisma as any).processTemplate.findUnique({ where: { id } });
+    if (!tmpl) throw new BadRequestException('template not found');
+    if (String(tmpl.ownerId) !== String(actorId)) {
+      const ok = await this.isExecOrCeo(actorId);
+      if (!ok) throw new ForbiddenException('not allowed');
+    }
+    const enabled = scheduleEnabled === true || scheduleEnabled === 'true';
+    let scheduleNextRunAt: Date | null = null;
+    if (enabled && recurrenceType) {
+      scheduleNextRunAt = this.computeNextRun(recurrenceType, recurrenceDetail || null, new Date());
+    }
+    return (this.prisma as any).processTemplate.update({
+      where: { id },
+      data: {
+        scheduleEnabled: enabled,
+        recurrenceType: recurrenceType ?? tmpl.recurrenceType,
+        recurrenceDetail: recurrenceDetail !== undefined ? recurrenceDetail : tmpl.recurrenceDetail,
+        scheduleNextRunAt: enabled ? scheduleNextRunAt : null,
+        scheduleLastRunAt: enabled ? tmpl.scheduleLastRunAt : null,
+        updatedById: String(actorId),
+      },
+    });
+  }
+
+  private computeNextRun(type: string, detailJson: string | null, from: Date): Date | null {
+    let detail: any = {};
+    try { detail = JSON.parse(detailJson || '{}'); } catch {}
+    const hour = typeof detail.hour === 'number' ? detail.hour : 9;
+    const t = type.toUpperCase();
+    if (t === 'DAILY') {
+      const next = new Date(from); next.setHours(hour, 0, 0, 0);
+      if (next <= from) next.setDate(next.getDate() + 1);
+      return next;
+    }
+    if (t === 'WEEKLY') {
+      const dow = typeof detail.dayOfWeek === 'number' ? detail.dayOfWeek : 1;
+      const next = new Date(from); next.setHours(hour, 0, 0, 0);
+      const diff = (dow - next.getDay() + 7) % 7 || 7;
+      next.setDate(next.getDate() + diff);
+      return next;
+    }
+    if (t === 'MONTHLY') {
+      const dom = typeof detail.dayOfMonth === 'number' ? detail.dayOfMonth : 1;
+      const next = new Date(from); next.setDate(dom); next.setHours(hour, 0, 0, 0);
+      if (next <= from) { next.setMonth(next.getMonth() + 1); next.setDate(dom); }
+      return next;
+    }
+    return null;
   }
 
   @Post(':id/promote')

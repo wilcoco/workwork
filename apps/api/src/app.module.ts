@@ -47,6 +47,7 @@ import { SharePointSyncController } from './sharepoint-sync.controller';
 import { ProposalsController } from './proposals.controller';
 import { VouchersController } from './vouchers.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
+import { ProcessSchedulerService } from './process-scheduler.service';
 import { DataverseService } from './dataverse.service';
 
 @Module({
@@ -99,6 +100,7 @@ import { DataverseService } from './dataverse.service';
     PrismaService,
     TeamsNotificationService,
     ProcessDeadlineService,
+    ProcessSchedulerService,
     DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
