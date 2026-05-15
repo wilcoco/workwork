@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LoadingButton } from '../components/LoadingButton';
 import { apiJson, apiUrl } from '../lib/api';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { ProcessDocument } from '../components/ProcessDocument';
@@ -13,6 +14,7 @@ export function ApprovalsInbox() {
   const [active, setActive] = useState<any | null>(null);
   const [comment, setComment] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [worklogPopup, setWorklogPopup] = useState<{ id: string; title: string; contentHtml: string; note: string; files?: any[]; createdAt: string; createdBy?: { name: string } } | null>(null);
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export function ApprovalsInbox() {
   }
 
   async function approve(requestId: string, cmt?: string) {
+    setActionLoading(requestId + ':approve');
     setError(null);
     try {
       await apiJson(`/api/approvals/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: cmt || undefined }) });
@@ -68,11 +71,14 @@ export function ApprovalsInbox() {
       const msg = e?.message || '승인 처리에 실패했습니다.';
       setError(msg);
       try { window.alert(`승인 실패: ${msg}`); } catch {}
+    } finally {
+      setActionLoading(null);
     }
   }
 
   async function reject(requestId: string, cmt?: string) {
     const bodyComment = typeof cmt === 'string' ? cmt : (window.prompt('반려 사유를 입력하세요') || '');
+    setActionLoading(requestId + ':reject');
     setError(null);
     try {
       await apiJson(`/api/approvals/${requestId}/reject`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: bodyComment }) });
@@ -81,6 +87,8 @@ export function ApprovalsInbox() {
       const msg = e?.message || '반려 처리에 실패했습니다.';
       setError(msg);
       try { window.alert(`반려 실패: ${msg}`); } catch {}
+    } finally {
+      setActionLoading(null);
     }
   }
 
@@ -219,8 +227,8 @@ export function ApprovalsInbox() {
                 <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{when ? new Date(when).toLocaleDateString() : ''}</span>
                 {a.status === 'PENDING' && mine && (
                   <>
-                    <button onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={compactPrimaryBtn}>승인</button>
-                    <button onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={compactGhostBtn}>반려</button>
+                    <LoadingButton loading={actionLoading === a.id + ':approve'} disabled={actionLoading != null} onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={compactPrimaryBtn}>승인</LoadingButton>
+                    <LoadingButton loading={actionLoading === a.id + ':reject'} disabled={actionLoading != null} onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={compactGhostBtn}>반려</LoadingButton>
                   </>
                 )}
               </div>
@@ -359,7 +367,9 @@ export function ApprovalsInbox() {
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                       {n.status === 'PENDING' && isCurrentApprover(n) && (
                         <>
-                          <button
+                          <LoadingButton
+                            loading={actionLoading === active.id + ':approve'}
+                            disabled={actionLoading != null}
                             onClick={async () => {
                               await approve(active.id, comment);
                               setComment('');
@@ -368,8 +378,10 @@ export function ApprovalsInbox() {
                             style={primaryBtn}
                           >
                             승인
-                          </button>
-                          <button
+                          </LoadingButton>
+                          <LoadingButton
+                            loading={actionLoading === active.id + ':reject'}
+                            disabled={actionLoading != null}
                             onClick={async () => {
                               await reject(active.id, comment || undefined);
                               setComment('');
@@ -378,7 +390,7 @@ export function ApprovalsInbox() {
                             style={ghostBtn}
                           >
                             반려
-                          </button>
+                          </LoadingButton>
                         </>
                       )}
                       {n.status === 'PENDING' && !isCurrentApprover(n) && (
