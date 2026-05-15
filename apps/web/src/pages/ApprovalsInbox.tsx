@@ -61,12 +61,17 @@ export function ApprovalsInbox() {
     }
   }
 
+  function markItem(requestId: string, status: 'APPROVED' | 'REJECTED') {
+    setItems((prev) => prev.map((a) => a.id === requestId ? { ...a, status } : a));
+    setActive((prev: any) => prev?.id === requestId ? { ...prev, status } : prev);
+  }
+
   async function approve(requestId: string, cmt?: string) {
     setActionLoading(requestId + ':approve');
     setError(null);
     try {
       await apiJson(`/api/approvals/${requestId}/approve`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: cmt || undefined }) });
-      await load();
+      markItem(requestId, 'APPROVED');
     } catch (e: any) {
       const msg = e?.message || '승인 처리에 실패했습니다.';
       setError(msg);
@@ -82,7 +87,7 @@ export function ApprovalsInbox() {
     setError(null);
     try {
       await apiJson(`/api/approvals/${requestId}/reject`, { method: 'POST', body: JSON.stringify({ actorId: userId, comment: bodyComment }) });
-      await load();
+      markItem(requestId, 'REJECTED');
     } catch (e: any) {
       const msg = e?.message || '반려 처리에 실패했습니다.';
       setError(msg);
