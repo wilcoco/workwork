@@ -39,7 +39,7 @@ export function CarDispatchCorporate() {
   const [carId, setCarId] = useState('');
   const [approvers, setApprovers] = useState<Approver[]>([]);
   const [approverId, setApproverId] = useState('');
-  // 1차 결재자는 배차 담당 홍규현으로 서버에서 고정
+  // 1차 결재자는 배차 담당 홍정수로 서버에서 고정
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('18:00');
@@ -244,7 +244,7 @@ export function CarDispatchCorporate() {
           <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
             <span style={{ fontWeight: 600 }}>1차 결재자</span>
             <div style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569', fontSize: 13 }}>
-              홍규현 <span style={{ color: '#94a3b8', fontSize: 11 }}>(배차 담당 — 자동 지정)</span>
+              홍정수 <span style={{ color: '#94a3b8', fontSize: 11 }}>(배차 담당 — 자동 지정)</span>
             </div>
           </div>
           <label style={{ display: 'grid', gap: 4 }}>

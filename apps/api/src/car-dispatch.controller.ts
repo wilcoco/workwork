@@ -72,13 +72,13 @@ export class CarDispatchController {
         throw new BadRequestException('이미 배차된 시간입니다');
       }
 
-      // 배차 담당(홍규현)을 1차 결재자로 고정
-      const CAR_MANAGER_NAME = '홍규현';
+      // 배차 담당(홍정수)을 1차 결재자로 고정
+      const CAR_MANAGER_NAME = '홍정수';
       const carManager = await this.prisma.user.findFirst({ where: { name: CAR_MANAGER_NAME }, select: { id: true } });
       const carManagerId = carManager?.id;
       if (!carManagerId) throw new BadRequestException(`배차 담당자(${CAR_MANAGER_NAME})를 찾을 수 없습니다`);
 
-      // 결재 라인: 1차=홍규현, 2차=프론트에서 넘긴 approverId (다를 경우)
+      // 결재 라인: 1차=홍정수, 2차=프론트에서 넘긴 approverId (다를 경우)
       const extraApprover = dto.approverId && dto.approverId !== carManagerId ? dto.approverId : null;
       const approvalLine = extraApprover ? [carManagerId, extraApprover] : [carManagerId];
       const firstApprover = carManagerId;
