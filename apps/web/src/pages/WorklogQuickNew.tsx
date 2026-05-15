@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { LoadingButton } from '../components/LoadingButton';
 import { useNavigate } from 'react-router-dom';
 import { apiJson, apiFetch, apiUrl } from '../lib/api';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
@@ -1280,9 +1281,9 @@ export function WorklogQuickNew() {
             <button type="button" className="btn btn-ghost" onClick={() => { setTitle(''); setContentHtml(''); setContentPlain(''); setPlainMode(false); setStructuredMode(false); setSections({ todayTasks: [{ name: '', detail: '', status: 'in_progress' }], ongoingTasks: [], issues: [], tomorrowPlan: [{ task: '', goal: '' }], remarks: '' }); setAttachments([]); setPhotos([]); setTags({}); setHashTags([]); setHashTagInput(''); setKeywords(''); setSelection('new:1'); setTimeSpentHours(0); setTimeSpentMinutes10(0); }}>
               초기화
             </button>
-            <button className="btn btn-primary" disabled={loading}>
-              {loading ? '작성중…' : '작성'}
-            </button>
+            <LoadingButton className="btn btn-primary" loading={loading} type="submit">
+              작성
+            </LoadingButton>
           </div>
         </form>
       </div>

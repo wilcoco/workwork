@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LoadingButton } from '../components/LoadingButton';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../lib/api';
 
@@ -795,7 +796,7 @@ export function WorklogNew() {
       </div>
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <button disabled={submitting} type="submit">{submitting ? '저장 중...' : '업무일지 저장'}</button>
+      <LoadingButton loading={submitting} type="submit">업무일지 저장</LoadingButton>
 
       {showProcPopup && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { LoadingButton } from '../components/LoadingButton';
 import { Link, useLocation } from 'react-router-dom';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime, formatMinutesAsHmKo } from '../lib/time';
@@ -115,7 +116,7 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
             padding: '8px 10px',
           }}
         />
-        <button className="btn btn-primary" disabled={submitting || !text.trim()} onClick={onSubmit}>{submitting ? '등록중…' : '등록'}</button>
+        <LoadingButton className="btn btn-primary" disabled={!text.trim()} loading={submitting} onClick={onSubmit}>등록</LoadingButton>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
     </div>
@@ -451,7 +452,7 @@ export function WorklogSearch() {
           {mode === 'list' ? (
             <button className="btn" onClick={() => { setTeam(''); setUser(''); setTeamId(''); setUserId(''); setKrId(''); setKrs([]); setKrInits({}); setInitiativeId(''); setFrom(''); setTo(''); setQ(''); setMode('feed'); loadRecent(); }} type="button">최근 보기</button>
           ) : null}
-          <button className="btn btn-primary" onClick={() => { setMode('list'); search(); }} disabled={loading}>{loading ? '검색중…' : '검색'}</button>
+          <LoadingButton className="btn btn-primary" onClick={() => { setMode('list'); search(); }} loading={loading}>검색</LoadingButton>
         </div>
       </div>
 

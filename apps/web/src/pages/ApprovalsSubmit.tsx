@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { LoadingButton } from '../components/LoadingButton';
 import { apiJson } from '../lib/api';
 import { UserPicker, type PickedUser } from '../components/UserPicker';
 import Quill from 'quill';
@@ -436,9 +437,9 @@ export function ApprovalsSubmit() {
           />
         )}
         <DocumentTags value={tags} onChange={setTags} compact />
-        <button onClick={submit} disabled={!requestedById || loading} style={primaryBtn}>
-          {loading ? '요청중…' : '결재 요청'}
-        </button>
+        <LoadingButton onClick={submit} disabled={!requestedById} loading={loading} style={primaryBtn}>
+          결재 요청
+        </LoadingButton>
       </div>
 
       {processDetailPopup && (
