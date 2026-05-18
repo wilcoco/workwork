@@ -101,10 +101,6 @@ export function BusinessTripRequest() {
       const res = await apiJson<{ items: Member[] }>('/api/users?limit=200');
       const all = (res.items || []).filter((m) => m.id !== userId);
       setMembers(all);
-      const cand = all.filter((m) => m.role === 'CEO' || m.role === 'EXEC' || m.role === 'MANAGER');
-      if (cand.length > 0) {
-        setApproverIds((prev) => (prev.length === 0 || !prev[0] ? [cand[0].id] : prev));
-      }
     } catch {}
   }
 

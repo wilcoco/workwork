@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { ApproverIdPicker } from '../components/MemberSearchPicker';
 
 type Car = {
   id: string;
@@ -37,11 +38,8 @@ export function CarDispatchCorporate() {
   const [error, setError] = useState<string | null>(null);
 
   const [carId, setCarId] = useState('');
-  const [approvers, setApprovers] = useState<Approver[]>([]);
+  const [members, setMembers] = useState<Approver[]>([]);
   const [approverId, setApproverId] = useState('');
-  const [approverQuery, setApproverQuery] = useState('');
-  const [approverDropdownOpen, setApproverDropdownOpen] = useState(false);
-  // 1차 결재자는 배차 담당 홍정수로 서버에서 고정
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('18:00');
@@ -56,6 +54,7 @@ export function CarDispatchCorporate() {
 
   useEffect(() => {
     void loadCars();
+    void loadMembers();
   }, []);
 
   useEffect(() => {
@@ -89,24 +88,17 @@ export function CarDispatchCorporate() {
     }
   }
 
-  async function loadApprovers(query: string) {
-    if (!query.trim()) { setApprovers([]); return; }
+  async function loadMembers() {
     try {
-      const res = await apiJson<{ items: any[] }>(`/api/users?name=${encodeURIComponent(query)}`);
-      setApprovers((res.items || []).map((u) => ({ id: u.id, name: u.name, role: u.role })));
+      const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>('/api/users');
+      const all = (res.items || []).map((u) => ({ id: u.id, name: u.name, role: u.role }));
+      setMembers(all);
+      const hongJeongSu = all.find((m) => m.name === '홍정수');
+      if (hongJeongSu && !approverId) setApproverId(hongJeongSu.id);
     } catch (e: any) {
       console.error(e);
-      setApprovers([]);
     }
   }
-
-  useEffect(() => {
-    const debounce = setTimeout(() => {
-      if (approverQuery) void loadApprovers(approverQuery);
-      else setApprovers([]);
-    }, 300);
-    return () => clearTimeout(debounce);
-  }, [approverQuery]);
 
   async function loadCalendar() {
     setLoading(true);
@@ -264,34 +256,12 @@ export function CarDispatchCorporate() {
           </label>
           <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
             <span style={{ fontWeight: 600 }}>1차 결재자</span>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                value={approverQuery}
-                onChange={(e) => { setApproverQuery(e.target.value); setApproverDropdownOpen(true); }}
-                onFocus={() => setApproverDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setApproverDropdownOpen(false), 200)}
-                placeholder="결재자 이름 검색 (기본: 홍정수)"
-                style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569', fontSize: 13 }}
-              />
-              {approverDropdownOpen && (approvers.length > 0 || approverQuery) && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, marginTop: 4, maxHeight: 200, overflowY: 'auto', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                  {approvers.length === 0 ? (
-                    <div style={{ padding: '8px 12px', color: '#94a3b8', fontSize: 12 }}>검색 결과 없음</div>
-                  ) : (
-                    approvers.map((a) => (
-                      <div
-                        key={a.id}
-                        onClick={() => { setApproverId(a.id); setApproverQuery(a.name); setApproverDropdownOpen(false); }}
-                        style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, color: '#334155' }}
-                      >
-                        {a.name} ({a.role})
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+            <ApproverIdPicker
+              value={approverId}
+              onChange={setApproverId}
+              members={members}
+              placeholder="결재자 이름 검색 (기본: 홍정수)"
+            />
           </div>
           <label style={{ display: 'grid', gap: 4 }}>
             <span>필요 일자</span>
