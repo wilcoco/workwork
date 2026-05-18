@@ -170,19 +170,19 @@ export class AttendanceController {
             throw new BadRequestException('대체 휴일로 지정한 날에 이미 휴가가 신청되어 있어 휴일 대체 신청을 할 수 없습니다');
           }
 
-          // 휴일 근무 시간 중복 체크 (create 전에 수행)
-          const workOverlap = await tx.attendanceRequest.findFirst({
+          // 휴일 근무 시간 중복 체크 (create 전에 수행) - 같은 유형 + 다른 시간 기반 유형(OT, EARLY_LEAVE, FLEXIBLE)
+          const timeBasedOverlap = await tx.attendanceRequest.findFirst({
             where: {
               userId: dto.userId,
-              type: 'HOLIDAY_WORK',
               date: workDateUtc,
+              type: { in: ['HOLIDAY_WORK', 'OT', 'EARLY_LEAVE', 'FLEXIBLE'] as any },
               startAt: { lt: endAt },
               endAt: { gt: startAt },
               status: { notIn: ['REJECTED', 'CANCELLED'] as any },
             },
           });
-          if (workOverlap) {
-            throw new BadRequestException('같은 날 같은 유형의 근태 신청 시간이 기존 신청과 겹칩니다');
+          if (timeBasedOverlap) {
+            throw new BadRequestException('해당 시간에 이미 다른 근태 신청이 있습니다 (휴일근무/야근/조퇴/유연근무)');
           }
 
           // 근무일 레코드 (HOLIDAY_WORK)
@@ -220,20 +220,23 @@ export class AttendanceController {
 
           attendance = workReq;
         } else {
-          // 같은 날 같은 유형의 근태 신청 시간 중복 방지 (OT/휴가/조퇴/유연근무 등 공통)
+          // 같은 날 시간 기반 근태 신청 중복 방지 (OT/휴가/조퇴/유연근무 등 시간이 있는 유형 전체)
           if (startAt && endAt) {
-            const overlap = await tx.attendanceRequest.findFirst({
-              where: {
-                userId: dto.userId,
-                type: dto.type,
-                date: baseDate,
-                startAt: { lt: endAt },
-                endAt: { gt: startAt },
-                status: { notIn: ['REJECTED', 'CANCELLED'] as any },
-              },
-            });
-            if (overlap) {
-              throw new BadRequestException('같은 날 같은 유형의 근태 신청 시간이 기존 신청과 겹칩니다');
+            const timeBasedTypes = ['OT', 'EARLY_LEAVE', 'FLEXIBLE', 'HOLIDAY_WORK'] as any;
+            if (timeBasedTypes.includes(dto.type)) {
+              const overlap = await tx.attendanceRequest.findFirst({
+                where: {
+                  userId: dto.userId,
+                  date: baseDate,
+                  type: { in: timeBasedTypes },
+                  startAt: { lt: endAt },
+                  endAt: { gt: startAt },
+                  status: { notIn: ['REJECTED', 'CANCELLED'] as any },
+                },
+              });
+              if (overlap) {
+                throw new BadRequestException('해당 시간에 이미 다른 근태 신청이 있습니다 (휴일근무/야근/조퇴/유연근무)');
+              }
             }
           }
           attendance = await tx.attendanceRequest.create({
