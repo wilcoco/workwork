@@ -545,7 +545,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
       {variant === 'full' && worklog?.id && (
         <WorklogSupplementSection
           worklogId={String(worklog.id)}
-          worklogAuthorId={String(worklog.createdById || worklog.createdBy?.id || '')}
+          worklogAuthorId={String(worklog.createdById || worklog.createdBy?.id || worklog.userId || '')}
         />
       )}
     </div>
