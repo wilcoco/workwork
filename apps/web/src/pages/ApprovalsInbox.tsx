@@ -14,6 +14,7 @@ export function ApprovalsInbox() {
   const [active, setActive] = useState<any | null>(null);
   const [comment, setComment] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'APPROVAL' | 'REQUEST'>('ALL');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [worklogPopup, setWorklogPopup] = useState<{ id: string; title: string; contentHtml: string; note: string; files?: any[]; createdAt: string; createdBy?: { name: string } } | null>(null);
 
@@ -114,17 +115,33 @@ export function ApprovalsInbox() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {error && <div style={{ color: 'red' }}>{error}</div>}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <label style={{ fontSize: 12, color: '#475569' }}>상태</label>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} style={input}>
-          <option value="PENDING">미승인</option>
-          <option value="APPROVED">승인</option>
-          <option value="REJECTED">반려</option>
-          <option value="ALL">전체</option>
-        </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>상태</label>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} style={input}>
+            <option value="PENDING">미승인</option>
+            <option value="APPROVED">승인</option>
+            <option value="REJECTED">반려</option>
+            <option value="ALL">전체</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>유형</label>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} style={input}>
+            <option value="ALL">전체</option>
+            <option value="APPROVAL">일반 결재</option>
+            <option value="REQUEST">신청</option>
+          </select>
+        </div>
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.map((a) => {
+        {items.filter((a) => {
+          if (typeFilter === 'ALL') return true;
+          const st = String(a._stNorm || a.subjectType || '').toUpperCase();
+          const requestTypes = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
+          const isRequest = requestTypes.includes(st);
+          return typeFilter === 'REQUEST' ? isRequest : !isRequest;
+        }).map((a) => {
           const doc = (a as any)._doc as any | null;
           const stNorm = String((a as any)._stNorm || a.subjectType || '').toUpperCase();
           let title = '문서 정보 없음';
