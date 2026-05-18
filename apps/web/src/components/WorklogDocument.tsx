@@ -89,6 +89,8 @@ function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: s
   const fmtDt = (s: string) => new Date(s).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   const isImg = (f: any) => /sharepoint\.com\/:i:\//i.test(String(f.url || '')) || /1drv\.ms\/i\//i.test(String(f.url || '')) || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(f.url || ''));
 
+  if (!isAuthor && items.length === 0) return null;
+
   return (
     <div style={{ borderTop: '2px dashed #e2e8f0', marginTop: 16, paddingTop: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: items.length > 0 ? 10 : 0 }}>
