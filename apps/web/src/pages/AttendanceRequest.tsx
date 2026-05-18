@@ -89,7 +89,7 @@ export function AttendanceRequest() {
   async function loadApprovers() {
     try {
       const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>(`/api/users`);
-      const all = res.items || [];
+      const all = (res.items || []).filter((u) => u.id !== userId);
       setMembers(all);
       const cand = all.filter((u) => u.role === 'CEO' || u.role === 'EXEC' || u.role === 'MANAGER');
       setApprovers(cand);
