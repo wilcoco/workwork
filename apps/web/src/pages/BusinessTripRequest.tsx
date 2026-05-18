@@ -70,7 +70,12 @@ export function BusinessTripRequest() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (userId) { void load(); void loadMembers(); void loadCars(); }
+    void loadMembers();
+    void loadCars();
+  }, []);
+
+  useEffect(() => {
+    if (userId) { void load(); }
   }, [userId]);
 
   async function load() {
@@ -98,9 +103,8 @@ export function BusinessTripRequest() {
 
   async function loadMembers() {
     try {
-      const res = await apiJson<{ items: Member[] }>('/api/users?limit=200');
-      const all = (res.items || []).filter((m) => m.id !== userId);
-      setMembers(all);
+      const res = await apiJson<{ items: Member[] }>('/api/users');
+      setMembers(res.items || []);
     } catch {}
   }
 
