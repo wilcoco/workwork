@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ApproverIdPicker } from '../components/MemberSearchPicker';
 import { apiJson } from '../lib/api';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
@@ -12,6 +13,8 @@ export function CoopsRequest() {
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('');
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
+  const [members, setMembers] = useState<Array<{ id: string; name: string; role: string }>>([]);
+  const [approverIds, setApproverIds] = useState<string[]>(['']);
   const [slaMinutes, setSlaMinutes] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +147,13 @@ export function CoopsRequest() {
     (async () => {
       try {
         const res = await apiJson<{ items: Array<{ id: string; name: string; orgName?: string }> }>(`/api/users`);
-        setUsers((res.items || []).map((u: any) => ({ id: u.id, name: u.name, orgName: u.orgName })));
+        const all = res.items || [];
+        setUsers(all.map((u: any) => ({ id: u.id, name: u.name, orgName: u.orgName })));
+        setMembers(all.map((u: any) => ({ id: u.id, name: u.name, role: u.role })));
+        const cand = all.filter((u: any) => u.role === 'CEO' || u.role === 'EXEC' || u.role === 'MANAGER');
+        if (cand.length > 0) {
+          setApproverIds((prev) => (prev.length === 0 || !prev[0] ? [cand[0].id] : prev));
+        }
       } catch {}
     })();
   }, []);
@@ -218,6 +227,8 @@ export function CoopsRequest() {
     if (!teamName) missing.push('팀명');
     if (!title) missing.push('제목');
     if (!stripHtml(contentHtml)) missing.push('내용');
+    const cleanedApprovers = approverIds.map((id) => String(id || '').trim()).filter(Boolean);
+    if (cleanedApprovers.length === 0) missing.push('결재자');
     if (missing.length) { setError(`${missing.join(', ')} 입력이 필요합니다.`); return; }
     setLoading(true);
     setError(null);
@@ -240,7 +251,7 @@ export function CoopsRequest() {
         }
       );
       const worklogId = resWl.id;
-      const body: any = { category, requesterId };
+      const body: any = { category, requesterId, approverIds: cleanedApprovers };
       if (queue) body.queue = queue;
       if (slaMinutes) body.slaMinutes = Number(slaMinutes) || 0;
       if (worklogId) body.worklogId = worklogId;
@@ -267,6 +278,7 @@ export function CoopsRequest() {
       setDueDate('');
       setContentHtml('');
       setAttachments([]);
+      setApproverIds(['']);
       setTags({});
     } catch (e: any) {
       setError(e?.message || '요청 실패');
@@ -353,6 +365,55 @@ export function CoopsRequest() {
             {!assigneeIds.length && (
               <div style={{ fontSize: 12, color: '#9ca3af' }}>담당자를 선택하지 않으면 미지정 상태로 요청됩니다.</div>
             )}
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>결재선 *</span>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {approverIds.map((aid, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ minWidth: 52, fontSize: 12, color: '#475569', fontWeight: 700 }}>{idx + 1}단계</span>
+                  <ApproverIdPicker
+                    value={aid}
+                    onChange={(id: string) => setApproverIds((prev) => prev.map((p, i) => i === idx ? id : p))}
+                    members={members}
+                    placeholder="이름 검색"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setApproverIds((prev) => prev.filter((_, i) => i !== idx))}
+                    disabled={approverIds.length <= 1}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: 12,
+                      border: '1px solid #CBD5E1',
+                      borderRadius: 6,
+                      background: '#fff',
+                      cursor: approverIds.length <= 1 ? 'not-allowed' : 'pointer',
+                      color: approverIds.length <= 1 ? '#cbd5e1' : '#475569',
+                    }}
+                    title="이 단계 삭제"
+                  >
+                    −
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setApproverIds((prev) => [...prev, ''])}
+                style={{
+                  justifySelf: 'start',
+                  padding: '4px 10px',
+                  fontSize: 12,
+                  border: '1px dashed #94a3b8',
+                  borderRadius: 6,
+                  background: '#fff',
+                  color: '#475569',
+                  cursor: 'pointer',
+                }}
+              >
+                + 결재자 추가
+              </button>
+            </div>
           </div>
           <label>
             요청 기한(선택)
