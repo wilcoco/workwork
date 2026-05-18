@@ -1,56 +1,72 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 
-type WeeklyRow = {
-  weekKey: string;
-  weeklyHours: number;
+const TYPE_LABELS: Record<string, string> = {
+  OT: '초과근무(OT)',
+  VACATION: '휴가',
+  EARLY_LEAVE: '조기퇴근',
+  FLEXIBLE: '유연근무',
+  HOLIDAY_WORK: '휴일근무',
+  HOLIDAY_REST: '대체휴무',
 };
 
-type ReportRow = {
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: '대기',
+  APPROVED: '승인',
+  REJECTED: '반려',
+  CANCELLED: '취소',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  PENDING: '#f59e0b',
+  APPROVED: '#22c55e',
+  REJECTED: '#ef4444',
+  CANCELLED: '#94a3b8',
+};
+
+type RecordItem = {
+  id: string;
   userId: string;
   userName: string;
-  otHoursTotal: number;
-  vacationDays: number;
-  earlyLeaveHoursTotal: number;
-  weekly: WeeklyRow[];
+  teamName: string;
+  type: string;
+  date: string;
+  startAt: string | null;
+  endAt: string | null;
+  hours: number | null;
+  days: number | null;
+  status: string;
+  reason: string | null;
 };
 
 export function AttendanceReport() {
+  const userId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+  const userRole = typeof localStorage !== 'undefined' ? (localStorage.getItem('userRole') || '') : '';
+
   const [month, setMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
-  const [items, setItems] = useState<ReportRow[]>([]);
+  const [items, setItems] = useState<RecordItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  const [filterType, setFilterType] = useState('');
+  const [filterUser, setFilterUser] = useState('');
+
+  const isExec = userRole === 'CEO' || userRole === 'EXEC';
 
   useEffect(() => {
-    const update = () => {
-      if (typeof window === 'undefined') return;
-      setIsMobile(window.innerWidth < 768);
-    };
-    update();
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', update);
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('resize', update);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
+    if (!isExec) return;
     void loadReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  }, [month, isExec]);
 
   async function loadReport() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<{ items: ReportRow[] }>(`/api/attendance/monthly-report?month=${encodeURIComponent(month)}`);
+      const params = new URLSearchParams({ month, actorId: userId });
+      const res = await apiJson<{ items: RecordItem[] }>(`/api/attendance/monthly-report?${params}`);
       setItems(res.items || []);
     } catch (e: any) {
       setError(e?.message || '근태 리포트를 불러오지 못했습니다');
@@ -59,55 +75,169 @@ export function AttendanceReport() {
     }
   }
 
-  const rows = useMemo(() => {
-    return items.map((it) => {
-      const maxWeekly = it.weekly.reduce((m, w) => Math.max(m, w.weeklyHours), 0);
-      const avgWeekly = it.weekly.length ? (it.weekly.reduce((s, w) => s + w.weeklyHours, 0) / it.weekly.length) : 0;
-      return { ...it, maxWeekly, avgWeekly };
-    });
+  const users = useMemo(() => {
+    const map = new Map<string, string>();
+    items.forEach((it) => map.set(it.userId, it.userName || it.userId));
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [items]);
+
+  const filtered = useMemo(() => {
+    return items.filter((it) => {
+      if (filterType && it.type !== filterType) return false;
+      if (filterUser && it.userId !== filterUser) return false;
+      return true;
+    });
+  }, [items, filterType, filterUser]);
+
+  // Summary: per-user totals
+  const summary = useMemo(() => {
+    const map = new Map<string, { userName: string; teamName: string; counts: Record<string, number> }>();
+    for (const it of filtered) {
+      if (!map.has(it.userId)) map.set(it.userId, { userName: it.userName, teamName: it.teamName, counts: {} });
+      const entry = map.get(it.userId)!;
+      const key = it.type;
+      const val = it.hours != null ? it.hours : (it.days != null ? it.days : 1);
+      entry.counts[key] = (entry.counts[key] || 0) + val;
+    }
+    return Array.from(map.entries()).map(([uid, v]) => ({ userId: uid, ...v }));
+  }, [filtered]);
+
+  const allTypes = useMemo(() => {
+    const s = new Set(filtered.map((it) => it.type));
+    return Object.keys(TYPE_LABELS).filter((t) => s.has(t));
+  }, [filtered]);
+
+  const fmt = (d: string | null) => d ? new Date(d).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+  const fmtTime = (d: string | null) => d ? new Date(d).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  const th: React.CSSProperties = { borderBottom: '2px solid #e2e8f0', padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', background: '#f8fafc', whiteSpace: 'nowrap' };
+  const td: React.CSSProperties = { borderBottom: '1px solid #f1f5f9', padding: '7px 10px', fontSize: 13, verticalAlign: 'middle' };
+
+  if (!isExec) {
+    return (
+      <div style={{ padding: 32, textAlign: 'center', color: '#ef4444' }}>
+        임원(EXEC) 이상만 근태 리포트를 조회할 수 있습니다.
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>근태 월 리포트</h2>
-        <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span>월</span>
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-        </label>
-      </div>
-      {error && <div style={{ color: 'red' }}>{error}</div>}
-      {loading ? (
-        <div>리포트 로딩중…</div>
-      ) : (
-        <div style={{ width: '100%', overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr>
-                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', padding: 4 }}>구성원</th>
-                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>총 OT시간</th>
-                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>총 조퇴시간</th>
-                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>휴가일수</th>
-                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'right', padding: 4 }}>평균 주당 근무시간</th>
-                <th style={{ borderBottom: '1px solid #e5e7eb', textAlign: 'left', padding: 4 }}>주별 근무시간</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((it) => (
-                <tr key={it.userId}>
-                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4 }}>{it.userName || it.userId}</td>
-                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.otHoursTotal.toFixed(1)}</td>
-                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.earlyLeaveHoursTotal.toFixed(1)}</td>
-                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.vacationDays}</td>
-                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4, textAlign: 'right' }}>{it.avgWeekly.toFixed(1)}</td>
-                  <td style={{ borderBottom: '1px solid #f1f5f9', padding: 4 }}>
-                    {it.weekly.map((w) => `${w.weekKey}: ${w.weeklyHours.toFixed(1)}h`).join(' / ')}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <input type="month" value={month} onChange={(e) => { setMonth(e.target.value); }} style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }} />
+          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}>
+            <option value="">전체 유형</option>
+            {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}>
+            <option value="">전체 구성원</option>
+            {users.map(([uid, name]) => <option key={uid} value={uid}>{name}</option>)}
+          </select>
+          <button onClick={() => void loadReport()} style={{ padding: '4px 12px', background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+            조회
+          </button>
         </div>
+      </div>
+
+      {error && <div style={{ color: '#ef4444', fontSize: 13 }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8' }}>로딩 중…</div>
+      ) : (
+        <>
+          {/* 요약 테이블 */}
+          {!filterType && summary.length > 0 && (
+            <div>
+              <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#374151' }}>구성원별 요약</h3>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>구성원</th>
+                      <th style={th}>팀</th>
+                      {allTypes.map((t) => (
+                        <th key={t} style={{ ...th, textAlign: 'right' }}>
+                          {TYPE_LABELS[t] || t}
+                          <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 2 }}>
+                            {t === 'VACATION' || t === 'HOLIDAY_REST' ? '(일)' : '(시간)'}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.map((row) => (
+                      <tr key={row.userId}>
+                        <td style={td}>{row.userName}</td>
+                        <td style={{ ...td, color: '#64748b' }}>{row.teamName}</td>
+                        {allTypes.map((t) => (
+                          <td key={t} style={{ ...td, textAlign: 'right' }}>
+                            {row.counts[t] != null ? (t === 'VACATION' || t === 'HOLIDAY_REST' ? `${row.counts[t]}일` : `${row.counts[t].toFixed(1)}h`) : '—'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 상세 목록 */}
+          <div>
+            <h3 style={{ margin: '0 0 8px', fontSize: 14, color: '#374151' }}>상세 내역 <span style={{ fontWeight: 400, color: '#94a3b8' }}>({filtered.length}건)</span></h3>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>해당 조건의 근태 신청이 없습니다.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>구성원</th>
+                      <th style={th}>팀</th>
+                      <th style={th}>유형</th>
+                      <th style={th}>날짜</th>
+                      <th style={th}>시간</th>
+                      <th style={{ ...th, textAlign: 'right' }}>시간/일수</th>
+                      <th style={th}>상태</th>
+                      <th style={th}>사유</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((it) => (
+                      <tr key={it.id}>
+                        <td style={td}>{it.userName}</td>
+                        <td style={{ ...td, color: '#64748b' }}>{it.teamName}</td>
+                        <td style={td}>
+                          <span style={{ background: '#f1f5f9', borderRadius: 4, padding: '2px 6px', fontSize: 12 }}>
+                            {TYPE_LABELS[it.type] || it.type}
+                          </span>
+                        </td>
+                        <td style={td}>{fmt(it.date)}</td>
+                        <td style={{ ...td, color: '#64748b' }}>
+                          {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}` : '—'}
+                        </td>
+                        <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                          {it.hours != null ? `${it.hours.toFixed(1)}h` : it.days != null ? `${it.days}일` : '—'}
+                        </td>
+                        <td style={td}>
+                          <span style={{ color: STATUS_COLORS[it.status] || '#374151', fontWeight: 600, fontSize: 12 }}>
+                            {STATUS_LABELS[it.status] || it.status}
+                          </span>
+                        </td>
+                        <td style={{ ...td, color: '#64748b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {it.reason || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
