@@ -261,7 +261,9 @@ export class ApprovalsController {
         } else if (st === 'LOGISTICS_DISPATCH' && sid) {
           results[key] = await (this.prisma as any).logisticsDispatchRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } } } });
         } else if (st === 'ATTENDANCE' && sid) {
-          results[key] = await this.prisma.attendanceRequest.findUnique({ where: { id: sid } });
+          results[key] = await this.prisma.attendanceRequest.findUnique({ where: { id: sid }, include: { user: { select: { id: true, name: true } } } });
+        } else if (st === 'BUSINESS_TRIP' && sid) {
+          results[key] = await (this.prisma as any).businessTripRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } } } });
         } else if (st === 'PROCESS' && sid) {
           results[key] = await this.prisma.processInstance.findUnique({ where: { id: sid }, include: { startedBy: { select: { id: true, name: true } } } });
         } else {
@@ -324,6 +326,9 @@ export class ApprovalsController {
         if (updated.subjectType === 'LOGISTICS_DISPATCH') {
           await (tx as any).logisticsDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
         }
+        if (updated.subjectType === 'BUSINESS_TRIP') {
+          await (tx as any).businessTripRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
+        }
         const engine = new ProcessesController(this.prisma);
         await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id, comment: dto.comment } } });
@@ -364,6 +369,9 @@ export class ApprovalsController {
       if (updated.subjectType === 'LOGISTICS_DISPATCH') {
         await (tx as any).logisticsDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
       }
+      if (updated.subjectType === 'BUSINESS_TRIP') {
+        await (tx as any).businessTripRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
+      }
       const engine = new ProcessesController(this.prisma);
       await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
       await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id } } });
@@ -386,6 +394,9 @@ export class ApprovalsController {
         if (updated.subjectType === 'LOGISTICS_DISPATCH') {
           await (tx as any).logisticsDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
         }
+        if (updated.subjectType === 'BUSINESS_TRIP') {
+          await (tx as any).businessTripRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
+        }
         const engine = new ProcessesController(this.prisma);
         await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, reason: dto.comment } } });
@@ -406,6 +417,9 @@ export class ApprovalsController {
       }
       if (updated.subjectType === 'LOGISTICS_DISPATCH') {
         await (tx as any).logisticsDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
+      }
+      if (updated.subjectType === 'BUSINESS_TRIP') {
+        await (tx as any).businessTripRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
       }
       const engine = new ProcessesController(this.prisma);
       await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);

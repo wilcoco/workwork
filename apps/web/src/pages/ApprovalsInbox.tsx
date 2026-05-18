@@ -181,6 +181,19 @@ export function ApprovalsInbox() {
             ].filter(Boolean);
             meta = parts.join(' · ');
             when = doc.createdAt || when;
+          } else if (stNorm === 'BUSINESS_TRIP' && doc) {
+            const fmtDt = (iso: string) => iso ? new Date(iso).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+            title = `출장 신청 — ${doc.destination || ''}`.trim();
+            const parts = [
+              doc.requester?.name || doc.requesterName || '',
+              doc.departureAt ? `출발: ${fmtDt(doc.departureAt)}` : '',
+              doc.returnAt ? `귀임: ${fmtDt(doc.returnAt)}` : '',
+              doc.purpose || '',
+              doc.transportation || '',
+              doc.accommodation ? '숙박' : '',
+            ].filter(Boolean);
+            meta = parts.join(' · ');
+            when = doc.createdAt || when;
           } else if (stNorm === 'WORKLOG' && doc) {
             const wl = doc;
             title = ((wl.note || '').split('\n')[0] || wl.title || '(제목 없음)');
