@@ -75,7 +75,9 @@ export function BusinessTripRequest() {
   }, []);
 
   useEffect(() => {
-    if (userId) { void load(); }
+    if (userId) {
+      void load();
+    }
   }, [userId]);
 
   async function load() {
@@ -105,7 +107,9 @@ export function BusinessTripRequest() {
     try {
       const res = await apiJson<{ items: Member[] }>('/api/users');
       setMembers(res.items || []);
-    } catch {}
+    } catch (e) {
+      console.error('loadMembers failed:', e);
+    }
   }
 
   async function handleSubmit() {
