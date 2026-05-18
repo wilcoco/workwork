@@ -46,6 +46,13 @@ export function Home() {
   const [overdueLoading, setOverdueLoading] = useState(false);
   const [expandedOverdueUser, setExpandedOverdueUser] = useState<string | null>(null);
   const [detail, setDetail] = useState<any | null>(null);
+  const [detailFull, setDetailFull] = useState<any | null>(null);
+  useEffect(() => {
+    if (!detail?.id) { setDetailFull(null); return; }
+    setDetailFull(null);
+    apiJson<any>(`/api/worklogs/${detail.id}`).then(setDetailFull).catch(() => setDetailFull(null));
+  }, [detail?.id]);
+
   const [urgentOpen, setUrgentOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [mainTab, setMainTab] = useState<'worklogs' | 'comments'>('comments');
@@ -756,7 +763,7 @@ export function Home() {
       {detail && (
         <div className="image-overlay" onClick={() => setDetail(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: 16, borderRadius: 12, maxWidth: 1200, width: '96%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <WorklogDocument worklog={detail} variant="full" />
+            <WorklogDocument worklog={detailFull ?? detail} variant="full" />
             <div style={{ marginTop: 12, borderTop: '1px solid #e5e7eb', paddingTop: 10 }}>
               <CommentsBox
                 worklogId={(detail as any).id}
