@@ -41,7 +41,6 @@ type RecordItem = {
 
 export function AttendanceReport() {
   const userId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
-  const userRole = typeof localStorage !== 'undefined' ? (localStorage.getItem('userRole') || '') : '';
 
   const [month, setMonth] = useState<string>(() => {
     const d = new Date();
@@ -52,8 +51,18 @@ export function AttendanceReport() {
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState('');
   const [filterUser, setFilterUser] = useState('');
+  const [myRole, setMyRole] = useState<string>('');
+  const [roleLoading, setRoleLoading] = useState(true);
 
-  const isExec = userRole === 'CEO' || userRole === 'EXEC';
+  useEffect(() => {
+    if (!userId) { setRoleLoading(false); return; }
+    apiJson<{ role: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`)
+      .then((me) => setMyRole(String(me?.role || '').toUpperCase()))
+      .catch(() => setMyRole(''))
+      .finally(() => setRoleLoading(false));
+  }, [userId]);
+
+  const isExec = myRole === 'CEO' || myRole === 'EXEC';
 
   useEffect(() => {
     if (!isExec) return;
@@ -112,6 +121,10 @@ export function AttendanceReport() {
 
   const th: React.CSSProperties = { borderBottom: '2px solid #e2e8f0', padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', background: '#f8fafc', whiteSpace: 'nowrap' };
   const td: React.CSSProperties = { borderBottom: '1px solid #f1f5f9', padding: '7px 10px', fontSize: 13, verticalAlign: 'middle' };
+
+  if (roleLoading) {
+    return <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>권한 확인 중…</div>;
+  }
 
   if (!isExec) {
     return (
