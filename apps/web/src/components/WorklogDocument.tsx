@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { apiFetch, apiUrl } from '../lib/api';
 import { toSafeHtml } from '../lib/richText';
 import { toOneDriveDirectUrl } from '../lib/onedrive';
@@ -33,11 +33,10 @@ function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: s
   const [items, setItems] = useState<SupplementItem[]>([]);
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState('');
-  const [files, setFiles] = useState<Array<{ url: string; name: string; type: string }>>([]);
-  const [uploading, setUploading] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [links, setLinks] = useState<Array<{ url: string; name: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -49,33 +48,19 @@ function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: s
 
   useEffect(() => { void load(); }, [load]);
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const selected = Array.from(e.target.files || []);
-    if (!selected.length) return;
-    setUploading(true);
+  function handleAddUrl() {
+    const raw = urlInput.trim();
+    if (!raw) return;
+    if (!/^https?:\/\//i.test(raw)) { setError('http(s)로 시작하는 OneDrive URL을 입력하세요'); return; }
+    const direct = toOneDriveDirectUrl(raw);
+    const label = raw.split('/').pop()?.split('?')[0] || raw;
+    setLinks((prev) => [...prev, { url: direct, name: decodeURIComponent(label) }]);
+    setUrlInput('');
     setError(null);
-    try {
-      const uploaded: Array<{ url: string; name: string; type: string }> = [];
-      for (const f of selected) {
-        const form = new FormData();
-        form.append('file', f);
-        form.append('originalName', f.name);
-        const res = await apiFetch('/api/uploads', { method: 'POST', body: form });
-        const json = await res.json();
-        if (!json.url) throw new Error('업로드 실패');
-        uploaded.push({ url: json.url, name: json.name || f.name, type: json.type || f.type });
-      }
-      setFiles((prev) => [...prev, ...uploaded]);
-    } catch (e: any) {
-      setError(e?.message || '파일 업로드 실패');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
   }
 
   async function handleSubmit() {
-    if (!content.trim() && files.length === 0) { setError('내용 또는 파일을 입력하세요'); return; }
+    if (!content.trim() && links.length === 0) { setError('내용 또는 OneDrive 링크를 입력하세요'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -85,12 +70,13 @@ function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: s
         body: JSON.stringify({
           userId: currentUserId,
           content: content.trim() || undefined,
-          attachments: files.length > 0 ? { files } : undefined,
+          attachments: links.length > 0 ? { files: links } : undefined,
         }),
       });
       if (!res.ok) { const j = await res.json(); throw new Error(j?.message || '저장 실패'); }
       setContent('');
-      setFiles([]);
+      setLinks([]);
+      setUrlInput('');
       setOpen(false);
       await load();
     } catch (e: any) {
@@ -101,7 +87,7 @@ function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: s
   }
 
   const fmtDt = (s: string) => new Date(s).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const isImg = (f: any) => String(f.type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(String(f.url || ''));
+  const isImg = (f: any) => /sharepoint\.com\/:i:\//i.test(String(f.url || '')) || /1drv\.ms\/i\//i.test(String(f.url || '')) || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(String(f.url || ''));
 
   return (
     <div style={{ borderTop: '2px dashed #e2e8f0', marginTop: 16, paddingTop: 12 }}>
@@ -122,11 +108,11 @@ function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: s
           </div>
           {it.content && <div style={{ fontSize: 13, color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{it.content}</div>}
           {Array.isArray(it.attachments?.files) && it.attachments.files.length > 0 && (
-            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
               {it.attachments.files.map((f: any, i: number) => (
                 isImg(f)
-                  ? <img key={i} src={apiUrl(f.url)} alt={f.name} style={{ maxWidth: 200, maxHeight: 160, borderRadius: 6, objectFit: 'cover', cursor: 'zoom-in' }} />
-                  : <a key={i} href={apiUrl(f.url)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#2563eb', textDecoration: 'underline' }}>{f.name}</a>
+                  ? <img key={i} src={toOneDriveDirectUrl(f.url)} alt={f.name} style={{ maxWidth: 240, maxHeight: 180, borderRadius: 6, objectFit: 'cover' }} />
+                  : <a key={i} href={f.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#2563eb', textDecoration: 'underline' }}>📎 {f.name || f.url}</a>
               ))}
             </div>
           )}
@@ -142,23 +128,29 @@ function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: s
             rows={4}
             style={{ width: '100%', boxSizing: 'border-box', padding: 8, border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }}
           />
-          {files.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0' }}>
-              {files.map((f, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 8px', fontSize: 12 }}>
-                  {isImg(f) ? <img src={apiUrl(f.url)} alt={f.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} /> : <span>📎 {f.name}</span>}
-                  <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 14 }}>×</button>
+          <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+            <input
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddUrl())}
+              placeholder="OneDrive 공유 URL 붙여넣기 후 Enter 또는 추가"
+              style={{ flex: 1, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 12 }}
+            />
+            <button onClick={handleAddUrl} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>추가</button>
+          </div>
+          {links.length > 0 && (
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {links.map((lk, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 8px' }}>
+                  <span style={{ flex: 1, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📎 {lk.name}</span>
+                  <button onClick={() => setLinks((prev) => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 14 }}>×</button>
                 </div>
               ))}
             </div>
           )}
-          {error && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 6 }}>{error}</div>}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-            <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.docx,.xlsx,.pptx,.txt" style={{ display: 'none' }} onChange={handleFileChange} />
-            <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' }}>
-              {uploading ? '업로드 중…' : '📎 파일/이미지 첨부'}
-            </button>
-            <button onClick={() => { setOpen(false); setContent(''); setFiles([]); setError(null); }} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' }}>취소</button>
+          {error && <div style={{ color: '#ef4444', fontSize: 12, marginTop: 6 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button onClick={() => { setOpen(false); setContent(''); setLinks([]); setUrlInput(''); setError(null); }} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' }}>취소</button>
             <button onClick={handleSubmit} disabled={saving} style={{ fontSize: 12, padding: '4px 12px', background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', marginLeft: 'auto' }}>
               {saving ? '저장 중…' : '저장'}
             </button>
