@@ -1,5 +1,5 @@
-import { useMemo, useState, type MouseEvent } from 'react';
-import { apiUrl } from '../lib/api';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { apiFetch, apiUrl } from '../lib/api';
 import { toSafeHtml } from '../lib/richText';
 import { toOneDriveDirectUrl } from '../lib/onedrive';
 import { formatKstDatetime, formatKstYmd, formatMinutesAsHmKo } from '../lib/time';
@@ -15,6 +15,158 @@ const VISIBILITY_LABEL: Record<string, string> = {
 function visibilityKo(v: any): string {
   const key = String(v || 'ALL');
   return VISIBILITY_LABEL[key] || key;
+}
+
+type SupplementItem = {
+  id: string;
+  userId: string;
+  user: { id: string; name: string };
+  content: string | null;
+  attachments: any;
+  createdAt: string;
+};
+
+function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: string; worklogAuthorId: string }) {
+  const currentUserId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+  const isAuthor = !!currentUserId && currentUserId === worklogAuthorId;
+
+  const [items, setItems] = useState<SupplementItem[]>([]);
+  const [open, setOpen] = useState(false);
+  const [content, setContent] = useState('');
+  const [files, setFiles] = useState<Array<{ url: string; name: string; type: string }>>([]);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/api/worklogs/${worklogId}/supplements`);
+      const json = await res.json();
+      setItems(json.items || []);
+    } catch {}
+  }, [worklogId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(e.target.files || []);
+    if (!selected.length) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const uploaded: Array<{ url: string; name: string; type: string }> = [];
+      for (const f of selected) {
+        const form = new FormData();
+        form.append('file', f);
+        form.append('originalName', f.name);
+        const res = await apiFetch('/api/uploads', { method: 'POST', body: form });
+        const json = await res.json();
+        if (!json.url) throw new Error('업로드 실패');
+        uploaded.push({ url: json.url, name: json.name || f.name, type: json.type || f.type });
+      }
+      setFiles((prev) => [...prev, ...uploaded]);
+    } catch (e: any) {
+      setError(e?.message || '파일 업로드 실패');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function handleSubmit() {
+    if (!content.trim() && files.length === 0) { setError('내용 또는 파일을 입력하세요'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/worklogs/${worklogId}/supplements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUserId,
+          content: content.trim() || undefined,
+          attachments: files.length > 0 ? { files } : undefined,
+        }),
+      });
+      if (!res.ok) { const j = await res.json(); throw new Error(j?.message || '저장 실패'); }
+      setContent('');
+      setFiles([]);
+      setOpen(false);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || '저장 실패');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const fmtDt = (s: string) => new Date(s).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const isImg = (f: any) => String(f.type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(String(f.url || ''));
+
+  return (
+    <div style={{ borderTop: '2px dashed #e2e8f0', marginTop: 16, paddingTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: items.length > 0 ? 10 : 0 }}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: '#0F3D73' }}>수정·보완 {items.length > 0 && <span style={{ fontWeight: 400, color: '#94a3b8' }}>({items.length})</span>}</span>
+        {isAuthor && !open && (
+          <button onClick={() => setOpen(true)} style={{ fontSize: 12, padding: '3px 10px', background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ 보완 추가</button>
+        )}
+      </div>
+
+      {items.map((it) => (
+        <div key={it.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderLeft: '3px solid #0F3D73', borderRadius: 8, padding: '10px 12px', marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, fontSize: 12, color: '#64748b' }}>
+            <span style={{ fontWeight: 700, color: '#0f172a' }}>{it.user?.name || it.userId}</span>
+            <span>·</span>
+            <span>{fmtDt(it.createdAt)}</span>
+            <span style={{ marginLeft: 'auto', background: '#e0f2fe', color: '#0369a1', borderRadius: 4, padding: '1px 6px', fontSize: 11, fontWeight: 600 }}>수정보완</span>
+          </div>
+          {it.content && <div style={{ fontSize: 13, color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{it.content}</div>}
+          {Array.isArray(it.attachments?.files) && it.attachments.files.length > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {it.attachments.files.map((f: any, i: number) => (
+                isImg(f)
+                  ? <img key={i} src={apiUrl(f.url)} alt={f.name} style={{ maxWidth: 200, maxHeight: 160, borderRadius: 6, objectFit: 'cover', cursor: 'zoom-in' }} />
+                  : <a key={i} href={apiUrl(f.url)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#2563eb', textDecoration: 'underline' }}>{f.name}</a>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {isAuthor && open && (
+        <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: 12, marginTop: 8 }}>
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="수정·보완 내용을 입력하세요"
+            rows={4}
+            style={{ width: '100%', boxSizing: 'border-box', padding: 8, border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }}
+          />
+          {files.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0' }}>
+              {files.map((f, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6, padding: '3px 8px', fontSize: 12 }}>
+                  {isImg(f) ? <img src={apiUrl(f.url)} alt={f.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} /> : <span>📎 {f.name}</span>}
+                  <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 14 }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {error && <div style={{ color: '#ef4444', fontSize: 12, marginBottom: 6 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.docx,.xlsx,.pptx,.txt" style={{ display: 'none' }} onChange={handleFileChange} />
+            <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' }}>
+              {uploading ? '업로드 중…' : '📎 파일/이미지 첨부'}
+            </button>
+            <button onClick={() => { setOpen(false); setContent(''); setFiles([]); setError(null); }} style={{ fontSize: 12, padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' }}>취소</button>
+            <button onClick={handleSubmit} disabled={saving} style={{ fontSize: 12, padding: '4px 12px', background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', marginLeft: 'auto' }}>
+              {saving ? '저장 중…' : '저장'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 'full' | 'compact' | 'content' }) {
@@ -388,6 +540,13 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
         <div className="image-overlay" onClick={(e) => { e.stopPropagation(); setZoomSrc(null); }}>
           <img src={zoomSrc} alt="preview" />
         </div>
+      )}
+
+      {variant === 'full' && worklog?.id && (
+        <WorklogSupplementSection
+          worklogId={String(worklog.id)}
+          worklogAuthorId={String(worklog.createdById || worklog.createdBy?.id || '')}
+        />
       )}
     </div>
   );

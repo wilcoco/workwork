@@ -1323,6 +1323,38 @@ export class WorklogsController {
     return { ...wl, process } as any;
   }
 
+  @Get(':id/supplements')
+  async getSupplements(@Param('id') id: string) {
+    const items = await (this.prisma as any).worklogSupplement.findMany({
+      where: { worklogId: id },
+      orderBy: { createdAt: 'asc' },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    return { items };
+  }
+
+  @Post(':id/supplements')
+  async createSupplement(
+    @Param('id') id: string,
+    @Body() body: { userId: string; content?: string; attachments?: any },
+  ) {
+    if (!body.userId) throw new BadRequestException('userId required');
+    const wl = await (this.prisma as any).worklog.findUnique({ where: { id } });
+    if (!wl) throw new BadRequestException('worklog not found');
+    if (wl.createdById !== body.userId) throw new ForbiddenException('본인의 업무일지에만 수정보완을 작성할 수 있습니다');
+    if (!body.content?.trim() && !body.attachments) throw new BadRequestException('내용 또는 첨부파일이 필요합니다');
+    const item = await (this.prisma as any).worklogSupplement.create({
+      data: {
+        worklogId: id,
+        userId: body.userId,
+        content: body.content?.trim() || null,
+        attachments: body.attachments || null,
+      },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    return item;
+  }
+
   @Post('bulk-delete')
   async bulkDeleteWorklogs(@Body() body: { ids: string[] }, @Query('userId') userId?: string) {
     await this.assertCeo(userId);

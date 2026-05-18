@@ -164,6 +164,7 @@ model User {
   likes Like[]
   instructionsAssigned WorklogInstruction[] @relation("InstructionAssignee")
   instructionsGiven    WorklogInstruction[] @relation("InstructionAssigner")
+  worklogSupplements   WorklogSupplement[]  @relation("WorklogSupplementAuthor")
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -285,12 +286,26 @@ model Worklog {
   visibility            WorklogVisibility @default(ALL)
   processTaskInstanceId String?
   processTaskInstance   ProcessTaskInstance? @relation("TaskWorklogs", fields: [processTaskInstanceId], references: [id])
+  supplements           WorklogSupplement[]
 
   @@index([date])
   @@index([createdAt])
   @@index([createdById, date])
   @@index([createdById, createdAt])
   @@index([visibility, date])
+}
+
+model WorklogSupplement {
+  id          String   @id @default(cuid())
+  worklogId   String
+  worklog     Worklog  @relation(fields: [worklogId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation("WorklogSupplementAuthor", fields: [userId], references: [id])
+  content     String?
+  attachments Json?
+  createdAt   DateTime @default(now())
+
+  @@index([worklogId])
 }
 
 enum WeeklyReportStatus {
