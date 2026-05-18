@@ -116,7 +116,7 @@ export function AttendanceReport() {
   if (!isExec) {
     return (
       <div style={{ padding: 32, textAlign: 'center', color: '#ef4444' }}>
-        임원(EXEC) 이상만 근태 리포트를 조회할 수 있습니다.
+        임원 이상(임원/대표이사)만 근태 리포트를 조회할 수 있습니다.
       </div>
     );
   }
