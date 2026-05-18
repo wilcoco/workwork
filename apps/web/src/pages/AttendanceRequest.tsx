@@ -93,14 +93,6 @@ export function AttendanceRequest() {
       setMembers(all);
       const cand = all.filter((u) => u.role === 'CEO' || u.role === 'EXEC' || u.role === 'MANAGER');
       setApprovers(cand);
-      // Default the first slot to 홍정수 if available; fall back to
-      // the first candidate. Only fills empty slots so we don't
-      // clobber a user's in-progress edit on remount.
-      if (cand.length > 0) {
-        const hong = cand.find((u) => u.name === '홍정수');
-        const def = (hong ?? cand[0]).id;
-        setApproverIds((prev) => (prev.length === 0 || !prev[0] ? [def] : prev));
-      }
     } catch (e) {
       // 승인자 목록은 필수까지는 아니라서 조용히 무시
       // eslint-disable-next-line no-console
