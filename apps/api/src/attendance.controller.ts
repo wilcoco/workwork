@@ -170,6 +170,21 @@ export class AttendanceController {
             throw new BadRequestException('대체 휴일로 지정한 날에 이미 휴가가 신청되어 있어 휴일 대체 신청을 할 수 없습니다');
           }
 
+          // 휴일 근무 시간 중복 체크 (create 전에 수행)
+          const workOverlap = await tx.attendanceRequest.findFirst({
+            where: {
+              userId: dto.userId,
+              type: 'HOLIDAY_WORK',
+              date: workDateUtc,
+              startAt: { lt: endAt },
+              endAt: { gt: startAt },
+              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
+            },
+          });
+          if (workOverlap) {
+            throw new BadRequestException('같은 날 같은 유형의 근태 신청 시간이 기존 신청과 겹칩니다');
+          }
+
           // 근무일 레코드 (HOLIDAY_WORK)
           const workReq = await tx.attendanceRequest.create({
             data: {
@@ -202,20 +217,6 @@ export class AttendanceController {
               reason: dto.reason ? `${dto.reason} (휴일근무: ${dto.date})` : `휴일근무: ${dto.date}`,
             },
           });
-
-          const workOverlap = await tx.attendanceRequest.findFirst({
-            where: {
-              userId: dto.userId,
-              type: 'HOLIDAY_WORK',
-              date: workDateUtc,
-              startAt: { lt: endAt },
-              endAt: { gt: startAt },
-              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
-            },
-          });
-          if (workOverlap) {
-            throw new BadRequestException('같은 날 같은 유형의 근태 신청 시간이 기존 신청과 겹칩니다');
-          }
 
           attendance = workReq;
         } else {
