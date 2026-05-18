@@ -98,8 +98,8 @@ export function BusinessTripRequest() {
 
   async function loadMembers() {
     try {
-      const res = await apiJson<{ users: Member[] }>('/api/users?limit=200');
-      const all = (res.users || []).filter((m) => m.id !== userId);
+      const res = await apiJson<{ items: Member[] }>('/api/users?limit=200');
+      const all = (res.items || []).filter((m) => m.id !== userId);
       setMembers(all);
       const cand = all.filter((m) => m.role === 'CEO' || m.role === 'EXEC' || m.role === 'MANAGER');
       if (cand.length > 0) {
