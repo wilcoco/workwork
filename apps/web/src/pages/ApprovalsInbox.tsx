@@ -132,14 +132,14 @@ export function ApprovalsInbox() {
           let when = a.createdAt as string | undefined;
 
           if (stNorm === 'CAR_DISPATCH' && doc) {
-            title = `배차 신청 - ${doc.carName || ''}`.trim();
-            const timeRange = doc.startAt && doc.endAt
-              ? `${new Date(doc.startAt).toLocaleString()} ~ ${new Date(doc.endAt).toLocaleString()}`
-              : '';
+            const fmtDate = (iso: string) => iso ? new Date(iso).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+            const fmtTime = (iso: string) => iso ? new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+            const dateStr = doc.startAt ? fmtDate(doc.startAt) : '';
+            const timeStr = doc.startAt && doc.endAt ? `${fmtTime(doc.startAt)}~${fmtTime(doc.endAt)}` : '';
+            const carInfo = [doc.car?.name || doc.carName, doc.car?.type].filter(Boolean).join(' ');
+            title = `[배차] ${carInfo} | ${dateStr} ${timeStr} | ${doc.destination || ''}`.trim();
             const parts = [
-              doc.requesterName || '',
-              timeRange,
-              doc.destination || '',
+              doc.requester?.name || doc.requesterName || '',
               doc.purpose || '',
               doc.coRiders ? `동승자: ${doc.coRiders}` : '',
             ].filter(Boolean);
@@ -151,46 +151,46 @@ export function ApprovalsInbox() {
             else if (doc.type === 'VACATION') kind = '휴가';
             else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
             else if (doc.type === 'FLEXIBLE') kind = '유연근무';
-            else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
+            else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일대체';
             else kind = doc.type;
 
             const dateShort = doc.date ? new Date(doc.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+            const timeRange = doc.startAt && doc.endAt
+              ? `${new Date(doc.startAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}~${new Date(doc.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
+              : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
             const otMins = doc.type === 'OT' && doc.startAt && doc.endAt
               ? Math.round((new Date(doc.endAt).getTime() - new Date(doc.startAt).getTime()) / 60000)
               : 0;
-            const otStr = otMins > 0 ? ` | ${otMins >= 60 ? `${Math.floor(otMins / 60)}시간${otMins % 60 ? ` ${otMins % 60}분` : ''}` : `${otMins}분`}` : '';
-            title = `근태 신청 - ${kind}${dateShort ? ` | ${dateShort}` : ''}${otStr}`.trim();
-            const timeRange = doc.startAt && doc.endAt
-              ? `${new Date(doc.startAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} ~ ${new Date(doc.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
-              : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
+            const durationStr = otMins > 0 ? `${otMins >= 60 ? `${Math.floor(otMins / 60)}h${otMins % 60 ? `${otMins % 60}m` : ''}` : `${otMins}m`}` : '';
+            title = `[${kind}] ${dateShort} ${timeRange}${durationStr ? ` (${durationStr})` : ''}`.trim();
             const parts = [
-              doc.requesterName || '',
-              timeRange,
+              doc.user?.name || doc.requesterName || '',
               doc.reason || '',
             ].filter(Boolean);
             meta = parts.join(' · ');
             when = doc.createdAt || doc.date || when;
           } else if (stNorm === 'LOGISTICS_DISPATCH' && doc) {
             const fmtDt = (iso: string) => iso ? new Date(iso).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-            title = `물류 배차 신청 — ${doc.vehicleType || ''}`.trim();
+            title = `[물류배차] ${doc.vehicleType || ''} | ${doc.loadingPlace || ''} → ${doc.unloadingPlace || ''}`.trim();
             const parts = [
               doc.requester?.name || doc.requesterName || '',
-              doc.loadingPlace ? `상차: ${doc.loadingPlace} ${fmtDt(doc.loadingAt)}` : '',
-              doc.unloadingPlace ? `하차: ${doc.unloadingPlace} ${fmtDt(doc.unloadingAt)}` : '',
+              doc.loadingAt ? `상차: ${fmtDt(doc.loadingAt)}` : '',
+              doc.unloadingAt ? `하차: ${fmtDt(doc.unloadingAt)}` : '',
               doc.cargoDetails ? `화물: ${doc.cargoDetails}` : '',
             ].filter(Boolean);
             meta = parts.join(' · ');
             when = doc.createdAt || when;
           } else if (stNorm === 'BUSINESS_TRIP' && doc) {
             const fmtDt = (iso: string) => iso ? new Date(iso).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-            title = `출장 신청 — ${doc.destination || ''}`.trim();
+            const dateRange = doc.departureAt && doc.returnAt
+              ? `${fmtDt(doc.departureAt)} ~ ${fmtDt(doc.returnAt)}`
+              : (doc.departureAt ? fmtDt(doc.departureAt) : '');
+            title = `[출장] ${doc.destination || ''} | ${dateRange}`.trim();
             const parts = [
               doc.requester?.name || doc.requesterName || '',
-              doc.departureAt ? `출발: ${fmtDt(doc.departureAt)}` : '',
-              doc.returnAt ? `귀임: ${fmtDt(doc.returnAt)}` : '',
               doc.purpose || '',
               doc.transportation || '',
-              doc.accommodation ? '숙박' : '',
+              doc.accommodation ? '숙박 필요' : '',
             ].filter(Boolean);
             meta = parts.join(' · ');
             when = doc.createdAt || when;
