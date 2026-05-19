@@ -143,6 +143,7 @@ export class FeedbacksController {
     @Query('subjectId') subjectId?: string,
     @Query('worklogAuthorId') worklogAuthorId?: string,
     @Query('excludeAuthorId') excludeAuthorId?: string,
+    @Query('excludeType') excludeType?: string,
     @Query('limit') limitStr?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '50', 10) || 50, 100);
@@ -150,13 +151,14 @@ export class FeedbacksController {
     if (subjectType) where.subjectType = subjectType;
     if (subjectId) where.subjectId = subjectId;
     if (excludeAuthorId) where.authorId = { not: excludeAuthorId };
+    if (excludeType) where.type = { not: excludeType };
 
     // worklogAuthorId: 특정 사용자가 작성한 업무일지에 달린 댓글만 조회
     if (worklogAuthorId && subjectType === 'Worklog') {
       const myWorklogs = await this.prisma.worklog.findMany({
         where: { createdById: worklogAuthorId },
         select: { id: true },
-        take: 100,
+        take: 500,
         orderBy: { createdAt: 'desc' },
       });
       const wlIds = myWorklogs.map((w) => w.id);

@@ -273,9 +273,9 @@ export function Home() {
       } catch {
         setPendingInstructions([]);
       }
-      // 내 업무일지에 달린 다른 사람의 댓글 (최근 7일)
+      // 내 업무일지에 달린 다른 사람의 댓글 (최근 7일, 업무지시 제외)
       try {
-        const res = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&worklogAuthorId=${encodeURIComponent(viewerId)}&excludeAuthorId=${encodeURIComponent(viewerId)}&limit=20`);
+        const res = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&worklogAuthorId=${encodeURIComponent(viewerId)}&excludeAuthorId=${encodeURIComponent(viewerId)}&excludeType=INSTRUCTION&limit=20`);
         const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
         const recent = (res.items || []).filter((c: any) => new Date(c.createdAt).getTime() > sevenDaysAgo);
         setPendingComments(recent);
