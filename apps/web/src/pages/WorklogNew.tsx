@@ -592,7 +592,36 @@ export function WorklogNew() {
         </label>
       </div>
 
-      {(processInstanceId || myProcTasks.length > 0) && (
+      {instruction && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: 12 }}>
+          <label style={{ margin: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <span style={{ fontSize: 16 }}>📌</span>
+              <span style={{ fontWeight: 700, color: '#b91c1c' }}>업무지시 과제</span>
+            </span>
+            <select disabled style={{ background: '#fff', width: '100%' }}>
+              <option>{instruction.title || '업무 지시'} · {instruction.assignerName || '지시자'}</option>
+            </select>
+            <div style={{ fontSize: 12, color: '#991b1b', marginTop: 4 }}>
+              업무지시에서 연결되었습니다. 이 업무일지를 저장하면 업무지시가 완료 처리됩니다.
+            </div>
+            {instruction.sourceWorklogId && (
+              <div style={{ marginTop: 6 }}>
+                <a
+                  href={`/worklogs/${instruction.sourceWorklogId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: '#1d4ed8', textDecoration: 'underline' }}
+                >
+                  원본 업무일지 보기 →
+                </a>
+              </div>
+            )}
+          </label>
+        </div>
+      )}
+
+      {(processInstanceId || myProcTasks.length > 0) && !instruction && (
         <label>
           프로세스 과제(선택)
           <select
