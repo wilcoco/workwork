@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Query, Body, Param, BadRequestException, UseGuards, Header, Req, Res } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
-import { JwtAuthGuard } from './jwt-auth.guard';
+import { JwtAuthGuard, Public } from './jwt-auth.guard';
 
 /**
  * SharePoint file synchronization controller.
@@ -470,6 +470,7 @@ export class SharePointSyncController {
    * - 작성자가 비어있는 항목
    * - 가장 최근 항목
    */
+  @Public()
   @Post('import-worklog')
   async importWorklogFromSharePoint(
     @Body() body: {
