@@ -462,4 +462,192 @@ export class SharePointSyncController {
       res.end();
     }
   }
+
+  /**
+   * POST /sharepoint-sync/import-worklog
+   * SharePoint WorkReports 리스트에서 데이터를 가져와 업무일지로 등록
+   * - 제목에 특정 문자열 포함
+   * - 작성자가 비어있는 항목
+   * - 가장 최근 항목
+   */
+  @Post('import-worklog')
+  async importWorklogFromSharePoint(
+    @Body() body: {
+      userId: string; // Graph API 토큰을 가진 사용자
+      siteId?: string; // SharePoint 사이트 ID (없으면 기본값 사용)
+      listName?: string; // 리스트 이름 (기본: WorkReports)
+      titleFilter?: string; // 제목 필터 (기본: 전날 조립 생산 데이터입니다)
+      robotUserId?: string; // 로봇 사용자 ID (업무일지 작성자)
+    },
+  ) {
+    if (!body.userId) throw new BadRequestException('userId required');
+
+    const token = await this.getGraphToken(body.userId);
+    const fetchFn: any = (globalThis as any).fetch;
+
+    // 기본값 설정
+    const listName = body.listName || 'WorkReports';
+    const titleFilter = body.titleFilter || '전날 조립 생산 데이터입니다';
+
+    // 1. 사이트 ID 가져오기 (없으면 기본 사이트 사용)
+    let targetSiteId = body.siteId;
+    if (!targetSiteId) {
+      // cams2002.sharepoint.com/sites/msteams_03d426 사이트 ID 조회
+      const siteResp = await fetchFn(
+        `https://graph.microsoft.com/v1.0/sites/cams2002.sharepoint.com:/sites/msteams_03d426?$select=id`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!siteResp.ok) {
+        const text = await siteResp.text().catch(() => '');
+        throw new BadRequestException(`Failed to get site ID: ${siteResp.status} ${text}`);
+      }
+      const siteData = await siteResp.json();
+      targetSiteId = siteData.id;
+    }
+
+    // 2. 리스트 ID 조회
+    const listsResp = await fetchFn(
+      `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists?$filter=displayName eq '${listName}'`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!listsResp.ok) {
+      const text = await listsResp.text().catch(() => '');
+      throw new BadRequestException(`Failed to get list: ${listsResp.status} ${text}`);
+    }
+    const listsData = await listsResp.json();
+    const list = listsData.value?.[0];
+    if (!list) {
+      throw new BadRequestException(`List '${listName}' not found`);
+    }
+
+    // 3. 리스트 아이템 조회 (최근 10개)
+    const itemsResp = await fetchFn(
+      `https://graph.microsoft.com/v1.0/sites/${targetSiteId}/lists/${list.id}/items?$expand=fields&$orderby=createdDateTime desc&$top=10`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!itemsResp.ok) {
+      const text = await itemsResp.text().catch(() => '');
+      throw new BadRequestException(`Failed to get list items: ${itemsResp.status} ${text}`);
+    }
+    const itemsData = await itemsResp.json();
+    const items = itemsData.value || [];
+
+    // 4. 필터링: 제목 포함 + 작성자 비어있음
+    const filtered = items.filter((item: any) => {
+      const title = item.fields?.Title || '';
+      const author = item.fields?.Author || item.fields?.['작성자'] || '';
+      return title.includes(titleFilter) && (!author || author.trim() === '');
+    });
+
+    if (filtered.length === 0) {
+      return { success: false, message: `조건에 맞는 항목 없음 (제목: "${titleFilter}", 작성자: 비어있음)`, itemsChecked: items.length };
+    }
+
+    // 5. 가장 최근 항목 선택
+    const latestItem = filtered[0];
+    const fields = latestItem.fields || {};
+
+    // 6. 로봇 사용자 찾기/생성
+    let robotUser = await this.prisma.user.findFirst({ where: { name: '로봇' } });
+    if (!robotUser && body.robotUserId) {
+      robotUser = await this.prisma.user.findUnique({ where: { id: body.robotUserId } });
+    }
+    if (!robotUser) {
+      // 로봇 사용자가 없으면 생성
+      robotUser = await this.prisma.user.create({
+        data: {
+          name: '로봇',
+          email: 'robot@workwork.local',
+          role: 'INDIVIDUAL' as any,
+        },
+      });
+    }
+
+    // 7. 팀/OKR 구조 확인
+    let team: any = null;
+    if (robotUser.orgUnitId) {
+      team = await this.prisma.orgUnit.findUnique({ where: { id: robotUser.orgUnitId } });
+    }
+    if (!team) {
+      team = await this.prisma.orgUnit.findFirst({ where: { name: '자동화', type: 'TEAM' } });
+      if (!team) {
+        team = await this.prisma.orgUnit.create({ data: { name: '자동화', type: 'TEAM' } });
+      }
+      await this.prisma.user.update({ where: { id: robotUser.id }, data: { orgUnitId: team.id } });
+    }
+
+    // OKR 구조 생성
+    const periodStart = new Date();
+    const periodEnd = new Date(periodStart.getTime() + 365 * 24 * 60 * 60 * 1000);
+    let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
+    if (!objective) {
+      objective = await this.prisma.objective.create({
+        data: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id, ownerId: robotUser.id, periodStart, periodEnd, status: 'ACTIVE' as any },
+      });
+    }
+    let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Auto KR', objectiveId: objective.id } });
+    if (!kr) {
+      kr = await this.prisma.keyResult.create({
+        data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: robotUser.id, objectiveId: objective.id },
+      });
+    }
+    let initiative = await this.prisma.initiative.findFirst({ where: { title: '[SharePoint] 자동 업무', keyResultId: kr.id, ownerId: robotUser.id } });
+    if (!initiative) {
+      initiative = await this.prisma.initiative.create({ data: { title: '[SharePoint] 자동 업무', keyResultId: kr.id, ownerId: robotUser.id, state: 'ACTIVE' as any } });
+    }
+
+    // 8. 업무일지 생성
+    const title = fields.Title || '제목 없음';
+    const content = fields['내용'] || fields.OData__x0020__xb0b4__xc6a9_ || fields.Content || '';
+    const notes = fields.Notes || fields['메모'] || '';
+    const fullNote = `${title}\n\n${content}${notes ? `\n\n---\nNotes:\n${notes}` : ''}`;
+
+    // 날짜 파싱
+    let dateVal = new Date();
+    const workStartTime = fields['업무시작시간'] || fields.WorkStartTime || latestItem.createdDateTime;
+    if (workStartTime) {
+      const parsed = new Date(workStartTime);
+      if (!isNaN(parsed.getTime())) {
+        dateVal = parsed;
+      }
+    }
+
+    const wl = await this.prisma.worklog.create({
+      data: {
+        initiativeId: initiative.id,
+        createdById: robotUser.id,
+        note: fullNote,
+        timeSpentMinutes: 0,
+        date: dateVal,
+        visibility: 'ALL' as any,
+        structuredData: {
+          source: 'SharePoint',
+          listName,
+          itemId: latestItem.id,
+          importedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    await this.prisma.event.create({
+      data: {
+        subjectType: 'Worklog',
+        subjectId: wl.id,
+        activity: 'WorklogCreated',
+        userId: robotUser.id,
+        attrs: { source: 'SharePoint', listName, itemId: latestItem.id },
+      },
+    });
+
+    return {
+      success: true,
+      worklogId: wl.id,
+      title,
+      content: content.slice(0, 200) + (content.length > 200 ? '...' : ''),
+      notes: notes.slice(0, 100) + (notes.length > 100 ? '...' : ''),
+      date: dateVal.toISOString(),
+      robotUserId: robotUser.id,
+      sharePointItemId: latestItem.id,
+    };
+  }
 }
