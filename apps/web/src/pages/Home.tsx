@@ -273,12 +273,10 @@ export function Home() {
       } catch {
         setPendingInstructions([]);
       }
-      // 내 업무일지에 달린 다른 사람의 댓글 (최근 7일, 업무지시 제외)
+      // 나에게 온 댓글 알림 (읽지 않은 것)
       try {
-        const res = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&worklogAuthorId=${encodeURIComponent(viewerId)}&excludeAuthorId=${encodeURIComponent(viewerId)}&excludeType=INSTRUCTION&limit=20`);
-        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        const recent = (res.items || []).filter((c: any) => new Date(c.createdAt).getTime() > sevenDaysAgo);
-        setPendingComments(recent);
+        const res = await apiJson<{ items: any[] }>(`/api/inbox?userId=${encodeURIComponent(viewerId)}&type=FeedbackAdded&onlyUnread=true&limit=20`);
+        setPendingComments(res.items || []);
       } catch {
         setPendingComments([]);
       }
@@ -334,30 +332,35 @@ export function Home() {
           )}
           {pendingComments.length > 0 && (
             <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, padding: 10 }}>
-              <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6, fontSize: 13 }}>💬 내 업무일지 댓글 ({pendingComments.length}건) - 답변하기</div>
+              <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6, fontSize: 13 }}>💬 내게 온 댓글 ({pendingComments.length}건) - 답변하기</div>
               <div style={{ display: 'grid', gap: 6 }}>
-                {pendingComments.slice(0, 3).map((c: any) => (
-                  <div
-                    key={c.id}
-                    onClick={async () => {
-                      if (!c.subjectId) return;
-                      try {
-                        const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(c.subjectId)}`);
-                        setDetail(wl);
-                      } catch {
-                        alert('업무일지를 불러올 수 없습니다');
-                      }
-                    }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
-                  >
-                    <span style={{ color: '#1e40af', fontWeight: 600 }}>• {c.authorName || '작성자'}</span>
-                    <span style={{ color: '#1e3a8a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {(c.content || '').slice(0, 30)}{(c.content || '').length > 30 ? '...' : ''}
-                    </span>
-                    <span style={{ fontSize: 11, color: '#6b7280' }}>{new Date(c.createdAt).toLocaleDateString()}</span>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>답변 →</span>
-                  </div>
-                ))}
+                {pendingComments.slice(0, 3).map((n: any) => {
+                  const fb = n._feedback || {};
+                  return (
+                    <div
+                      key={n.id}
+                      onClick={async () => {
+                        if (!n.subjectId) return;
+                        try {
+                          const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(n.subjectId)}`);
+                          setDetail(wl);
+                          // Mark notification as read
+                          apiJson(`/api/notifications/${n.id}/read`, { method: 'POST', body: JSON.stringify({ actorId: localStorage.getItem('userId') || '' }) }).catch(() => {});
+                        } catch {
+                          alert('업무일지를 불러올 수 없습니다');
+                        }
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
+                    >
+                      <span style={{ color: '#1e40af', fontWeight: 600 }}>• {fb.authorName || '작성자'}</span>
+                      <span style={{ color: '#1e3a8a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(fb.content || '').slice(0, 30)}{(fb.content || '').length > 30 ? '...' : ''}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#6b7280' }}>{new Date(n.createdAt).toLocaleDateString()}</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>답변 →</span>
+                    </div>
+                  );
+                })}
                 {pendingComments.length > 3 && (
                   <div style={{ fontSize: 12, color: '#1d4ed8' }}>외 {pendingComments.length - 3}건 더...</div>
                 )}
