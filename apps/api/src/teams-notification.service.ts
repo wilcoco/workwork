@@ -360,8 +360,136 @@ export class TeamsNotificationService {
       this.logger.log(`[notify] sending type=${nType} to aadId=${resolvedAadId}`);
       await this.sendActivityNotificationWithToken(resolvedAadId, token, body);
       this.logger.log(`[notify] sent ok type=${nType} to aadId=${resolvedAadId}`);
+
+      // Also send 1:1 chat message for more visibility
+      const chatMessage = this.buildChatMessage(notification);
+      await this.sendChatMessageWithToken(resolvedAadId, token, chatMessage);
     } catch (e) {
       this.logger.error(`teams notification failed: ${this.formatError(e)}`, (e as any)?.stack);
+    }
+  }
+
+  private buildChatMessage(n: AppNotificationLike): string {
+    const t = String(n?.type || '').trim();
+    const sender = String((n as any)?._senderName || '').trim();
+    const title = String((n as any)?._subjectTitle || '').trim();
+    const deepUrl = this.buildWebUrlForNotification(n);
+
+    const lines: string[] = [];
+
+    // Header with emoji
+    if (t === 'ApprovalRequested') {
+      lines.push('📋 **결재 요청**');
+      if (sender) lines.push(`신청자: ${sender}`);
+    } else if (t === 'HelpRequested') {
+      lines.push('🤝 **업무협조 요청**');
+      if (sender) lines.push(`요청자: ${sender}`);
+    } else if (t === 'Delegated') {
+      lines.push('📌 **업무 위임**');
+      if (sender) lines.push(`위임자: ${sender}`);
+    } else if (t === 'ProcessStarted') {
+      lines.push('▶️ **프로세스 시작**');
+      if (sender) lines.push(`시작자: ${sender}`);
+    } else if (t === 'ProcessTaskReady') {
+      const name = String(n?.payload?.taskName || '').trim();
+      const stage = String(n?.payload?.stageLabel || '').trim();
+      const label = [name, stage].filter(Boolean).join(' · ');
+      lines.push('✅ **내 단계 시작**');
+      if (label) lines.push(`단계: ${label}`);
+    } else {
+      lines.push('🔔 **새 알림**');
+    }
+
+    if (title) lines.push(`제목: ${title}`);
+    if (deepUrl) lines.push(`\n[바로가기](${deepUrl})`);
+
+    return lines.join('\n');
+  }
+
+  private async findOrCreateOneOnOneChat(userAadId: string, token: string): Promise<string | null> {
+    try {
+      // Get the app's service principal ID (bot ID)
+      const botId = String(process.env.TEAMS_BOT_AAD_ID || process.env.ENTRA_CLIENT_ID || '').trim();
+      if (!botId) {
+        this.logger.error('TEAMS_BOT_AAD_ID or ENTRA_CLIENT_ID not configured');
+        return null;
+      }
+
+      // Create or get existing 1:1 chat
+      const url = 'https://graph.microsoft.com/v1.0/chats';
+      const body = {
+        chatType: 'oneOnOne',
+        members: [
+          {
+            '@odata.type': '#microsoft.graph.aadUserConversationMember',
+            roles: ['owner'],
+            'user@odata.bind': `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userAadId)}`,
+          },
+          {
+            '@odata.type': '#microsoft.graph.aadUserConversationMember',
+            roles: ['owner'],
+            'user@odata.bind': `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(botId)}`,
+          },
+        ],
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const detail = await this.formatGraphFailure(res, token);
+        this.logger.error(`create chat failed (${res.status})${detail}`);
+        return null;
+      }
+
+      const json: any = await res.json().catch(() => ({}));
+      const chatId = String(json?.id || '').trim();
+      if (!chatId) {
+        this.logger.error('create chat missing id');
+        return null;
+      }
+
+      return chatId;
+    } catch (e) {
+      this.logger.error(`findOrCreateOneOnOneChat error: ${this.formatError(e)}`, (e as any)?.stack);
+      return null;
+    }
+  }
+
+  private async sendChatMessageWithToken(userAadId: string, token: string, message: string): Promise<void> {
+    try {
+      const chatId = await this.findOrCreateOneOnOneChat(userAadId, token);
+      if (!chatId) {
+        this.logger.warn(`[chat] skipping chat message - no chatId for user ${userAadId}`);
+        return;
+      }
+
+      const url = `https://graph.microsoft.com/v1.0/chats/${encodeURIComponent(chatId)}/messages`;
+      const body = {
+        body: {
+          contentType: 'html',
+          content: message.replace(/\n/g, '<br>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>'),
+        },
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const detail = await this.formatGraphFailure(res, token);
+        this.logger.error(`send chat message failed (${res.status})${detail}`);
+        return;
+      }
+
+      this.logger.log(`[chat] sent message to user ${userAadId}`);
+    } catch (e) {
+      this.logger.error(`sendChatMessageWithToken error: ${this.formatError(e)}`, (e as any)?.stack);
     }
   }
 }

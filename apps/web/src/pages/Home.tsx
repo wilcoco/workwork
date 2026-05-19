@@ -41,6 +41,9 @@ export function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overdueTasks, setOverdueTasks] = useState<any[]>([]);
+  // 알림 배너용 상태
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+  const [pendingInstructions, setPendingInstructions] = useState<any[]>([]);
   const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
   const [overdueYear, setOverdueYear] = useState<'2026' | 'before' | 'all'>('2026');
   const [overdueLoading, setOverdueLoading] = useState(false);
@@ -69,11 +72,12 @@ export function Home() {
   // Team/name filter options come from a one-time sample fetch so the
   // dropdowns are not limited to the current page's entries.
   const [facetSample, setFacetSample] = useState<WL[]>([]);
+  // All teams from org units API (not just those with worklogs)
+  const [allTeams, setAllTeams] = useState<string[]>([]);
   const teamOptions = useMemo(() => {
-    const s = new Set<string>();
-    facetSample.forEach(w => { if (w.teamName) s.add(w.teamName); });
-    return Array.from(s).sort();
-  }, [facetSample]);
+    // Use allTeams from org API instead of deriving from worklogs
+    return allTeams.slice().sort();
+  }, [allTeams]);
   const nameOptions = useMemo(() => {
     const s = new Set<string>();
     facetSample.forEach(w => {
@@ -192,6 +196,12 @@ export function Home() {
         );
         setFacetSample(fs.items || []);
       } catch {}
+      // Fetch all org units (teams) so the team filter shows ALL teams, not just those with worklogs
+      try {
+        const orgs = await apiJson<{ items: Array<{ id: string; name: string }> }>('/api/orgs');
+        const names = (orgs.items || []).map((o) => o.name).filter(Boolean);
+        setAllTeams(names);
+      } catch {}
     })();
   }, []);
 
@@ -235,6 +245,28 @@ export function Home() {
     })();
   }, []);
 
+  // 알림 배너: 대기 중인 결재 및 업무 지시 조회
+  useEffect(() => {
+    const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+    if (!viewerId) return;
+    (async () => {
+      // 내가 결재해야 할 건
+      try {
+        const res = await apiJson<{ items: any[] }>(`/api/approvals?approverId=${encodeURIComponent(viewerId)}&status=PENDING&limit=10`);
+        setPendingApprovals(res.items || []);
+      } catch {
+        setPendingApprovals([]);
+      }
+      // 나에게 온 업무 지시 (미완료)
+      try {
+        const res = await apiJson<{ items: any[] }>(`/api/instructions?assigneeId=${encodeURIComponent(viewerId)}&status=OPEN&limit=10`);
+        setPendingInstructions(res.items || []);
+      } catch {
+        setPendingInstructions([]);
+      }
+    })();
+  }, []);
+
   if (loading && !worklogs.length) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200, color: '#64748b', fontWeight: 600 }}>
@@ -245,6 +277,72 @@ export function Home() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      {/* 알림 배너 */}
+      {(pendingApprovals.length > 0 || pendingInstructions.length > 0) && (
+        <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 20 }}>🔔</span>
+            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>처리가 필요한 항목이 있습니다</span>
+          </div>
+          {pendingApprovals.length > 0 && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 6, fontSize: 13 }}>📋 결재 대기 ({pendingApprovals.length}건)</div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {pendingApprovals.slice(0, 3).map((a: any) => (
+                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                    <span style={{ color: '#78350f' }}>• {a.requestedBy?.name || '신청자'}</span>
+                    <span style={{ color: '#92400e', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {a.subjectType === 'CAR_DISPATCH' && '[배차]'}
+                      {a.subjectType === 'LOGISTICS_DISPATCH' && '[물류배차]'}
+                      {a.subjectType === 'ATTENDANCE' && '[근태]'}
+                      {a.subjectType === 'BUSINESS_TRIP' && '[출장]'}
+                      {a.subjectType === 'Worklog' && '[업무일지]'}
+                      {a.subjectType === 'PROCESS' && '[프로세스]'}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#a16207' }}>{new Date(a.createdAt).toLocaleDateString()}</span>
+                  </div>
+                ))}
+                {pendingApprovals.length > 3 && (
+                  <div style={{ fontSize: 12, color: '#a16207' }}>외 {pendingApprovals.length - 3}건 더...</div>
+                )}
+              </div>
+              <button
+                onClick={() => nav('/approvals/inbox')}
+                style={{ marginTop: 8, background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
+              >
+                결재하기 →
+              </button>
+            </div>
+          )}
+          {pendingInstructions.length > 0 && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 6, fontSize: 13 }}>📌 업무 지시 ({pendingInstructions.length}건)</div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {pendingInstructions.slice(0, 3).map((ins: any) => (
+                  <div
+                    key={ins.id}
+                    onClick={() => ins.sourceWorklogId && nav(`/worklogs/${ins.sourceWorklogId}`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: ins.sourceWorklogId ? 'pointer' : 'default', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
+                  >
+                    <span style={{ color: '#7f1d1d', fontWeight: 600 }}>• {ins.assignerName || '지시자'}</span>
+                    <span style={{ color: '#991b1b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ins.title || '업무 지시'}
+                    </span>
+                    {ins.dueDate && (
+                      <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>마감 {new Date(ins.dueDate).toLocaleDateString()}</span>
+                    )}
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
+                  </div>
+                ))}
+                {pendingInstructions.length > 3 && (
+                  <div style={{ fontSize: 12, color: '#b91c1c' }}>외 {pendingInstructions.length - 3}건 더...</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
         <select value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', height: 34, width: isMobile ? '100%' : 140, maxWidth: isMobile ? '100%' : undefined, appearance: 'auto' as any }}>
           <option value="">팀 전체</option>
