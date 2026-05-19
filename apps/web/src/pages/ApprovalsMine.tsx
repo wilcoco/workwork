@@ -10,18 +10,18 @@ export function ApprovalsMine() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState<any | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'APPROVAL' | 'REQUEST'>('ALL');
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
     if (uid) setUserId(uid);
-    // auto load when available
-    if (uid) void load(uid);
   }, []);
 
   useEffect(() => {
     if (userId) void load(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, statusFilter]);
 
   async function load(reqUserId?: string) {
     const uid = reqUserId || userId;
@@ -29,7 +29,11 @@ export function ApprovalsMine() {
     setLoading(true);
     setError(null);
     try {
-      const list = await apiJson<{ items: any[] }>(`/api/approvals?requestedById=${encodeURIComponent(uid)}&limit=50`);
+      const params = new URLSearchParams();
+      params.set('requestedById', uid);
+      params.set('limit', '50');
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      const list = await apiJson<{ items: any[] }>(`/api/approvals?${params.toString()}`);
       const baseItems = (list.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       // enrich subjects
       const enriched = await Promise.all(baseItems.map(async (a: any) => {
@@ -64,11 +68,39 @@ export function ApprovalsMine() {
     }
   }
 
+  const filteredItems = items.filter((a) => {
+    if (typeFilter === 'ALL') return true;
+    const st = String(a.subjectType || '').toUpperCase();
+    const requestTypes = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
+    const isRequest = requestTypes.includes(st);
+    return typeFilter === 'REQUEST' ? isRequest : !isRequest;
+  });
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {error && <div style={{ color: 'red' }}>{error}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>상태</label>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} style={input}>
+            <option value="ALL">전체</option>
+            <option value="PENDING">미승인</option>
+            <option value="APPROVED">승인</option>
+            <option value="REJECTED">반려</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>유형</label>
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} style={input}>
+            <option value="ALL">전체</option>
+            <option value="APPROVAL">일반 결재</option>
+            <option value="REQUEST">신청</option>
+          </select>
+        </div>
+        {loading && <span style={{ fontSize: 12, color: '#64748b' }}>로딩중...</span>}
+      </div>
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.map((it) => {
+        {filteredItems.map((it) => {
           const requestedByName = String(it.requestedBy?.name || '-');
           const requestedById = String(it.requestedBy?.id || '');
           const currentApproverName = String(it.currentApprover?.name || '');
@@ -111,7 +143,7 @@ export function ApprovalsMine() {
             </div>
           );
         })}
-        {!items.length && <div>표시된 진행 내역 없음</div>}
+        {!filteredItems.length && <div style={{ color: '#64748b' }}>표시할 결재 내역이 없습니다</div>}
       </div>
       {active && (
         <div style={modalOverlay} onClick={() => setActive(null)}>
