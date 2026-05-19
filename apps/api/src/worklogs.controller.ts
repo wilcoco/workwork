@@ -1263,7 +1263,7 @@ export class WorklogsController {
         take: fetchTake,
         skip: cursor ? 1 : useOffset ? offsetNum : 0,
         ...(cursor ? { cursor: { id: cursor } } : {}),
-        orderBy: { date: 'desc' },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
         include: { createdBy: { include: { orgUnit: true } }, initiative: true },
       }),
       wantTotal ? this.prisma.worklog.count({ where: finalWhere }) : Promise.resolve(undefined),
