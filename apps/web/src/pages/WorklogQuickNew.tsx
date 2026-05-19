@@ -20,6 +20,7 @@ export function WorklogQuickNew() {
   const processInstanceId = params?.get('processInstanceId') || '';
   const taskInstanceId = params?.get('taskInstanceId') || '';
   const helpTicketIdParam = params?.get('helpTicketId') || '';
+  const instructionIdParam = params?.get('instructionId') || '';
   const [date, setDate] = useState<string>(() => todayKstYmd());
   const [teamName, setTeamName] = useState<string>('');
   const [timeSpentHours, setTimeSpentHours] = useState<number>(0);
@@ -278,17 +279,42 @@ export function WorklogQuickNew() {
       if (!myUserId) return;
       try {
         const r = await apiJson<{ items: any[] }>(`/api/instructions?assigneeId=${encodeURIComponent(myUserId)}&status=OPEN,IN_PROGRESS`);
-        setMyInstructions((r.items || []).map((x: any) => ({
+        const instructions = (r.items || []).map((x: any) => ({
           id: x.id,
           title: x.title,
           description: x.description,
           assignerName: x.assignerName,
           sourceWorklogId: x.sourceWorklogId,
           dueDate: x.dueDate,
-        })));
+        }));
+        // If instructionIdParam is given but not in list, fetch it individually
+        if (instructionIdParam) {
+          const exists = instructions.some((i: any) => String(i.id) === String(instructionIdParam));
+          if (!exists) {
+            try {
+              const ins = await apiJson<any>(`/api/instructions/${encodeURIComponent(instructionIdParam)}`);
+              instructions.unshift({
+                id: ins.id,
+                title: ins.title,
+                description: ins.description,
+                assignerName: ins.assignerName,
+                sourceWorklogId: ins.sourceWorklogId,
+                dueDate: ins.dueDate,
+              });
+            } catch {}
+          }
+          // Auto-select this instruction
+          setSelection(`inst:${instructionIdParam}`);
+          // Auto-fill title from instruction title
+          const ins = instructions.find((x: any) => String(x.id) === String(instructionIdParam));
+          if (ins && !title) {
+            setTitle(ins.title || '업무 지시 처리');
+          }
+        }
+        setMyInstructions(instructions);
       } catch {}
     })();
-  }, [myUserId]);
+  }, [myUserId, instructionIdParam]);
 
   // Load Planner tasks for selection (silently skip if not connected)
   useEffect(() => {

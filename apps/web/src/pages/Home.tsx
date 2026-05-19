@@ -363,7 +363,7 @@ export function Home() {
                 {pendingInstructions.slice(0, 3).map((ins: any) => (
                   <div
                     key={ins.id}
-                    onClick={() => nav(`/worklogs/new?instructionId=${encodeURIComponent(ins.id)}`)}
+                    onClick={() => nav(`/quick?instructionId=${encodeURIComponent(ins.id)}`)}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
                   >
                     <span style={{ color: '#7f1d1d', fontWeight: 600 }}>• {ins.assignerName || '지시자'}</span>
