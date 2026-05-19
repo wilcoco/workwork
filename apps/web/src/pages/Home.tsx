@@ -254,14 +254,11 @@ export function Home() {
     const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
     if (!viewerId) return;
     (async () => {
-      // 내가 결재해야 할 건 (최대 3건 표시 + 총 건수)
+      // 내가 결재해야 할 건 (현재 내 차례인 것만, 최대 3건 표시 + 총 건수)
       try {
-        const [res, summary] = await Promise.all([
-          apiJson<{ items: any[] }>(`/api/approvals?approverId=${encodeURIComponent(viewerId)}&status=PENDING&limit=3`),
-          apiJson<{ counts: Record<string, number> }>(`/api/approvals/summary?approverId=${encodeURIComponent(viewerId)}`),
-        ]);
+        const res = await apiJson<{ items: any[]; total?: number }>(`/api/approvals?approverId=${encodeURIComponent(viewerId)}&status=PENDING&currentApproverOnly=true&withTotal=1&limit=3`);
         setPendingApprovals(res.items || []);
-        setPendingApprovalsTotal(summary.counts?.PENDING ?? res.items?.length ?? 0);
+        setPendingApprovalsTotal(res.total ?? res.items?.length ?? 0);
       } catch {
         setPendingApprovals([]);
         setPendingApprovalsTotal(0);

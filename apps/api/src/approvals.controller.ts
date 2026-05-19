@@ -85,6 +85,9 @@ class ListApprovalsQueryDto {
 
   @IsOptional() @IsString()
   withTotal?: string;
+
+  @IsOptional() @IsString()
+  currentApproverOnly?: string; // 'true' to filter only where user is current approver
 }
 
 @Controller('approvals')
@@ -138,15 +141,50 @@ export class ApprovalsController {
         },
       },
     });
-    const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
+
+    // Filter to only show items where user is current approver (their turn)
+    const currentApproverOnly = q.currentApproverOnly === 'true' || q.currentApproverOnly === '1';
+    let filtered = items;
+    if (currentApproverOnly && q.approverId) {
+      filtered = items.filter((a: any) => {
+        if (a.status !== 'PENDING') return false;
+        const steps = a.steps || [];
+        if (steps.length > 0) {
+          // Multi-step: find first PENDING step
+          const pendingStep = steps.find((s: any) => s.status === 'PENDING');
+          return pendingStep && pendingStep.approverId === q.approverId;
+        }
+        // Single-step: check current approver
+        return a.approverId === q.approverId;
+      });
+    }
+
+    const nextCursor = filtered.length === limit ? filtered[filtered.length - 1]?.id : undefined;
 
     // Optionally count total for offset-based pagination
     let total: number | undefined;
     if (wantTotal) {
-      total = await this.prisma.approvalRequest.count({ where });
+      if (currentApproverOnly && q.approverId) {
+        // Need to count filtered results properly - fetch all and count
+        const allItems = await this.prisma.approvalRequest.findMany({
+          where,
+          include: { steps: { orderBy: { stepNo: 'asc' } } },
+        });
+        total = allItems.filter((a: any) => {
+          if (a.status !== 'PENDING') return false;
+          const steps = a.steps || [];
+          if (steps.length > 0) {
+            const pendingStep = steps.find((s: any) => s.status === 'PENDING');
+            return pendingStep && pendingStep.approverId === q.approverId;
+          }
+          return a.approverId === q.approverId;
+        }).length;
+      } else {
+        total = await this.prisma.approvalRequest.count({ where });
+      }
     }
     return {
-      items: items.map((a: any) => ({
+      items: filtered.map((a: any) => ({
         id: a.id,
         subjectType: a.subjectType,
         subjectId: a.subjectId,
