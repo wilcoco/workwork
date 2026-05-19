@@ -1,0 +1,10 @@
+{
+  "name": "workwork-cron-import",
+  "version": "1.0.0",
+  "description": "SharePoint 생산 데이터 자동 가져오기",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {}
+}
