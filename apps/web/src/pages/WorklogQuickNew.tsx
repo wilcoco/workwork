@@ -305,10 +305,16 @@ export function WorklogQuickNew() {
           }
           // Auto-select this instruction
           setSelection(`inst:${instructionIdParam}`);
-          // Auto-fill title from instruction title
+          // Auto-fill title from instruction details: "업무지시내용: [내용] (지시자: [이름], 지시일: [날짜])"
           const ins = instructions.find((x: any) => String(x.id) === String(instructionIdParam));
           if (ins && !title) {
-            setTitle(ins.title || '업무 지시 처리');
+            const content = ins.title || ins.description || '업무 지시';
+            const dueDateStr = ins.dueDate ? new Date(ins.dueDate).toLocaleDateString('ko-KR') : '';
+            const meta = [
+              ins.assignerName ? `지시자: ${ins.assignerName}` : '',
+              dueDateStr ? `지시일: ${dueDateStr}` : '',
+            ].filter(Boolean).join(', ');
+            setTitle(`업무지시내용: ${content}${meta ? ` (${meta})` : ''}`);
           }
         }
         setMyInstructions(instructions);
