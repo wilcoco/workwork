@@ -79,6 +79,12 @@ class ListApprovalsQueryDto {
 
   @IsOptional() @IsString()
   cursor?: string;
+
+  @IsOptional() @IsString()
+  offset?: string;
+
+  @IsOptional() @IsString()
+  withTotal?: string;
 }
 
 @Controller('approvals')
@@ -112,11 +118,16 @@ export class ApprovalsController {
       if (q.to) (where.createdAt as any).lte = new Date(q.to);
     }
     const limit = Math.min(parseInt(q.limit || '20', 10) || 20, 100);
+    const offset = parseInt(q.offset || '0', 10) || 0;
+    const wantTotal = q.withTotal === '1' || q.withTotal === 'true';
+
+    // If offset is provided, use offset-based pagination instead of cursor
+    const useCursor = !q.offset && q.cursor;
     const items = await this.prisma.approvalRequest.findMany({
       where,
       take: limit,
-      skip: q.cursor ? 1 : 0,
-      ...(q.cursor ? { cursor: { id: q.cursor } } : {}),
+      skip: useCursor ? 1 : offset,
+      ...(useCursor ? { cursor: { id: q.cursor } } : {}),
       orderBy: { createdAt: 'desc' },
       include: {
         requestedBy: true,
@@ -128,6 +139,12 @@ export class ApprovalsController {
       },
     });
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
+
+    // Optionally count total for offset-based pagination
+    let total: number | undefined;
+    if (wantTotal) {
+      total = await this.prisma.approvalRequest.count({ where });
+    }
     return {
       items: items.map((a: any) => ({
         id: a.id,
@@ -150,6 +167,7 @@ export class ApprovalsController {
         })),
       })),
       nextCursor,
+      ...(total !== undefined ? { total } : {}),
     };
   }
 

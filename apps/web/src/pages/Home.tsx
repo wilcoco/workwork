@@ -246,17 +246,25 @@ export function Home() {
     })();
   }, []);
 
+  // Total pending approvals count (for banner display)
+  const [pendingApprovalsTotal, setPendingApprovalsTotal] = useState<number>(0);
+
   // 알림 배너: 대기 중인 결재, 업무 지시, 내 업무일지 댓글 조회
   useEffect(() => {
     const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
     if (!viewerId) return;
     (async () => {
-      // 내가 결재해야 할 건
+      // 내가 결재해야 할 건 (최대 3건 표시 + 총 건수)
       try {
-        const res = await apiJson<{ items: any[] }>(`/api/approvals?approverId=${encodeURIComponent(viewerId)}&status=PENDING&limit=10`);
+        const [res, summary] = await Promise.all([
+          apiJson<{ items: any[] }>(`/api/approvals?approverId=${encodeURIComponent(viewerId)}&status=PENDING&limit=3`),
+          apiJson<{ counts: Record<string, number> }>(`/api/approvals/summary?approverId=${encodeURIComponent(viewerId)}`),
+        ]);
         setPendingApprovals(res.items || []);
+        setPendingApprovalsTotal(summary.counts?.PENDING ?? res.items?.length ?? 0);
       } catch {
         setPendingApprovals([]);
+        setPendingApprovalsTotal(0);
       }
       // 나에게 온 업무 지시 (미완료)
       try {
@@ -288,15 +296,15 @@ export function Home() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* 알림 배너 */}
-      {(pendingApprovals.length > 0 || pendingInstructions.length > 0 || pendingComments.length > 0) && (
+      {(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
             <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>처리가 필요한 항목이 있습니다</span>
           </div>
-          {pendingApprovals.length > 0 && (
+          {pendingApprovalsTotal > 0 && (
             <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: 10 }}>
-              <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 6, fontSize: 13 }}>📋 결재 대기 ({pendingApprovals.length}건)</div>
+              <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 6, fontSize: 13 }}>📋 결재 대기 ({pendingApprovalsTotal}건)</div>
               <div style={{ display: 'grid', gap: 4 }}>
                 {pendingApprovals.slice(0, 3).map((a: any) => (
                   <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
@@ -312,8 +320,8 @@ export function Home() {
                     <span style={{ fontSize: 11, color: '#a16207' }}>{new Date(a.createdAt).toLocaleDateString()}</span>
                   </div>
                 ))}
-                {pendingApprovals.length > 3 && (
-                  <div style={{ fontSize: 12, color: '#a16207' }}>외 {pendingApprovals.length - 3}건 더...</div>
+                {pendingApprovalsTotal > 3 && (
+                  <div style={{ fontSize: 12, color: '#a16207' }}>외 {pendingApprovalsTotal - 3}건 더...</div>
                 )}
               </div>
               <button

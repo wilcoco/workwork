@@ -6,6 +6,8 @@ import { ProcessDocument } from '../components/ProcessDocument';
 import { UserAvatar } from '../components/UserAvatar';
 import { ApprovalStepLadder, turnBadge, type ApprovalStep } from '../components/ApprovalSteps';
 
+const PAGE_SIZE = 20;
+
 export function ApprovalsInbox() {
   const [userId, setUserId] = useState<string>('');
   const [items, setItems] = useState<any[]>([]);
@@ -17,6 +19,8 @@ export function ApprovalsInbox() {
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'APPROVAL' | 'REQUEST'>('ALL');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [worklogPopup, setWorklogPopup] = useState<{ id: string; title: string; contentHtml: string; note: string; files?: any[]; createdAt: string; createdBy?: { name: string } } | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -25,7 +29,12 @@ export function ApprovalsInbox() {
 
   useEffect(() => {
     if (userId) void load();
-  }, [userId, statusFilter]);
+  }, [userId, statusFilter, page]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter]);
 
   async function load() {
     if (!userId) return;
@@ -35,7 +44,11 @@ export function ApprovalsInbox() {
       const params = new URLSearchParams();
       params.set('approverId', userId);
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
-      const res = await apiJson<{ items: any[] }>(`/api/approvals?${params.toString()}`);
+      params.set('limit', String(PAGE_SIZE));
+      params.set('offset', String((page - 1) * PAGE_SIZE));
+      params.set('withTotal', '1');
+      const res = await apiJson<{ items: any[]; total?: number }>(`/api/approvals?${params.toString()}`);
+      setTotal(res.total ?? res.items?.length ?? 0);
       const base = (res.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       // Batch fetch all subject docs in one call to avoid N+1
       let docMap: Record<string, any> = {};
@@ -280,6 +293,28 @@ export function ApprovalsInbox() {
         })}
         {!items.length && <div>해당 상태의 결재 없음</div>}
       </div>
+      {/* Pagination */}
+      {total > PAGE_SIZE && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 12 }}>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            style={{ ...paginationBtn, opacity: page <= 1 ? 0.5 : 1 }}
+          >
+            ← 이전
+          </button>
+          <span style={{ fontSize: 13, color: '#475569' }}>
+            {page} / {Math.ceil(total / PAGE_SIZE)} 페이지 (총 {total}건)
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(Math.ceil(total / PAGE_SIZE), p + 1))}
+            disabled={page >= Math.ceil(total / PAGE_SIZE)}
+            style={{ ...paginationBtn, opacity: page >= Math.ceil(total / PAGE_SIZE) ? 0.5 : 1 }}
+          >
+            다음 →
+          </button>
+        </div>
+      )}
       {active && (
         <div style={modalOverlay} onClick={() => setActive(null)}>
           <div style={modalBody} onClick={(e) => e.stopPropagation()}>
@@ -522,6 +557,17 @@ const compactGhostBtn: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
   flexShrink: 0,
+};
+
+const paginationBtn: React.CSSProperties = {
+  background: '#FFFFFF',
+  color: '#0F3D73',
+  border: '1px solid #CBD5E1',
+  borderRadius: 8,
+  padding: '8px 16px',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
 };
 
 const modalOverlay: React.CSSProperties = {
