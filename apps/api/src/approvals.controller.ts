@@ -329,6 +329,9 @@ export class ApprovalsController {
         if (updated.subjectType === 'BUSINESS_TRIP') {
           await (tx as any).businessTripRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
         }
+        if (updated.subjectType === 'ATTENDANCE') {
+          await (tx as any).attendanceRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
+        }
         const engine = new ProcessesController(this.prisma);
         await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id, comment: dto.comment } } });
@@ -372,6 +375,9 @@ export class ApprovalsController {
       if (updated.subjectType === 'BUSINESS_TRIP') {
         await (tx as any).businessTripRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
       }
+      if (updated.subjectType === 'ATTENDANCE') {
+        await (tx as any).attendanceRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
+      }
       const engine = new ProcessesController(this.prisma);
       await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
       await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id } } });
@@ -397,6 +403,9 @@ export class ApprovalsController {
         if (updated.subjectType === 'BUSINESS_TRIP') {
           await (tx as any).businessTripRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
         }
+        if (updated.subjectType === 'ATTENDANCE') {
+          await (tx as any).attendanceRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
+        }
         const engine = new ProcessesController(this.prisma);
         await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, reason: dto.comment } } });
@@ -420,6 +429,9 @@ export class ApprovalsController {
       }
       if (updated.subjectType === 'BUSINESS_TRIP') {
         await (tx as any).businessTripRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
+      }
+      if (updated.subjectType === 'ATTENDANCE') {
+        await (tx as any).attendanceRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
       }
       const engine = new ProcessesController(this.prisma);
       await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
