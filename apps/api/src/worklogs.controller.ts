@@ -167,6 +167,20 @@ class CreateSimpleWorklogDto {
   @IsOptional() @IsString() keywords?: string;
 }
 
+// Power Automate / 외부 웹훅용 DTO
+class WebhookWorklogDto {
+  @IsOptional() @IsString() apiKey?: string; // 간단한 인증용
+  @IsString() @IsNotEmpty() email!: string; // 사용자 이메일로 찾기
+  @IsString() @IsNotEmpty() title!: string; // 제목
+  @IsOptional() @IsString() content?: string; // 내용
+  @IsOptional() @IsString() notes?: string; // Notes (content와 합쳐짐)
+  @IsOptional() @IsString() date?: string; // 업무시작시간 (ISO or yyyy-MM-dd)
+  @IsOptional() @IsInt() @Min(0) timeSpentMinutes?: number; // 업무소요시간
+  @IsOptional() @IsString() department?: string; // 부서 (참고용)
+  @IsOptional() @IsString() visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY';
+  @IsOptional() @IsString() source?: string; // 출처 표시 (예: 'PowerAutomate', 'SharePoint')
+}
+
 @Controller('worklogs')
 export class WorklogsController {
   constructor(private prisma: PrismaService) {}
@@ -1154,6 +1168,107 @@ export class WorklogsController {
     });
     await this.prisma.event.create({ data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { simple: true } } });
     return { id: wl.id, initiativeId };
+  }
+
+  /**
+   * POST /api/worklogs/webhook
+   * Power Automate / 외부 시스템에서 업무일지를 자동 생성하는 웹훅 엔드포인트
+   * 사용자는 email로 찾고, 팀/과제는 자동 생성
+   */
+  @Post('webhook')
+  async createFromWebhook(@Body() dto: WebhookWorklogDto) {
+    // 간단한 API 키 검증 (환경변수에서 설정 가능)
+    const expectedKey = process.env.WORKLOG_WEBHOOK_API_KEY || '';
+    if (expectedKey && dto.apiKey !== expectedKey) {
+      throw new ForbiddenException('Invalid API key');
+    }
+
+    // 이메일로 사용자 찾기
+    const user = await this.prisma.user.findFirst({ where: { email: dto.email } });
+    if (!user) {
+      throw new BadRequestException(`User not found with email: ${dto.email}`);
+    }
+
+    // 팀 확인/생성
+    let team: any = null;
+    if (user.orgUnitId) {
+      team = await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } });
+    }
+    if (!team) {
+      const teamName = dto.department || `Auto-${user.id.slice(0, 8)}`;
+      team = await this.prisma.orgUnit.findFirst({ where: { name: teamName, type: 'TEAM' } });
+      if (!team) {
+        team = await this.prisma.orgUnit.create({ data: { name: teamName, type: 'TEAM' } });
+      }
+      await this.prisma.user.update({ where: { id: user.id }, data: { orgUnitId: team.id } });
+    }
+
+    // OKR 구조 자동 생성
+    const periodStart = new Date();
+    const periodEnd = new Date(periodStart.getTime() + 1000 * 60 * 60 * 24 * 365);
+    let objective = await this.prisma.objective.findFirst({ where: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id } });
+    if (!objective) {
+      objective = await this.prisma.objective.create({
+        data: { title: `Auto Objective - ${team.name}`, orgUnitId: team.id, ownerId: user.id, periodStart, periodEnd, status: 'ACTIVE' as any },
+      });
+    }
+    let kr = await this.prisma.keyResult.findFirst({ where: { title: 'Auto KR', objectiveId: objective.id } });
+    if (!kr) {
+      kr = await this.prisma.keyResult.create({
+        data: { title: 'Auto KR', metric: 'count', target: 1, unit: 'ea', ownerId: user.id, objectiveId: objective.id },
+      });
+    }
+
+    // Initiative (과제) 생성/재사용
+    const taskName = dto.source ? `[${dto.source}] 자동 업무` : '자동 업무';
+    let initiative = await this.prisma.initiative.findFirst({ where: { title: taskName, keyResultId: kr.id, ownerId: user.id } });
+    if (!initiative) {
+      initiative = await this.prisma.initiative.create({ data: { title: taskName, keyResultId: kr.id, ownerId: user.id, state: 'ACTIVE' as any } });
+    }
+
+    // 날짜 파싱
+    let dateVal: Date;
+    if (dto.date) {
+      const s = String(dto.date);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        dateVal = new Date(`${s}T00:00:00+09:00`);
+      } else {
+        dateVal = new Date(s);
+      }
+      if (isNaN(dateVal.getTime())) {
+        const now = new Date();
+        const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        dateVal = new Date(`${kst.toISOString().slice(0, 10)}T00:00:00+09:00`);
+      }
+    } else {
+      const now = new Date();
+      const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+      dateVal = new Date(`${kst.toISOString().slice(0, 10)}T00:00:00+09:00`);
+    }
+
+    // 내용 조합
+    const contentParts = [dto.content, dto.notes].filter(Boolean);
+    const fullContent = contentParts.join('\n\n---\n\n');
+    const note = `${dto.title}\n\n${fullContent}`;
+
+    // 업무일지 생성
+    const wl = await this.prisma.worklog.create({
+      data: {
+        initiativeId: initiative.id,
+        createdById: user.id,
+        note,
+        timeSpentMinutes: dto.timeSpentMinutes ?? 0,
+        date: dateVal,
+        visibility: (dto.visibility as any) ?? 'ALL',
+        structuredData: dto.source ? { source: dto.source, webhook: true } : { webhook: true },
+      },
+    });
+
+    await this.prisma.event.create({
+      data: { subjectType: 'Worklog', subjectId: wl.id, activity: 'WorklogCreated', userId: user.id, attrs: { webhook: true, source: dto.source } },
+    });
+
+    return { success: true, worklogId: wl.id, userId: user.id, date: dateVal.toISOString() };
   }
 
   @Get('search')
