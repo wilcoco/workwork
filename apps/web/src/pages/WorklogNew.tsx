@@ -41,7 +41,15 @@ export function WorklogNew() {
   const paramInstructionId = params?.get('instructionId') || '';
   const [initiativeId, setInitiativeId] = useState(paramInitiativeId);
   const [taskName, setTaskName] = useState('');
-  const [instruction, setInstruction] = useState<{ id: string; title: string; assignerName: string; dueDate?: string } | null>(null);
+  const [instruction, setInstruction] = useState<{
+    id: string;
+    title: string;
+    assignerName: string;
+    dueDate?: string;
+    sourceWorklogId?: string;
+    sourceWorklogTitle?: string;
+    description?: string;
+  } | null>(null);
   const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [createdById, setCreatedById] = useState('');
   const [progressPct, setProgressPct] = useState<number>(0);
@@ -121,23 +129,60 @@ export function WorklogNew() {
     })();
   }, [myUserId]);
 
-  // 업무 지시에서 온 경우 지시 정보 로드
+  // 업무 지시에서 온 경우 지시 정보 로드 및 본문 프리필
   useEffect(() => {
     if (!paramInstructionId) return;
     (async () => {
       try {
-        const r = await apiFetch(`/api/instructions?limit=1`);
+        const r = await apiFetch(`/api/instructions?limit=100`);
         if (!r.ok) return;
         const data = await r.json();
         const found = (data.items || []).find((i: any) => i.id === paramInstructionId);
         if (found) {
+          // 원본 업무일지 정보 조회
+          let sourceWorklogTitle = '';
+          if (found.sourceWorklogId) {
+            try {
+              const wlRes = await apiFetch(`/api/worklogs/${encodeURIComponent(found.sourceWorklogId)}`);
+              if (wlRes.ok) {
+                const wl = await wlRes.json();
+                sourceWorklogTitle = (wl.note || '').split('\n')[0] || '(제목 없음)';
+              }
+            } catch {}
+          }
+
           setInstruction({
             id: found.id,
             title: found.title || '',
             assignerName: found.assignerName || '',
             dueDate: found.dueDate,
+            sourceWorklogId: found.sourceWorklogId,
+            sourceWorklogTitle,
+            description: found.description,
           });
+
+          // 과제명 설정
           if (found.title && !taskName) setTaskName(found.title);
+
+          // 본문 프리필: 원본 업무일지 링크 + 업무지시 내용
+          if (!note) {
+            const lines: string[] = [];
+            lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            lines.push(`📌 업무 지시 보고`);
+            lines.push(`지시자: ${found.assignerName || '(미상)'}`);
+            lines.push(`지시 내용: ${found.title || ''}`);
+            if (found.description) lines.push(`상세: ${found.description}`);
+            if (found.dueDate) lines.push(`마감일: ${new Date(found.dueDate).toLocaleDateString()}`);
+            if (found.sourceWorklogId) {
+              const baseUrl = window.location.origin;
+              lines.push(`원본 업무일지: ${baseUrl}/worklogs/${found.sourceWorklogId}`);
+              if (sourceWorklogTitle) lines.push(`원본 제목: ${sourceWorklogTitle}`);
+            }
+            lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            lines.push('');
+            lines.push('');
+            setNote(lines.join('\n'));
+          }
         }
       } catch {}
     })();

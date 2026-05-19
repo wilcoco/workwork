@@ -326,12 +326,20 @@ export function Home() {
           )}
           {pendingComments.length > 0 && (
             <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, padding: 10 }}>
-              <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6, fontSize: 13 }}>💬 내 업무일지 댓글 ({pendingComments.length}건)</div>
+              <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6, fontSize: 13 }}>💬 내 업무일지 댓글 ({pendingComments.length}건) - 답변하기</div>
               <div style={{ display: 'grid', gap: 6 }}>
                 {pendingComments.slice(0, 3).map((c: any) => (
                   <div
                     key={c.id}
-                    onClick={() => c.subjectId && nav(`/worklogs/${c.subjectId}`)}
+                    onClick={async () => {
+                      if (!c.subjectId) return;
+                      try {
+                        const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(c.subjectId)}`);
+                        setDetail(wl);
+                      } catch {
+                        alert('업무일지를 불러올 수 없습니다');
+                      }
+                    }}
                     style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
                   >
                     <span style={{ color: '#1e40af', fontWeight: 600 }}>• {c.authorName || '작성자'}</span>
@@ -339,7 +347,7 @@ export function Home() {
                       {(c.content || '').slice(0, 30)}{(c.content || '').length > 30 ? '...' : ''}
                     </span>
                     <span style={{ fontSize: 11, color: '#6b7280' }}>{new Date(c.createdAt).toLocaleDateString()}</span>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>답변 →</span>
                   </div>
                 ))}
                 {pendingComments.length > 3 && (
