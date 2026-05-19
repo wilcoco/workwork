@@ -38,8 +38,10 @@ export function WorklogNew() {
   const processInstanceId = params?.get('processInstanceId') || '';
   const taskInstanceId = params?.get('taskInstanceId') || '';
   const paramInitiativeId = params?.get('initiativeId') || '';
+  const paramInstructionId = params?.get('instructionId') || '';
   const [initiativeId, setInitiativeId] = useState(paramInitiativeId);
   const [taskName, setTaskName] = useState('');
+  const [instruction, setInstruction] = useState<{ id: string; title: string; assignerName: string; dueDate?: string } | null>(null);
   const myUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [createdById, setCreatedById] = useState('');
   const [progressPct, setProgressPct] = useState<number>(0);
@@ -118,6 +120,28 @@ export function WorklogNew() {
       } catch {}
     })();
   }, [myUserId]);
+
+  // 업무 지시에서 온 경우 지시 정보 로드
+  useEffect(() => {
+    if (!paramInstructionId) return;
+    (async () => {
+      try {
+        const r = await apiFetch(`/api/instructions?limit=1`);
+        if (!r.ok) return;
+        const data = await r.json();
+        const found = (data.items || []).find((i: any) => i.id === paramInstructionId);
+        if (found) {
+          setInstruction({
+            id: found.id,
+            title: found.title || '',
+            assignerName: found.assignerName || '',
+            dueDate: found.dueDate,
+          });
+          if (found.title && !taskName) setTaskName(found.title);
+        }
+      } catch {}
+    })();
+  }, [paramInstructionId]);
 
   useEffect(() => {
     (async () => {
@@ -394,6 +418,16 @@ export function WorklogNew() {
           });
         } catch {}
       }
+      // 업무 지시에서 온 경우 지시 완료 처리
+      if (paramInstructionId && worklogId) {
+        try {
+          await apiFetch(`/api/instructions/${encodeURIComponent(paramInstructionId)}/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ worklogId, userId: createdById }),
+          });
+        } catch {}
+      }
       // Optional: record progress entries
       if (initiativeDone && createdInitiativeId) {
         await apiFetch('/api/progress', {
@@ -439,6 +473,23 @@ export function WorklogNew() {
           이 업무일지는 테스트 중인 상태이며 주된 업무일지는 기존 업무일지 앱에 작성해주세요.
         </div>
       </div>
+
+      {instruction && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 12, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 16 }}>📌</span>
+            <span style={{ fontWeight: 800, color: '#b91c1c', fontSize: 14 }}>업무 지시 완료를 위한 업무일지 작성</span>
+          </div>
+          <div style={{ fontSize: 13, color: '#7f1d1d', lineHeight: 1.5 }}>
+            <div><strong>지시자:</strong> {instruction.assignerName}</div>
+            <div><strong>지시 내용:</strong> {instruction.title}</div>
+            {instruction.dueDate && <div><strong>마감일:</strong> {new Date(instruction.dueDate).toLocaleDateString()}</div>}
+          </div>
+          <div style={{ fontSize: 12, color: '#991b1b', marginTop: 6 }}>
+            이 업무일지를 저장하면 업무 지시가 완료 처리됩니다.
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', margin: 0 }}>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: 0 }}>

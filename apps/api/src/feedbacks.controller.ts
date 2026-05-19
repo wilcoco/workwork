@@ -141,12 +141,31 @@ export class FeedbacksController {
   async list(
     @Query('subjectType') subjectType?: string,
     @Query('subjectId') subjectId?: string,
+    @Query('worklogAuthorId') worklogAuthorId?: string,
+    @Query('excludeAuthorId') excludeAuthorId?: string,
     @Query('limit') limitStr?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '50', 10) || 50, 100);
     const where: any = {};
     if (subjectType) where.subjectType = subjectType;
     if (subjectId) where.subjectId = subjectId;
+    if (excludeAuthorId) where.authorId = { not: excludeAuthorId };
+
+    // worklogAuthorId: 특정 사용자가 작성한 업무일지에 달린 댓글만 조회
+    if (worklogAuthorId && subjectType === 'Worklog') {
+      const myWorklogs = await this.prisma.worklog.findMany({
+        where: { createdById: worklogAuthorId },
+        select: { id: true },
+        take: 100,
+        orderBy: { createdAt: 'desc' },
+      });
+      const wlIds = myWorklogs.map((w) => w.id);
+      if (wlIds.length > 0) {
+        where.subjectId = { in: wlIds };
+      } else {
+        return { items: [] };
+      }
+    }
     const items = await this.prisma.feedback.findMany({
       where,
       orderBy: { createdAt: 'desc' },

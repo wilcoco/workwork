@@ -44,6 +44,7 @@ export function Home() {
   // 알림 배너용 상태
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
   const [pendingInstructions, setPendingInstructions] = useState<any[]>([]);
+  const [pendingComments, setPendingComments] = useState<any[]>([]); // 내 업무일지에 달린 답변 필요한 댓글
   const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
   const [overdueYear, setOverdueYear] = useState<'2026' | 'before' | 'all'>('2026');
   const [overdueLoading, setOverdueLoading] = useState(false);
@@ -245,7 +246,7 @@ export function Home() {
     })();
   }, []);
 
-  // 알림 배너: 대기 중인 결재 및 업무 지시 조회
+  // 알림 배너: 대기 중인 결재, 업무 지시, 내 업무일지 댓글 조회
   useEffect(() => {
     const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
     if (!viewerId) return;
@@ -264,6 +265,15 @@ export function Home() {
       } catch {
         setPendingInstructions([]);
       }
+      // 내 업무일지에 달린 다른 사람의 댓글 (최근 7일)
+      try {
+        const res = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&worklogAuthorId=${encodeURIComponent(viewerId)}&excludeAuthorId=${encodeURIComponent(viewerId)}&limit=20`);
+        const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const recent = (res.items || []).filter((c: any) => new Date(c.createdAt).getTime() > sevenDaysAgo);
+        setPendingComments(recent);
+      } catch {
+        setPendingComments([]);
+      }
     })();
   }, []);
 
@@ -278,7 +288,7 @@ export function Home() {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* 알림 배너 */}
-      {(pendingApprovals.length > 0 || pendingInstructions.length > 0) && (
+      {(pendingApprovals.length > 0 || pendingInstructions.length > 0 || pendingComments.length > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
@@ -314,15 +324,39 @@ export function Home() {
               </button>
             </div>
           )}
+          {pendingComments.length > 0 && (
+            <div style={{ background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: 6, fontSize: 13 }}>💬 내 업무일지 댓글 ({pendingComments.length}건)</div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {pendingComments.slice(0, 3).map((c: any) => (
+                  <div
+                    key={c.id}
+                    onClick={() => c.subjectId && nav(`/worklogs/${c.subjectId}`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
+                  >
+                    <span style={{ color: '#1e40af', fontWeight: 600 }}>• {c.authorName || '작성자'}</span>
+                    <span style={{ color: '#1e3a8a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {(c.content || '').slice(0, 30)}{(c.content || '').length > 30 ? '...' : ''}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#6b7280' }}>{new Date(c.createdAt).toLocaleDateString()}</span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
+                  </div>
+                ))}
+                {pendingComments.length > 3 && (
+                  <div style={{ fontSize: 12, color: '#1d4ed8' }}>외 {pendingComments.length - 3}건 더...</div>
+                )}
+              </div>
+            </div>
+          )}
           {pendingInstructions.length > 0 && (
             <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: 10 }}>
-              <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 6, fontSize: 13 }}>📌 업무 지시 ({pendingInstructions.length}건)</div>
+              <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 6, fontSize: 13 }}>📌 업무 지시 ({pendingInstructions.length}건) - 업무일지 작성으로 완료</div>
               <div style={{ display: 'grid', gap: 6 }}>
                 {pendingInstructions.slice(0, 3).map((ins: any) => (
                   <div
                     key={ins.id}
-                    onClick={() => ins.sourceWorklogId && nav(`/worklogs/${ins.sourceWorklogId}`)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: ins.sourceWorklogId ? 'pointer' : 'default', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
+                    onClick={() => nav(`/worklogs/new?instructionId=${encodeURIComponent(ins.id)}`)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
                   >
                     <span style={{ color: '#7f1d1d', fontWeight: 600 }}>• {ins.assignerName || '지시자'}</span>
                     <span style={{ color: '#991b1b', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -331,7 +365,7 @@ export function Home() {
                     {ins.dueDate && (
                       <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>마감 {new Date(ins.dueDate).toLocaleDateString()}</span>
                     )}
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>업무일지 작성 →</span>
                   </div>
                 ))}
                 {pendingInstructions.length > 3 && (
