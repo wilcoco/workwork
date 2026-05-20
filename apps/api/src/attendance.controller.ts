@@ -231,11 +231,12 @@ export class AttendanceController {
                   type: { in: timeBasedTypes },
                   startAt: { lt: endAt },
                   endAt: { gt: startAt },
-                  status: { notIn: ['REJECTED', 'CANCELLED'] as any },
+                  status: { notIn: ['REJECTED', 'CANCELLED', 'rejected', 'cancelled'] as any },
                 },
               });
               if (overlap) {
-                throw new BadRequestException('해당 시간에 이미 다른 근태 신청이 있습니다 (휴일근무/야근/조퇴/유연근무)');
+                console.log('[attendance] overlap found:', JSON.stringify({ id: overlap.id, status: overlap.status, type: overlap.type, date: overlap.date }));
+                throw new BadRequestException(`해당 시간에 이미 다른 근태 신청이 있습니다 (휴일근무/야근/조퇴/유연근무) - 기존신청: ${overlap.id}, 상태: ${overlap.status}`);
               }
             }
           }
