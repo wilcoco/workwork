@@ -64,7 +64,7 @@ export function Home() {
   const [filterName, setFilterName] = useState('');
   const [viewMode, setViewMode] = useState<'summary'|'full'>('full');
   const [isMobile, setIsMobile] = useState(false);
-  const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('urgent');
+  const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('worklogs');
   const WORKLOG_PAGE_SIZE = 20;
   const [worklogPage, setWorklogPage] = useState(1);
   const [worklogTotal, setWorklogTotal] = useState(0);
