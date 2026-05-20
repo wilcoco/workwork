@@ -387,7 +387,7 @@ export function AttendanceRequest() {
                                   padding: '2px 4px',
                                   borderRadius: 4,
                                   background: getBg(ev),
-                                  border: '1px solid #cbd5e1',
+                                  border: ev.overLimit ? '2px solid #dc2626' : '1px solid #cbd5e1',
                                   overflow: isMobile ? 'visible' : 'hidden',
                                   textOverflow: isMobile ? 'clip' : 'ellipsis',
                                   whiteSpace: 'normal',
@@ -694,9 +694,6 @@ function formatTime(iso: string): string {
 }
 
 function getBg(ev: CalendarItem): string {
-  // 52시간 초과 경고는 항상 빨간색
-  if (ev.overLimit) return '#fee2e2';
-
   // 신청 종류별 기본 색상 (RGB)
   const typeColors: Record<string, string> = {
     OT: '59, 130, 246',           // 파랑
@@ -708,7 +705,6 @@ function getBg(ev: CalendarItem): string {
   };
 
   const rgb = typeColors[ev.type || ''] || '100, 116, 139'; // 기본 회색
-  if (!typeColors[ev.type || '']) console.log('[getBg] unknown type:', ev.type, ev);
 
   // 승인 = 진하게(0.7), 신청중 = 투명하게(0.3)
   const alpha = ev.status === 'APPROVED' ? 0.7 : 0.3;
