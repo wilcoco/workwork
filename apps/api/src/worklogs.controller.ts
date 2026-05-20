@@ -1315,6 +1315,7 @@ export class WorklogsController {
 
   @Get('search')
   async search(
+    @Query('dept') deptName?: string,
     @Query('team') teamName?: string,
     @Query('user') userName?: string,
     @Query('from') from?: string,
@@ -1358,16 +1359,18 @@ export class WorklogsController {
         ] },
       ];
     }
-    // Hierarchical team filtering: when filtering by parent teams, include all descendants
-    const hierarchicalTeams = ['생산실', '품질경영실', '경영관리실', '함평공장', '연구개발실'];
-    if (teamName && hierarchicalTeams.includes(teamName)) {
-      const descendantIds = await this.getDescendantOrgUnitIds(teamName);
+    // 실(부서) 필터: 하위 팀 모두 포함
+    const hierarchicalDepts = ['생산실', '품질경영', '경영관리실', '함평공장', '연구개발'];
+    if (deptName && hierarchicalDepts.includes(deptName)) {
+      const descendantIds = await this.getDescendantOrgUnitIds(deptName);
       if (descendantIds.size > 0) {
         where.createdBy = { orgUnitId: { in: Array.from(descendantIds) } };
       } else {
-        where.createdBy = { orgUnit: { name: teamName } };
+        where.createdBy = { orgUnit: { name: deptName } };
       }
-    } else if (teamName) {
+    }
+    // 팀 필터: 특정 팀만 (실 필터보다 우선)
+    if (teamName) {
       where.createdBy = { orgUnit: { name: teamName } };
     }
     if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };

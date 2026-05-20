@@ -60,8 +60,11 @@ export function Home() {
   const [urgentOpen, setUrgentOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [mainTab, setMainTab] = useState<'worklogs' | 'comments'>('comments');
+  const [filterDept, setFilterDept] = useState(''); // 실(부서) 필터
   const [filterTeam, setFilterTeam] = useState('');
   const [filterName, setFilterName] = useState('');
+  // 실(부서) 목록 - 팀 필터에서 제외할 상위 조직
+  const DEPT_LIST = ['경영관리실', '품질경영', '연구개발', '생산실', '함평공장'];
   const [viewMode, setViewMode] = useState<'summary'|'full'>('full');
   const [isMobile, setIsMobile] = useState(false);
   const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('worklogs');
@@ -76,8 +79,12 @@ export function Home() {
   // All teams from org units API (not just those with worklogs)
   const [allTeams, setAllTeams] = useState<string[]>([]);
   const teamOptions = useMemo(() => {
-    // Use allTeams from org API instead of deriving from worklogs
-    return allTeams.slice().sort();
+    // Use allTeams from org API, but exclude department-level orgs (실)
+    return allTeams.filter(t => !DEPT_LIST.includes(t)).sort();
+  }, [allTeams]);
+  const deptOptions = useMemo(() => {
+    // 실(부서)만 필터링
+    return allTeams.filter(t => DEPT_LIST.includes(t)).sort();
   }, [allTeams]);
   const nameOptions = useMemo(() => {
     const s = new Set<string>();
@@ -109,14 +116,14 @@ export function Home() {
   // Reset to first page when filters change
   useEffect(() => {
     setWorklogPage(1);
-  }, [filterTeam, filterName]);
+  }, [filterDept, filterTeam, filterName]);
 
-  // When the team filter changes, clear the selected name if it no longer
+  // When the team/dept filter changes, clear the selected name if it no longer
   // belongs to the selected team's member list.
   useEffect(() => {
-    if (!filterTeam || !filterName) return;
+    if ((!filterDept && !filterTeam) || !filterName) return;
     if (!nameOptions.includes(filterName)) setFilterName('');
-  }, [filterTeam, nameOptions]);
+  }, [filterDept, filterTeam, nameOptions]);
 
   useEffect(() => {
     const update = () => {
@@ -148,6 +155,7 @@ export function Home() {
         params.set('offset', String(offset));
         params.set('withTotal', '1');
         if (viewerId) params.set('viewerId', viewerId);
+        if (filterDept.trim()) params.set('dept', filterDept.trim());
         if (filterTeam.trim()) params.set('team', filterTeam.trim());
         if (filterName.trim()) params.set('user', filterName.trim());
         const wl = await apiJson<{ items: WL[]; total?: number }>(`/api/worklogs/search?${params.toString()}`);
@@ -179,7 +187,7 @@ export function Home() {
       }
     })();
     return () => { ignore = true; };
-  }, [worklogPage, filterTeam, filterName]);
+  }, [worklogPage, filterDept, filterTeam, filterName]);
 
   // Urgent worklogs and facet sample (for filter dropdowns): fetched once.
   useEffect(() => {
@@ -394,6 +402,10 @@ export function Home() {
       )}
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        <select value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setFilterTeam(''); }} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', height: 34, width: isMobile ? '100%' : 120, maxWidth: isMobile ? '100%' : undefined, appearance: 'auto' as any }}>
+          <option value="">실 전체</option>
+          {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
         <select value={filterTeam} onChange={(e) => setFilterTeam(e.target.value)} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', height: 34, width: isMobile ? '100%' : 140, maxWidth: isMobile ? '100%' : undefined, appearance: 'auto' as any }}>
           <option value="">팀 전체</option>
           {teamOptions.map((t) => <option key={t} value={t}>{t}</option>)}
