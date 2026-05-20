@@ -88,6 +88,9 @@ class ListApprovalsQueryDto {
 
   @IsOptional() @IsString()
   currentApproverOnly?: string; // 'true' to filter only where user is current approver
+
+  @IsOptional() @IsString()
+  subjectType?: string; // ATTENDANCE, BUSINESS_TRIP, CAR_DISPATCH, LOGISTICS_DISPATCH, etc.
 }
 
 @Controller('approvals')
@@ -98,6 +101,7 @@ export class ApprovalsController {
   async list(@Query() q: ListApprovalsQueryDto) {
     const where: any = {};
     if (q.status) where.status = q.status;
+    if (q.subjectType) where.subjectType = q.subjectType.toUpperCase();
     if (q.requestedById) where.requestedById = q.requestedById;
     if (q.approverId) {
       where.OR = [

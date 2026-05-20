@@ -30,12 +30,12 @@ export function ApprovalsInbox() {
 
   useEffect(() => {
     if (userId) void load();
-  }, [userId, statusFilter, page]);
+  }, [userId, statusFilter, subjectTypeFilter, page]);
 
   // Reset page when filter changes
   useEffect(() => {
     setPage(1);
-  }, [statusFilter]);
+  }, [statusFilter, subjectTypeFilter]);
 
   async function load() {
     if (!userId) return;
@@ -45,6 +45,7 @@ export function ApprovalsInbox() {
       const params = new URLSearchParams();
       params.set('approverId', userId);
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (subjectTypeFilter !== 'ALL') params.set('subjectType', subjectTypeFilter);
       params.set('limit', String(PAGE_SIZE));
       params.set('offset', String((page - 1) * PAGE_SIZE));
       params.set('withTotal', '1');
@@ -160,15 +161,11 @@ export function ApprovalsInbox() {
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
         {items.filter((a) => {
+          if (typeFilter === 'ALL') return true;
           const st = String(a._stNorm || a.subjectType || '').toUpperCase();
           const requestTypes = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
           const isRequest = requestTypes.includes(st);
-          if (typeFilter !== 'ALL') {
-            if (typeFilter === 'REQUEST' && !isRequest) return false;
-            if (typeFilter === 'APPROVAL' && isRequest) return false;
-          }
-          if (subjectTypeFilter !== 'ALL' && st !== subjectTypeFilter) return false;
-          return true;
+          return typeFilter === 'REQUEST' ? isRequest : !isRequest;
         }).map((a) => {
           const doc = (a as any)._doc as any | null;
           const stNorm = String((a as any)._stNorm || a.subjectType || '').toUpperCase();

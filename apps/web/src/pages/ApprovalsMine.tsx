@@ -22,7 +22,7 @@ export function ApprovalsMine() {
   useEffect(() => {
     if (userId) void load(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, statusFilter]);
+  }, [userId, statusFilter, subjectTypeFilter]);
 
   async function load(reqUserId?: string) {
     const uid = reqUserId || userId;
@@ -34,6 +34,7 @@ export function ApprovalsMine() {
       params.set('requestedById', uid);
       params.set('limit', '50');
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      if (subjectTypeFilter !== 'ALL') params.set('subjectType', subjectTypeFilter);
       const list = await apiJson<{ items: any[] }>(`/api/approvals?${params.toString()}`);
       const baseItems = (list.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       // enrich subjects
@@ -70,15 +71,11 @@ export function ApprovalsMine() {
   }
 
   const filteredItems = items.filter((a) => {
+    if (typeFilter === 'ALL') return true;
     const st = String(a.subjectType || '').toUpperCase();
     const requestTypes = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
     const isRequest = requestTypes.includes(st);
-    if (typeFilter !== 'ALL') {
-      if (typeFilter === 'REQUEST' && !isRequest) return false;
-      if (typeFilter === 'APPROVAL' && isRequest) return false;
-    }
-    if (subjectTypeFilter !== 'ALL' && st !== subjectTypeFilter) return false;
-    return true;
+    return typeFilter === 'REQUEST' ? isRequest : !isRequest;
   });
 
   return (
