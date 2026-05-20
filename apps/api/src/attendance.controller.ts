@@ -381,7 +381,7 @@ export class AttendanceController {
 
     for (const it of items) {
       const d = it.date;
-      const weekKey = getWeekKey(d as any as Date);
+      const weekKey = `${it.userId}::${getWeekKey(d as any as Date)}`; // 개인별 주간 집계
       let agg = weekMap.get(weekKey);
       if (!agg) {
         agg = { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
@@ -401,7 +401,7 @@ export class AttendanceController {
     }
 
     const result = items.map((it: { id: string; userId: string; type: string; date: Date; startAt: Date | null; endAt: Date | null; reason: string | null; status: string | null; user: { name: string } }) => {
-      const weekKey = getWeekKey(it.date as any as Date);
+      const weekKey = `${it.userId}::${getWeekKey(it.date as any as Date)}`; // 개인별 주간 집계
       const agg = weekMap.get(weekKey) || { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
       const totalHours = 40 + agg.otHours - agg.vacationHours - agg.earlyLeaveHours;
       const overLimit = totalHours > 52;
