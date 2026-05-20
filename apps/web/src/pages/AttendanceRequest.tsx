@@ -184,8 +184,10 @@ export function AttendanceRequest() {
   }
 
   const filteredItems = useMemo(() => {
-    if (filterType === 'ALL') return items;
-    return items.filter((it) => it.type === filterType);
+    // 반려/취소된 건은 캘린더에서 제외
+    const active = items.filter((it) => it.status !== 'REJECTED' && it.status !== 'CANCELLED');
+    if (filterType === 'ALL') return active;
+    return active.filter((it) => it.type === filterType);
   }, [items, filterType]);
 
   const weeks = useMemo(() => buildMonthGrid(calendarMonth, filteredItems, holidays), [calendarMonth, filteredItems, holidays]);
@@ -694,10 +696,10 @@ function formatTime(iso: string): string {
 function getBg(ev: CalendarItem): string {
   // 52시간 초과 경고는 항상 빨간색
   if (ev.overLimit) return '#fee2e2';
-  // 결재 상태별 색상
-  if (ev.status === 'APPROVED') return '#dcfce7'; // 초록
+  // 결재 상태별 색상: 승인 = 진한 초록, 신청중 = 파스텔
+  if (ev.status === 'APPROVED') return '#86efac'; // 진한 초록
   if (ev.status === 'REJECTED') return '#fee2e2'; // 빨강
   if (ev.status === 'CANCELLED') return '#f1f5f9'; // 회색
-  // PENDING, EXPIRED 등은 노랑
+  // PENDING, EXPIRED 등은 연한 파스텔 노랑
   return '#fef9c3';
 }
