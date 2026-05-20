@@ -64,7 +64,7 @@ export function Home() {
   const [filterTeam, setFilterTeam] = useState('');
   const [filterName, setFilterName] = useState('');
   // 실(부서) 목록 - 팀 필터에서 제외할 상위 조직
-  const DEPT_LIST = ['경영관리실', '품질경영', '연구개발', '생산실', '함평공장'];
+  const DEPT_LIST = ['경영관리실', '연구개발실', '생산실', '함평공장', '품질경영실'];
   const [viewMode, setViewMode] = useState<'summary'|'full'>('full');
   const [isMobile, setIsMobile] = useState(false);
   const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('worklogs');
