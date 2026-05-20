@@ -696,10 +696,21 @@ function formatTime(iso: string): string {
 function getBg(ev: CalendarItem): string {
   // 52시간 초과 경고는 항상 빨간색
   if (ev.overLimit) return '#fee2e2';
-  // 결재 상태별 색상: 승인 = 진한 초록, 신청중 = 파스텔
-  if (ev.status === 'APPROVED') return '#86efac'; // 진한 초록
-  if (ev.status === 'REJECTED') return '#fee2e2'; // 빨강
-  if (ev.status === 'CANCELLED') return '#f1f5f9'; // 회색
-  // PENDING, EXPIRED 등은 연한 파스텔 노랑
-  return '#fef9c3';
+
+  // 신청 종류별 기본 색상 (RGB)
+  const typeColors: Record<string, string> = {
+    OT: '59, 130, 246',           // 파랑
+    VACATION: '34, 197, 94',      // 초록
+    EARLY_LEAVE: '249, 115, 22',  // 주황
+    FLEXIBLE: '168, 85, 247',     // 보라
+    HOLIDAY_WORK: '236, 72, 153', // 핑크
+    HOLIDAY_REST: '20, 184, 166', // 청록
+  };
+
+  const rgb = typeColors[ev.type || ''] || '100, 116, 139'; // 기본 회색
+
+  // 승인 = 진하게(0.7), 신청중 = 투명하게(0.3)
+  const alpha = ev.status === 'APPROVED' ? 0.7 : 0.3;
+
+  return `rgba(${rgb}, ${alpha})`;
 }
