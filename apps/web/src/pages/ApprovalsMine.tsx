@@ -12,6 +12,7 @@ export function ApprovalsMine() {
   const [active, setActive] = useState<any | null>(null);
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('ALL');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'APPROVAL' | 'REQUEST'>('ALL');
+  const [subjectTypeFilter, setSubjectTypeFilter] = useState<'ALL' | 'ATTENDANCE' | 'BUSINESS_TRIP' | 'CAR_DISPATCH' | 'LOGISTICS_DISPATCH'>('ALL');
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -69,11 +70,15 @@ export function ApprovalsMine() {
   }
 
   const filteredItems = items.filter((a) => {
-    if (typeFilter === 'ALL') return true;
     const st = String(a.subjectType || '').toUpperCase();
     const requestTypes = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
     const isRequest = requestTypes.includes(st);
-    return typeFilter === 'REQUEST' ? isRequest : !isRequest;
+    if (typeFilter !== 'ALL') {
+      if (typeFilter === 'REQUEST' && !isRequest) return false;
+      if (typeFilter === 'APPROVAL' && isRequest) return false;
+    }
+    if (subjectTypeFilter !== 'ALL' && st !== subjectTypeFilter) return false;
+    return true;
   });
 
   return (
@@ -95,6 +100,16 @@ export function ApprovalsMine() {
             <option value="ALL">전체</option>
             <option value="APPROVAL">일반 결재</option>
             <option value="REQUEST">신청</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>신청 종류</label>
+          <select value={subjectTypeFilter} onChange={(e) => setSubjectTypeFilter(e.target.value as any)} style={input}>
+            <option value="ALL">전체</option>
+            <option value="ATTENDANCE">근태</option>
+            <option value="BUSINESS_TRIP">출장</option>
+            <option value="CAR_DISPATCH">차량 배차</option>
+            <option value="LOGISTICS_DISPATCH">물류 배차</option>
           </select>
         </div>
         {loading && <span style={{ fontSize: 12, color: '#64748b' }}>로딩중...</span>}

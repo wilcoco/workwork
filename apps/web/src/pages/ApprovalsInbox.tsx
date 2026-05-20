@@ -17,6 +17,7 @@ export function ApprovalsInbox() {
   const [comment, setComment] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'APPROVAL' | 'REQUEST'>('ALL');
+  const [subjectTypeFilter, setSubjectTypeFilter] = useState<'ALL' | 'ATTENDANCE' | 'BUSINESS_TRIP' | 'CAR_DISPATCH' | 'LOGISTICS_DISPATCH'>('ALL');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [worklogPopup, setWorklogPopup] = useState<{ id: string; title: string; contentHtml: string; note: string; files?: any[]; createdAt: string; createdBy?: { name: string } } | null>(null);
   const [page, setPage] = useState(1);
@@ -146,14 +147,28 @@ export function ApprovalsInbox() {
             <option value="REQUEST">신청</option>
           </select>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>신청 종류</label>
+          <select value={subjectTypeFilter} onChange={(e) => setSubjectTypeFilter(e.target.value as any)} style={input}>
+            <option value="ALL">전체</option>
+            <option value="ATTENDANCE">근태</option>
+            <option value="BUSINESS_TRIP">출장</option>
+            <option value="CAR_DISPATCH">차량 배차</option>
+            <option value="LOGISTICS_DISPATCH">물류 배차</option>
+          </select>
+        </div>
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
         {items.filter((a) => {
-          if (typeFilter === 'ALL') return true;
           const st = String(a._stNorm || a.subjectType || '').toUpperCase();
           const requestTypes = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
           const isRequest = requestTypes.includes(st);
-          return typeFilter === 'REQUEST' ? isRequest : !isRequest;
+          if (typeFilter !== 'ALL') {
+            if (typeFilter === 'REQUEST' && !isRequest) return false;
+            if (typeFilter === 'APPROVAL' && isRequest) return false;
+          }
+          if (subjectTypeFilter !== 'ALL' && st !== subjectTypeFilter) return false;
+          return true;
         }).map((a) => {
           const doc = (a as any)._doc as any | null;
           const stNorm = String((a as any)._stNorm || a.subjectType || '').toUpperCase();

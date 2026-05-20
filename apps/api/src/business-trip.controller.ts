@@ -2,6 +2,11 @@ import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query } f
 import { IsNotEmpty, IsOptional, IsString, IsBoolean, IsDateString, IsArray } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
+function parseKST(datetimeLocal: string): Date {
+  // datetime-local 값("2026-05-20T09:00")을 KST로 파싱
+  return new Date(datetimeLocal + ':00+09:00');
+}
+
 class CreateBusinessTripDto {
   @IsString() @IsNotEmpty() requesterId!: string;
   /** Legacy single approverId — kept for compat. Ignored when approverIds[] is set. */
@@ -75,8 +80,8 @@ export class BusinessTripController {
     const isCompanyCar = dto.transportation === '회사 차량';
     if (isCompanyCar) {
       if (!dto.carId) throw new BadRequestException('회사 차량 선택 시 차량을 지정해야 합니다');
-      const depAt = new Date(dto.departureAt);
-      const retAt = new Date(dto.returnAt);
+      const depAt = parseKST(dto.departureAt);
+      const retAt = parseKST(dto.returnAt);
       const conflict = await this.prisma.carDispatchRequest.findFirst({
         where: {
           carId: dto.carId,
@@ -99,8 +104,8 @@ export class BusinessTripController {
           approvalLine: approverLine,
           destination: dto.destination,
           purpose: dto.purpose,
-          departureAt: new Date(dto.departureAt),
-          returnAt: new Date(dto.returnAt),
+          departureAt: parseKST(dto.departureAt),
+          returnAt: parseKST(dto.returnAt),
           transportation: dto.transportation,
           accommodation: dto.accommodation ?? false,
           notes: dto.notes,
@@ -154,8 +159,8 @@ export class BusinessTripController {
             carId: dto.carId,
             requesterId: dto.requesterId,
             approverId: firstApprover,
-            startAt: new Date(dto.departureAt),
-            endAt: new Date(dto.returnAt),
+            startAt: parseKST(dto.departureAt),
+            endAt: parseKST(dto.returnAt),
             destination: dto.destination,
             purpose: `[출장] ${dto.purpose}`,
           },
