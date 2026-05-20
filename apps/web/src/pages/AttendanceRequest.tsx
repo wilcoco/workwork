@@ -704,6 +704,7 @@ function getBg(ev: CalendarItem): string {
     HOLIDAY_REST: '20, 184, 166', // 청록
   };
 
+  console.log('[getBg] type:', ev.type, 'status:', ev.status, 'id:', ev.id);
   const rgb = typeColors[ev.type || ''] || '100, 116, 139'; // 기본 회색
 
   // 승인 = 진하게(0.7), 신청중 = 투명하게(0.3)
