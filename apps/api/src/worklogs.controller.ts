@@ -1271,6 +1271,48 @@ export class WorklogsController {
     return { success: true, worklogId: wl.id, userId: user.id, date: dateVal.toISOString() };
   }
 
+  /**
+   * Get all descendant org unit IDs for a given parent team name.
+   * Used for hierarchical filtering when selecting parent teams.
+   */
+  private async getDescendantOrgUnitIds(parentTeamName: string): Promise<Set<string>> {
+    const parent = await this.prisma.orgUnit.findFirst({
+      where: { name: parentTeamName },
+      select: { id: true },
+    });
+    if (!parent) return new Set();
+
+    const all = await this.prisma.orgUnit.findMany({
+      select: { id: true, name: true, parentId: true },
+      orderBy: { name: 'asc' },
+    });
+    const units = (all || []).filter((u: any) => !/^personal\s*-/i.test(String(u.name || '')));
+
+    const children = new Map<string | null, Array<{ id: string; name: string }>>();
+    for (const u of units) {
+      const k = (u as any).parentId || null;
+      if (!children.has(k)) children.set(k, []);
+      children.get(k)!.push({ id: String((u as any).id), name: String((u as any).name) });
+    }
+
+    const ids = new Set<string>();
+    ids.add(String(parent.id));
+
+    const stack = [String(parent.id)];
+    while (stack.length) {
+      const curId = stack.pop()!;
+      const kids = children.get(curId) || [];
+      for (const k of kids) {
+        if (!ids.has(k.id)) {
+          ids.add(k.id);
+          stack.push(k.id);
+        }
+      }
+    }
+
+    return ids;
+  }
+
   @Get('search')
   async search(
     @Query('team') teamName?: string,
@@ -1316,7 +1358,18 @@ export class WorklogsController {
         ] },
       ];
     }
-    if (teamName) where.createdBy = { orgUnit: { name: teamName } };
+    // Hierarchical team filtering: when filtering by parent teams, include all descendants
+    const hierarchicalTeams = ['생산실', '품질경영실', '경영관리실', '함평공장', '연구개발실'];
+    if (teamName && hierarchicalTeams.includes(teamName)) {
+      const descendantIds = await this.getDescendantOrgUnitIds(teamName);
+      if (descendantIds.size > 0) {
+        where.createdBy = { orgUnitId: { in: Array.from(descendantIds) } };
+      } else {
+        where.createdBy = { orgUnit: { name: teamName } };
+      }
+    } else if (teamName) {
+      where.createdBy = { orgUnit: { name: teamName } };
+    }
     if (userName) where.createdBy = { ...(where.createdBy || {}), name: { contains: userName, mode: 'insensitive' as any } };
     if (tagFilter) {
       where.tags = { path: ['hashTags'], array_contains: [tagFilter] };
@@ -1631,7 +1684,18 @@ export class WorklogsController {
     let filterUserIds: string[] | null = null;
     if (teamName || userName) {
       const userWhere: any = {};
-      if (teamName) userWhere.orgUnit = { name: teamName };
+      // Hierarchical team filtering: when filtering by parent teams, include all descendants
+      const hierarchicalTeams = ['생산실', '품질경영실', '경영관리실', '함평공장', '연구개발실'];
+      if (teamName && hierarchicalTeams.includes(teamName)) {
+        const descendantIds = await this.getDescendantOrgUnitIds(teamName);
+        if (descendantIds.size > 0) {
+          userWhere.orgUnitId = { in: Array.from(descendantIds) };
+        } else {
+          userWhere.orgUnit = { name: teamName };
+        }
+      } else if (teamName) {
+        userWhere.orgUnit = { name: teamName };
+      }
       if (userName) userWhere.name = { contains: userName, mode: 'insensitive' as any };
       const users = await (this.prisma as any).user.findMany({
         where: userWhere,
@@ -1880,7 +1944,18 @@ export class WorklogsController {
     let filterUserIds: string[] | null = null;
     if (teamName || userName) {
       const userWhere: any = {};
-      if (teamName) userWhere.orgUnit = { name: teamName };
+      // Hierarchical team filtering: when filtering by parent teams, include all descendants
+      const hierarchicalTeams = ['생산실', '품질경영실', '경영관리실', '함평공장', '연구개발실'];
+      if (teamName && hierarchicalTeams.includes(teamName)) {
+        const descendantIds = await this.getDescendantOrgUnitIds(teamName);
+        if (descendantIds.size > 0) {
+          userWhere.orgUnitId = { in: Array.from(descendantIds) };
+        } else {
+          userWhere.orgUnit = { name: teamName };
+        }
+      } else if (teamName) {
+        userWhere.orgUnit = { name: teamName };
+      }
       if (userName) userWhere.name = { contains: userName, mode: 'insensitive' as any };
       const users = await (this.prisma as any).user.findMany({ where: userWhere, select: { id: true } });
       const ids = (users || []).map((u: any) => String(u.id));
@@ -2040,7 +2115,18 @@ export class WorklogsController {
       ...(baseWhere.createdBy || {}),
       orgUnitId: { in: Array.from(scopeOrgUnitIds) },
     };
-    if (teamName) createdByWhere.orgUnit = { name: teamName };
+    // Hierarchical team filtering: when filtering by parent teams, include all descendants
+    const hierarchicalTeams = ['생산실', '품질경영실', '경영관리실', '함평공장', '연구개발실'];
+    if (teamName && hierarchicalTeams.includes(teamName)) {
+      const descendantIds = await this.getDescendantOrgUnitIds(teamName);
+      if (descendantIds.size > 0) {
+        createdByWhere.orgUnitId = { in: Array.from(descendantIds) };
+      } else {
+        createdByWhere.orgUnit = { name: teamName };
+      }
+    } else if (teamName) {
+      createdByWhere.orgUnit = { name: teamName };
+    }
     if (userName) createdByWhere.name = { contains: userName, mode: 'insensitive' as any };
     baseWhere.createdBy = createdByWhere;
 
@@ -2457,7 +2543,18 @@ ${isSingleUser ? `
       const scopeOrgUnitIds = await this.getScopeOrgUnitIdsForViewer(viewerId);
       if (scopeOrgUnitIds.size > 0) {
         const createdByWhere: any = { orgUnitId: { in: Array.from(scopeOrgUnitIds) } };
-        if (body.team) createdByWhere.orgUnit = { name: body.team };
+        // Hierarchical team filtering: when filtering by parent teams, include all descendants
+        const hierarchicalTeams = ['생산실', '품질경영실', '경영관리실', '함평공장', '연구개발실'];
+        if (body.team && hierarchicalTeams.includes(body.team)) {
+          const descendantIds = await this.getDescendantOrgUnitIds(body.team);
+          if (descendantIds.size > 0) {
+            createdByWhere.orgUnitId = { in: Array.from(descendantIds) };
+          } else {
+            createdByWhere.orgUnit = { name: body.team };
+          }
+        } else if (body.team) {
+          createdByWhere.orgUnit = { name: body.team };
+        }
         if (body.user) createdByWhere.name = { contains: body.user, mode: 'insensitive' as any };
         where.createdBy = createdByWhere;
       }
