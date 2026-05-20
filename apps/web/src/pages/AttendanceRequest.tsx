@@ -708,6 +708,7 @@ function getBg(ev: CalendarItem): string {
   };
 
   const rgb = typeColors[ev.type || ''] || '100, 116, 139'; // 기본 회색
+  if (!typeColors[ev.type || '']) console.log('[getBg] unknown type:', ev.type, ev);
 
   // 승인 = 진하게(0.7), 신청중 = 투명하게(0.3)
   const alpha = ev.status === 'APPROVED' ? 0.7 : 0.3;
