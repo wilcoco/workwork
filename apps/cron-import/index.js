@@ -3,7 +3,7 @@
  * Railway Cron으로 매일 7:10에 실행
  */
 
-const API_URL = process.env.API_URL || 'https://worklog.icams.co.kr';
+const API_URL = process.env.API_URL || 'https://workworkapi-production-dcac.up.railway.app';
 const USER_ID = process.env.USER_ID || 'cmkkvpopa0001sbpqnk5cbpiu';
 
 const IMPORTS = [
