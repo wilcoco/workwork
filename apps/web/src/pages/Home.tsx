@@ -397,7 +397,7 @@ export function Home() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: isMobile ? 'wrap' : 'nowrap', position: 'sticky', top: 0, background: '#fff', zIndex: 10, padding: '8px 0', marginBottom: 8, borderBottom: '1px solid #e2e8f0' }}>
         <select value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setFilterTeam(''); }} style={{ border: '1px solid #CBD5E1', borderRadius: 8, padding: '4px 8px', height: 34, width: isMobile ? '100%' : 120, maxWidth: isMobile ? '100%' : undefined, appearance: 'auto' as any }}>
           <option value="">실 전체</option>
           {deptOptions.map((d) => <option key={d} value={d}>{d}</option>)}
