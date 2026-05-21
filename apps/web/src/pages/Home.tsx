@@ -63,8 +63,10 @@ export function Home() {
   const [filterDept, setFilterDept] = useState(''); // 실(부서) 필터
   const [filterTeam, setFilterTeam] = useState('');
   const [filterName, setFilterName] = useState('');
-  // 실(부서) 목록 - 팀 필터에서 제외할 상위 조직
+  // 실(부서) 목록
   const DEPT_LIST = ['경영관리실', '연구개발실', '생산실', '함평공장', '품질경영실'];
+  // 팀 목록 (고정)
+  const TEAM_LIST = ['생산팀', '생산기술팀', '양산품질팀', '상생협력팀', '자재관리팀', '영업관리팀', '경영관리팀', '전산팀', '함평팀', '에스콘', '설계팀', '개발팀'];
   const [viewMode, setViewMode] = useState<'summary'|'full'>('full');
   const [isMobile, setIsMobile] = useState(false);
   const [mobileTab, setMobileTab] = useState<'urgent' | 'worklogs' | 'comments'>('worklogs');
@@ -78,14 +80,8 @@ export function Home() {
   const [facetSample, setFacetSample] = useState<WL[]>([]);
   // All teams from org units API (not just those with worklogs)
   const [allTeams, setAllTeams] = useState<string[]>([]);
-  const teamOptions = useMemo(() => {
-    // Use allTeams from org API, but exclude department-level orgs (실)
-    return allTeams.filter(t => !DEPT_LIST.includes(t)).sort();
-  }, [allTeams]);
-  const deptOptions = useMemo(() => {
-    // 실(부서)만 필터링
-    return allTeams.filter(t => DEPT_LIST.includes(t)).sort();
-  }, [allTeams]);
+  const teamOptions = TEAM_LIST; // 고정 팀 목록
+  const deptOptions = DEPT_LIST; // 고정 실 목록
   const nameOptions = useMemo(() => {
     const s = new Set<string>();
     facetSample.forEach(w => {
