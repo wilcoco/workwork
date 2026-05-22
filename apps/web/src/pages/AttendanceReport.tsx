@@ -37,6 +37,7 @@ type RecordItem = {
   days: number | null;
   status: string;
   reason: string | null;
+  currentApproverName?: string;
 };
 
 export function AttendanceReport() {
@@ -215,6 +216,7 @@ export function AttendanceReport() {
                       <th style={th}>시간</th>
                       <th style={{ ...th, textAlign: 'right' }}>시간/일수</th>
                       <th style={th}>상태</th>
+                      <th style={th}>결재자</th>
                       <th style={th}>사유</th>
                     </tr>
                   </thead>
@@ -239,6 +241,9 @@ export function AttendanceReport() {
                           <span style={{ color: STATUS_COLORS[it.status] || '#374151', fontWeight: 600, fontSize: 12 }}>
                             {STATUS_LABELS[it.status] || it.status}
                           </span>
+                        </td>
+                        <td style={{ ...td, color: it.status === 'PENDING' ? '#f59e0b' : '#64748b' }}>
+                          {it.status === 'PENDING' && it.currentApproverName ? it.currentApproverName : '—'}
                         </td>
                         <td style={{ ...td, color: '#64748b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {it.reason || '—'}

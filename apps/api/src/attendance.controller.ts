@@ -635,28 +635,47 @@ export class AttendanceController {
       include: { user: { select: { id: true, name: true, orgUnit: { select: { name: true } } } } },
     });
 
+    // 결재 정보 조회 (현재 결재자)
+    const recordIds = records.map((r: any) => r.id);
+    const approvals = recordIds.length ? await (this.prisma as any).approvalRequest.findMany({
+      where: { subjectType: 'ATTENDANCE', subjectId: { in: recordIds } },
+      include: { approver: { select: { id: true, name: true } }, steps: { orderBy: { stepNo: 'asc' }, include: { approver: { select: { id: true, name: true } } } } },
+    }) : [];
+    const approvalMap = new Map<string, any>();
+    for (const a of approvals) approvalMap.set(a.subjectId, a);
+
     const hoursBetween = (s: any, e: any): number => {
       if (!s || !e) return 0;
       const diffMs = new Date(e).getTime() - new Date(s).getTime();
       return diffMs > 0 ? diffMs / (1000 * 60 * 60) : 0;
     };
 
-    const items = records.map((it: any) => ({
-      id: it.id,
-      userId: it.userId,
-      userName: it.user?.name ?? it.userId,
-      teamName: it.user?.orgUnit?.name ?? '',
-      type: it.type,
-      date: it.date,
-      startAt: it.startAt,
-      endAt: it.endAt,
-      hours: (it.type === 'OT' || it.type === 'EARLY_LEAVE' || it.type === 'FLEXIBLE' || it.type === 'HOLIDAY_WORK')
-        ? hoursBetween(it.startAt, it.endAt)
-        : null,
-      days: (it.type === 'VACATION' || it.type === 'HOLIDAY_REST') ? 1 : null,
-      status: it.status,
-      reason: it.reason,
-    }));
+    const items = records.map((it: any) => {
+      const approval = approvalMap.get(it.id);
+      let currentApproverName = '';
+      if (approval && it.status === 'PENDING') {
+        // 다단계 결재면 현재 단계 결재자, 아니면 기본 결재자
+        const pendingStep = (approval.steps || []).find((s: any) => s.status === 'PENDING');
+        currentApproverName = pendingStep?.approver?.name || approval.approver?.name || '';
+      }
+      return {
+        id: it.id,
+        userId: it.userId,
+        userName: it.user?.name ?? it.userId,
+        teamName: it.user?.orgUnit?.name ?? '',
+        type: it.type,
+        date: it.date,
+        startAt: it.startAt,
+        endAt: it.endAt,
+        hours: (it.type === 'OT' || it.type === 'EARLY_LEAVE' || it.type === 'FLEXIBLE' || it.type === 'HOLIDAY_WORK')
+          ? hoursBetween(it.startAt, it.endAt)
+          : null,
+        days: (it.type === 'VACATION' || it.type === 'HOLIDAY_REST') ? 1 : null,
+        status: it.status,
+        reason: it.reason,
+        currentApproverName,
+      };
+    });
 
     return { month: month || `${year}-${String(mon + 1).padStart(2, '0')}`, items };
   }
