@@ -80,19 +80,18 @@ export function Home() {
   const [facetSample, setFacetSample] = useState<WL[]>([]);
   // All teams from org units API (not just those with worklogs)
   const [allTeams, setAllTeams] = useState<string[]>([]);
+  // 전체 사용자 목록 (조직도 기반)
+  const [allUsers, setAllUsers] = useState<Array<{ name: string; teamName: string }>>([]);
   const teamOptions = TEAM_LIST; // 고정 팀 목록
   const deptOptions = DEPT_LIST; // 고정 실 목록
   const nameOptions = useMemo(() => {
-    const s = new Set<string>();
-    facetSample.forEach(w => {
-      if (!w.userName) return;
-      // When a team is selected, restrict the name dropdown to members
-      // who appear in that team's worklogs.
-      if (filterTeam && String(w.teamName || '') !== filterTeam) return;
-      s.add(w.userName);
-    });
-    return Array.from(s).sort();
-  }, [facetSample, filterTeam]);
+    // 조직도 기반 전체 사용자에서 필터링
+    let filtered = allUsers;
+    if (filterTeam) {
+      filtered = allUsers.filter(u => u.teamName === filterTeam);
+    }
+    return filtered.map(u => u.name).sort();
+  }, [allUsers, filterTeam]);
   const latestComments = useMemo(() => {
     const map = new Map<string, { c: FB; t: number }>();
     comments.forEach(c => {
@@ -206,6 +205,15 @@ export function Home() {
         const orgs = await apiJson<{ items: Array<{ id: string; name: string }> }>('/api/orgs');
         const names = (orgs.items || []).map((o) => o.name).filter(Boolean);
         setAllTeams(names);
+      } catch {}
+      // 전체 사용자 목록 가져오기 (조직도 기반)
+      try {
+        const usersRes = await apiJson<{ items: Array<{ name: string; orgUnit?: { name: string } }> }>('/api/users');
+        const userList = (usersRes.items || []).map((u: any) => ({
+          name: u.name || '',
+          teamName: u.orgUnit?.name || u.orgName || '',
+        })).filter((u: any) => u.name);
+        setAllUsers(userList);
       } catch {}
     })();
   }, []);
