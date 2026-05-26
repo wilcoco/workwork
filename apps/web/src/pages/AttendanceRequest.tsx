@@ -36,9 +36,9 @@ export function AttendanceRequest() {
   const [weeklyDays, setWeeklyDays] = useState<{ date: string; totalHours: number }[]>([]);
 
   const [type, setType] = useState<AttendanceType>('OT');
-  const [date, setDate] = useState('');
-  const [startTime, setStartTime] = useState('17:00');
-  const [endTime, setEndTime] = useState('21:00');
+  const [startDatetime, setStartDatetime] = useState(''); // datetime-local: YYYY-MM-DDTHH:MM
+  const [endDatetime, setEndDatetime] = useState('');     // datetime-local: YYYY-MM-DDTHH:MM
+  const [vacationDate, setVacationDate] = useState('');   // 휴가용: YYYY-MM-DD
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [altRestDate, setAltRestDate] = useState(''); // 휴일 대체 신청용: 같은 주 평일 휴식일
@@ -115,8 +115,13 @@ export function AttendanceRequest() {
     }
   }
 
+  // 주간 근무시간 계산용 date 추출
+  const dateForWeekly = type === 'VACATION' ? vacationDate : (startDatetime ? startDatetime.slice(0, 10) : '');
+  const startTimeForWeekly = startDatetime ? startDatetime.slice(11, 16) : '';
+  const endTimeForWeekly = endDatetime ? endDatetime.slice(11, 16) : '';
+
   useEffect(() => {
-    if (!userId || !date) {
+    if (!userId || !dateForWeekly) {
       setWeeklyHours(null);
       return;
     }
@@ -125,12 +130,12 @@ export function AttendanceRequest() {
       try {
         const params = new URLSearchParams({
           userId,
-          date,
+          date: dateForWeekly,
         });
         if (type) params.set('type', type);
-        if (type !== 'VACATION' && startTime && endTime) {
-          params.set('startTime', startTime);
-          params.set('endTime', endTime);
+        if (type !== 'VACATION' && startTimeForWeekly && endTimeForWeekly) {
+          params.set('startTime', startTimeForWeekly);
+          params.set('endTime', endTimeForWeekly);
         }
         const res = await apiJson<{ weeklyHours: number; days?: { date: string; totalHours: number }[] }>(`/api/attendance/weekly-hours?${params.toString()}`);
         setWeeklyHours(typeof res.weeklyHours === 'number' ? res.weeklyHours : null);
@@ -145,27 +150,29 @@ export function AttendanceRequest() {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, date, type, startTime, endTime]);
+  }, [userId, dateForWeekly, type, startTimeForWeekly, endTimeForWeekly]);
 
   // FLEXIBLE: 시작 시간만 입력받고 종료시간은 +9시간으로 자동 설정
   useEffect(() => {
     if (type !== 'FLEXIBLE') return;
-    if (!startTime) return;
-    const [h, m] = startTime.split(':').map((v) => parseInt(v, 10));
-    if (Number.isNaN(h) || Number.isNaN(m)) return;
-    const endH = (h + 9) % 24;
-    const end = `${String(endH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-    if (end !== endTime) setEndTime(end);
-  }, [type, startTime, endTime]);
+    if (!startDatetime) return;
+    const startDate = new Date(startDatetime + ':00');
+    if (isNaN(startDate.getTime())) return;
+    const endDate = new Date(startDate.getTime() + 9 * 60 * 60 * 1000);
+    const endStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}T${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
+    if (endStr !== endDatetime) setEndDatetime(endStr);
+  }, [type, startDatetime, endDatetime]);
 
   // 근태 유형 변경 시 기본 시작 시간을 설정
   useEffect(() => {
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     if (type === 'OT') {
-      setStartTime('17:00');
+      if (!startDatetime) setStartDatetime(`${dateStr}T17:00`);
     } else if (type === 'FLEXIBLE') {
-      setStartTime('10:00');
+      if (!startDatetime) setStartDatetime(`${dateStr}T10:00`);
     }
-  }, [type]);
+  }, [type, startDatetime]);
 
   async function loadCalendar() {
     if (!userId) return;
@@ -198,9 +205,17 @@ export function AttendanceRequest() {
       alert('로그인이 필요합니다');
       return;
     }
-    if (!date || !type) {
-      alert('유형과 날짜를 입력해 주세요');
-      return;
+    // 휴가는 vacationDate, 그 외는 startDatetime 필요
+    if (type === 'VACATION') {
+      if (!vacationDate) {
+        alert('휴가 날짜를 입력해 주세요');
+        return;
+      }
+    } else {
+      if (!startDatetime || !endDatetime) {
+        alert('시작/종료 일시를 입력해 주세요');
+        return;
+      }
     }
     if (type === 'HOLIDAY_WORK') {
       if (!altRestDate) {
@@ -213,32 +228,45 @@ export function AttendanceRequest() {
       alert('결재선에 최소 한 명의 승인자를 선택해 주세요');
       return;
     }
-    if ((type === 'OT' || type === 'EARLY_LEAVE' || type === 'FLEXIBLE' || type === 'HOLIDAY_WORK') && (!startTime || !endTime)) {
-      alert('시간을 입력해 주세요');
-      return;
-    }
 
     setSubmitting(true);
     setError(null);
     try {
+      // 휴가는 date만, 그 외는 startAt/endAt (datetime-local + KST)
+      const payload: Record<string, any> = {
+        userId,
+        approverId: cleanedApprovers[0],
+        approverIds: cleanedApprovers,
+        type,
+        reason: reason || undefined,
+      };
+
+      if (type === 'VACATION') {
+        payload.date = vacationDate;
+      } else {
+        // datetime-local 값을 KST ISO 문자열로 변환
+        payload.startAt = startDatetime + ':00+09:00';
+        payload.endAt = endDatetime + ':00+09:00';
+        // 기존 API 호환을 위한 date 필드 (시작일 기준)
+        payload.date = startDatetime.slice(0, 10);
+      }
+
+      if (type === 'HOLIDAY_WORK') {
+        payload.altRestDate = altRestDate;
+      }
+
       await apiJson(`/api/attendance`, {
         method: 'POST',
-        body: JSON.stringify({
-          userId,
-          // First step is the legacy single approver field for
-          // backwards-compat; full ordered line goes in approverIds[].
-          approverId: cleanedApprovers[0],
-          approverIds: cleanedApprovers,
-          type,
-          date,
-          startTime: type === 'VACATION' ? undefined : startTime,
-          endTime: type === 'VACATION' ? undefined : endTime,
-          reason: reason || undefined,
-          altRestDate: type === 'HOLIDAY_WORK' ? (altRestDate || undefined) : undefined,
-        }),
+        body: JSON.stringify(payload),
       });
       await loadCalendar();
       alert('근태 신청이 등록되었습니다');
+      // 폼 초기화
+      setStartDatetime('');
+      setEndDatetime('');
+      setVacationDate('');
+      setReason('');
+      setAltRestDate('');
     } catch (e: any) {
       alert(e?.message || '근태 신청에 실패했습니다');
     } finally {
@@ -481,14 +509,54 @@ export function AttendanceRequest() {
             <option value="HOLIDAY_WORK">휴일 대체 신청</option>
           </select>
         </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span>일자</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            <span style={{ fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column' }}>
+        {type === 'VACATION' ? (
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>휴가 일자</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="date" value={vacationDate} onChange={(e) => setVacationDate(e.target.value)} />
+              <span style={{ fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column' }}>
+                <span>
+                  해당 주 업무시간:{' '}
+                  {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')}
+                </span>
+                {!weeklyLoading && weeklyDays.length > 0 && (
+                  <span>
+                    {weeklyDays.map((d, idx) => {
+                      const label = d.totalHours.toFixed(1);
+                      return `${idx > 0 ? ' / ' : ''}${d.date.slice(5)}: ${label}h`;
+                    }).join('')}
+                  </span>
+                )}
+              </span>
+            </div>
+          </label>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ display: 'grid', gap: 4, flex: 1, minWidth: 180 }}>
+                <span>시작 일시</span>
+                <input
+                  type="datetime-local"
+                  value={startDatetime}
+                  onChange={(e) => setStartDatetime(e.target.value)}
+                  style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 14 }}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 4, flex: 1, minWidth: 180 }}>
+                <span>종료 일시</span>
+                <input
+                  type="datetime-local"
+                  value={endDatetime}
+                  onChange={(e) => setEndDatetime(e.target.value)}
+                  disabled={type === 'FLEXIBLE'}
+                  style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 14 }}
+                />
+              </label>
+            </div>
+            <div style={{ fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column' }}>
               <span>
                 해당 주 업무시간:{' '}
-                {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')} 
+                {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')}
               </span>
               {!weeklyLoading && weeklyDays.length > 0 && (
                 <span>
@@ -498,9 +566,9 @@ export function AttendanceRequest() {
                   }).join('')}
                 </span>
               )}
-            </span>
-          </div>
-        </label>
+            </div>
+          </>
+        )}
         {type === 'HOLIDAY_WORK' && (
           <label style={{ display: 'grid', gap: 4 }}>
             <span>대체 휴일 (같은 주 평일)</span>
@@ -510,23 +578,6 @@ export function AttendanceRequest() {
               onChange={(e) => setAltRestDate(e.target.value)}
             />
           </label>
-        )}
-        {type !== 'VACATION' && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <label style={{ display: 'grid', gap: 4, flex: 1 }}>
-              <span>시작 시간</span>
-              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-            </label>
-            <label style={{ display: 'grid', gap: 4, flex: 1 }}>
-              <span>종료 시간</span>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                disabled={type === 'FLEXIBLE'}
-              />
-            </label>
-          </div>
         )}
         <label style={{ display: 'grid', gap: 4 }}>
           <span>사유</span>

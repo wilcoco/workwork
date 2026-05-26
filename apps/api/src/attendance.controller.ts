@@ -29,11 +29,19 @@ class CreateAttendanceDto {
 
   @IsOptional()
   @IsString()
-  startTime?: string; // HH:MM
+  startTime?: string; // HH:MM (legacy)
 
   @IsOptional()
   @IsString()
-  endTime?: string; // HH:MM
+  endTime?: string; // HH:MM (legacy)
+
+  @IsOptional()
+  @IsString()
+  startAt?: string; // ISO datetime (new: e.g. 2026-05-26T17:00:00+09:00)
+
+  @IsOptional()
+  @IsString()
+  endAt?: string; // ISO datetime (new: e.g. 2026-05-26T21:00:00+09:00)
 
   @IsOptional()
   @IsString()
@@ -61,17 +69,27 @@ export class AttendanceController {
       let startAt: Date | undefined;
       let endAt: Date | undefined;
       if (dto.type === 'OT' || dto.type === 'EARLY_LEAVE' || dto.type === 'FLEXIBLE' || dto.type === 'HOLIDAY_WORK') {
-        if (!dto.startTime || !dto.endTime) throw new BadRequestException('시간을 입력해 주세요');
-        // 입력된 시간은 한국 시간(KST) 기준으로 해석한다.
-        const s = new Date(`${dto.date}T${dto.startTime}:00+09:00`);
-        let e = new Date(`${dto.date}T${dto.endTime}:00+09:00`);
-        if (isNaN(s.getTime()) || isNaN(e.getTime())) throw new BadRequestException('유효하지 않은 시간입니다');
-        // 종료 시간이 시작 시간보다 이르면 자정을 넘긴 것으로 판단 (다음날)
-        if (e <= s) {
-          e = new Date(e.getTime() + 24 * 60 * 60 * 1000); // +1일
+        // 새 포맷: startAt/endAt (ISO datetime) 우선, 없으면 기존 date+startTime/endTime 사용
+        if (dto.startAt && dto.endAt) {
+          const s = new Date(dto.startAt);
+          const e = new Date(dto.endAt);
+          if (isNaN(s.getTime()) || isNaN(e.getTime())) throw new BadRequestException('유효하지 않은 시작/종료 일시입니다');
+          startAt = s;
+          endAt = e;
+        } else if (dto.startTime && dto.endTime) {
+          // 기존 포맷: date + startTime/endTime
+          const s = new Date(`${dto.date}T${dto.startTime}:00+09:00`);
+          let e = new Date(`${dto.date}T${dto.endTime}:00+09:00`);
+          if (isNaN(s.getTime()) || isNaN(e.getTime())) throw new BadRequestException('유효하지 않은 시간입니다');
+          // 종료 시간이 시작 시간보다 이르면 자정을 넘긴 것으로 판단 (다음날)
+          if (e <= s) {
+            e = new Date(e.getTime() + 24 * 60 * 60 * 1000); // +1일
+          }
+          startAt = s;
+          endAt = e;
+        } else {
+          throw new BadRequestException('시작/종료 일시를 입력해 주세요');
         }
-        startAt = s;
-        endAt = e;
       }
 
       // Resolve the approval line. Prefer the explicit ordered
