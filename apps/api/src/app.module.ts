@@ -46,6 +46,7 @@ import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
 import { ProposalsController } from './proposals.controller';
 import { VouchersController } from './vouchers.controller';
+import { AccessLogController } from './access-log.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 import { ProcessSchedulerService } from './process-scheduler.service';
 import { DataverseService } from './dataverse.service';
@@ -95,6 +96,7 @@ import { DataverseService } from './dataverse.service';
     SharePointSyncController,
     ProposalsController,
     VouchersController,
+    AccessLogController,
   ],
   providers: [
     PrismaService,

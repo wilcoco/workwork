@@ -1181,3 +1181,78 @@ model CompanyDataChat {
   @@index([userId])
   @@index([source])
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 입출입 데이터 (외부 보안 시스템 연동)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// 케이티텔레캅 - 복지동, 정문 입출입 (TB_ACCESS)
+model KtAccessLog {
+  id            String   @id @default(cuid())
+  eventAt       DateTime // 이벤트 발생 시각
+  cardNo        String?  // 카드/사원증 번호
+  employeeNo    String?  // 사번
+  personName    String?  // 이름
+  direction     String?  // IN/OUT
+  gateName      String?  // 출입구 이름 (정문, 복지동 등)
+  gateId        String?  // 출입구 ID
+  deviceId      String?  // 단말기 ID
+  resultCode    String?  // 인증 결과 코드
+  rawData       Json?    // 원본 데이터 전체
+  sourceId      String?  // 원본 테이블 PK (중복 방지용)
+  syncedAt      DateTime @default(now())
+
+  @@unique([sourceId])
+  @@index([eventAt])
+  @@index([employeeNo])
+  @@index([cardNo])
+  @@index([gateName])
+}
+
+/// 에스원 - 함평공장 입출입 (T_SECOM_ALARM)
+model SecomAlarm {
+  id            String   @id @default(cuid())
+  eventAt       DateTime // 이벤트 발생 시각
+  cardNo        String?  // 카드 번호
+  employeeNo    String?  // 사번
+  personName    String?  // 이름
+  direction     String?  // IN/OUT
+  zoneName      String?  // 구역명
+  zoneId        String?  // 구역 ID
+  deviceId      String?  // 단말기 ID
+  alarmType     String?  // 알람 유형
+  resultCode    String?  // 인증 결과
+  rawData       Json?    // 원본 데이터 전체
+  sourceId      String?  // 원본 테이블 PK
+  syncedAt      DateTime @default(now())
+
+  @@unique([sourceId])
+  @@index([eventAt])
+  @@index([employeeNo])
+  @@index([cardNo])
+  @@index([zoneName])
+}
+
+/// 캡스 - 사무실 입출입 (T_CAPS_ALARM)
+model CapsAlarm {
+  id            String   @id @default(cuid())
+  eventAt       DateTime // 이벤트 발생 시각
+  cardNo        String?  // 카드 번호
+  employeeNo    String?  // 사번
+  personName    String?  // 이름
+  direction     String?  // IN/OUT
+  doorName      String?  // 출입문 이름
+  doorId        String?  // 출입문 ID
+  deviceId      String?  // 단말기 ID
+  alarmType     String?  // 알람 유형
+  resultCode    String?  // 인증 결과
+  rawData       Json?    // 원본 데이터 전체
+  sourceId      String?  // 원본 테이블 PK
+  syncedAt      DateTime @default(now())
+
+  @@unique([sourceId])
+  @@index([eventAt])
+  @@index([employeeNo])
+  @@index([cardNo])
+  @@index([doorName])
+}
