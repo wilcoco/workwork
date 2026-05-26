@@ -64,9 +64,12 @@ export class AttendanceController {
         if (!dto.startTime || !dto.endTime) throw new BadRequestException('시간을 입력해 주세요');
         // 입력된 시간은 한국 시간(KST) 기준으로 해석한다.
         const s = new Date(`${dto.date}T${dto.startTime}:00+09:00`);
-        const e = new Date(`${dto.date}T${dto.endTime}:00+09:00`);
+        let e = new Date(`${dto.date}T${dto.endTime}:00+09:00`);
         if (isNaN(s.getTime()) || isNaN(e.getTime())) throw new BadRequestException('유효하지 않은 시간입니다');
-        if (e <= s) throw new BadRequestException('종료 시간이 시작 시간보다 같거나 이를 수 없습니다');
+        // 종료 시간이 시작 시간보다 이르면 자정을 넘긴 것으로 판단 (다음날)
+        if (e <= s) {
+          e = new Date(e.getTime() + 24 * 60 * 60 * 1000); // +1일
+        }
         startAt = s;
         endAt = e;
       }
@@ -544,10 +547,16 @@ export class AttendanceController {
     }
 
     // 현재 화면에서 선택 중인 신규 신청(아직 DB에 없는 것)을 가상으로 반영
+    // 자정 넘김 처리 함수
+    const adjustEndTime = (s: Date, e: Date): Date => {
+      if (e <= s) return new Date(e.getTime() + 24 * 60 * 60 * 1000);
+      return e;
+    };
     if (type === 'OT' || type === 'HOLIDAY_WORK') {
       if (startTime && endTime) {
         const s = new Date(`${dateStr}T${startTime}:00+09:00`);
-        const e = new Date(`${dateStr}T${endTime}:00+09:00`);
+        let e = new Date(`${dateStr}T${endTime}:00+09:00`);
+        e = adjustEndTime(s, e);
         const h = hoursBetween(s, e);
         otHours += h;
         const key = dateStr;
@@ -566,7 +575,8 @@ export class AttendanceController {
     } else if (type === 'EARLY_LEAVE') {
       if (startTime && endTime) {
         const s = new Date(`${dateStr}T${startTime}:00+09:00`);
-        const e = new Date(`${dateStr}T${endTime}:00+09:00`);
+        let e = new Date(`${dateStr}T${endTime}:00+09:00`);
+        e = adjustEndTime(s, e);
         const h = hoursBetween(s, e);
         earlyLeaveHours += h;
         const key = dateStr;
