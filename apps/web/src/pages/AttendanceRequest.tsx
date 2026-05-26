@@ -577,6 +577,11 @@ export function AttendanceRequest() {
               value={altRestDate}
               onChange={(e) => setAltRestDate(e.target.value)}
             />
+            {startDatetime && (
+              <span style={{ fontSize: 11, color: '#64748b' }}>
+                ※ 주 단위: 토~금 기준. 휴일 근무일과 같은 주 내 평일(월~금)을 선택하세요.
+              </span>
+            )}
           </label>
         )}
         <label style={{ display: 'grid', gap: 4 }}>
