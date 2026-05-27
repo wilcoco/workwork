@@ -72,7 +72,7 @@ export class OtVerificationController {
 
     const otRequests = await (this.prisma as any).attendanceRequest.findMany({
       where,
-      orderBy: [{ date: 'asc' }, { startAt: 'asc' }],
+      orderBy: [{ date: 'desc' }, { startAt: 'desc' }],
       include: {
         user: {
           select: {

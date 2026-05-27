@@ -73,6 +73,7 @@ export function OtVerification() {
   const [error, setError] = useState<string | null>(null);
 
   const [filterUser, setFilterUser] = useState('');
+  const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'OK' | 'WARN' | 'FAIL' | 'NO_DATA'>('all');
   const [selectedItem, setSelectedItem] = useState<OtItem | null>(null);
 
@@ -120,13 +121,20 @@ export function OtVerification() {
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
   }, [items]);
 
+  const dates = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((it) => set.add(it.date));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [items]);
+
   const filtered = useMemo(() => {
     return items.filter((it) => {
       if (filterUser && it.userId !== filterUser) return false;
+      if (filterDate && it.date !== filterDate) return false;
       if (filterStatus !== 'all' && it.verificationStatus !== filterStatus) return false;
       return true;
     });
-  }, [items, filterUser, filterStatus]);
+  }, [items, filterUser, filterDate, filterStatus]);
 
   const fmtDate = (d: string) => {
     if (!d) return '-';
@@ -197,11 +205,21 @@ export function OtVerification() {
             ))}
           </select>
           <select
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}
+          >
+            <option value="">전체 날짜</option>
+            {dates.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+          <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as any)}
             style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}
           >
-            <option value="all">전체</option>
+            <option value="all">전체 상태</option>
             <option value="OK">✅ 확인됨</option>
             <option value="WARN">⚠️ 경고</option>
             <option value="FAIL">❌ 미확인</option>
