@@ -29,9 +29,17 @@ export class HolidaysController {
     if (!year || Number.isNaN(year)) throw new BadRequestException('invalid year');
     const from = new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0));
     const to = new Date(Date.UTC(year + 1, 0, 0, 23, 59, 59, 999));
-    const items = await (this.prisma as any).holiday.findMany({
+    const rows = await (this.prisma as any).holiday.findMany({
       where: { date: { gte: from, lte: to } },
       orderBy: { date: 'asc' },
+    });
+    // 날짜를 KST 기준 YYYY-MM-DD 문자열로 변환
+    const items = rows.map((r: any) => {
+      const d = new Date(r.date);
+      // KST = UTC + 9시간
+      const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+      const dateStr = kst.toISOString().slice(0, 10);
+      return { ...r, date: dateStr };
     });
     return { items };
   }
