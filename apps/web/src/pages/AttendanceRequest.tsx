@@ -534,12 +534,41 @@ export function AttendanceRequest() {
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <label style={{ display: 'grid', gap: 4, flex: 1, minWidth: 180 }}>
-                <span>시작 일시</span>
+                <span>
+                  시작 일시
+                  {type === 'HOLIDAY_WORK' && startDatetime && (() => {
+                    const dateStr = startDatetime.slice(0, 10);
+                    const dow = new Date(dateStr).getDay();
+                    const isPublicHoliday = holidays.includes(dateStr);
+                    const isWeekend = dow === 0 || dow === 6;
+                    if (isPublicHoliday) return <span style={{ marginLeft: 6, color: '#dc2626', fontWeight: 700 }}>🔴 공휴일</span>;
+                    if (isWeekend) return <span style={{ marginLeft: 6, color: '#dc2626', fontWeight: 700 }}>🔴 주말</span>;
+                    return null;
+                  })()}
+                </span>
                 <input
                   type="datetime-local"
                   value={startDatetime}
                   onChange={(e) => setStartDatetime(e.target.value)}
-                  style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 14 }}
+                  style={{
+                    padding: '6px 8px',
+                    border: (() => {
+                      if (type !== 'HOLIDAY_WORK' || !startDatetime) return '1px solid #cbd5e1';
+                      const dateStr = startDatetime.slice(0, 10);
+                      const dow = new Date(dateStr).getDay();
+                      const isHoliday = holidays.includes(dateStr) || dow === 0 || dow === 6;
+                      return isHoliday ? '2px solid #dc2626' : '1px solid #cbd5e1';
+                    })(),
+                    borderRadius: 6,
+                    fontSize: 14,
+                    background: (() => {
+                      if (type !== 'HOLIDAY_WORK' || !startDatetime) return undefined;
+                      const dateStr = startDatetime.slice(0, 10);
+                      const dow = new Date(dateStr).getDay();
+                      const isHoliday = holidays.includes(dateStr) || dow === 0 || dow === 6;
+                      return isHoliday ? '#fef2f2' : undefined;
+                    })(),
+                  }}
                 />
               </label>
               <label style={{ display: 'grid', gap: 4, flex: 1, minWidth: 180 }}>
@@ -570,19 +599,61 @@ export function AttendanceRequest() {
           </>
         )}
         {type === 'HOLIDAY_WORK' && (
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span>대체 휴일 (같은 주 평일)</span>
-            <input
-              type="date"
-              value={altRestDate}
-              onChange={(e) => setAltRestDate(e.target.value)}
-            />
-            {startDatetime && (
-              <span style={{ fontSize: 11, color: '#64748b' }}>
-                ※ 주 단위: 토~금 기준. 휴일 근무일과 같은 주 내 평일(월~금)을 선택하세요.
-              </span>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {/* 공휴일 목록 표시 */}
+            {holidays.length > 0 && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 6 }}>
+                  📅 {calendarMonth} 공휴일
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {holidays
+                    .filter((h) => h.startsWith(calendarMonth))
+                    .map((h) => {
+                      const isSelected = startDatetime.startsWith(h);
+                      return (
+                        <button
+                          key={h}
+                          type="button"
+                          onClick={() => {
+                            setStartDatetime(`${h}T09:00`);
+                            setEndDatetime(`${h}T18:00`);
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: 12,
+                            borderRadius: 6,
+                            border: isSelected ? '2px solid #dc2626' : '1px solid #fca5a5',
+                            background: isSelected ? '#dc2626' : '#fff',
+                            color: isSelected ? '#fff' : '#dc2626',
+                            cursor: 'pointer',
+                            fontWeight: isSelected ? 700 : 500,
+                          }}
+                        >
+                          {h.slice(5)} ({['일','월','화','수','목','금','토'][new Date(h).getDay()]})
+                        </button>
+                      );
+                    })}
+                </div>
+                <div style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>
+                  ※ 공휴일 클릭 시 자동으로 해당 날짜가 선택됩니다
+                </div>
+              </div>
             )}
-          </label>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span>대체 휴일 (같은 주 평일)</span>
+              <input
+                type="date"
+                value={altRestDate}
+                onChange={(e) => setAltRestDate(e.target.value)}
+              />
+              {startDatetime && (
+                <span style={{ fontSize: 11, color: '#64748b' }}>
+                  ※ 주 단위: 토~금 기준. 휴일 근무일과 같은 주 내 평일(월~금)을 선택하세요.
+                </span>
+              )}
+            </label>
+          </div>
         )}
         <label style={{ display: 'grid', gap: 4 }}>
           <span>사유</span>
