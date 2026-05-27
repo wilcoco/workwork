@@ -632,7 +632,7 @@ export function AttendanceRequest() {
                             fontWeight: isSelected ? 700 : 500,
                           }}
                         >
-                          {h.slice(5)} ({['일','월','화','수','목','금','토'][new Date(h).getDay()]})
+                          {h.slice(5)} ({['일','월','화','수','목','금','토'][new Date(h + 'T00:00:00+09:00').getDay()]})
                         </button>
                       );
                     })}
@@ -762,7 +762,8 @@ function buildMonthGrid(month: string, items: CalendarItem[], holidays: string[]
     const dayDate = new Date(y, m - 1, d);
     const dayStart = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 0, 0, 0, 0);
     const dayEnd = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), 23, 59, 59, 999);
-    const key = dayDate.toISOString().slice(0, 10);
+    // KST 기준 YYYY-MM-DD (toISOString은 UTC 기준이라 하루 밀림)
+    const key = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     const dow = dayDate.getDay(); // 0=Sun,6=Sat
     const evs = items.filter((it) => {
       const base = new Date(it.date);
