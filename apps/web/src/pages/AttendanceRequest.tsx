@@ -602,48 +602,8 @@ export function AttendanceRequest() {
         )}
         {type === 'HOLIDAY_WORK' && (
           <div style={{ display: 'grid', gap: 8 }}>
-            {/* 공휴일 목록 표시 */}
-            {holidays.length > 0 && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 6 }}>
-                  📅 {calendarMonth} 공휴일
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {holidays
-                    .filter((h) => h.startsWith(calendarMonth))
-                    .map((h) => {
-                      const isSelected = startDatetime.startsWith(h);
-                      return (
-                        <button
-                          key={h}
-                          type="button"
-                          onClick={() => {
-                            setStartDatetime(`${h}T09:00`);
-                            setEndDatetime(`${h}T18:00`);
-                          }}
-                          style={{
-                            padding: '4px 10px',
-                            fontSize: 12,
-                            borderRadius: 6,
-                            border: isSelected ? '2px solid #dc2626' : '1px solid #fca5a5',
-                            background: isSelected ? '#dc2626' : '#fff',
-                            color: isSelected ? '#fff' : '#dc2626',
-                            cursor: 'pointer',
-                            fontWeight: isSelected ? 700 : 500,
-                          }}
-                        >
-                          {h.slice(5)} ({['일','월','화','수','목','금','토'][new Date(h + 'T00:00:00+09:00').getDay()]})
-                        </button>
-                      );
-                    })}
-                </div>
-                <div style={{ fontSize: 11, color: '#991b1b', marginTop: 6 }}>
-                  ※ 공휴일 클릭 시 자동으로 해당 날짜가 선택됩니다
-                </div>
-              </div>
-            )}
             <label style={{ display: 'grid', gap: 4 }}>
-              <span>대체 휴일 (같은 주 평일)</span>
+              <span>대체 휴무일 (같은 주 평일)</span>
               <input
                 type="date"
                 value={altRestDate}
