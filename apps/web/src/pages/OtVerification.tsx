@@ -34,6 +34,7 @@ type OtItem = {
   afterRecord: AccessRecord | null;
   allRecords: AccessRecord[];
   verificationNote: string;
+  isHolidayWorkDuplicate?: boolean;
 };
 
 type Summary = {

@@ -781,8 +781,8 @@ function buildLabel(ev: CalendarItem): string {
   else if (ev.type === 'VACATION') t = '휴가';
   else if (ev.type === 'EARLY_LEAVE') t = '조퇴';
   else if (ev.type === 'FLEXIBLE') t = '유연근무';
-  else if (ev.type === 'HOLIDAY_WORK') t = '대체 업무일';
-  else if (ev.type === 'HOLIDAY_REST') t = '대체 근무일';
+  else if (ev.type === 'HOLIDAY_WORK') t = '대체근무일';
+  else if (ev.type === 'HOLIDAY_REST') t = '대체휴무일';
   else t = ev.type;
 
   let base: string;
@@ -808,8 +808,8 @@ function getAttendanceTypeLabel(ev: CalendarItem): string {
   if (ev.type === 'VACATION') return '휴가';
   if (ev.type === 'EARLY_LEAVE') return '조퇴';
   if (ev.type === 'FLEXIBLE') return '유연근무';
-  if (ev.type === 'HOLIDAY_WORK') return '대체 업무일';
-  if (ev.type === 'HOLIDAY_REST') return '대체 근무일';
+  if (ev.type === 'HOLIDAY_WORK') return '대체근무일';
+  if (ev.type === 'HOLIDAY_REST') return '대체휴무일';
   return ev.type;
 }
 

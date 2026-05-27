@@ -35,6 +35,7 @@ type OtWithVerification = {
   afterRecord: AccessRecord | null;
   allRecords: AccessRecord[];
   verificationNote: string;
+  isHolidayWorkDuplicate: boolean; // 대체근무일과 중복 여부
 };
 
 const CAMS_API_URL = 'https://selfservice.icams.co.kr';
@@ -70,9 +71,9 @@ export class OtVerificationController {
       isExec = actor?.role === 'CEO' || actor?.role === 'EXEC';
     }
 
-    // OT 신청 조회
+    // OT 신청 조회 (HOLIDAY_WORK 제외, OT만)
     const where: any = {
-      type: { in: ['OT', 'HOLIDAY_WORK'] },
+      type: 'OT',
       date: { gte: monthStart, lte: monthEnd },
     };
 
@@ -97,6 +98,27 @@ export class OtVerificationController {
         },
       },
     });
+
+    // 같은 기간의 HOLIDAY_WORK 조회 (대체근무일 체크용)
+    const holidayWorkWhere: any = {
+      type: 'HOLIDAY_WORK',
+      date: { gte: monthStart, lte: monthEnd },
+    };
+    if (!isExec && actorId) {
+      holidayWorkWhere.userId = actorId;
+    } else if (userId) {
+      holidayWorkWhere.userId = userId;
+    }
+    const holidayWorkRecords = await (this.prisma as any).attendanceRequest.findMany({
+      where: holidayWorkWhere,
+      select: { userId: true, date: true },
+    });
+    // userId+date 조합으로 Set 생성
+    const holidayWorkSet = new Set<string>();
+    for (const hw of holidayWorkRecords) {
+      const dateStr = new Date(hw.date).toISOString().slice(0, 10);
+      holidayWorkSet.add(`${hw.userId}:${dateStr}`);
+    }
 
     // 결재 상태 조회
     const otIds = otRequests.map((r: any) => r.id);
@@ -135,9 +157,17 @@ export class OtVerificationController {
       const otStartAt = ot.startAt ? new Date(ot.startAt) : null;
       const otEndAt = ot.endAt ? new Date(ot.endAt) : null;
 
+      // 대체근무일 여부 체크
+      const isHolidayWorkDate = holidayWorkSet.has(`${ot.userId}:${otDate}`);
+
       // 입출입 기록 조회 (OT 날짜 전후 1일씩 포함)
       let accessRecords: AccessRecord[] = [];
       let verificationNote = '';
+
+      // 대체근무일에 OT 신청된 경우 비고 표시
+      if (isHolidayWorkDate) {
+        verificationNote = '⚠️ 대체근무일(휴일근무)과 중복 - OT 대신 휴일근무 신청 필요';
+      }
 
       if (employeeNo) {
         try {
@@ -184,12 +214,13 @@ export class OtVerificationController {
         hours,
         reason: ot.reason,
         status: approvalStatus,
-        verified: finalStatus === 'OK',
-        verificationStatus: finalStatus,
+        verified: finalStatus === 'OK' && !isHolidayWorkDate,
+        verificationStatus: isHolidayWorkDate ? 'WARN' : finalStatus,
         beforeRecord,
         afterRecord,
         allRecords: accessRecords,
         verificationNote,
+        isHolidayWorkDuplicate: isHolidayWorkDate,
       };
 
       // 필터링
