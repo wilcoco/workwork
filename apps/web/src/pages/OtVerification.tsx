@@ -14,6 +14,8 @@ type AccessRecord = {
   access_type: string;
 };
 
+type VerificationStatus = 'OK' | 'WARN' | 'FAIL' | 'NO_DATA';
+
 type OtItem = {
   id: string;
   userId: string;
@@ -27,6 +29,7 @@ type OtItem = {
   reason: string | null;
   status: string;
   verified: boolean;
+  verificationStatus: VerificationStatus;
   beforeRecord: AccessRecord | null;
   afterRecord: AccessRecord | null;
   allRecords: AccessRecord[];
@@ -36,7 +39,9 @@ type OtItem = {
 type Summary = {
   total: number;
   verified: number;
-  unverified: number;
+  warn: number;
+  fail: number;
+  noData: number;
   totalHours: number;
   verifiedHours: number;
 };
@@ -68,7 +73,7 @@ export function OtVerification() {
   const [error, setError] = useState<string | null>(null);
 
   const [filterUser, setFilterUser] = useState('');
-  const [filterVerified, setFilterVerified] = useState<'all' | 'verified' | 'unverified'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'OK' | 'WARN' | 'FAIL' | 'NO_DATA'>('all');
   const [selectedItem, setSelectedItem] = useState<OtItem | null>(null);
 
   const [myRole, setMyRole] = useState('');
@@ -97,9 +102,6 @@ export function OtVerification() {
     setError(null);
     try {
       const params = new URLSearchParams({ month });
-      if (filterVerified === 'verified') params.set('verifiedOnly', 'true');
-      if (filterVerified === 'unverified') params.set('unverifiedOnly', 'true');
-
       const res = await apiJson<{ items: OtItem[]; summary: Summary }>(
         `/api/ot-verification?${params}`,
       );
@@ -121,11 +123,10 @@ export function OtVerification() {
   const filtered = useMemo(() => {
     return items.filter((it) => {
       if (filterUser && it.userId !== filterUser) return false;
-      if (filterVerified === 'verified' && !it.verified) return false;
-      if (filterVerified === 'unverified' && it.verified) return false;
+      if (filterStatus !== 'all' && it.verificationStatus !== filterStatus) return false;
       return true;
     });
-  }, [items, filterUser, filterVerified]);
+  }, [items, filterUser, filterStatus]);
 
   const fmtDate = (d: string) => {
     if (!d) return '-';
@@ -196,13 +197,15 @@ export function OtVerification() {
             ))}
           </select>
           <select
-            value={filterVerified}
-            onChange={(e) => setFilterVerified(e.target.value as any)}
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as any)}
             style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}
           >
             <option value="all">전체</option>
-            <option value="verified">✅ 확인됨</option>
-            <option value="unverified">⚠️ 미확인</option>
+            <option value="OK">✅ 확인됨</option>
+            <option value="WARN">⚠️ 경고</option>
+            <option value="FAIL">❌ 미확인</option>
+            <option value="NO_DATA">➖ 데이터없음</option>
           </select>
           <button
             onClick={() => void loadData()}
@@ -244,8 +247,16 @@ export function OtVerification() {
             <div style={{ fontSize: 18, fontWeight: 700, color: '#22c55e' }}>{summary.verified}건</div>
           </div>
           <div>
-            <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠️ 미확인</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#f59e0b' }}>{summary.unverified}건</div>
+            <div style={{ fontSize: 11, color: '#f59e0b' }}>⚠️ 경고</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#f59e0b' }}>{summary.warn}건</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#ef4444' }}>❌ 미확인</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#ef4444' }}>{summary.fail}건</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: '#94a3b8' }}>➖ 데이터없음</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#94a3b8' }}>{summary.noData}건</div>
           </div>
           <div>
             <div style={{ fontSize: 11, color: '#64748b' }}>전체 시간</div>
@@ -285,18 +296,27 @@ export function OtVerification() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((it) => (
+                filtered.map((it) => {
+                  const rowBg = it.verificationStatus === 'OK' ? undefined
+                    : it.verificationStatus === 'WARN' ? '#fef9c3'
+                    : it.verificationStatus === 'FAIL' ? '#fee2e2'
+                    : '#f1f5f9';
+                  const statusIcon = it.verificationStatus === 'OK' ? '✅'
+                    : it.verificationStatus === 'WARN' ? '⚠️'
+                    : it.verificationStatus === 'FAIL' ? '❌'
+                    : '➖';
+                  const statusColor = it.verificationStatus === 'OK' ? '#22c55e'
+                    : it.verificationStatus === 'WARN' ? '#f59e0b'
+                    : it.verificationStatus === 'FAIL' ? '#ef4444'
+                    : '#94a3b8';
+                  return (
                   <tr
                     key={it.id}
-                    style={{ cursor: 'pointer', background: it.verified ? undefined : '#fef9c3' }}
+                    style={{ cursor: 'pointer', background: rowBg }}
                     onClick={() => setSelectedItem(it)}
                   >
                     <td style={td}>
-                      {it.verified ? (
-                        <span style={{ color: '#22c55e', fontWeight: 700 }}>✅</span>
-                      ) : (
-                        <span style={{ color: '#f59e0b', fontWeight: 700 }}>⚠️</span>
-                      )}
+                      <span style={{ color: statusColor, fontWeight: 700 }}>{statusIcon}</span>
                     </td>
                     <td style={td}>{it.userName}</td>
                     <td style={{ ...td, color: '#64748b', fontSize: 12 }}>{it.employeeNo || '-'}</td>
@@ -332,7 +352,8 @@ export function OtVerification() {
                       {it.verificationNote || '-'}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -385,10 +406,14 @@ export function OtVerification() {
               <div><strong>결재상태:</strong> {STATUS_LABELS[selectedItem.status] || selectedItem.status}</div>
               <div>
                 <strong>검증결과:</strong>{' '}
-                {selectedItem.verified ? (
+                {selectedItem.verificationStatus === 'OK' ? (
                   <span style={{ color: '#22c55e' }}>✅ 확인됨</span>
-                ) : (
+                ) : selectedItem.verificationStatus === 'WARN' ? (
                   <span style={{ color: '#f59e0b' }}>⚠️ {selectedItem.verificationNote}</span>
+                ) : selectedItem.verificationStatus === 'FAIL' ? (
+                  <span style={{ color: '#ef4444' }}>❌ {selectedItem.verificationNote}</span>
+                ) : (
+                  <span style={{ color: '#94a3b8' }}>➖ {selectedItem.verificationNote}</span>
                 )}
               </div>
             </div>

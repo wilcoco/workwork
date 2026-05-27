@@ -14,6 +14,8 @@ type AccessRecord = {
   access_type: string;
 };
 
+type VerificationStatus = 'OK' | 'WARN' | 'FAIL' | 'NO_DATA';
+
 type OtWithVerification = {
   id: string;
   userId: string;
@@ -28,6 +30,7 @@ type OtWithVerification = {
   status: string;
   // 검증 결과
   verified: boolean;
+  verificationStatus: VerificationStatus;
   beforeRecord: AccessRecord | null;
   afterRecord: AccessRecord | null;
   allRecords: AccessRecord[];
@@ -141,13 +144,15 @@ export class OtVerificationController {
       }
 
       // OT 검증 로직
-      const { verified, beforeRecord, afterRecord, note } = this.verifyOt(
+      const { verified, verificationStatus, beforeRecord, afterRecord, note } = this.verifyOt(
         accessRecords,
         otStartAt,
         otEndAt,
         otDate,
       );
 
+      // 사번 없으면 NO_DATA 상태로
+      const finalStatus: VerificationStatus = !employeeNo ? 'NO_DATA' : verificationStatus;
       if (!verificationNote) verificationNote = note;
 
       const hours = otStartAt && otEndAt
@@ -166,7 +171,8 @@ export class OtVerificationController {
         hours,
         reason: ot.reason,
         status: approvalStatus,
-        verified,
+        verified: finalStatus === 'OK',
+        verificationStatus: finalStatus,
         beforeRecord,
         afterRecord,
         allRecords: accessRecords,
@@ -183,10 +189,12 @@ export class OtVerificationController {
     // 요약 통계
     const summary = {
       total: results.length,
-      verified: results.filter((r) => r.verified).length,
-      unverified: results.filter((r) => !r.verified).length,
+      verified: results.filter((r) => r.verificationStatus === 'OK').length,
+      warn: results.filter((r) => r.verificationStatus === 'WARN').length,
+      fail: results.filter((r) => r.verificationStatus === 'FAIL').length,
+      noData: results.filter((r) => r.verificationStatus === 'NO_DATA').length,
       totalHours: results.reduce((sum, r) => sum + r.hours, 0),
-      verifiedHours: results.filter((r) => r.verified).reduce((sum, r) => sum + r.hours, 0),
+      verifiedHours: results.filter((r) => r.verificationStatus === 'OK').reduce((sum, r) => sum + r.hours, 0),
     };
 
     return { month: targetMonth, items: results, summary };
@@ -265,16 +273,17 @@ export class OtVerificationController {
     otDate: string,
   ): {
     verified: boolean;
+    verificationStatus: VerificationStatus;
     beforeRecord: AccessRecord | null;
     afterRecord: AccessRecord | null;
     note: string;
   } {
     if (!otStart || !otEnd) {
-      return { verified: false, beforeRecord: null, afterRecord: null, note: 'OT 시간 정보 없음' };
+      return { verified: false, verificationStatus: 'NO_DATA', beforeRecord: null, afterRecord: null, note: 'OT 시간 정보 없음' };
     }
 
     if (records.length === 0) {
-      return { verified: false, beforeRecord: null, afterRecord: null, note: '입출입 기록 없음' };
+      return { verified: false, verificationStatus: 'FAIL', beforeRecord: null, afterRecord: null, note: '입출입 기록 없음' };
     }
 
     // 시간순 정렬
@@ -282,55 +291,71 @@ export class OtVerificationController {
       (a, b) => new Date(a.access_time).getTime() - new Date(b.access_time).getTime(),
     );
 
-    // OT 시작 전 마지막 기록 (30분 여유)
-    const startThreshold = new Date(otStart.getTime() - 30 * 60 * 1000);
+    // OT 날짜의 시작 (당일 00:00 KST = 전날 15:00 UTC)
+    const otDateObj = new Date(otDate + 'T00:00:00+09:00');
+    const otDateStart = otDateObj.getTime();
+    const otDateEnd = otDateStart + 24 * 60 * 60 * 1000; // 다음날 00:00
+
+    // 평일 OT의 경우: 출근(아침)~OT종료(저녁) 패턴
+    // - beforeRecord: OT 시작 전, 당일 아침~OT시작 사이 기록 (출근)
+    // - afterRecord: OT 종료 후 기록 (퇴근)
+
+    // beforeRecord: OT 시작 전 마지막 기록 (당일 06:00 이후 ~ OT 시작)
+    const morningThreshold = otDateStart + 6 * 60 * 60 * 1000; // 당일 06:00 KST
     let beforeRecord: AccessRecord | null = null;
     for (const r of sorted) {
-      const t = new Date(r.access_time);
-      if (t <= otStart) {
+      const t = new Date(r.access_time).getTime();
+      if (t <= otStart.getTime()) {
         beforeRecord = r;
       }
     }
 
-    // OT 종료 후 첫 기록 (자정 넘김 고려, 다음날 06시까지)
-    const endThreshold = new Date(otEnd.getTime() + 6 * 60 * 60 * 1000);
+    // afterRecord: OT 종료 후 첫 기록 (다음날 06시까지)
+    const endThreshold = otEnd.getTime() + 6 * 60 * 60 * 1000;
     let afterRecord: AccessRecord | null = null;
     for (const r of sorted) {
-      const t = new Date(r.access_time);
-      if (t >= otEnd && t <= endThreshold) {
+      const t = new Date(r.access_time).getTime();
+      if (t >= otEnd.getTime() && t <= endThreshold) {
         afterRecord = r;
         break;
       }
     }
 
-    // 검증 로직
-    // 1. OT 시작 전 출입 기록이 있어야 함 (이미 회사에 있었음을 증명)
-    // 2. OT 종료 후 퇴출 기록이 있어야 함 (OT 후 퇴근 증명)
-    // 단, 실무적으로는 OT 시간대에 기록이 하나라도 있으면 인정하는 경우도 있음
-
-    // 느슨한 검증: OT 시간대 전후로 기록이 있으면 OK
-    const hasBeforeOrDuring = sorted.some((r) => {
-      const t = new Date(r.access_time);
-      return t <= otEnd;
-    });
-    const hasAfterOrDuring = sorted.some((r) => {
-      const t = new Date(r.access_time);
-      return t >= otStart;
-    });
-
-    const verified = hasBeforeOrDuring && hasAfterOrDuring;
-
+    // 검증 로직 개선
+    let verificationStatus: VerificationStatus = 'OK';
     let note = '';
-    if (!beforeRecord && !afterRecord) {
-      note = 'OT 시간대 전후 기록 없음';
-    } else if (!beforeRecord) {
-      note = 'OT 시작 전 기록 없음 (출근 기록 미확인)';
-    } else if (!afterRecord) {
-      note = 'OT 종료 후 기록 없음 (퇴근 기록 미확인)';
+
+    const hasBefore = !!beforeRecord;
+    const hasAfter = !!afterRecord;
+
+    // 출근 기록이 전날 밤인 경우 체크 (당일 06:00 이전)
+    const beforeTime = beforeRecord ? new Date(beforeRecord.access_time).getTime() : 0;
+    const isBeforePreviousNight = beforeRecord && beforeTime < morningThreshold;
+
+    if (!hasBefore && !hasAfter) {
+      // 둘 다 없음 → 빨강
+      verificationStatus = 'FAIL';
+      note = '출근/퇴근 기록 없음';
+    } else if (!hasBefore) {
+      // 출근 기록만 없음 → 노랑
+      verificationStatus = 'WARN';
+      note = '출근 기록 미확인 (OT 전 입출입 없음)';
+    } else if (!hasAfter) {
+      // 퇴근 기록만 없음 → 노랑
+      verificationStatus = 'WARN';
+      note = '퇴근 기록 미확인 (OT 후 입출입 없음)';
+    } else if (isBeforePreviousNight) {
+      // 출근 기록이 전날 밤 → 노랑 (들어올 때 안 찍었을 가능성)
+      verificationStatus = 'WARN';
+      note = '출근 기록이 전날 밤 (입실 미태깅 의심)';
     } else {
+      // 둘 다 있고 정상 → 초록
+      verificationStatus = 'OK';
       note = '입출입 기록 확인됨';
     }
 
-    return { verified, beforeRecord, afterRecord, note };
+    const verified = verificationStatus === 'OK';
+
+    return { verified, verificationStatus, beforeRecord, afterRecord, note };
   }
 }
