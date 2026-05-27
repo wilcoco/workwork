@@ -109,6 +109,7 @@ model User {
   entraTenantId String?
   entraOid    String?  @unique
   name       String
+  employeeNo String?  // 사번 (CAMS 입출입 기록 매칭용)
   role       Role
   status     UserStatus @default(ACTIVE)
   activatedAt DateTime?

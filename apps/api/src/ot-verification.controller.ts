@@ -93,15 +93,14 @@ export class OtVerificationController {
     const approvalStatusMap = new Map<string, string>();
     for (const a of approvals) approvalStatusMap.set(a.subjectId, a.status as string);
 
-    // 사번 조회를 위한 사용자 정보 (email에서 추출 또는 별도 필드)
-    // 여기서는 email 앞부분을 사번으로 가정하거나, User 테이블에 employeeNo 필드가 있으면 사용
+    // 사번 조회를 위한 사용자 정보
     const userIds = [...new Set(otRequests.map((r: any) => r.userId))];
     const users = await (this.prisma as any).user.findMany({
       where: { id: { in: userIds } },
-      select: { id: true, email: true, name: true },
+      select: { id: true, email: true, name: true, employeeNo: true },
     });
-    const userMap = new Map<string, { email: string; name: string }>();
-    for (const u of users) userMap.set(u.id, { email: u.email, name: u.name });
+    const userMap = new Map<string, { email: string; name: string; employeeNo: string | null }>();
+    for (const u of users) userMap.set(u.id, { email: u.email, name: u.name, employeeNo: u.employeeNo });
 
     // CAMS API로 입출입 기록 조회
     const startDate = monthStart.toISOString().slice(0, 10);
@@ -113,9 +112,8 @@ export class OtVerificationController {
       const user = userMap.get(ot.userId);
       const approvalStatus = approvalStatusMap.get(ot.id) || ot.status || 'PENDING';
 
-      // 사번 추출 (이메일 앞부분 또는 이름 사용)
-      // 실제로는 User 테이블에 employeeNo 필드가 있어야 함
-      const employeeNo = this.extractEmployeeNo(user?.email || '');
+      // 사번: User.employeeNo 필드 사용
+      const employeeNo = user?.employeeNo || null;
 
       const otDate = new Date(ot.date).toISOString().slice(0, 10);
       const otStartAt = ot.startAt ? new Date(ot.startAt) : null;

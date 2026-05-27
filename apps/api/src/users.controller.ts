@@ -287,6 +287,7 @@ export class UsersController {
         email: u.email,
         teamsUpn: (u as any).teamsUpn || '',
         name: u.name,
+        employeeNo: u.employeeNo || null,
         role: u.role,
         status: (u as any).status || 'ACTIVE',
         activatedAt: (u as any).activatedAt || null,
@@ -850,6 +851,17 @@ export class UsersController {
     const user = await this.prisma.user.update({ where: { id }, data: { orgUnitId: nextOrgUnitId ? nextOrgUnitId : null } });
     const org = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;
     return { id: user.id, orgUnitId: user.orgUnitId || '', orgName: org?.name || '' };
+  }
+
+  @Put(':id/employee-no')
+  async updateEmployeeNo(@Param('id') id: string, @Body() dto: { employeeNo?: string | null }, @Query('actorId') actorId?: string) {
+    await this.requireCeo(actorId);
+    const employeeNo = dto?.employeeNo ? String(dto.employeeNo).trim() : null;
+    const user = await (this.prisma as any).user.update({
+      where: { id },
+      data: { employeeNo },
+    });
+    return { id: user.id, employeeNo: user.employeeNo || '' };
   }
 
   @Delete(':id')

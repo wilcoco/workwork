@@ -6,6 +6,7 @@ type UserLite = {
   id: string;
   email: string;
   name: string;
+  employeeNo?: string | null;
   role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL';
   status?: 'PENDING' | 'ACTIVE' | string;
   activatedAt?: string | null;
@@ -27,7 +28,7 @@ export function AdminMembers() {
   const [q, setQ] = useState('');
   const [myUserId, setMyUserId] = useState('');
   const [myRole, setMyRole] = useState<'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | ''>('');
-  const [drafts, setDrafts] = useState<Record<string, { role: UserLite['role']; orgUnitId: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { role: UserLite['role']; orgUnitId: string; employeeNo: string }>>({});
   const [syncing, setSyncing] = useState<Record<string, boolean>>({});
   const [bulkLimit, setBulkLimit] = useState<string>('50');
   const [bulkSyncing, setBulkSyncing] = useState(false);
@@ -137,9 +138,9 @@ export function AdminMembers() {
   }, [myRole, myUserId]);
 
   useEffect(() => {
-    const next: Record<string, { role: UserLite['role']; orgUnitId: string }> = {};
+    const next: Record<string, { role: UserLite['role']; orgUnitId: string; employeeNo: string }> = {};
     for (const u of items) {
-      next[u.id] = { role: u.role, orgUnitId: u.orgUnitId || '' };
+      next[u.id] = { role: u.role, orgUnitId: u.orgUnitId || '', employeeNo: u.employeeNo || '' };
     }
     setDrafts(next);
   }, [items]);
@@ -162,9 +163,11 @@ export function AdminMembers() {
     if (!u || !d) return;
     const nextRole = d.role;
     const nextOrgUnitId = d.orgUnitId || '';
+    const nextEmployeeNo = d.employeeNo || '';
     const changedRole = nextRole !== u.role;
     const changedOrg = (nextOrgUnitId || '') !== (u.orgUnitId || '');
-    if (!changedRole && !changedOrg) return;
+    const changedEmployeeNo = (nextEmployeeNo || '') !== (u.employeeNo || '');
+    if (!changedRole && !changedOrg && !changedEmployeeNo) return;
     try {
       if (changedRole) {
         await apiJson(`/api/users/${encodeURIComponent(id)}/role?actorId=${encodeURIComponent(myUserId)}`, {
@@ -180,7 +183,13 @@ export function AdminMembers() {
         });
         orgName = res?.orgName || '';
       }
-      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, role: nextRole, orgUnitId: nextRole === 'EXTERNAL' ? '' : nextOrgUnitId, orgName: nextRole === 'EXTERNAL' ? '' : orgName } : x)));
+      if (changedEmployeeNo) {
+        await apiJson(`/api/users/${encodeURIComponent(id)}/employee-no?actorId=${encodeURIComponent(myUserId)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ employeeNo: nextEmployeeNo || null }),
+        });
+      }
+      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, role: nextRole, orgUnitId: nextRole === 'EXTERNAL' ? '' : nextOrgUnitId, orgName: nextRole === 'EXTERNAL' ? '' : orgName, employeeNo: nextEmployeeNo || null } : x)));
     } catch (e: any) {
       alert(e?.message || '저장할 수 없습니다.');
     }
@@ -254,6 +263,7 @@ export function AdminMembers() {
               <tr>
                 <th style={{ textAlign: 'left' }}>사진</th>
                 <th style={{ textAlign: 'left' }}>이름</th>
+                <th style={{ textAlign: 'left' }}>사번</th>
                 <th style={{ textAlign: 'left' }}>이메일</th>
                 <th style={{ textAlign: 'left' }}>역할</th>
                 <th style={{ textAlign: 'left' }}>상태</th>
@@ -279,6 +289,18 @@ export function AdminMembers() {
                     </div>
                   </td>
                   <td>{u.name}</td>
+                  <td>
+                    {myRole === 'CEO' ? (
+                      <input
+                        value={drafts[u.id]?.employeeNo ?? (u.employeeNo || '')}
+                        onChange={(e) => setDrafts((prev) => ({ ...prev, [u.id]: { ...prev[u.id], employeeNo: e.target.value } }))}
+                        placeholder="사번"
+                        style={{ width: 80, padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 4, fontSize: 13 }}
+                      />
+                    ) : (
+                      (u.employeeNo || '-')
+                    )}
+                  </td>
                   <td>{u.email}</td>
                   <td>
                     {myRole === 'CEO' ? (
@@ -291,6 +313,7 @@ export function AdminMembers() {
                             [u.id]: {
                               role: nextRole,
                               orgUnitId: nextRole === 'EXTERNAL' ? '' : (prev[u.id]?.orgUnitId ?? (u.orgUnitId || '')),
+                              employeeNo: prev[u.id]?.employeeNo ?? (u.employeeNo || ''),
                             },
                           }));
                         }}
@@ -311,7 +334,7 @@ export function AdminMembers() {
                       <select
                         value={(drafts[u.id]?.orgUnitId ?? (u.orgUnitId || ''))}
                         disabled={(drafts[u.id]?.role ?? u.role) === 'EXTERNAL'}
-                        onChange={(e) => setDrafts((prev) => ({ ...prev, [u.id]: { role: prev[u.id]?.role ?? u.role, orgUnitId: e.target.value } }))}
+                        onChange={(e) => setDrafts((prev) => ({ ...prev, [u.id]: { role: prev[u.id]?.role ?? u.role, orgUnitId: e.target.value, employeeNo: prev[u.id]?.employeeNo ?? (u.employeeNo || '') } }))}
                       >
                         <option value="">-</option>
                         {orgs.map((o) => (
@@ -342,7 +365,7 @@ export function AdminMembers() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', color: '#6b7280' }}>구성원이 없습니다</td>
+                  <td colSpan={8} style={{ textAlign: 'center', color: '#6b7280' }}>구성원이 없습니다</td>
                 </tr>
               )}
             </tbody>
