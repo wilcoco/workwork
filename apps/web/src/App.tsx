@@ -42,6 +42,7 @@ import { CarDispatchLogistics } from './pages/CarDispatchLogistics';
 import { AttendanceRequest } from './pages/AttendanceRequest';
 import { BusinessTripRequest } from './pages/BusinessTripRequest';
 import { AttendanceReport } from './pages/AttendanceReport';
+import { OtVerification } from './pages/OtVerification';
 import { AdminHolidays } from './pages/AdminHolidays';
 import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
 import { ProcessMy } from './pages/ProcessMy';
@@ -365,6 +366,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/dispatch/logistics" element={<CarDispatchLogistics />} />
           <Route path="/attendance/request" element={<AttendanceRequest />} />
           <Route path="/attendance/report" element={<AttendanceReport />} />
+          <Route path="/attendance/ot-verification" element={<OtVerification />} />
           <Route path="/business-trip/request" element={<BusinessTripRequest />} />
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
           <Route path="/process/dashboard" element={<ProcessDashboard />} />
@@ -493,6 +495,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/dispatch/logistics">물류 배차 신청</Link>
           <Link to="/attendance/request">근태 신청</Link>
           <Link to="/attendance/report">근태 리포트</Link>
+          <Link to="/attendance/ot-verification">OT 검증</Link>
           <Link to="/business-trip/request">출장 신청</Link>
         </NavDropdown>
         <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
@@ -697,6 +700,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/dispatch/logistics', label: '물류 배차 신청' },
         { to: '/attendance/request', label: '근태 신청' },
         { to: '/attendance/report', label: '근태 리포트' },
+        { to: '/attendance/ot-verification', label: 'OT 검증' },
       ];
     }
     if (path.startsWith('/admin')) {

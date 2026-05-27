@@ -47,6 +47,7 @@ import { SharePointSyncController } from './sharepoint-sync.controller';
 import { ProposalsController } from './proposals.controller';
 import { VouchersController } from './vouchers.controller';
 import { AccessLogController } from './access-log.controller';
+import { OtVerificationController } from './ot-verification.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 import { ProcessSchedulerService } from './process-scheduler.service';
 import { DataverseService } from './dataverse.service';
@@ -97,6 +98,7 @@ import { DataverseService } from './dataverse.service';
     ProposalsController,
     VouchersController,
     AccessLogController,
+    OtVerificationController,
   ],
   providers: [
     PrismaService,
