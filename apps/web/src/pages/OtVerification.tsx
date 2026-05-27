@@ -94,15 +94,16 @@ export function OtVerification() {
   const isExec = myRole === 'CEO' || myRole === 'EXEC';
 
   useEffect(() => {
-    if (!isExec) return;
+    if (!myRole) return;
     void loadData();
-  }, [month, isExec]);
+  }, [month, myRole]);
 
   async function loadData() {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({ month });
+      if (userId) params.set('actorId', userId);
       const res = await apiJson<{ items: OtItem[]; summary: Summary }>(
         `/api/ot-verification?${params}`,
       );
@@ -175,18 +176,10 @@ export function OtVerification() {
     return <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>권한 확인 중…</div>;
   }
 
-  if (!isExec) {
-    return (
-      <div style={{ padding: 32, textAlign: 'center', color: '#ef4444' }}>
-        임원 이상(임원/대표이사)만 OT 검증 페이지를 조회할 수 있습니다.
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <h2 style={{ margin: 0 }}>OT 검증 (입출입 기록 대조)</h2>
+        <h2 style={{ margin: 0 }}>OT 검증 (입출입 기록 대조){!isExec && ' - 내 기록'}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <input
             type="month"
@@ -194,16 +187,18 @@ export function OtVerification() {
             onChange={(e) => setMonth(e.target.value)}
             style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}
           />
-          <select
-            value={filterUser}
-            onChange={(e) => setFilterUser(e.target.value)}
-            style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}
-          >
-            <option value="">전체 구성원</option>
-            {users.map(([uid, name]) => (
-              <option key={uid} value={uid}>{name}</option>
-            ))}
-          </select>
+          {isExec && (
+            <select
+              value={filterUser}
+              onChange={(e) => setFilterUser(e.target.value)}
+              style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}
+            >
+              <option value="">전체 구성원</option>
+              {users.map(([uid, name]) => (
+                <option key={uid} value={uid}>{name}</option>
+              ))}
+            </select>
+          )}
           <select
             value={filterDate}
             onChange={(e) => setFilterDate(e.target.value)}

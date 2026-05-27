@@ -48,6 +48,7 @@ export class OtVerificationController {
   async getOtVerification(
     @Query('month') month?: string,
     @Query('userId') userId?: string,
+    @Query('actorId') actorId?: string,
     @Query('verifiedOnly') verifiedOnly?: string,
     @Query('unverifiedOnly') unverifiedOnly?: string,
   ) {
@@ -59,16 +60,28 @@ export class OtVerificationController {
     const monthStart = new Date(Date.UTC(year, mon - 1, 1, 0, 0, 0, 0));
     const monthEnd = new Date(Date.UTC(year, mon, 0, 23, 59, 59, 999));
 
-    // OT 신청 조회 (APPROVED 상태만)
+    // 요청자 권한 확인
+    let isExec = false;
+    if (actorId) {
+      const actor = await (this.prisma as any).user.findUnique({
+        where: { id: actorId },
+        select: { role: true },
+      });
+      isExec = actor?.role === 'CEO' || actor?.role === 'EXEC';
+    }
+
+    // OT 신청 조회
     const where: any = {
       type: { in: ['OT', 'HOLIDAY_WORK'] },
       date: { gte: monthStart, lte: monthEnd },
-      status: 'PENDING', // 모든 상태 포함하려면 주석 처리
     };
-    if (userId) where.userId = userId;
 
-    // status 조건 제거 - 모든 OT 보여주기
-    delete where.status;
+    // 임원이 아니면 본인 기록만
+    if (!isExec && actorId) {
+      where.userId = actorId;
+    } else if (userId) {
+      where.userId = userId;
+    }
 
     const otRequests = await (this.prisma as any).attendanceRequest.findMany({
       where,
