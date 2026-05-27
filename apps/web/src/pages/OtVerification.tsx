@@ -267,6 +267,7 @@ export function OtVerification() {
               <tr>
                 <th style={th}>검증</th>
                 <th style={th}>구성원</th>
+                <th style={th}>사번</th>
                 <th style={th}>팀</th>
                 <th style={th}>날짜</th>
                 <th style={th}>OT 시간</th>
@@ -279,7 +280,7 @@ export function OtVerification() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+                  <td colSpan={10} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
                     해당 조건의 OT 신청이 없습니다.
                   </td>
                 </tr>
@@ -298,6 +299,7 @@ export function OtVerification() {
                       )}
                     </td>
                     <td style={td}>{it.userName}</td>
+                    <td style={{ ...td, color: '#64748b', fontSize: 12 }}>{it.employeeNo || '-'}</td>
                     <td style={{ ...td, color: '#64748b' }}>{it.teamName}</td>
                     <td style={td}>{fmtDate(it.date)}</td>
                     <td style={td}>

@@ -119,13 +119,20 @@ export class OtVerificationController {
       const otStartAt = ot.startAt ? new Date(ot.startAt) : null;
       const otEndAt = ot.endAt ? new Date(ot.endAt) : null;
 
-      // 입출입 기록 조회
+      // 입출입 기록 조회 (OT 날짜 전후 1일씩 포함)
       let accessRecords: AccessRecord[] = [];
       let verificationNote = '';
 
       if (employeeNo) {
         try {
-          accessRecords = await this.fetchAccessRecords(employeeNo, otDate);
+          const otDateObj = new Date(otDate);
+          const dayBefore = new Date(otDateObj);
+          dayBefore.setDate(dayBefore.getDate() - 1);
+          const dayAfter = new Date(otDateObj);
+          dayAfter.setDate(dayAfter.getDate() + 1);
+          const startDateStr = dayBefore.toISOString().slice(0, 10);
+          const endDateStr = dayAfter.toISOString().slice(0, 10);
+          accessRecords = await this.fetchAccessRecords(employeeNo, startDateStr, endDateStr);
         } catch (e: any) {
           verificationNote = `입출입 기록 조회 실패: ${e.message}`;
         }
