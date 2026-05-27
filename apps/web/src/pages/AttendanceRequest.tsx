@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApproverIdPicker } from '../components/MemberSearchPicker';
-import { apiJson } from '../lib/api';
+import { apiJson, apiFetch } from '../lib/api';
+
+type AttachmentFile = { url: string; name: string; size?: number; type?: string };
 
 type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'HOLIDAY_REST';
 
@@ -42,6 +44,9 @@ export function AttendanceRequest() {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [altRestDate, setAltRestDate] = useState(''); // 휴일 대체 신청용: 같은 주 평일 휴식일
+  const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [approvers, setApprovers] = useState<Approver[]>([]);
   // Ordered approval line. Each entry is a userId; the first entry is
@@ -256,6 +261,10 @@ export function AttendanceRequest() {
         payload.altRestDate = altRestDate;
       }
 
+      if (attachments.length > 0) {
+        payload.attachments = attachments;
+      }
+
       await apiJson(`/api/attendance`, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -268,11 +277,52 @@ export function AttendanceRequest() {
       setVacationDate('');
       setReason('');
       setAltRestDate('');
+      setAttachments([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (e: any) {
       alert(e?.message || '근태 신청에 실패했습니다');
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const newAttachments: AttachmentFile[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fd = new FormData();
+        fd.append('file', file, file.name);
+        fd.append('originalName', file.name);
+
+        const res = await apiFetch('/api/uploads', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(text || `업로드 실패 (${res.status})`);
+        }
+        const data = await res.json();
+        newAttachments.push({
+          url: data.url,
+          name: data.name || file.name,
+          size: data.size || file.size,
+          type: data.type || file.type,
+        });
+      }
+      setAttachments((prev) => [...prev, ...newAttachments]);
+    } catch (err: any) {
+      alert(err?.message || '파일 업로드 실패');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  function removeAttachment(idx: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
   }
 
   function changeMonth(delta: number) {
@@ -621,8 +671,41 @@ export function AttendanceRequest() {
           <span>사유</span>
           <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} />
         </label>
+        <div style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>첨부파일</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileUpload}
+              disabled={uploading}
+              style={{ fontSize: 13 }}
+            />
+            {uploading && <span style={{ fontSize: 12, color: '#64748b' }}>업로드 중...</span>}
+          </div>
+          {attachments.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+              {attachments.map((att, idx) => (
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#f1f5f9', padding: '4px 8px', borderRadius: 4 }}>
+                  <a href={att.url} target="_blank" rel="noopener noreferrer" style={{ color: '#0f172a', textDecoration: 'underline' }}>
+                    {att.name}
+                  </a>
+                  {att.size && <span style={{ color: '#64748b' }}>({(att.size / 1024).toFixed(1)}KB)</span>}
+                  <button
+                    type="button"
+                    onClick={() => removeAttachment(idx)}
+                    style={{ marginLeft: 'auto', padding: '2px 6px', fontSize: 11, border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', cursor: 'pointer' }}
+                  >
+                    삭제
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div style={{ marginTop: 8 }}>
-          <button type="submit" disabled={submitting}>
+          <button type="submit" disabled={submitting || uploading}>
             {submitting ? '신청 중…' : '근태 신청'}
           </button>
         </div>

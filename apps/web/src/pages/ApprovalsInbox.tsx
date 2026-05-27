@@ -436,6 +436,36 @@ export function ApprovalsInbox() {
                       <ProcessDocument processDoc={doc} variant="full" onOpenWorklog={(wl) => setWorklogPopup(wl)} />
                     </div>
                   )}
+                  {stNorm === 'ATTENDANCE' && doc?.attachments && Array.isArray(doc.attachments) && doc.attachments.length > 0 && (
+                    <div style={{ marginTop: 8, background: '#F8FAFC', borderRadius: 8, padding: 10, border: '1px solid #E2E8F0' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>첨부 파일</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {doc.attachments.map((att: any, idx: number) => {
+                          const url = pickFileUrl(att);
+                          const name = pickFileName(att, url);
+                          const isImg = isImageAttachment(att, url);
+                          return (
+                            <a
+                              key={idx}
+                              href={absLink(url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: 6, padding: '6px 10px', textDecoration: 'none', color: '#0F3D73', fontSize: 12 }}
+                            >
+                              {isImg && (
+                                <img
+                                  src={absLink(url)}
+                                  alt={name}
+                                  style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4 }}
+                                />
+                              )}
+                              <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                     <div>
                       <label style={{ fontSize: 12, color: '#475569', display: 'block', marginBottom: 4 }}>결재 의견</label>

@@ -150,7 +150,7 @@ export function ApprovalsMine() {
                 {requestedByName && requestedByName !== '-' && <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, flexShrink: 0 }}>{requestedByName}</span>}
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.docTitle || '문서 정보 없음'}</span>
                 {currentApproverName && <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>결재자: {currentApproverName}</span>}
-                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{new Date(it.createdAt).toLocaleDateString()}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>신청 {new Date(it.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
           );

@@ -51,6 +51,11 @@ class CreateAttendanceDto {
   @IsOptional()
   @IsString()
   altRestDate?: string; // YYYY-MM-DD
+
+  // 첨부파일: Array of { url, name, size?, type? }
+  @IsOptional()
+  @IsArray()
+  attachments?: { url: string; name: string; size?: number; type?: string }[];
 }
 
 @Controller('attendance')
@@ -215,6 +220,7 @@ export class AttendanceController {
               startAt,
               endAt,
               reason: dto.reason ? `${dto.reason} (대체휴일: ${dto.altRestDate})` : `대체휴일: ${dto.altRestDate}`,
+              attachments: dto.attachments ? dto.attachments : undefined,
             },
           });
 
@@ -269,6 +275,7 @@ export class AttendanceController {
               startAt,
               endAt,
               reason: dto.reason,
+              attachments: dto.attachments ? dto.attachments : undefined,
             },
           });
         }
