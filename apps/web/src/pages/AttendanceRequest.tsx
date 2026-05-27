@@ -51,7 +51,7 @@ export function AttendanceRequest() {
   const [approverIds, setApproverIds] = useState<string[]>(['']);
   const [members, setMembers] = useState<Approver[]>([]);
   const [filterUserId, setFilterUserId] = useState(''); // 캘린더용 구성원 필터 (''이면 전체)
-  const [filterType, setFilterType] = useState<'ALL' | AttendanceType>('ALL');
+  const [filterType, setFilterType] = useState<'ALL' | AttendanceType | 'HOLIDAY'>('ALL');
   const [holidays, setHolidays] = useState<string[]>([]); // YYYY-MM-DD 목록
   const [isMobile, setIsMobile] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<{ ev: CalendarItem; dateLabel: string } | null>(null);
@@ -194,6 +194,7 @@ export function AttendanceRequest() {
     // 반려/취소된 건은 캘린더에서 제외
     const active = items.filter((it) => it.status !== 'REJECTED' && it.status !== 'CANCELLED');
     if (filterType === 'ALL') return active;
+    if (filterType === 'HOLIDAY') return active.filter((it) => it.type === 'HOLIDAY_WORK' || it.type === 'HOLIDAY_REST');
     return active.filter((it) => it.type === filterType);
   }, [items, filterType]);
 
@@ -363,6 +364,7 @@ export function AttendanceRequest() {
                 <option value="VACATION">휴가</option>
                 <option value="EARLY_LEAVE">조퇴</option>
                 <option value="FLEXIBLE">유연근무</option>
+                <option value="HOLIDAY">대체휴무</option>
               </select>
             </label>
           </div>
@@ -506,7 +508,7 @@ export function AttendanceRequest() {
             <option value="VACATION">휴가 신청</option>
             <option value="EARLY_LEAVE">조퇴 신청</option>
             <option value="FLEXIBLE">유연 근무 신청</option>
-            <option value="HOLIDAY_WORK">휴일 대체 신청</option>
+            <option value="HOLIDAY_WORK">휴일 대체 신청 (별도 OT 신청을 하지 마세요)</option>
           </select>
         </label>
         {type === 'VACATION' ? (
