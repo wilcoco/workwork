@@ -62,34 +62,34 @@ export class ProposalsController {
     const diagnostics = items.length === 0 ? buildDiagnostics(html, Boolean(trimmed)) : undefined;
 
     // 상세 조회 시 첨부파일 페이지도 가져오기
-    // 첨부파일 그리드 구조: 순번(0), 품의서번호(1), 파일명(2)
+    // HTML 구조: myDataGrid2 테이블
+    // - 순번: span 없이 그냥 숫자 (파싱 안 됨) → 행 인덱스+1 사용
+    // - myDataGrid2_lblSLPNO_0: 품의서번호
+    // - myDataGrid2_lblTITLE_0: 파일명 ← 여기에 파일명!
     let attachments: Array<{ seq: number; filename: string; sortValue: string; slpNo: string }> = [];
     if (trimmed) {
       try {
         const filesUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}`;
         const filesHtml = await fetchCamsHtml(filesUrl);
         const filesGrids = parseGrids(filesHtml);
-        // 파일 그리드 찾기 (행이 있는 그리드)
-        const fileGrid = Object.values(filesGrids).find(g => g.rows.length > 0);
+
+        // myDataGrid2가 첨부파일 그리드 (myDataGrid는 메인 품의서 정보)
+        const fileGrid = filesGrids['myDataGrid2'];
+        console.log('[첨부파일] fileGrid:', fileGrid);
+
         if (fileGrid && fileGrid.rows.length > 0) {
           console.log('[첨부파일] fields:', fileGrid.fields);
           console.log('[첨부파일] rows:', fileGrid.rows);
 
-          // 필드 순서가 고정: 순번(0), 품의서번호(1), 파일명(2)
-          // 필드 코드는 HTML에서 파싱된 것 사용
-          const fields = fileGrid.fields;
-          const seqField = fields[0];      // 순번
-          const filenameField = fields[2]; // 파일명 (세 번째 필드)
-
+          // 파일명은 'title' 필드에 있음 (myDataGrid2_lblTITLE_N)
           attachments = fileGrid.rows.map((row, idx) => {
-            // 순번 필드 값 또는 행 인덱스+1
-            const seqValue = seqField ? String(row[seqField] ?? idx + 1) : String(idx + 1);
-            // 파일명 필드 값
-            const filename = filenameField ? String(row[filenameField] ?? `파일${idx + 1}`).trim() : `파일${idx + 1}`;
+            const filename = String(row['title'] ?? `파일${idx + 1}`).trim();
+            // 순번은 span에 없어서 파싱 안 됨 → 행 인덱스+1 사용
+            const sortValue = String(idx + 1);
             return {
               seq: idx + 1,
               filename,
-              sortValue: seqValue, // 순번 값을 sort 파라미터로 사용
+              sortValue,
               slpNo: trimmed,
             };
           });
