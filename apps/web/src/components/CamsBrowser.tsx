@@ -1269,12 +1269,31 @@ function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: str
   // If `onlyFields` is provided, restrict to that intersection while
   // preserving the requested order. Empty (no overlap) falls back to the
   // grid's own field order so we never end up with a 0-column table.
+  // Also filter out _href fields as they're used for linking, not display.
   const cols = onlyFields
     ? (() => {
-        const filtered = onlyFields.filter((f) => grid.fields.includes(f));
-        return filtered.length > 0 ? filtered : grid.fields;
+        const filtered = onlyFields.filter((f) => grid.fields.includes(f) && !f.endsWith('_href'));
+        return filtered.length > 0 ? filtered : grid.fields.filter((f) => !f.endsWith('_href'));
       })()
-    : grid.fields;
+    : grid.fields.filter((f) => !f.endsWith('_href'));
+
+  // Render cell with optional link if _href field exists
+  const renderCell = (row: any, field: string) => {
+    const value = formatValue(field, row[field]);
+    const hrefField = `${field}_href`;
+    const href = row[hrefField] as string | undefined;
+    if (href && value) {
+      // Make relative URLs absolute using CAMS base URL
+      const fullUrl = href.startsWith('http') ? href : `http://cn.icams.co.kr${href.startsWith('/') ? '' : '/'}${href}`;
+      return (
+        <a href={fullUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1d4ed8', textDecoration: 'underline' }}>
+          {value}
+        </a>
+      );
+    }
+    return value;
+  };
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -1291,7 +1310,7 @@ function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: str
             <tr key={row._index} style={{ borderTop: '1px solid #e5e7eb' }}>
               <td style={{ ...td, color: '#94a3b8', width: 40 }}>{i + 1}</td>
               {cols.map((c) => (
-                <td key={c} style={td}>{formatValue(c, row[c])}</td>
+                <td key={c} style={td}>{renderCell(row, c)}</td>
               ))}
             </tr>
           ))}

@@ -84,12 +84,25 @@ export function parseGrids(html: string): Record<string, ParsedGrid> {
     const gridId = m[1];
     const field = m[2].toLowerCase();
     const idx = Number(m[3]);
-    const text = decodeEntities(stripTags(m[4])).trim();
+    const innerHtml = m[4];
+    const text = decodeEntities(stripTags(innerHtml)).trim();
+
+    // Extract href from anchor tags inside the span (for file download links)
+    const hrefMatch = /<a[^>]+href=["']([^"']+)["']/i.exec(innerHtml);
+    const href = hrefMatch ? decodeEntities(hrefMatch[1]) : null;
+
     if (!byGrid[gridId]) byGrid[gridId] = { fieldOrder: [], rows: {} };
     const g = byGrid[gridId];
     if (!g.fieldOrder.includes(field)) g.fieldOrder.push(field);
     if (!g.rows[idx]) g.rows[idx] = {};
     g.rows[idx][field] = text;
+
+    // Store href as a separate field if found
+    if (href) {
+      const hrefField = `${field}_href`;
+      if (!g.fieldOrder.includes(hrefField)) g.fieldOrder.push(hrefField);
+      g.rows[idx][hrefField] = href;
+    }
   }
   const out: Record<string, ParsedGrid> = {};
   for (const [gridId, g] of Object.entries(byGrid)) {
