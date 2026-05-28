@@ -829,14 +829,28 @@ function ProposalForm({
       </section>
 
       {/* 첨부파일 — 내용 바로 아래 */}
-      {files && files.rows.length > 0 && (
-        <section style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-            첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
-          </div>
-          <CompactTable grid={files} />
-        </section>
-      )}
+      {files && files.rows.length > 0 && (() => {
+        const slpNo = fmtCell(0); // 품의번호
+        const filePageUrl = slpNo ? `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(slpNo)}` : '';
+        return (
+          <section style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
+              {filePageUrl && (
+                <a
+                  href={filePageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}
+                >
+                  CAMS에서 열기 ↗
+                </a>
+              )}
+            </div>
+            <CompactTable grid={files} />
+          </section>
+        );
+      })()}
     </article>
   );
 }
@@ -974,14 +988,28 @@ function VoucherForm({
       )}
 
       {/* 첨부파일 */}
-      {files && files.rows.length > 0 && (
-        <section style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-            첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
-          </div>
-          <CompactTable grid={files} />
-        </section>
-      )}
+      {files && files.rows.length > 0 && (() => {
+        const slpNo = fmtCell(1); // 전표번호
+        const filePageUrl = slpNo ? `http://cn.icams.co.kr/acco/macco_list2.aspx?slp_no=${encodeURIComponent(slpNo)}` : '';
+        return (
+          <section style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
+              {filePageUrl && (
+                <a
+                  href={filePageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}
+                >
+                  CAMS에서 열기 ↗
+                </a>
+              )}
+            </div>
+            <CompactTable grid={files} />
+          </section>
+        );
+      })()}
     </article>
   );
 }
