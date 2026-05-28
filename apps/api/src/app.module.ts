@@ -46,6 +46,7 @@ import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
 import { ProposalsController } from './proposals.controller';
 import { VouchersController } from './vouchers.controller';
+import { CamsSyncController } from './cams-sync.controller';
 import { AccessLogController } from './access-log.controller';
 import { OtVerificationController } from './ot-verification.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
@@ -97,6 +98,7 @@ import { DataverseService } from './dataverse.service';
     SharePointSyncController,
     ProposalsController,
     VouchersController,
+    CamsSyncController,
     AccessLogController,
     OtVerificationController,
   ],

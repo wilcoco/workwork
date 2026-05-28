@@ -1258,3 +1258,75 @@ model CapsAlarm {
   @@index([cardNo])
   @@index([doorName])
 }
+
+// ============================================================
+// CAMS 품의서/전표 (사내 서버에서 푸시 받아 저장)
+// ============================================================
+
+model CamsProposal {
+  id          String   @id @default(cuid())
+  slpNo       String   @unique // 품의번호 (예: 202605180001)
+  title       String?  // 제목
+  purpose     String?  // 목적
+  drafter     String?  // 기안자
+  draftDate   String?  // 기안일자 (YYYYMMDD)
+  dueDate     String?  // 완료예정일 (YYYYMMDD)
+  amount      String?  // 소요금액
+  paymentTerm String?  // 지급조건
+  vendor      String?  // 관련업체
+  content     String?  @db.Text // 내용 (긴 텍스트)
+  rawData     Json?    // 원본 데이터 전체
+  syncedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  attachments CamsProposalAttachment[]
+
+  @@index([draftDate])
+  @@index([drafter])
+}
+
+model CamsProposalAttachment {
+  id         String   @id @default(cuid())
+  proposalId String
+  proposal   CamsProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  seq        Int      // 순번 (1, 2, 3...)
+  filename   String   // 파일명
+  downloadUrl String  // CAMS 다운로드 URL (내부망용)
+  createdAt  DateTime @default(now())
+
+  @@unique([proposalId, seq])
+  @@index([proposalId])
+}
+
+model CamsVoucher {
+  id          String   @id @default(cuid())
+  slpNo       String   @unique // 전표번호
+  title       String?  // 제목/적요
+  drafter     String?  // 기안자
+  draftDate   String?  // 기표일자
+  amount      String?  // 금액
+  status      String?  // 결재여부
+  txType      String?  // 거래형태
+  content     String?  @db.Text // 내용
+  rawData     Json?    // 원본 데이터 전체
+  syncedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  attachments CamsVoucherAttachment[]
+
+  @@index([draftDate])
+  @@index([drafter])
+}
+
+model CamsVoucherAttachment {
+  id         String   @id @default(cuid())
+  voucherId  String
+  voucher    CamsVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  seq        Int      // 순번
+  filename   String   // 파일명
+  downloadUrl String  // CAMS 다운로드 URL (내부망용)
+  createdAt  DateTime @default(now())
+
+  @@unique([voucherId, seq])
+  @@index([voucherId])
+}
