@@ -830,7 +830,8 @@ function ProposalForm({
 
       {/* 첨부파일 — 내용 바로 아래 */}
       {files && files.rows.length > 0 && (() => {
-        const slpNo = fmtCell(0); // 품의번호
+        // 품의번호: fmtCell(0) 또는 fallbackHeader에서 직접 가져오기
+        const slpNo = fmtCell(0) || String(fallbackHeader?.['slpno'] ?? fallbackHeader?.['no'] ?? '').trim();
         const filePageUrl = slpNo ? `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(slpNo)}` : '';
         return (
           <section style={{ marginBottom: 16 }}>
@@ -989,7 +990,8 @@ function VoucherForm({
 
       {/* 첨부파일 */}
       {files && files.rows.length > 0 && (() => {
-        const slpNo = fmtCell(1); // 전표번호
+        // 전표번호: fmtCell(1) 또는 fallbackHeader에서 직접 가져오기
+        const slpNo = fmtCell(1) || String(fallbackHeader?.['slpno'] ?? fallbackHeader?.['no'] ?? '').trim();
         const filePageUrl = slpNo ? `http://cn.icams.co.kr/acco/macco_list2.aspx?slp_no=${encodeURIComponent(slpNo)}` : '';
         return (
           <section style={{ marginBottom: 16 }}>
