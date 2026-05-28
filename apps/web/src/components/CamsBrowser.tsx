@@ -708,7 +708,7 @@ function ProposalForm({
   const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
 
   // 디버깅
-  console.log('[ProposalForm] grids:', grids.map(g => ({ id: g.id, fields: g.fields, rows: g.rows.length })));
+  console.log('[ProposalForm] grids 상세:', grids.map(g => ({ id: g.id, fields: g.fields, rowCount: g.rows.length, label: sectionLabelFor(g.id, g.fields, config) })));
   console.log('[ProposalForm] files:', files);
   console.log('[ProposalForm] fallbackHeader:', fallbackHeader);
   // Main info: take the first grid that has any row and isn't the
