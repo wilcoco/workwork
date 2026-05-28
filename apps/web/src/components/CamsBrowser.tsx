@@ -1205,9 +1205,15 @@ function VoucherLedger({ grid }: { grid: ParsedGrid }) {
   const maxRows = Math.max(debitRows.length, creditRows.length);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-      <LedgerSide title="차변" rows={debitRows} total={debitTotal} showAcctNm={showAcctNm} showCost={showCost} minRows={maxRows} />
-      <LedgerSide title="대변" rows={creditRows} total={creditTotal} showAcctNm={showAcctNm} showCost={showCost} borderLeft minRows={maxRows} />
+    <div style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
+      <div style={{ display: 'table-row' }}>
+        <div style={{ display: 'table-cell', width: '50%', verticalAlign: 'top' }}>
+          <LedgerSide title="차변" rows={debitRows} total={debitTotal} showAcctNm={showAcctNm} showCost={showCost} minRows={maxRows} />
+        </div>
+        <div style={{ display: 'table-cell', width: '50%', verticalAlign: 'top', borderLeft: '1px solid #e5e7eb' }}>
+          <LedgerSide title="대변" rows={creditRows} total={creditTotal} showAcctNm={showAcctNm} showCost={showCost} minRows={maxRows} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -1218,7 +1224,6 @@ function LedgerSide({
   total,
   showAcctNm,
   showCost,
-  borderLeft,
   minRows,
 }: {
   title: string;
@@ -1226,20 +1231,19 @@ function LedgerSide({
   total: number;
   showAcctNm: boolean;
   showCost: boolean;
-  borderLeft?: boolean;
   minRows?: number;
 }) {
   // Total table column count for the totals row's `colSpan`.
   const totalCols = 1 /* 계정코드 */ + (showAcctNm ? 1 : 0) + 1 /* 적요 */ + (showCost ? 2 : 0) + 1 /* 금액 */;
   return (
-    <div style={{ borderLeft: borderLeft ? '1px solid #e5e7eb' : 'none' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ background: '#f8fafc', padding: '8px 12px', fontSize: 12, fontWeight: 800, color: title === '차변' ? '#0F3D73' : '#9F1239', borderBottom: '1px solid #e5e7eb' }}>
         {title}
       </div>
       {rows.length === 0 && !minRows ? (
-        <div style={{ padding: 14, fontSize: 12, color: '#cbd5e1' }}>—</div>
+        <div style={{ padding: 14, fontSize: 12, color: '#cbd5e1', flex: 1 }}>—</div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed', flex: 1 }}>
           <colgroup>
             <col style={{ width: 90 }} />
             {showAcctNm && <col />}
