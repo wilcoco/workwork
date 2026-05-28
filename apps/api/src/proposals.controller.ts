@@ -67,14 +67,23 @@ export class ProposalsController {
         const filesUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}`;
         const filesHtml = await fetchCamsHtml(filesUrl);
         const filesGrids = parseGrids(filesHtml);
-        // 파일 그리드 찾기 (순번, 품의서번호, 파일명 등이 있는 그리드)
-        const fileGrid = Object.values(filesGrids).find(g =>
-          g.fields.some(f => /filename|fname|file/i.test(f)) || g.rows.length > 0
-        );
+        // 파일 그리드 찾기
+        const fileGrid = Object.values(filesGrids).find(g => g.rows.length > 0);
         if (fileGrid && fileGrid.rows.length > 0) {
+          // 디버깅: 필드와 첫 번째 행 출력
+          console.log('[첨부파일] fields:', fileGrid.fields);
+          console.log('[첨부파일] row[0]:', fileGrid.rows[0]);
+
+          // 필드 순서: 순번, 품의서번호, 파일명, ...
+          // 파일명은 slpno/seq가 아닌 필드 중 첫 번째
+          const skipFields = ['seq', 'sno', 'no', 'slpno', 'slp_no', 'num', 'idx'];
+          const filenameField = fileGrid.fields.find(f =>
+            !skipFields.includes(f.toLowerCase())
+          ) || fileGrid.fields[2] || fileGrid.fields[0];
+          console.log('[첨부파일] filenameField:', filenameField);
+
           attachments = fileGrid.rows.map((row, idx) => {
-            const filenameField = fileGrid.fields.find(f => /filename|fname|file/i.test(f)) || fileGrid.fields[0];
-            const filename = String(row[filenameField] ?? row[fileGrid.fields[0]] ?? `파일${idx + 1}`);
+            const filename = String(row[filenameField] ?? `파일${idx + 1}`).trim();
             const seq = idx + 1;
             return {
               seq,
