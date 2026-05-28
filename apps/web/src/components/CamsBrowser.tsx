@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { apiJson } from '../lib/api';
+import { apiJson, apiUrl, apiFetch } from '../lib/api';
 
 /** Context: the active page's `field code -> Korean label` resolver. */
 const LabelContext = createContext<(field: string) => string>((f) => defaultLabelFor(f));
@@ -212,7 +212,7 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
             </div>
           ) : isDetail ? (
             config.format === 'proposal' ? (
-              <ProposalForm grids={grids} config={config} attachments={data?.attachments} />
+              <ProposalForm grids={grids} config={config} attachments={data?.attachments} userId={userId} />
             ) : config.format === 'voucher' ? (
               <VoucherForm grids={grids} config={config} />
             ) : (
@@ -408,7 +408,7 @@ function ListRow({
                 );
               }
               return config.format === 'proposal' ? (
-                <ProposalForm grids={detailGrids} config={config} fallbackHeader={row} attachments={detail.attachments} />
+                <ProposalForm grids={detailGrids} config={config} fallbackHeader={row} attachments={detail.attachments} userId={userId} />
               ) : config.format === 'voucher' ? (
                 <VoucherForm grids={detailGrids} config={config} fallbackHeader={row} />
               ) : (
@@ -708,11 +708,13 @@ function ProposalForm({
   config,
   fallbackHeader,
   attachments,
+  userId,
 }: {
   grids: ParsedGrid[];
   config: CamsBrowserConfig;
   fallbackHeader?: GridRow;
   attachments?: Attachment[];
+  userId?: string;
 }) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
   // Main info: take the first grid that has any row and isn't the
@@ -860,20 +862,40 @@ function ProposalForm({
                 {attachments.map((att, idx) => {
                   // seq를 sort로 사용 (1, 2, 3...)
                   const sortNum = att.seq || (idx + 1);
-                  const camsUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${docSlpNo}&sort=${sortNum}`;
+                  const handleDownload = async () => {
+                    try {
+                      const url = `/api/proposals/file?slpNo=${encodeURIComponent(docSlpNo)}&sort=${encodeURIComponent(String(sortNum))}&filename=${encodeURIComponent(att.filename)}&actorId=${encodeURIComponent(userId || '')}`;
+                      const res = await apiFetch(url);
+                      if (!res.ok) {
+                        const err = await res.text();
+                        alert(`다운로드 실패: ${err}`);
+                        return;
+                      }
+                      const blob = await res.blob();
+                      const blobUrl = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = blobUrl;
+                      a.download = att.filename || `file_${sortNum}`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(blobUrl);
+                    } catch (e: any) {
+                      alert(`다운로드 오류: ${e?.message || e}`);
+                    }
+                  };
                   return (
                     <tr key={sortNum} style={{ borderTop: '1px solid #e5e7eb' }}>
                       <td style={{ ...td, color: '#94a3b8', width: 40 }}>{sortNum}</td>
                       <td style={td}>{att.filename}</td>
                       <td style={td}>
-                        <a
-                          href={camsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: '#1d4ed8', textDecoration: 'underline', fontSize: 12 }}
+                        <button
+                          type="button"
+                          onClick={handleDownload}
+                          style={{ color: '#1d4ed8', textDecoration: 'underline', fontSize: 12, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                         >
-                          열기 ↗
-                        </a>
+                          다운로드
+                        </button>
                       </td>
                     </tr>
                   );
