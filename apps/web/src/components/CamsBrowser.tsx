@@ -253,24 +253,31 @@ function ListWithExpand({
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
   if (!listGrid) return null;
 
-  // Reorder columns so the most useful ones come first.
-  const colOrder = ['slpno', 'date', 'title', 'aspnote', 'sname', 'dname', 'amt', 'amount', 'status', 'state'];
+  // 결재완료(09)만 표시, 상태 컬럼 숨김
+  const approvedRows = listGrid.rows.filter((row) => {
+    const st = String(row['status'] ?? row['state'] ?? '').trim();
+    return st === '09';
+  });
+
+  // Reorder columns so the most useful ones come first. 상태 컬럼 제외
+  const colOrder = ['slpno', 'date', 'title', 'aspnote', 'sname', 'dname', 'amt', 'amount'];
+  const hiddenCols = ['status', 'state']; // 숨길 컬럼
   const cols = [
     ...colOrder.filter((c) => listGrid.fields.includes(c)),
-    ...listGrid.fields.filter((c) => !colOrder.includes(c)),
+    ...listGrid.fields.filter((c) => !colOrder.includes(c) && !hiddenCols.includes(c)),
   ];
 
   // Client-side filter: case-insensitive substring across every visible
   // cell so a user can search by title, drafter, dept or any free text.
   const q = filterText.trim().toLowerCase();
   const visibleRows = q
-    ? listGrid.rows.filter((row) => cols.some((c) => String(row[c] ?? '').toLowerCase().includes(q)))
-    : listGrid.rows;
+    ? approvedRows.filter((row) => cols.some((c) => String(row[c] ?? '').toLowerCase().includes(q)))
+    : approvedRows;
 
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#475569' }}>
-        총 <strong>{listGrid.rows.length}</strong>건{q && <> · 검색결과 <strong>{visibleRows.length}</strong>건</>}
+        결재완료 <strong>{approvedRows.length}</strong>건{q && <> · 검색결과 <strong>{visibleRows.length}</strong>건</>}
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
