@@ -1338,6 +1338,9 @@ function FileTable({ grid, slpNo, baseUrl }: { grid: ParsedGrid; slpNo: string; 
   // 표시할 컬럼 (href 제외)
   const cols = grid.fields.filter((f) => !f.endsWith('_href'));
 
+  // 디버깅: 콘솔에 데이터 출력
+  console.log('[FileTable] slpNo:', slpNo, 'fields:', grid.fields, 'sortField:', sortField, 'rows:', grid.rows);
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
