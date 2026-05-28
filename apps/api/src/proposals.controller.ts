@@ -1,4 +1,5 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { fetchCamsHtml, parseGrids, flattenGrids, buildDiagnostics } from './cams.util';
 
 const ALLOWED_USER_IDS = [
@@ -92,7 +93,8 @@ export class ProposalsController {
             return {
               seq: idx + 1,
               filename,
-              downloadUrl: `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}&sort=${sortValue}`,
+              sortValue,
+              slpNo: trimmed,
             };
           });
           console.log('[첨부파일] sortField:', sortField, 'attachments:', attachments);
@@ -112,6 +114,58 @@ export class ProposalsController {
       attachments,
       ...(diagnostics ? { diagnostics } : {}),
     };
+  }
+
+  /**
+   * GET /api/proposals/file?slpNo=<N>&sort=<N>&filename=<name>
+   * CAMS 첨부파일을 프록시하여 다운로드
+   */
+  @Get('file')
+  async downloadFile(
+    @Query('slpNo') slpNo: string,
+    @Query('sort') sort: string,
+    @Query('filename') filename: string,
+    @Query('actorId') actorId: string,
+    @Res() res: Response,
+  ) {
+    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
+      throw new BadRequestException('접근 권한이 없습니다');
+    }
+    if (!slpNo || !sort) {
+      throw new BadRequestException('slpNo와 sort가 필요합니다');
+    }
+
+    const url = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(slpNo)}&sort=${encodeURIComponent(sort)}`;
+
+    try {
+      const f: any = (globalThis as any).fetch;
+      const upstream = await f(url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      });
+
+      if (!upstream.ok) {
+        throw new BadRequestException(`CAMS 파일 조회 실패: ${upstream.status}`);
+      }
+
+      const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+
+      // 파일명 인코딩 (한글 지원)
+      const safeName = filename || `file_${slpNo}_${sort}`;
+      const encodedFilename = encodeURIComponent(safeName);
+
+      res.set({
+        'Content-Type': contentType,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodedFilename}`,
+        'Content-Length': buffer.length,
+      });
+      res.send(buffer);
+    } catch (e: any) {
+      throw new BadRequestException(`파일 다운로드 실패: ${e?.message || e}`);
+    }
   }
 
   /**

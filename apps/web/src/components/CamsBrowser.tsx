@@ -68,7 +68,8 @@ interface ListDiagnostics {
 interface Attachment {
   seq: number;
   filename: string;
-  downloadUrl: string;
+  sortValue: string;
+  slpNo: string;
 }
 
 interface ListResp {
@@ -837,42 +838,46 @@ function ProposalForm({
       </section>
 
       {/* 첨부파일 — 내용 바로 아래 */}
-      {attachments && attachments.length > 0 && (
-        <section style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-            첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({attachments.length})</span>
-          </div>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#fafafa', textAlign: 'left' }}>
-                  <th style={th}>#</th>
-                  <th style={th}>파일명</th>
-                  <th style={th}>다운로드</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attachments.map((att) => (
-                  <tr key={att.seq} style={{ borderTop: '1px solid #e5e7eb' }}>
-                    <td style={{ ...td, color: '#94a3b8', width: 40 }}>{att.seq}</td>
-                    <td style={td}>{att.filename}</td>
-                    <td style={td}>
-                      <a
-                        href={att.downloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: '#1d4ed8', textDecoration: 'underline', fontSize: 12 }}
-                      >
-                        열기 ↗
-                      </a>
-                    </td>
+      {attachments && attachments.length > 0 && (() => {
+        const actorId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+        return (
+          <section style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+              첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({attachments.length})</span>
+            </div>
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#fafafa', textAlign: 'left' }}>
+                    <th style={th}>#</th>
+                    <th style={th}>파일명</th>
+                    <th style={th}>다운로드</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+                </thead>
+                <tbody>
+                  {attachments.map((att) => {
+                    const downloadUrl = `/api/proposals/file?slpNo=${encodeURIComponent(att.slpNo)}&sort=${encodeURIComponent(att.sortValue)}&filename=${encodeURIComponent(att.filename)}&actorId=${encodeURIComponent(actorId)}`;
+                    return (
+                      <tr key={att.seq} style={{ borderTop: '1px solid #e5e7eb' }}>
+                        <td style={{ ...td, color: '#94a3b8', width: 40 }}>{att.seq}</td>
+                        <td style={td}>{att.filename}</td>
+                        <td style={td}>
+                          <a
+                            href={downloadUrl}
+                            style={{ color: '#1d4ed8', textDecoration: 'underline', fontSize: 12 }}
+                          >
+                            다운로드 ↓
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })()}
     </article>
   );
 }
