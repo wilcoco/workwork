@@ -838,7 +838,9 @@ function ProposalForm({
       </section>
 
       {/* 첨부파일 — 내용 바로 아래 */}
-      {attachments && attachments.length > 0 && (
+      {attachments && attachments.length > 0 && (() => {
+        console.log('[ProposalForm] attachments:', attachments);
+        return (
         <section style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
             첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({attachments.length})</span>
@@ -855,6 +857,7 @@ function ProposalForm({
               <tbody>
                 {attachments.map((att) => {
                   const camsUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${att.slpNo}&sort=${att.sortValue}`;
+                  console.log('[ProposalForm] att:', att, 'url:', camsUrl);
                   return (
                     <tr key={att.seq} style={{ borderTop: '1px solid #e5e7eb' }}>
                       <td style={{ ...td, color: '#94a3b8', width: 40 }}>{att.seq}</td>
@@ -876,7 +879,8 @@ function ProposalForm({
             </table>
           </div>
         </section>
-      )}
+        );
+      })()}
     </article>
   );
 }
