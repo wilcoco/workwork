@@ -191,5 +191,40 @@ export class ProposalsController {
       return { url, error: e?.message || String(e) };
     }
   }
+
+  /**
+   * GET /api/proposals/debug-files?slpNo=...
+   * 첨부파일 페이지(mpu_list2.aspx)의 구조를 디버깅
+   */
+  @Get('debug-files')
+  async debugFiles(@Query('slpNo') slpNo: string, @Query('actorId') actorId?: string) {
+    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
+      throw new BadRequestException('접근 권한이 없습니다');
+    }
+    if (!slpNo) {
+      throw new BadRequestException('slpNo가 필요합니다');
+    }
+    const trimmed = String(slpNo).trim();
+    const url = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}`;
+
+    try {
+      const html = await fetchCamsHtml(url);
+      const grids = parseGrids(html);
+      const gridSummary = Object.entries(grids).map(([id, g]) => ({
+        id,
+        fields: g.fields,
+        rowCount: g.rows.length,
+        sampleRows: g.rows.slice(0, 3),
+      }));
+      return {
+        url,
+        htmlLength: html.length,
+        grids: gridSummary,
+        htmlSnippet: html.slice(0, 5000),
+      };
+    } catch (e: any) {
+      return { url, error: e?.message || String(e) };
+    }
+  }
 }
 
