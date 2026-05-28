@@ -132,17 +132,25 @@ export class ProposalsController {
     }
 
     const url = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(slpNo)}&sort=${encodeURIComponent(sort)}`;
+    console.log('[파일다운로드] URL:', url);
 
     try {
       const f: any = (globalThis as any).fetch;
       const upstream = await f(url, {
         method: 'GET',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+          'Referer': 'http://cn.icams.co.kr/acco/mpu_list2.aspx',
         },
       });
 
+      console.log('[파일다운로드] 응답 status:', upstream.status, 'content-type:', upstream.headers.get('content-type'));
+
       if (!upstream.ok) {
+        const errorBody = await upstream.text();
+        console.error('[파일다운로드] 에러 응답:', errorBody.slice(0, 500));
         throw new BadRequestException(`CAMS 파일 조회 실패: ${upstream.status}`);
       }
 
