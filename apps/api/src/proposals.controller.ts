@@ -82,15 +82,20 @@ export class ProposalsController {
           ) || fileGrid.fields[2] || fileGrid.fields[0];
           console.log('[첨부파일] filenameField:', filenameField);
 
+          // sort 필드가 있으면 그 값 사용, 없으면 행 인덱스 사용
+          const sortField = fileGrid.fields.find(f => /^(sort|imgsort|seq|sno)$/i.test(f));
+
           attachments = fileGrid.rows.map((row, idx) => {
             const filename = String(row[filenameField] ?? `파일${idx + 1}`).trim();
-            const seq = idx + 1;
+            // sort 값: 필드에서 가져오거나, 1부터 시작하는 순번
+            const sortValue = sortField ? String(row[sortField] ?? idx + 1) : String(idx + 1);
             return {
-              seq,
+              seq: idx + 1,
               filename,
-              downloadUrl: `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}&sort=${seq}`,
+              downloadUrl: `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}&sort=${sortValue}`,
             };
           });
+          console.log('[첨부파일] sortField:', sortField, 'attachments:', attachments);
         }
       } catch (e) {
         // 첨부파일 조회 실패해도 메인 데이터는 반환
