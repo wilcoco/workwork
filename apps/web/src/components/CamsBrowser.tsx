@@ -706,6 +706,11 @@ function ProposalForm({
 }) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
   const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
+
+  // 디버깅
+  console.log('[ProposalForm] grids:', grids.map(g => ({ id: g.id, fields: g.fields, rows: g.rows.length })));
+  console.log('[ProposalForm] files:', files);
+  console.log('[ProposalForm] fallbackHeader:', fallbackHeader);
   // Main info: take the first grid that has any row and isn't the
   // approval line or the files grid. We do NOT use a label heuristic
   // here — the user said positions are authoritative.
