@@ -705,12 +705,15 @@ function ProposalForm({
   fallbackHeader?: GridRow;
 }) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
-  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
-
-  // 디버깅
-  console.log('[ProposalForm] grids 상세:', grids.map(g => ({ id: g.id, fields: g.fields, rowCount: g.rows.length, label: sectionLabelFor(g.id, g.fields, config) })));
-  console.log('[ProposalForm] files:', files);
-  console.log('[ProposalForm] fallbackHeader:', fallbackHeader);
+  // 첨부파일: 명시적 감지 또는 기타 정보 중 파일처럼 보이는 그리드
+  let files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
+  if (!files) {
+    // 기타 정보로 분류된 그리드 중 파일일 가능성이 있는 것 찾기
+    files = grids.find((g) => {
+      const label = sectionLabelFor(g.id, g.fields, config);
+      return label === '기타 정보' && g.rows.length > 0 && g !== approvers;
+    });
+  }
   // Main info: take the first grid that has any row and isn't the
   // approval line or the files grid. We do NOT use a label heuristic
   // here — the user said positions are authoritative.
@@ -1336,15 +1339,10 @@ function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: str
 /** 첨부파일 테이블 - 각 파일에 CAMS 다운로드 링크 추가 */
 function FileTable({ grid, slpNo, baseUrl }: { grid: ParsedGrid; slpNo: string; baseUrl: string }) {
   const labelFor = useLabelFor();
-  // 파일명 필드 찾기
-  const filenameField = grid.fields.find((f) => /^(filename|fname|file)$/i.test(f)) || grid.fields[0];
   // sort/imgsort 필드 찾기
   const sortField = grid.fields.find((f) => /^(sort|imgsort|seq|sno)$/i.test(f));
-  // 표시할 컬럼 (href 제외)
-  const cols = grid.fields.filter((f) => !f.endsWith('_href'));
-
-  // 디버깅: 콘솔에 데이터 출력
-  console.log('[FileTable] slpNo:', slpNo, 'fields:', grid.fields, 'sortField:', sortField, 'rows:', grid.rows);
+  // 표시할 컬럼 (href 제외, 불필요한 필드 제외)
+  const cols = grid.fields.filter((f) => !f.endsWith('_href') && !['gfile', 'imgsort'].includes(f.toLowerCase()));
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -1442,7 +1440,7 @@ function sectionLabelFor(id: string, fields: string[], config: CamsBrowserConfig
   if (id === 'myDataGrid') return config.listLabel;
   if (fset.has('approvalstatus') || fset.has('approvalorder') || fset.has('empno') || fset.has('signorder')) return '결재선';
   if (fset.has('bidamount') || fset.has('bidamt') || fset.has('biddername')) return '입찰업체';
-  if (fset.has('filename') || fset.has('imgsort') || fset.has('sort')) return '첨부파일';
+  if (fset.has('filename') || fset.has('fname') || fset.has('imgsort') || fset.has('sort') || fset.has('file') || fset.has('attach') || fset.has('gfile')) return '첨부파일';
   // Voucher line items typically have an account/debit/credit shape.
   // Single-row totals grids on the voucher detail page (one for debit
   // total, one for credit total). VoucherLedger already shows totals
