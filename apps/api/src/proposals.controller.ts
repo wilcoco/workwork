@@ -62,7 +62,7 @@ export class ProposalsController {
     const diagnostics = items.length === 0 ? buildDiagnostics(html, Boolean(trimmed)) : undefined;
 
     // 상세 조회 시 첨부파일 페이지도 가져오기
-    let attachments: Array<{ seq: number; filename: string; downloadUrl: string }> = [];
+    let attachments: Array<{ seq: number; filename: string; sortValue: string; slpNo: string }> = [];
     if (trimmed) {
       try {
         const filesUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}`;
