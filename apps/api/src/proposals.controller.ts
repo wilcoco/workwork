@@ -62,42 +62,38 @@ export class ProposalsController {
     const diagnostics = items.length === 0 ? buildDiagnostics(html, Boolean(trimmed)) : undefined;
 
     // 상세 조회 시 첨부파일 페이지도 가져오기
+    // 첨부파일 그리드 구조: 순번(0), 품의서번호(1), 파일명(2)
     let attachments: Array<{ seq: number; filename: string; sortValue: string; slpNo: string }> = [];
     if (trimmed) {
       try {
         const filesUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}`;
         const filesHtml = await fetchCamsHtml(filesUrl);
         const filesGrids = parseGrids(filesHtml);
-        // 파일 그리드 찾기
+        // 파일 그리드 찾기 (행이 있는 그리드)
         const fileGrid = Object.values(filesGrids).find(g => g.rows.length > 0);
         if (fileGrid && fileGrid.rows.length > 0) {
-          // 디버깅: 필드와 첫 번째 행 출력
           console.log('[첨부파일] fields:', fileGrid.fields);
-          console.log('[첨부파일] row[0]:', fileGrid.rows[0]);
+          console.log('[첨부파일] rows:', fileGrid.rows);
 
-          // 필드 순서: 순번, 품의서번호, 파일명, ...
-          // 파일명은 slpno/seq가 아닌 필드 중 첫 번째
-          const skipFields = ['seq', 'sno', 'no', 'slpno', 'slp_no', 'num', 'idx'];
-          const filenameField = fileGrid.fields.find(f =>
-            !skipFields.includes(f.toLowerCase())
-          ) || fileGrid.fields[2] || fileGrid.fields[0];
-          console.log('[첨부파일] filenameField:', filenameField);
-
-          // sort 필드가 있으면 그 값 사용, 없으면 행 인덱스 사용
-          const sortField = fileGrid.fields.find(f => /^(sort|imgsort|seq|sno)$/i.test(f));
+          // 필드 순서가 고정: 순번(0), 품의서번호(1), 파일명(2)
+          // 필드 코드는 HTML에서 파싱된 것 사용
+          const fields = fileGrid.fields;
+          const seqField = fields[0];      // 순번
+          const filenameField = fields[2]; // 파일명 (세 번째 필드)
 
           attachments = fileGrid.rows.map((row, idx) => {
-            const filename = String(row[filenameField] ?? `파일${idx + 1}`).trim();
-            // sort 값: 필드에서 가져오거나, 1부터 시작하는 순번
-            const sortValue = sortField ? String(row[sortField] ?? idx + 1) : String(idx + 1);
+            // 순번 필드 값 또는 행 인덱스+1
+            const seqValue = seqField ? String(row[seqField] ?? idx + 1) : String(idx + 1);
+            // 파일명 필드 값
+            const filename = filenameField ? String(row[filenameField] ?? `파일${idx + 1}`).trim() : `파일${idx + 1}`;
             return {
               seq: idx + 1,
               filename,
-              sortValue,
+              sortValue: seqValue, // 순번 값을 sort 파라미터로 사용
               slpNo: trimmed,
             };
           });
-          console.log('[첨부파일] sortField:', sortField, 'attachments:', attachments);
+          console.log('[첨부파일] 결과:', attachments);
         }
       } catch (e) {
         // 첨부파일 조회 실패해도 메인 데이터는 반환
