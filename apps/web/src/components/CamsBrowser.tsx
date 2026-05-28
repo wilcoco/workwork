@@ -832,23 +832,12 @@ function ProposalForm({
       {files && files.rows.length > 0 && (() => {
         // 품의번호: fmtCell(0) 또는 fallbackHeader에서 직접 가져오기
         const slpNo = fmtCell(0) || String(fallbackHeader?.['slpno'] ?? fallbackHeader?.['no'] ?? '').trim();
-        const filePageUrl = slpNo ? `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(slpNo)}` : '';
         return (
           <section style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
               첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
-              {filePageUrl && (
-                <a
-                  href={filePageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}
-                >
-                  CAMS에서 열기 ↗
-                </a>
-              )}
             </div>
-            <CompactTable grid={files} />
+            <FileTable grid={files} slpNo={slpNo} baseUrl="http://cn.icams.co.kr/acco/mpu_list2.aspx" />
           </section>
         );
       })()}
@@ -992,23 +981,12 @@ function VoucherForm({
       {files && files.rows.length > 0 && (() => {
         // 전표번호: fmtCell(1) 또는 fallbackHeader에서 직접 가져오기
         const slpNo = fmtCell(1) || String(fallbackHeader?.['slpno'] ?? fallbackHeader?.['no'] ?? '').trim();
-        const filePageUrl = slpNo ? `http://cn.icams.co.kr/acco/macco_list2.aspx?slp_no=${encodeURIComponent(slpNo)}` : '';
         return (
           <section style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
               첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
-              {filePageUrl && (
-                <a
-                  href={filePageUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600 }}
-                >
-                  CAMS에서 열기 ↗
-                </a>
-              )}
             </div>
-            <CompactTable grid={files} />
+            <FileTable grid={files} slpNo={slpNo} baseUrl="http://cn.icams.co.kr/acco/macco_list2.aspx" />
           </section>
         );
       })()}
@@ -1344,6 +1322,63 @@ function CompactTable({ grid, onlyFields }: { grid: ParsedGrid; onlyFields?: str
               ))}
             </tr>
           ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** 첨부파일 테이블 - 각 파일에 CAMS 다운로드 링크 추가 */
+function FileTable({ grid, slpNo, baseUrl }: { grid: ParsedGrid; slpNo: string; baseUrl: string }) {
+  const labelFor = useLabelFor();
+  // 파일명 필드 찾기
+  const filenameField = grid.fields.find((f) => /^(filename|fname|file)$/i.test(f)) || grid.fields[0];
+  // sort/imgsort 필드 찾기
+  const sortField = grid.fields.find((f) => /^(sort|imgsort|seq|sno)$/i.test(f));
+  // 표시할 컬럼 (href 제외)
+  const cols = grid.fields.filter((f) => !f.endsWith('_href'));
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: '#fafafa', textAlign: 'left' }}>
+            <th style={th}>#</th>
+            {cols.map((c) => (
+              <th key={c} style={th}>{labelFor(c)}</th>
+            ))}
+            <th style={th}>다운로드</th>
+          </tr>
+        </thead>
+        <tbody>
+          {grid.rows.map((row, i) => {
+            const sortValue = sortField ? String(row[sortField] ?? '') : String(i + 1);
+            const downloadUrl = slpNo && sortValue
+              ? `${baseUrl}?slp_no=${encodeURIComponent(slpNo)}&sort=${encodeURIComponent(sortValue)}`
+              : '';
+            return (
+              <tr key={row._index} style={{ borderTop: '1px solid #e5e7eb' }}>
+                <td style={{ ...td, color: '#94a3b8', width: 40 }}>{i + 1}</td>
+                {cols.map((c) => (
+                  <td key={c} style={td}>{formatValue(c, row[c])}</td>
+                ))}
+                <td style={td}>
+                  {downloadUrl ? (
+                    <a
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#1d4ed8', textDecoration: 'underline', fontSize: 12 }}
+                    >
+                      열기 ↗
+                    </a>
+                  ) : (
+                    <span style={{ color: '#94a3b8' }}>-</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
