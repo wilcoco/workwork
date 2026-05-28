@@ -83,18 +83,22 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
   // upstream returns the page-sized batch as-is, so any further
   // narrowing has to happen here.
   const [filterText, setFilterText] = useState<string>('');
+  const [userId] = useState(() => typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '');
 
   useEffect(() => {
-    void fetchList('');
+    if (userId) void fetchList('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.apiPath]);
+  }, [config.apiPath, userId]);
 
   async function fetchList(slpNo: string) {
     const trimmed = String(slpNo || '').trim();
     setLoading(true);
     setError(null);
     try {
-      const qs = trimmed ? `?slpNo=${encodeURIComponent(trimmed)}` : '';
+      const params = new URLSearchParams();
+      if (trimmed) params.set('slpNo', trimmed);
+      if (userId) params.set('actorId', userId);
+      const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await apiJson<ListResp>(`${config.apiPath}/list${qs}`);
       setData(res);
     } catch (e: any) {
@@ -207,7 +211,7 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
               <Doc grids={grids} config={config} />
             )
           ) : (
-            <ListWithExpand grids={grids} config={config} filterText={filterText} />
+            <ListWithExpand grids={grids} config={config} filterText={filterText} userId={userId} />
           )}
         </>
       )}
@@ -222,10 +226,12 @@ function ListWithExpand({
   grids,
   config,
   filterText,
+  userId,
 }: {
   grids: ParsedGrid[];
   config: CamsBrowserConfig;
   filterText: string;
+  userId: string;
 }) {
   const labelFor = useLabelFor();
   // Single-open accordion: each row keeps its own `open` boolean,
@@ -289,6 +295,7 @@ function ListWithExpand({
                     config={config}
                     closeSignal={closeSignal}
                     requestExclusiveOpen={(k) => setCloseSignal((s) => ({ n: s.n + 1, owner: k }))}
+                    userId={userId}
                   />
                 );
               })
@@ -308,6 +315,7 @@ function ListRow({
   config,
   closeSignal,
   requestExclusiveOpen,
+  userId,
 }: {
   rowKey: string;
   row: GridRow;
@@ -316,6 +324,7 @@ function ListRow({
   config: CamsBrowserConfig;
   closeSignal: { n: number; owner: string };
   requestExclusiveOpen: (key: string) => void;
+  userId: string;
 }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<ListResp | null>(null);
@@ -338,7 +347,10 @@ function ListRow({
     setLoading(true);
     setError(null);
     try {
-      const res = await apiJson<ListResp>(`${config.apiPath}/list?slpNo=${encodeURIComponent(slpNo)}`);
+      const params = new URLSearchParams();
+      params.set('slpNo', slpNo);
+      if (userId) params.set('actorId', userId);
+      const res = await apiJson<ListResp>(`${config.apiPath}/list?${params.toString()}`);
       setDetail(res);
     } catch (e: any) {
       setError(e?.message || '조회 실패');

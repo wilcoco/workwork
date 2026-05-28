@@ -1,6 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { Public } from './jwt-auth.guard';
+import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { fetchCamsHtml, parseGrids, flattenGrids, buildDiagnostics } from './cams.util';
+
+const ALLOWED_USER_IDS = [
+  'cmkkvpopa0001sbpqnk5cbpiu', // 홍정수
+  'cmouna6bf01w0xjhgf6imupg5', // 김정중
+  'cmoknhiqj0av02rtgo5eou86t', // 김선구
+];
 
 /**
  * Read-only proxy + parser for the legacy CAMS voucher (전표) pages.
@@ -26,9 +31,11 @@ export class VouchersController {
    * upstream list page is hit; with `slpNo` the detail page is fetched
    * and all DataGrids on it are returned, keyed by grid id.
    */
-  @Public()
   @Get('list')
-  async list(@Query('slpNo') slpNo?: string) {
+  async list(@Query('slpNo') slpNo?: string, @Query('actorId') actorId?: string) {
+    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
+      throw new BadRequestException('접근 권한이 없습니다');
+    }
     const trimmed = String(slpNo || '').trim();
     const url = trimmed
       ? `${process.env.CAMS_VOUCHER_DETAIL_URL || 'http://cn.icams.co.kr/acco/macco_list.aspx'}?slp_no=${encodeURIComponent(trimmed)}`

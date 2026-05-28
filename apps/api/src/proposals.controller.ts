@@ -1,6 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { Public } from './jwt-auth.guard';
+import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { fetchCamsHtml, parseGrids, flattenGrids, buildDiagnostics } from './cams.util';
+
+const ALLOWED_USER_IDS = [
+  'cmkkvpopa0001sbpqnk5cbpiu', // 홍정수
+  'cmouna6bf01w0xjhgf6imupg5', // 김정중
+  'cmoknhiqj0av02rtgo5eou86t', // 김선구
+];
 export type { ParsedGrid } from './cams.util';
 
 /**
@@ -40,9 +45,11 @@ export class ProposalsController {
    * Both cases share the same response shape (`grids` + flat `items`)
    * so the frontend can render either uniformly.
    */
-  @Public()
   @Get('list')
-  async list(@Query('slpNo') slpNo?: string) {
+  async list(@Query('slpNo') slpNo?: string, @Query('actorId') actorId?: string) {
+    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
+      throw new BadRequestException('접근 권한이 없습니다');
+    }
     const trimmed = String(slpNo || '').trim();
     const url = trimmed
       ? `${process.env.CAMS_PROPOSAL_DETAIL_URL || process.env.CAMS_PROPOSAL_LIST_URL || 'http://cn.icams.co.kr/acco/masp_list.aspx'}?slp_no=${encodeURIComponent(trimmed)}`
@@ -68,9 +75,11 @@ export class ProposalsController {
    * see what the upstream page is actually returning when the parsed list
    * comes back empty.
    */
-  @Public()
   @Get('debug')
-  async debug(@Query('slpNo') slpNo?: string) {
+  async debug(@Query('slpNo') slpNo?: string, @Query('actorId') actorId?: string) {
+    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
+      throw new BadRequestException('접근 권한이 없습니다');
+    }
     const base = process.env.CAMS_PROPOSAL_LIST_URL ||
       'http://cn.icams.co.kr/acco/masp_list.aspx';
     const trimmed = String(slpNo || '').trim();
