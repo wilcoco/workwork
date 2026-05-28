@@ -860,11 +860,11 @@ function ProposalForm({
               </thead>
               <tbody>
                 {attachments.map((att, idx) => {
-                  // seq를 sort로 사용 (1, 2, 3...)
-                  const sortNum = att.seq || (idx + 1);
+                  // sortValue = CAMS 그리드의 순번 값 (다운로드 URL의 sort 파라미터로 사용)
+                  const sortValue = att.sortValue || String(idx + 1);
                   const handleDownload = async () => {
                     try {
-                      const url = `/api/proposals/file?slpNo=${encodeURIComponent(docSlpNo)}&sort=${encodeURIComponent(String(sortNum))}&filename=${encodeURIComponent(att.filename)}&actorId=${encodeURIComponent(userId || '')}`;
+                      const url = `/api/proposals/file?slpNo=${encodeURIComponent(docSlpNo)}&sort=${encodeURIComponent(sortValue)}&filename=${encodeURIComponent(att.filename)}&actorId=${encodeURIComponent(userId || '')}`;
                       const res = await apiFetch(url);
                       if (!res.ok) {
                         const err = await res.text();
@@ -875,7 +875,7 @@ function ProposalForm({
                       const blobUrl = URL.createObjectURL(blob);
                       const a = document.createElement('a');
                       a.href = blobUrl;
-                      a.download = att.filename || `file_${sortNum}`;
+                      a.download = att.filename || `file_${sortValue}`;
                       document.body.appendChild(a);
                       a.click();
                       document.body.removeChild(a);
@@ -885,8 +885,8 @@ function ProposalForm({
                     }
                   };
                   return (
-                    <tr key={sortNum} style={{ borderTop: '1px solid #e5e7eb' }}>
-                      <td style={{ ...td, color: '#94a3b8', width: 40 }}>{sortNum}</td>
+                    <tr key={att.seq} style={{ borderTop: '1px solid #e5e7eb' }}>
+                      <td style={{ ...td, color: '#94a3b8', width: 40 }}>{sortValue}</td>
                       <td style={td}>{att.filename}</td>
                       <td style={td}>
                         <button
