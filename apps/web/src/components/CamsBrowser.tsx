@@ -839,7 +839,9 @@ function ProposalForm({
 
       {/* 첨부파일 — 내용 바로 아래 */}
       {attachments && attachments.length > 0 && (() => {
-        console.log('[ProposalForm] attachments:', attachments);
+        // 문서번호: fallbackHeader 또는 fmtCell(0)에서 가져오기
+        const docSlpNo = String(fallbackHeader?.['slpno'] || fallbackHeader?.['no'] || fmtCell(0) || '').trim();
+        console.log('[ProposalForm] docSlpNo:', docSlpNo, 'attachments:', attachments);
         return (
         <section style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
@@ -855,12 +857,13 @@ function ProposalForm({
                 </tr>
               </thead>
               <tbody>
-                {attachments.map((att) => {
-                  const camsUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${att.slpNo}&sort=${att.sortValue}`;
-                  console.log('[ProposalForm] att:', att, 'url:', camsUrl);
+                {attachments.map((att, idx) => {
+                  // seq를 sort로 사용 (1, 2, 3...)
+                  const sortNum = att.seq || (idx + 1);
+                  const camsUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${docSlpNo}&sort=${sortNum}`;
                   return (
-                    <tr key={att.seq} style={{ borderTop: '1px solid #e5e7eb' }}>
-                      <td style={{ ...td, color: '#94a3b8', width: 40 }}>{att.seq}</td>
+                    <tr key={sortNum} style={{ borderTop: '1px solid #e5e7eb' }}>
+                      <td style={{ ...td, color: '#94a3b8', width: 40 }}>{sortNum}</td>
                       <td style={td}>{att.filename}</td>
                       <td style={td}>
                         <a
