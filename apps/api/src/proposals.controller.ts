@@ -59,12 +59,43 @@ export class ProposalsController {
     const grids = parseGrids(html);
     const items = flattenGrids(grids);
     const diagnostics = items.length === 0 ? buildDiagnostics(html, Boolean(trimmed)) : undefined;
+
+    // 상세 조회 시 첨부파일 페이지도 가져오기
+    let attachments: Array<{ seq: number; filename: string; downloadUrl: string }> = [];
+    if (trimmed) {
+      try {
+        const filesUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}`;
+        const filesHtml = await fetchCamsHtml(filesUrl);
+        const filesGrids = parseGrids(filesHtml);
+        // 파일 그리드 찾기 (순번, 품의서번호, 파일명 등이 있는 그리드)
+        const fileGrid = Object.values(filesGrids).find(g =>
+          g.fields.some(f => /filename|fname|file/i.test(f)) || g.rows.length > 0
+        );
+        if (fileGrid && fileGrid.rows.length > 0) {
+          attachments = fileGrid.rows.map((row, idx) => {
+            const filenameField = fileGrid.fields.find(f => /filename|fname|file/i.test(f)) || fileGrid.fields[0];
+            const filename = String(row[filenameField] ?? row[fileGrid.fields[0]] ?? `파일${idx + 1}`);
+            const seq = idx + 1;
+            return {
+              seq,
+              filename,
+              downloadUrl: `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}&sort=${seq}`,
+            };
+          });
+        }
+      } catch (e) {
+        // 첨부파일 조회 실패해도 메인 데이터는 반환
+        console.error('첨부파일 조회 실패:', e);
+      }
+    }
+
     return {
       slpNo: trimmed,
       sourceUrl: url,
       grids,
       count: items.length,
       items,
+      attachments,
       ...(diagnostics ? { diagnostics } : {}),
     };
   }

@@ -65,12 +65,19 @@ interface ListDiagnostics {
   hint: string;
 }
 
+interface Attachment {
+  seq: number;
+  filename: string;
+  downloadUrl: string;
+}
+
 interface ListResp {
   slpNo: string;
   sourceUrl: string;
   grids: Record<string, ParsedGrid>;
   count: number;
   items: Array<{ _grid: string; _index: number; [k: string]: string | number | undefined }>;
+  attachments?: Attachment[];
   diagnostics?: ListDiagnostics;
 }
 
@@ -204,7 +211,7 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
             </div>
           ) : isDetail ? (
             config.format === 'proposal' ? (
-              <ProposalForm grids={grids} config={config} />
+              <ProposalForm grids={grids} config={config} attachments={data?.attachments} />
             ) : config.format === 'voucher' ? (
               <VoucherForm grids={grids} config={config} />
             ) : (
@@ -400,7 +407,7 @@ function ListRow({
                 );
               }
               return config.format === 'proposal' ? (
-                <ProposalForm grids={detailGrids} config={config} fallbackHeader={row} />
+                <ProposalForm grids={detailGrids} config={config} fallbackHeader={row} attachments={detail.attachments} />
               ) : config.format === 'voucher' ? (
                 <VoucherForm grids={detailGrids} config={config} fallbackHeader={row} />
               ) : (
@@ -699,26 +706,19 @@ function ProposalForm({
   grids,
   config,
   fallbackHeader,
+  attachments,
 }: {
   grids: ParsedGrid[];
   config: CamsBrowserConfig;
   fallbackHeader?: GridRow;
+  attachments?: Attachment[];
 }) {
   const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
-  // 첨부파일: 명시적 감지 또는 기타 정보 중 파일처럼 보이는 그리드
-  let files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
-  if (!files) {
-    // 기타 정보로 분류된 그리드 중 파일일 가능성이 있는 것 찾기
-    files = grids.find((g) => {
-      const label = sectionLabelFor(g.id, g.fields, config);
-      return label === '기타 정보' && g.rows.length > 0 && g !== approvers;
-    });
-  }
   // Main info: take the first grid that has any row and isn't the
-  // approval line or the files grid. We do NOT use a label heuristic
-  // here — the user said positions are authoritative.
+  // approval line. We do NOT use a label heuristic here — the user
+  // said positions are authoritative.
   const main =
-    grids.find((g) => g !== approvers && g !== files && g.rows.length > 0) ||
+    grids.find((g) => g !== approvers && g.rows.length > 0) ||
     grids[0];
   const row: Record<string, any> = (main?.rows?.[0] as any) || {};
   const mainFields = main?.fields || [];
@@ -837,18 +837,42 @@ function ProposalForm({
       </section>
 
       {/* 첨부파일 — 내용 바로 아래 */}
-      {files && files.rows.length > 0 && (() => {
-        // 품의번호: fmtCell(0) 또는 fallbackHeader에서 직접 가져오기
-        const slpNo = fmtCell(0) || String(fallbackHeader?.['slpno'] ?? fallbackHeader?.['no'] ?? '').trim();
-        return (
-          <section style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-              첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({files.rows.length})</span>
-            </div>
-            <FileTable grid={files} slpNo={slpNo} baseUrl="http://cn.icams.co.kr/acco/mpu_list2.aspx" />
-          </section>
-        );
-      })()}
+      {attachments && attachments.length > 0 && (
+        <section style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+            첨부파일 <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>({attachments.length})</span>
+          </div>
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#fafafa', textAlign: 'left' }}>
+                  <th style={th}>#</th>
+                  <th style={th}>파일명</th>
+                  <th style={th}>다운로드</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attachments.map((att) => (
+                  <tr key={att.seq} style={{ borderTop: '1px solid #e5e7eb' }}>
+                    <td style={{ ...td, color: '#94a3b8', width: 40 }}>{att.seq}</td>
+                    <td style={td}>{att.filename}</td>
+                    <td style={td}>
+                      <a
+                        href={att.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#1d4ed8', textDecoration: 'underline', fontSize: 12 }}
+                      >
+                        열기 ↗
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </article>
   );
 }
