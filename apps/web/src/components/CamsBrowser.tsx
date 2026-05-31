@@ -1198,23 +1198,66 @@ function VoucherLedger({ grid }: { grid: ParsedGrid }) {
 
   const debitTotal = debitRows.reduce((s, r) => s + r.amt, 0);
   const creditTotal = creditRows.reduce((s, r) => s + r.amt, 0);
-  const showAcctNm = Boolean(acctNmKey);
-  const showCost = Boolean(costGbKey) || Boolean(costOwnKey);
 
-  // Pad both sides to the same row count so the heights match.
+  // 차변/대변을 같은 행에 배치하여 높이 맞춤
   const maxRows = Math.max(debitRows.length, creditRows.length);
+  const rows: Array<{ debit?: LedgerRow; credit?: LedgerRow }> = [];
+  for (let i = 0; i < maxRows; i++) {
+    rows.push({
+      debit: debitRows[i],
+      credit: creditRows[i],
+    });
+  }
+
+  const cellStyle: React.CSSProperties = { padding: '8px 12px', fontSize: 13, verticalAlign: 'top' };
+  const numStyle: React.CSSProperties = { ...cellStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 };
+  const headerStyle: React.CSSProperties = { padding: '6px 12px', fontSize: 12, fontWeight: 600, background: '#f8fafc', borderBottom: '1px solid #e5e7eb' };
 
   return (
-    <div style={{ display: 'table', width: '100%', tableLayout: 'fixed' }}>
-      <div style={{ display: 'table-row' }}>
-        <div style={{ display: 'table-cell', width: '50%', verticalAlign: 'top' }}>
-          <LedgerSide title="차변" rows={debitRows} total={debitTotal} showAcctNm={showAcctNm} showCost={showCost} minRows={maxRows} />
-        </div>
-        <div style={{ display: 'table-cell', width: '50%', verticalAlign: 'top', borderLeft: '1px solid #e5e7eb' }}>
-          <LedgerSide title="대변" rows={creditRows} total={creditTotal} showAcctNm={showAcctNm} showCost={showCost} minRows={maxRows} />
-        </div>
-      </div>
-    </div>
+    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <colgroup>
+        <col style={{ width: '15%' }} />
+        <col style={{ width: '25%' }} />
+        <col style={{ width: '10%' }} />
+        <col style={{ width: '15%' }} />
+        <col style={{ width: '25%' }} />
+        <col style={{ width: '10%' }} />
+      </colgroup>
+      <thead>
+        <tr>
+          <th colSpan={3} style={{ ...headerStyle, color: '#0F3D73', textAlign: 'left' }}>차변</th>
+          <th colSpan={3} style={{ ...headerStyle, color: '#9F1239', textAlign: 'left', borderLeft: '2px solid #e5e7eb' }}>대변</th>
+        </tr>
+        <tr style={{ background: '#fafafa' }}>
+          <th style={headerStyle}>계정코드</th>
+          <th style={headerStyle}>적요</th>
+          <th style={{ ...headerStyle, textAlign: 'right' }}>금액</th>
+          <th style={{ ...headerStyle, borderLeft: '2px solid #e5e7eb' }}>계정코드</th>
+          <th style={headerStyle}>적요</th>
+          <th style={{ ...headerStyle, textAlign: 'right' }}>금액</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr key={i} style={{ borderTop: '1px solid #e5e7eb' }}>
+            <td style={cellStyle}>{row.debit?.acctcd || ''}</td>
+            <td style={{ ...cellStyle, color: '#64748b' }}>{row.debit?.note || ''}</td>
+            <td style={numStyle}>{row.debit ? fmtAmt(row.debit.amt) : ''}</td>
+            <td style={{ ...cellStyle, borderLeft: '2px solid #e5e7eb' }}>{row.credit?.acctcd || ''}</td>
+            <td style={{ ...cellStyle, color: '#64748b' }}>{row.credit?.note || ''}</td>
+            <td style={numStyle}>{row.credit ? fmtAmt(row.credit.amt) : ''}</td>
+          </tr>
+        ))}
+      </tbody>
+      <tfoot>
+        <tr style={{ borderTop: '2px solid #cbd5e1', background: '#fafafa' }}>
+          <td colSpan={2} style={{ ...cellStyle, fontWeight: 700 }}>차변합계</td>
+          <td style={{ ...numStyle, fontWeight: 800 }}>{fmtAmt(debitTotal)}</td>
+          <td colSpan={2} style={{ ...cellStyle, fontWeight: 700, borderLeft: '2px solid #e5e7eb' }}>대변합계</td>
+          <td style={{ ...numStyle, fontWeight: 800 }}>{fmtAmt(creditTotal)}</td>
+        </tr>
+      </tfoot>
+    </table>
   );
 }
 
