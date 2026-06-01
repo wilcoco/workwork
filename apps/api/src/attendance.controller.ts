@@ -698,18 +698,25 @@ export class AttendanceController {
       let approvalSteps: Array<{ stepNo: number; approverName: string; status: string; decidedAt: string | null }> = [];
 
       if (approval) {
-        // 근태 최종 상태 (APPROVED/REJECTED면 결재 완료)
-        const finalStatus = it.status;
-        const isFinal = finalStatus === 'APPROVED' || finalStatus === 'REJECTED';
+        // 스텝 상태 기준으로 최종 상태 계산 (DB 불일치 보정)
+        const steps = approval.steps || [];
+        const allStepsApproved = steps.length > 0 && steps.every((s: any) => s.status === 'APPROVED');
+        const anyStepRejected = steps.some((s: any) => s.status === 'REJECTED');
+
+        // 실제 최종 상태: 스텝 기준 또는 근태 상태 기준 중 확정된 것
+        let computedFinalStatus = it.status;
+        if (allStepsApproved) computedFinalStatus = 'APPROVED';
+        else if (anyStepRejected) computedFinalStatus = 'REJECTED';
+
+        const isFinal = computedFinalStatus === 'APPROVED' || computedFinalStatus === 'REJECTED';
 
         // 다단계 결재 정보 - 모든 단계 포함
-        if (approval.steps && approval.steps.length > 0) {
-          approvalSteps = approval.steps.map((s: any) => ({
+        if (steps.length > 0) {
+          approvalSteps = steps.map((s: any) => ({
             stepNo: s.stepNo,
             approverName: s.approver?.name || '(알 수 없음)',
-            // 근태가 최종 승인/반려면 모든 step도 해당 상태로 표시
-            status: isFinal ? finalStatus : (s.status || 'PENDING'),
-            decidedAt: s.actedAt || (isFinal ? approval.updatedAt : null),
+            status: s.status || 'PENDING',
+            decidedAt: s.actedAt || null,
           }));
         }
 
@@ -718,16 +725,19 @@ export class AttendanceController {
           approvalSteps = [{
             stepNo: 1,
             approverName: approval.approver.name || '(알 수 없음)',
-            status: finalStatus,
+            status: computedFinalStatus,
             decidedAt: approval.updatedAt || null,
           }];
         }
 
         // 현재 결재자 (PENDING 상태일 때만)
-        if (finalStatus === 'PENDING') {
-          const pendingStep = (approval.steps || []).find((s: any) => s.status === 'PENDING');
+        if (!isFinal) {
+          const pendingStep = steps.find((s: any) => s.status === 'PENDING');
           currentApproverName = pendingStep?.approver?.name || approval.approver?.name || '';
         }
+
+        // 리턴할 상태는 계산된 최종 상태 사용
+        it.status = computedFinalStatus;
       }
 
       return {
