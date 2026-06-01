@@ -670,12 +670,19 @@ export class AttendanceController {
       include: { user: { select: { id: true, name: true, orgUnit: { select: { name: true } } } } },
     });
 
-    // 결재 정보 조회 (현재 결재자)
+    // 결재 정보 조회 (모든 결재자 포함)
     const recordIds = records.map((r: any) => r.id);
     const approvals = recordIds.length ? await (this.prisma as any).approvalRequest.findMany({
       where: { subjectType: 'ATTENDANCE', subjectId: { in: recordIds } },
-      include: { approver: { select: { id: true, name: true } }, steps: { orderBy: { stepNo: 'asc' }, include: { approver: { select: { id: true, name: true } } } } },
+      include: {
+        approver: { select: { id: true, name: true } },
+        steps: {
+          orderBy: { stepNo: 'asc' },
+          include: { approver: { select: { id: true, name: true } } }
+        }
+      },
     }) : [];
+    console.log('[근태리포트] approvals 샘플:', JSON.stringify(approvals.slice(0, 2), null, 2));
     const approvalMap = new Map<string, any>();
     for (const a of approvals) approvalMap.set(a.subjectId, a);
 
@@ -691,28 +698,35 @@ export class AttendanceController {
       let approvalSteps: Array<{ stepNo: number; approverName: string; status: string; decidedAt: string | null }> = [];
 
       if (approval) {
-        // 다단계 결재 정보
+        // 다단계 결재 정보 - 모든 단계 포함
         if (approval.steps && approval.steps.length > 0) {
           approvalSteps = approval.steps.map((s: any) => ({
             stepNo: s.stepNo,
-            approverName: s.approver?.name || '',
-            status: s.status,
-            decidedAt: s.actedAt, // actedAt 필드 사용
+            approverName: s.approver?.name || '(알 수 없음)',
+            status: s.status || 'PENDING',
+            decidedAt: s.actedAt || null,
           }));
-        } else if (approval.approver) {
-          // 단일 결재자 (steps 없는 경우) - 근태 상태로 결재 상태 결정
+        }
+
+        // steps가 없으면 메인 결재자 사용
+        if (approvalSteps.length === 0 && approval.approver) {
           approvalSteps = [{
             stepNo: 1,
-            approverName: approval.approver.name || '',
-            status: it.status, // 근태 신청 상태 사용
-            decidedAt: approval.updatedAt || null, // updatedAt을 결재 시각으로 사용
+            approverName: approval.approver.name || '(알 수 없음)',
+            status: approval.status || it.status,
+            decidedAt: approval.updatedAt || null,
           }];
         }
 
+        // 현재 결재자 (PENDING 상태일 때)
         if (it.status === 'PENDING') {
-          // 현재 단계 결재자
           const pendingStep = (approval.steps || []).find((s: any) => s.status === 'PENDING');
           currentApproverName = pendingStep?.approver?.name || approval.approver?.name || '';
+        }
+
+        // 디버깅: 승인 완료인데 steps에 PENDING이 있는 경우 로그
+        if (it.status === 'APPROVED' && approvalSteps.some((s: any) => s.status === 'PENDING')) {
+          console.log(`[근태리포트] 불일치 발견 - id: ${it.id}, 근태상태: ${it.status}, steps:`, approvalSteps);
         }
       }
 
