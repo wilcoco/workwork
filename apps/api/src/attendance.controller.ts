@@ -692,12 +692,22 @@ export class AttendanceController {
 
       if (approval) {
         // 다단계 결재 정보
-        approvalSteps = (approval.steps || []).map((s: any) => ({
-          stepNo: s.stepNo,
-          approverName: s.approver?.name || '',
-          status: s.status,
-          decidedAt: s.decidedAt,
-        }));
+        if (approval.steps && approval.steps.length > 0) {
+          approvalSteps = approval.steps.map((s: any) => ({
+            stepNo: s.stepNo,
+            approverName: s.approver?.name || '',
+            status: s.status,
+            decidedAt: s.decidedAt,
+          }));
+        } else if (approval.approver) {
+          // 단일 결재자 (steps 없는 경우)
+          approvalSteps = [{
+            stepNo: 1,
+            approverName: approval.approver.name || '',
+            status: approval.status || it.status,
+            decidedAt: approval.decidedAt || null,
+          }];
+        }
 
         if (it.status === 'PENDING') {
           // 현재 단계 결재자

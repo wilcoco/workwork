@@ -272,7 +272,7 @@ export function AttendanceReport() {
                                 </div>
                               ))}
                             </div>
-                          ) : it.currentApproverName ? (
+                          ) : it.status === 'PENDING' && it.currentApproverName ? (
                             <span style={{ color: '#f59e0b' }}>{it.currentApproverName} (대기)</span>
                           ) : '—'}
                         </td>
