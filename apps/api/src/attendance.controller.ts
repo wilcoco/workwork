@@ -697,15 +697,15 @@ export class AttendanceController {
             stepNo: s.stepNo,
             approverName: s.approver?.name || '',
             status: s.status,
-            decidedAt: s.decidedAt,
+            decidedAt: s.actedAt, // actedAt 필드 사용
           }));
         } else if (approval.approver) {
-          // 단일 결재자 (steps 없는 경우)
+          // 단일 결재자 (steps 없는 경우) - 근태 상태로 결재 상태 결정
           approvalSteps = [{
             stepNo: 1,
             approverName: approval.approver.name || '',
-            status: approval.status || it.status,
-            decidedAt: approval.decidedAt || null,
+            status: it.status, // 근태 신청 상태 사용
+            decidedAt: approval.updatedAt || null, // updatedAt을 결재 시각으로 사용
           }];
         }
 
