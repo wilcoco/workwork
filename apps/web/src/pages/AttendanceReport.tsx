@@ -93,6 +93,16 @@ export function AttendanceReport() {
     }
   }
 
+  async function handleDelete(id: string, userName: string) {
+    if (!confirm(`${userName}님의 근태 신청을 삭제하시겠습니까?\n\n삭제된 신청은 복구할 수 없습니다.`)) return;
+    try {
+      await apiJson(`/api/attendance/${id}?actorId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      setItems((prev) => prev.filter((it) => it.id !== id));
+    } catch (e: any) {
+      alert(e?.message || '삭제에 실패했습니다');
+    }
+  }
+
   const users = useMemo(() => {
     const map = new Map<string, string>();
     items.forEach((it) => map.set(it.userId, it.userName || it.userId));
@@ -227,6 +237,7 @@ export function AttendanceReport() {
                       <th style={th}>상태</th>
                       <th style={th}>결재선</th>
                       <th style={th}>사유</th>
+                      <th style={th}>관리</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -278,6 +289,14 @@ export function AttendanceReport() {
                         </td>
                         <td style={{ ...td, color: '#64748b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {it.reason || '—'}
+                        </td>
+                        <td style={td}>
+                          <button
+                            onClick={() => handleDelete(it.id, it.userName)}
+                            style={{ padding: '2px 8px', fontSize: 11, background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 4, cursor: 'pointer' }}
+                          >
+                            삭제
+                          </button>
                         </td>
                       </tr>
                     ))}

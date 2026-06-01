@@ -561,6 +561,11 @@ export function AttendanceRequest() {
             <option value="HOLIDAY_WORK">휴일 대체 신청 (별도 OT 신청을 하지 마세요)</option>
           </select>
         </label>
+        {type === 'OT' && (
+          <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 6, padding: '8px 12px', fontSize: 13, color: '#92400e' }}>
+            ⚠️ 대체 휴일 근무를 하는 경우 OT 신청을 별도로 하지 마세요. "휴일 대체 신청"을 이용해주세요.
+          </div>
+        )}
         {type === 'VACATION' ? (
           <label style={{ display: 'grid', gap: 4 }}>
             <span>휴가 일자</span>

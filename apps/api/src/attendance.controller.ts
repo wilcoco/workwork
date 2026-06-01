@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 
@@ -794,5 +794,35 @@ export class AttendanceController {
       requesterName: rec.user?.name ?? '',
       createdAt: rec.createdAt,
     };
+  }
+
+  @Delete(':id')
+  async delete(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    if (!actorId) throw new ForbiddenException('actorId required');
+
+    const actor = await (this.prisma as any).user.findUnique({ where: { id: actorId } });
+    if (!actor) throw new ForbiddenException('invalid actorId');
+
+    const role = String(actor.role || '').toUpperCase();
+    if (role !== 'CEO' && role !== 'EXEC' && role !== 'ADMIN') {
+      throw new ForbiddenException('관리자만 삭제할 수 있습니다');
+    }
+
+    const rec = await (this.prisma as any).attendanceRequest.findUnique({ where: { id } });
+    if (!rec) throw new BadRequestException('신청 건을 찾을 수 없습니다');
+
+    // 관련 ApprovalRequest와 ApprovalStep도 삭제
+    await this.prisma.$transaction(async (tx) => {
+      const approval = await (tx as any).approvalRequest.findFirst({
+        where: { subjectType: 'ATTENDANCE', subjectId: id },
+      });
+      if (approval) {
+        await (tx as any).approvalStep.deleteMany({ where: { approvalRequestId: approval.id } });
+        await (tx as any).approvalRequest.delete({ where: { id: approval.id } });
+      }
+      await (tx as any).attendanceRequest.delete({ where: { id } });
+    });
+
+    return { deleted: true, id };
   }
 }
