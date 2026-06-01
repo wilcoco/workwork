@@ -188,26 +188,36 @@ export class ApprovalsController {
       }
     }
     return {
-      items: filtered.map((a: any) => ({
-        id: a.id,
-        subjectType: a.subjectType,
-        subjectId: a.subjectId,
-        status: a.status,
-        requestedBy: a.requestedBy ? { id: a.requestedBy.id, name: a.requestedBy.name } : null,
-        currentApprover: a.approver ? { id: a.approver.id, name: a.approver.name } : null,
-        dueAt: a.dueAt || null,
-        createdAt: a.createdAt,
-        updatedAt: a.updatedAt,
-        steps: (a.steps || []).map((s: any) => ({
-          id: s.id,
-          stepNo: s.stepNo,
-          approverId: s.approverId,
-          approver: s.approver ? { id: s.approver.id, name: s.approver.name } : null,
-          status: s.status,
-          actedAt: s.actedAt || null,
-          comment: s.comment || null,
-        })),
-      })),
+      items: filtered.map((a: any) => {
+        // 스텝 기준으로 최종 상태 계산 (DB 불일치 보정)
+        const steps = a.steps || [];
+        const allStepsApproved = steps.length > 0 && steps.every((s: any) => s.status === 'APPROVED');
+        const anyStepRejected = steps.some((s: any) => s.status === 'REJECTED');
+        let computedStatus = a.status;
+        if (allStepsApproved) computedStatus = 'APPROVED';
+        else if (anyStepRejected) computedStatus = 'REJECTED';
+
+        return {
+          id: a.id,
+          subjectType: a.subjectType,
+          subjectId: a.subjectId,
+          status: computedStatus,
+          requestedBy: a.requestedBy ? { id: a.requestedBy.id, name: a.requestedBy.name } : null,
+          currentApprover: a.approver ? { id: a.approver.id, name: a.approver.name } : null,
+          dueAt: a.dueAt || null,
+          createdAt: a.createdAt,
+          updatedAt: a.updatedAt,
+          steps: steps.map((s: any) => ({
+            id: s.id,
+            stepNo: s.stepNo,
+            approverId: s.approverId,
+            approver: s.approver ? { id: s.approver.id, name: s.approver.name } : null,
+            status: s.status,
+            actedAt: s.actedAt || null,
+            comment: s.comment || null,
+          })),
+        };
+      }),
       nextCursor,
       ...(total !== undefined ? { total } : {}),
     };
@@ -350,17 +360,26 @@ export class ApprovalsController {
       },
     });
     if (!a) throw new BadRequestException('request not found');
+
+    // 스텝 기준으로 최종 상태 계산 (DB 불일치 보정)
+    const steps = a.steps || [];
+    const allStepsApproved = steps.length > 0 && steps.every((s: any) => s.status === 'APPROVED');
+    const anyStepRejected = steps.some((s: any) => s.status === 'REJECTED');
+    let computedStatus = a.status;
+    if (allStepsApproved) computedStatus = 'APPROVED';
+    else if (anyStepRejected) computedStatus = 'REJECTED';
+
     return {
       id: a.id,
       subjectType: a.subjectType,
       subjectId: a.subjectId,
-      status: a.status,
+      status: computedStatus,
       requestedBy: a.requestedBy ? { id: a.requestedBy.id, name: a.requestedBy.name } : null,
       currentApprover: a.approver ? { id: a.approver.id, name: a.approver.name } : null,
       dueAt: a.dueAt || null,
       createdAt: a.createdAt,
       updatedAt: a.updatedAt,
-      steps: (a.steps || []).map((s: any) => ({
+      steps: steps.map((s: any) => ({
         id: s.id,
         stepNo: s.stepNo,
         approverId: s.approverId,
