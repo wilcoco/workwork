@@ -698,13 +698,18 @@ export class AttendanceController {
       let approvalSteps: Array<{ stepNo: number; approverName: string; status: string; decidedAt: string | null }> = [];
 
       if (approval) {
+        // 근태 최종 상태 (APPROVED/REJECTED면 결재 완료)
+        const finalStatus = it.status;
+        const isFinal = finalStatus === 'APPROVED' || finalStatus === 'REJECTED';
+
         // 다단계 결재 정보 - 모든 단계 포함
         if (approval.steps && approval.steps.length > 0) {
           approvalSteps = approval.steps.map((s: any) => ({
             stepNo: s.stepNo,
             approverName: s.approver?.name || '(알 수 없음)',
-            status: s.status || 'PENDING',
-            decidedAt: s.actedAt || null,
+            // 근태가 최종 승인/반려면 모든 step도 해당 상태로 표시
+            status: isFinal ? finalStatus : (s.status || 'PENDING'),
+            decidedAt: s.actedAt || (isFinal ? approval.updatedAt : null),
           }));
         }
 
@@ -713,20 +718,15 @@ export class AttendanceController {
           approvalSteps = [{
             stepNo: 1,
             approverName: approval.approver.name || '(알 수 없음)',
-            status: approval.status || it.status,
+            status: finalStatus,
             decidedAt: approval.updatedAt || null,
           }];
         }
 
-        // 현재 결재자 (PENDING 상태일 때)
-        if (it.status === 'PENDING') {
+        // 현재 결재자 (PENDING 상태일 때만)
+        if (finalStatus === 'PENDING') {
           const pendingStep = (approval.steps || []).find((s: any) => s.status === 'PENDING');
           currentApproverName = pendingStep?.approver?.name || approval.approver?.name || '';
-        }
-
-        // 디버깅: 승인 완료인데 steps에 PENDING이 있는 경우 로그
-        if (it.status === 'APPROVED' && approvalSteps.some((s: any) => s.status === 'PENDING')) {
-          console.log(`[근태리포트] 불일치 발견 - id: ${it.id}, 근태상태: ${it.status}, steps:`, approvalSteps);
         }
       }
 
