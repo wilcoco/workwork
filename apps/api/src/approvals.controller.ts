@@ -422,7 +422,25 @@ export class ApprovalsController {
     // multi-step
     const pending = req.steps.find((s: any) => s.status === 'PENDING');
     if (!pending) {
-      // nothing to approve; idempotent
+      // 모든 스텝이 승인됨 - subject 상태 동기화 (race condition 보정)
+      const allApproved = req.steps.every((s: any) => s.status === 'APPROVED');
+      if (allApproved && req.status !== 'APPROVED') {
+        await this.prisma.$transaction(async (tx) => {
+          await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'APPROVED' } });
+          if (req.subjectType === 'ATTENDANCE') {
+            await (tx as any).attendanceRequest.update({ where: { id: req.subjectId }, data: { status: 'APPROVED' as any } });
+          }
+          if (req.subjectType === 'CAR_DISPATCH') {
+            await (tx as any).carDispatchRequest.update({ where: { id: req.subjectId }, data: { status: 'APPROVED' as any } });
+          }
+          if (req.subjectType === 'LOGISTICS_DISPATCH') {
+            await (tx as any).logisticsDispatchRequest.update({ where: { id: req.subjectId }, data: { status: 'APPROVED' as any } });
+          }
+          if (req.subjectType === 'BUSINESS_TRIP') {
+            await (tx as any).businessTripRequest.update({ where: { id: req.subjectId }, data: { status: 'APPROVED' as any } });
+          }
+        });
+      }
       return req;
     }
     if (pending.approverId !== dto.actorId) throw new BadRequestException('not current approver');
@@ -494,7 +512,28 @@ export class ApprovalsController {
     }
 
     const pending = req.steps.find((s: any) => s.status === 'PENDING');
-    if (!pending) return req;
+    if (!pending) {
+      // 이미 반려된 스텝 있으면 subject 상태 동기화
+      const anyRejected = req.steps.some((s: any) => s.status === 'REJECTED');
+      if (anyRejected && req.status !== 'REJECTED') {
+        await this.prisma.$transaction(async (tx) => {
+          await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'REJECTED' } });
+          if (req.subjectType === 'ATTENDANCE') {
+            await (tx as any).attendanceRequest.update({ where: { id: req.subjectId }, data: { status: 'REJECTED' as any } });
+          }
+          if (req.subjectType === 'CAR_DISPATCH') {
+            await (tx as any).carDispatchRequest.update({ where: { id: req.subjectId }, data: { status: 'REJECTED' as any } });
+          }
+          if (req.subjectType === 'LOGISTICS_DISPATCH') {
+            await (tx as any).logisticsDispatchRequest.update({ where: { id: req.subjectId }, data: { status: 'REJECTED' as any } });
+          }
+          if (req.subjectType === 'BUSINESS_TRIP') {
+            await (tx as any).businessTripRequest.update({ where: { id: req.subjectId }, data: { status: 'REJECTED' as any } });
+          }
+        });
+      }
+      return req;
+    }
     if (pending.approverId !== dto.actorId) throw new BadRequestException('not current approver');
 
     return this.prisma.$transaction(async (tx) => {
@@ -518,5 +557,61 @@ export class ApprovalsController {
       await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
       return updated;
     });
+  }
+
+  @Post('fix-inconsistent')
+  async fixInconsistent() {
+    // 모든 스텝이 승인/반려인데 subject가 PENDING인 케이스 수정
+    const approvals = await this.prisma.approvalRequest.findMany({
+      where: { status: 'PENDING' },
+      include: { steps: true },
+    });
+
+    let fixed = 0;
+    for (const approval of approvals) {
+      const steps = approval.steps || [];
+      if (steps.length === 0) continue;
+
+      const allApproved = steps.every((s: any) => s.status === 'APPROVED');
+      const anyRejected = steps.some((s: any) => s.status === 'REJECTED');
+
+      if (allApproved) {
+        await this.prisma.$transaction(async (tx) => {
+          await (tx as any).approvalRequest.update({ where: { id: approval.id }, data: { status: 'APPROVED' } });
+          if (approval.subjectType === 'ATTENDANCE') {
+            await (tx as any).attendanceRequest.update({ where: { id: approval.subjectId }, data: { status: 'APPROVED' as any } });
+          }
+          if (approval.subjectType === 'CAR_DISPATCH') {
+            await (tx as any).carDispatchRequest.update({ where: { id: approval.subjectId }, data: { status: 'APPROVED' as any } });
+          }
+          if (approval.subjectType === 'LOGISTICS_DISPATCH') {
+            await (tx as any).logisticsDispatchRequest.update({ where: { id: approval.subjectId }, data: { status: 'APPROVED' as any } });
+          }
+          if (approval.subjectType === 'BUSINESS_TRIP') {
+            await (tx as any).businessTripRequest.update({ where: { id: approval.subjectId }, data: { status: 'APPROVED' as any } });
+          }
+        });
+        fixed++;
+      } else if (anyRejected) {
+        await this.prisma.$transaction(async (tx) => {
+          await (tx as any).approvalRequest.update({ where: { id: approval.id }, data: { status: 'REJECTED' } });
+          if (approval.subjectType === 'ATTENDANCE') {
+            await (tx as any).attendanceRequest.update({ where: { id: approval.subjectId }, data: { status: 'REJECTED' as any } });
+          }
+          if (approval.subjectType === 'CAR_DISPATCH') {
+            await (tx as any).carDispatchRequest.update({ where: { id: approval.subjectId }, data: { status: 'REJECTED' as any } });
+          }
+          if (approval.subjectType === 'LOGISTICS_DISPATCH') {
+            await (tx as any).logisticsDispatchRequest.update({ where: { id: approval.subjectId }, data: { status: 'REJECTED' as any } });
+          }
+          if (approval.subjectType === 'BUSINESS_TRIP') {
+            await (tx as any).businessTripRequest.update({ where: { id: approval.subjectId }, data: { status: 'REJECTED' as any } });
+          }
+        });
+        fixed++;
+      }
+    }
+
+    return { fixed, total: approvals.length };
   }
 }
