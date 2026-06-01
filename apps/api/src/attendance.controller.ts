@@ -688,11 +688,24 @@ export class AttendanceController {
     const items = records.map((it: any) => {
       const approval = approvalMap.get(it.id);
       let currentApproverName = '';
-      if (approval && it.status === 'PENDING') {
-        // 다단계 결재면 현재 단계 결재자, 아니면 기본 결재자
-        const pendingStep = (approval.steps || []).find((s: any) => s.status === 'PENDING');
-        currentApproverName = pendingStep?.approver?.name || approval.approver?.name || '';
+      let approvalSteps: Array<{ stepNo: number; approverName: string; status: string; decidedAt: string | null }> = [];
+
+      if (approval) {
+        // 다단계 결재 정보
+        approvalSteps = (approval.steps || []).map((s: any) => ({
+          stepNo: s.stepNo,
+          approverName: s.approver?.name || '',
+          status: s.status,
+          decidedAt: s.decidedAt,
+        }));
+
+        if (it.status === 'PENDING') {
+          // 현재 단계 결재자
+          const pendingStep = (approval.steps || []).find((s: any) => s.status === 'PENDING');
+          currentApproverName = pendingStep?.approver?.name || approval.approver?.name || '';
+        }
       }
+
       return {
         id: it.id,
         userId: it.userId,
@@ -709,6 +722,7 @@ export class AttendanceController {
         status: it.status,
         reason: it.reason,
         currentApproverName,
+        approvalSteps,
       };
     });
 

@@ -24,6 +24,13 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: '#94a3b8',
 };
 
+type ApprovalStep = {
+  stepNo: number;
+  approverName: string;
+  status: string;
+  decidedAt: string | null;
+};
+
 type RecordItem = {
   id: string;
   userId: string;
@@ -38,6 +45,7 @@ type RecordItem = {
   status: string;
   reason: string | null;
   currentApproverName?: string;
+  approvalSteps?: ApprovalStep[];
 };
 
 export function AttendanceReport() {
@@ -119,6 +127,7 @@ export function AttendanceReport() {
 
   const fmt = (d: string | null) => d ? new Date(d).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
   const fmtTime = (d: string | null) => d ? new Date(d).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+  const fmtDateTime = (d: string | null) => d ? new Date(d).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 
   const th: React.CSSProperties = { borderBottom: '2px solid #e2e8f0', padding: '8px 10px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', background: '#f8fafc', whiteSpace: 'nowrap' };
   const td: React.CSSProperties = { borderBottom: '1px solid #f1f5f9', padding: '7px 10px', fontSize: 13, verticalAlign: 'middle' };
@@ -216,7 +225,7 @@ export function AttendanceReport() {
                       <th style={th}>시간</th>
                       <th style={{ ...th, textAlign: 'right' }}>시간/일수</th>
                       <th style={th}>상태</th>
-                      <th style={th}>결재자</th>
+                      <th style={th}>결재선</th>
                       <th style={th}>사유</th>
                     </tr>
                   </thead>
@@ -242,8 +251,30 @@ export function AttendanceReport() {
                             {STATUS_LABELS[it.status] || it.status}
                           </span>
                         </td>
-                        <td style={{ ...td, color: it.status === 'PENDING' ? '#f59e0b' : '#64748b' }}>
-                          {it.status === 'PENDING' && it.currentApproverName ? it.currentApproverName : '—'}
+                        <td style={{ ...td, fontSize: 12 }}>
+                          {it.approvalSteps && it.approvalSteps.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              {it.approvalSteps.map((step, idx) => (
+                                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ color: '#475569' }}>{step.stepNo}.</span>
+                                  <span style={{ fontWeight: 500 }}>{step.approverName}</span>
+                                  <span style={{
+                                    color: step.status === 'APPROVED' ? '#22c55e' : step.status === 'REJECTED' ? '#ef4444' : '#f59e0b',
+                                    fontSize: 11,
+                                  }}>
+                                    ({STATUS_LABELS[step.status] || step.status})
+                                  </span>
+                                  {step.decidedAt && (
+                                    <span style={{ color: '#94a3b8', fontSize: 11 }}>
+                                      {fmtDateTime(step.decidedAt)}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : it.currentApproverName ? (
+                            <span style={{ color: '#f59e0b' }}>{it.currentApproverName} (대기)</span>
+                          ) : '—'}
                         </td>
                         <td style={{ ...td, color: '#64748b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {it.reason || '—'}
