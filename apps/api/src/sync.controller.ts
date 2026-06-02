@@ -1,5 +1,6 @@
 import { Body, Controller, Headers, Post, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { Public } from './jwt-auth.guard';
 
 const SYNC_PUSH_KEY = process.env.SYNC_PUSH_KEY || '2002@cams';
 
@@ -32,6 +33,7 @@ type SyncAccessRecordsDto = {
 export class SyncController {
   constructor(private prisma: PrismaService) {}
 
+  @Public()
   @Post('access-records')
   async syncAccessRecords(
     @Body() dto: SyncAccessRecordsDto,
