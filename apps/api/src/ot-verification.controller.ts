@@ -283,12 +283,17 @@ export class OtVerificationController {
 
     const results: AccessRecord[] = [];
 
-    // 1. KtAccessLog (케이티텔레캅 - 복지동, 정문) - 사번으로 조회
+    // 1. KtAccessLog (케이티텔레캅 - 복지동, 정문) - 사번 또는 이름으로 조회
+    const ktWhere: any = { eventAt: { gte: startAt, lte: endAt } };
+    if (employeeNo && personName) {
+      ktWhere.OR = [{ employeeNo }, { personName }];
+    } else if (employeeNo) {
+      ktWhere.employeeNo = employeeNo;
+    } else if (personName) {
+      ktWhere.personName = personName;
+    }
     const ktLogs = await (this.prisma as any).ktAccessLog.findMany({
-      where: {
-        employeeNo,
-        eventAt: { gte: startAt, lte: endAt },
-      },
+      where: ktWhere,
       orderBy: { eventAt: 'asc' },
     });
     for (const log of ktLogs) {
@@ -306,7 +311,7 @@ export class OtVerificationController {
       });
     }
 
-    // 2. SecomAlarm (에스원 - 함평공장) - 이름으로 조회 (사번 없음)
+    // 2. SecomAlarm (에스원 - 함평공장) - 이름으로 조회 (사번 필드가 SECOM ID라서 이름 우선)
     let secomCount = 0;
     if (personName) {
       const secomLogs = await (this.prisma as any).secomAlarm.findMany({
@@ -333,12 +338,17 @@ export class OtVerificationController {
       }
     }
 
-    // 3. CapsAlarm (캡스 - 사무실) - 사번으로 조회
+    // 3. CapsAlarm (캡스 - 사무실) - 사번 또는 이름으로 조회
+    const capsWhere: any = { eventAt: { gte: startAt, lte: endAt } };
+    if (employeeNo && personName) {
+      capsWhere.OR = [{ employeeNo }, { personName }];
+    } else if (employeeNo) {
+      capsWhere.employeeNo = employeeNo;
+    } else if (personName) {
+      capsWhere.personName = personName;
+    }
     const capsLogs = await (this.prisma as any).capsAlarm.findMany({
-      where: {
-        employeeNo,
-        eventAt: { gte: startAt, lte: endAt },
-      },
+      where: capsWhere,
       orderBy: { eventAt: 'asc' },
     });
     for (const log of capsLogs) {
