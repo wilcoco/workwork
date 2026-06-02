@@ -307,6 +307,7 @@ export class OtVerificationController {
     }
 
     // 2. SecomAlarm (에스원 - 함평공장) - 이름으로 조회 (사번 없음)
+    let secomCount = 0;
     if (personName) {
       const secomLogs = await (this.prisma as any).secomAlarm.findMany({
         where: {
@@ -315,6 +316,7 @@ export class OtVerificationController {
         },
         orderBy: { eventAt: 'asc' },
       });
+      secomCount = secomLogs.length;
       for (const log of secomLogs) {
         results.push({
           id: log.id,
@@ -357,7 +359,7 @@ export class OtVerificationController {
     // 시간순 정렬
     results.sort((a, b) => new Date(a.access_time).getTime() - new Date(b.access_time).getTime());
 
-    console.log(`[OT-Verification] 입출입 결과: KT=${ktLogs.length}, SECOM=${secomLogs.length}, CAPS=${capsLogs.length}, 총=${results.length}건`);
+    console.log(`[OT-Verification] 입출입 결과: KT=${ktLogs.length}, SECOM=${secomCount}, CAPS=${capsLogs.length}, 총=${results.length}건`);
     return results;
   }
 
