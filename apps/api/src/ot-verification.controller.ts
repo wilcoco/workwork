@@ -166,23 +166,22 @@ export class OtVerificationController {
         verificationNote = '⚠️ 대체근무일(휴일근무)과 중복 - OT 대신 휴일근무 신청 필요';
       }
 
-      if (employeeNo) {
+      const userName = ot.user?.name || user?.name || '';
+      if (employeeNo || userName) {
         try {
           // otDate는 "YYYY-MM-DD" 형식 - 직접 파싱하여 timezone 문제 방지
           const [year, mon, day] = otDate.split('-').map(Number);
-          const dayBeforeStr = `${year}-${String(mon).padStart(2, '0')}-${String(day - 1).padStart(2, '0')}`;
-          const dayAfterStr = `${year}-${String(mon).padStart(2, '0')}-${String(day + 1).padStart(2, '0')}`;
           // 월 경계 처리
           const startDateObj = new Date(Date.UTC(year, mon - 1, day - 1));
           const endDateObj = new Date(Date.UTC(year, mon - 1, day + 1));
           const startDateStr = startDateObj.toISOString().slice(0, 10);
           const endDateStr = endDateObj.toISOString().slice(0, 10);
-          accessRecords = await this.fetchAccessRecords(employeeNo, startDateStr, endDateStr);
+          accessRecords = await this.fetchAccessRecords(employeeNo || '', startDateStr, endDateStr, userName);
         } catch (e: any) {
           verificationNote = `입출입 기록 조회 실패: ${e.message}`;
         }
       } else {
-        verificationNote = '사번 정보 없음';
+        verificationNote = '사번/이름 정보 없음';
       }
 
       // OT 검증 로직
@@ -274,16 +273,17 @@ export class OtVerificationController {
     employeeNo: string,
     startDate: string,
     endDate?: string,
+    personName?: string,
   ): Promise<AccessRecord[]> {
     // 로컬 DB에서 조회 (KtAccessLog, SecomAlarm, CapsAlarm 통합)
     const startAt = new Date(startDate + 'T00:00:00+09:00');
     const endAt = new Date((endDate || startDate) + 'T23:59:59+09:00');
 
-    console.log(`[OT-Verification] 입출입 조회: employeeNo=${employeeNo}, startDate=${startDate}, endDate=${endDate}`);
+    console.log(`[OT-Verification] 입출입 조회: employeeNo=${employeeNo}, personName=${personName}, startDate=${startDate}, endDate=${endDate}`);
 
     const results: AccessRecord[] = [];
 
-    // 1. KtAccessLog (케이티텔레캅 - 복지동, 정문)
+    // 1. KtAccessLog (케이티텔레캅 - 복지동, 정문) - 사번으로 조회
     const ktLogs = await (this.prisma as any).ktAccessLog.findMany({
       where: {
         employeeNo,
@@ -306,30 +306,32 @@ export class OtVerificationController {
       });
     }
 
-    // 2. SecomAlarm (에스원 - 함평공장)
-    const secomLogs = await (this.prisma as any).secomAlarm.findMany({
-      where: {
-        employeeNo,
-        eventAt: { gte: startAt, lte: endAt },
-      },
-      orderBy: { eventAt: 'asc' },
-    });
-    for (const log of secomLogs) {
-      results.push({
-        id: log.id,
-        source: 'SECOM',
-        employee_id: log.employeeNo || '',
-        employee_name: log.personName || '',
-        access_time: log.eventAt?.toISOString() || '',
-        access_date: log.eventAt?.toISOString().slice(0, 10) || '',
-        location: log.zoneName || '',
-        gate: log.zoneId || '',
-        direction: log.direction || '',
-        access_type: log.alarmType || 'ACCESS',
+    // 2. SecomAlarm (에스원 - 함평공장) - 이름으로 조회 (사번 없음)
+    if (personName) {
+      const secomLogs = await (this.prisma as any).secomAlarm.findMany({
+        where: {
+          personName,
+          eventAt: { gte: startAt, lte: endAt },
+        },
+        orderBy: { eventAt: 'asc' },
       });
+      for (const log of secomLogs) {
+        results.push({
+          id: log.id,
+          source: 'SECOM',
+          employee_id: log.employeeNo || '',
+          employee_name: log.personName || '',
+          access_time: log.eventAt?.toISOString() || '',
+          access_date: log.eventAt?.toISOString().slice(0, 10) || '',
+          location: log.zoneName || '',
+          gate: log.zoneId || '',
+          direction: log.direction || '',
+          access_type: log.alarmType || 'ACCESS',
+        });
+      }
     }
 
-    // 3. CapsAlarm (캡스 - 사무실)
+    // 3. CapsAlarm (캡스 - 사무실) - 사번으로 조회
     const capsLogs = await (this.prisma as any).capsAlarm.findMany({
       where: {
         employeeNo,
