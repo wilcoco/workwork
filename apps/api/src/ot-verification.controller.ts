@@ -16,6 +16,17 @@ type AccessRecord = {
 
 type VerificationStatus = 'OK' | 'WARN' | 'FAIL' | 'NO_DATA';
 
+type AttendanceRecord = {
+  id: string;
+  type: string;
+  date: string;
+  startAt: string | null;
+  endAt: string | null;
+  hours: number;
+  status: string;
+  reason: string | null;
+};
+
 type OtWithVerification = {
   id: string;
   userId: string;
@@ -36,6 +47,8 @@ type OtWithVerification = {
   allRecords: AccessRecord[];
   verificationNote: string;
   isHolidayWorkDuplicate: boolean; // 대체근무일과 중복 여부
+  // 해당 사번/날짜의 모든 근태 신청
+  allAttendanceRecords: AttendanceRecord[];
 };
 
 const CAMS_API_URL = 'https://selfservice.icams.co.kr';
@@ -171,13 +184,15 @@ export class OtVerificationController {
 
       if (employeeNo) {
         try {
-          const otDateObj = new Date(otDate);
-          const dayBefore = new Date(otDateObj);
-          dayBefore.setDate(dayBefore.getDate() - 1);
-          const dayAfter = new Date(otDateObj);
-          dayAfter.setDate(dayAfter.getDate() + 1);
-          const startDateStr = dayBefore.toISOString().slice(0, 10);
-          const endDateStr = dayAfter.toISOString().slice(0, 10);
+          // otDate는 "YYYY-MM-DD" 형식 - 직접 파싱하여 timezone 문제 방지
+          const [year, mon, day] = otDate.split('-').map(Number);
+          const dayBeforeStr = `${year}-${String(mon).padStart(2, '0')}-${String(day - 1).padStart(2, '0')}`;
+          const dayAfterStr = `${year}-${String(mon).padStart(2, '0')}-${String(day + 1).padStart(2, '0')}`;
+          // 월 경계 처리
+          const startDateObj = new Date(Date.UTC(year, mon - 1, day - 1));
+          const endDateObj = new Date(Date.UTC(year, mon - 1, day + 1));
+          const startDateStr = startDateObj.toISOString().slice(0, 10);
+          const endDateStr = endDateObj.toISOString().slice(0, 10);
           accessRecords = await this.fetchAccessRecords(employeeNo, startDateStr, endDateStr);
         } catch (e: any) {
           verificationNote = `입출입 기록 조회 실패: ${e.message}`;
@@ -202,6 +217,42 @@ export class OtVerificationController {
         ? (otEndAt.getTime() - otStartAt.getTime()) / (1000 * 60 * 60)
         : 0;
 
+      // 해당 사번/날짜의 모든 근태 신청 조회
+      const otDateStart = new Date(otDate + 'T00:00:00.000Z');
+      const otDateEnd = new Date(otDate + 'T23:59:59.999Z');
+      const allAttendanceRaw = await (this.prisma as any).attendanceRequest.findMany({
+        where: {
+          userId: ot.userId,
+          date: { gte: otDateStart, lte: otDateEnd },
+        },
+        orderBy: { startAt: 'asc' },
+      });
+      const allAttendanceIds = allAttendanceRaw.map((r: any) => r.id);
+      const allAttendanceApprovals = allAttendanceIds.length
+        ? await this.prisma.approvalRequest.findMany({
+            where: { subjectType: 'ATTENDANCE', subjectId: { in: allAttendanceIds } },
+            select: { subjectId: true, status: true },
+          })
+        : [];
+      const allAttendanceStatusMap = new Map<string, string>();
+      for (const a of allAttendanceApprovals) allAttendanceStatusMap.set(a.subjectId, a.status as string);
+
+      const allAttendanceRecords: AttendanceRecord[] = allAttendanceRaw.map((r: any) => {
+        const rStart = r.startAt ? new Date(r.startAt) : null;
+        const rEnd = r.endAt ? new Date(r.endAt) : null;
+        const rHours = rStart && rEnd ? (rEnd.getTime() - rStart.getTime()) / (1000 * 60 * 60) : 0;
+        return {
+          id: r.id,
+          type: r.type,
+          date: new Date(r.date).toISOString().slice(0, 10),
+          startAt: rStart?.toISOString() || null,
+          endAt: rEnd?.toISOString() || null,
+          hours: rHours,
+          status: allAttendanceStatusMap.get(r.id) || r.status || 'PENDING',
+          reason: r.reason,
+        };
+      });
+
       const item: OtWithVerification = {
         id: ot.id,
         userId: ot.userId,
@@ -221,6 +272,7 @@ export class OtVerificationController {
         allRecords: accessRecords,
         verificationNote,
         isHolidayWorkDuplicate: isHolidayWorkDate,
+        allAttendanceRecords,
       };
 
       // 필터링
