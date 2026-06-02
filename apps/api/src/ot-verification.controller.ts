@@ -283,20 +283,17 @@ export class OtVerificationController {
 
     const results: AccessRecord[] = [];
 
-    // 1. KtAccessLog (케이티텔레캅 - 복지동, 정문) - 사번 또는 이름으로 조회
-    const ktWhere: any = { eventAt: { gte: startAt, lte: endAt } };
-    if (employeeNo && personName) {
-      ktWhere.OR = [{ employeeNo }, { personName }];
-    } else if (employeeNo) {
-      ktWhere.employeeNo = employeeNo;
-    } else if (personName) {
-      ktWhere.personName = personName;
-    }
+    // 1. KtAccessLog (케이티텔레캅 - 복지동, 정문) - 해당 날짜 전체 조회
     const ktLogs = await (this.prisma as any).ktAccessLog.findMany({
-      where: ktWhere,
+      where: { eventAt: { gte: startAt, lte: endAt } },
       orderBy: { eventAt: 'asc' },
     });
-    for (const log of ktLogs) {
+    // 사번 또는 이름 일치하는 것만 결과에 추가
+    const ktFiltered = ktLogs.filter((log: any) =>
+      (employeeNo && log.employeeNo === employeeNo) ||
+      (personName && log.personName === personName)
+    );
+    for (const log of ktFiltered) {
       results.push({
         id: log.id,
         source: 'KT',
@@ -311,47 +308,38 @@ export class OtVerificationController {
       });
     }
 
-    // 2. SecomAlarm (에스원 - 함평공장) - 이름으로 조회 (사번 필드가 SECOM ID라서 이름 우선)
-    let secomCount = 0;
-    if (personName) {
-      const secomLogs = await (this.prisma as any).secomAlarm.findMany({
-        where: {
-          personName,
-          eventAt: { gte: startAt, lte: endAt },
-        },
-        orderBy: { eventAt: 'asc' },
-      });
-      secomCount = secomLogs.length;
-      for (const log of secomLogs) {
-        results.push({
-          id: log.id,
-          source: 'SECOM',
-          employee_id: log.employeeNo || '',
-          employee_name: log.personName || '',
-          access_time: log.eventAt?.toISOString() || '',
-          access_date: log.eventAt?.toISOString().slice(0, 10) || '',
-          location: log.zoneName || '',
-          gate: log.zoneId || '',
-          direction: log.direction || '',
-          access_type: log.alarmType || 'ACCESS',
-        });
-      }
-    }
-
-    // 3. CapsAlarm (캡스 - 사무실) - 사번 또는 이름으로 조회
-    const capsWhere: any = { eventAt: { gte: startAt, lte: endAt } };
-    if (employeeNo && personName) {
-      capsWhere.OR = [{ employeeNo }, { personName }];
-    } else if (employeeNo) {
-      capsWhere.employeeNo = employeeNo;
-    } else if (personName) {
-      capsWhere.personName = personName;
-    }
-    const capsLogs = await (this.prisma as any).capsAlarm.findMany({
-      where: capsWhere,
+    // 2. SecomAlarm (에스원 - 함평공장) - 해당 날짜 전체 조회, 이름으로 필터
+    const secomLogs = await (this.prisma as any).secomAlarm.findMany({
+      where: { eventAt: { gte: startAt, lte: endAt } },
       orderBy: { eventAt: 'asc' },
     });
-    for (const log of capsLogs) {
+    const secomFiltered = secomLogs.filter((log: any) => personName && log.personName === personName);
+    const secomCount = secomFiltered.length;
+    for (const log of secomFiltered) {
+      results.push({
+        id: log.id,
+        source: 'SECOM',
+        employee_id: log.employeeNo || '',
+        employee_name: log.personName || '',
+        access_time: log.eventAt?.toISOString() || '',
+        access_date: log.eventAt?.toISOString().slice(0, 10) || '',
+        location: log.zoneName || '',
+        gate: log.zoneId || '',
+        direction: log.direction || '',
+        access_type: log.alarmType || 'ACCESS',
+      });
+    }
+
+    // 3. CapsAlarm (캡스 - 사무실) - 해당 날짜 전체 조회
+    const capsLogs = await (this.prisma as any).capsAlarm.findMany({
+      where: { eventAt: { gte: startAt, lte: endAt } },
+      orderBy: { eventAt: 'asc' },
+    });
+    const capsFiltered = capsLogs.filter((log: any) =>
+      (employeeNo && log.employeeNo === employeeNo) ||
+      (personName && log.personName === personName)
+    );
+    for (const log of capsFiltered) {
       results.push({
         id: log.id,
         source: 'CAPS',
@@ -369,7 +357,11 @@ export class OtVerificationController {
     // 시간순 정렬
     results.sort((a, b) => new Date(a.access_time).getTime() - new Date(b.access_time).getTime());
 
-    console.log(`[OT-Verification] 입출입 결과: KT=${ktLogs.length}, SECOM=${secomCount}, CAPS=${capsLogs.length}, 총=${results.length}건`);
+    console.log(`[OT-Verification] 입출입 조회 결과:`);
+    console.log(`  KT: 전체=${ktLogs.length}, 매칭=${ktFiltered.length}`);
+    console.log(`  SECOM: 전체=${secomLogs.length}, 매칭=${secomCount}`);
+    console.log(`  CAPS: 전체=${capsLogs.length}, 매칭=${capsFiltered.length}`);
+    console.log(`  최종 결과: ${results.length}건`);
     return results;
   }
 
