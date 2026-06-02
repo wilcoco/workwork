@@ -55,8 +55,10 @@ export class OtVerificationController {
     const targetMonth = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const [year, mon] = targetMonth.split('-').map(Number);
 
-    const monthStart = new Date(Date.UTC(year, mon - 1, 1, 0, 0, 0, 0));
-    const monthEnd = new Date(Date.UTC(year, mon, 0, 23, 59, 59, 999));
+    // KST 기준 월 시작/종료
+    const lastDay = new Date(year, mon, 0).getDate();
+    const monthStart = new Date(`${year}-${String(mon).padStart(2, '0')}-01T00:00:00+09:00`);
+    const monthEnd = new Date(`${year}-${String(mon).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59+09:00`);
 
     // 요청자 권한 확인
     let isExec = false;
@@ -295,20 +297,11 @@ export class OtVerificationController {
       orderBy: { eventAt: 'asc' },
     });
 
-    // 해당 날짜 OT 신청 조회
-    const dateStart = new Date(Date.UTC(
-      parseInt(date.slice(0, 4)),
-      parseInt(date.slice(5, 7)) - 1,
-      parseInt(date.slice(8, 10)),
-      0, 0, 0, 0
-    ));
-    const dateEnd = new Date(dateStart);
-    dateEnd.setUTCDate(dateEnd.getUTCDate() + 1);
-
+    // 해당 날짜 OT 신청 조회 (KST 기준 동일하게)
     const otRequests = await (this.prisma as any).attendanceRequest.findMany({
       where: {
         type: 'OT',
-        date: { gte: dateStart, lt: dateEnd },
+        date: { gte: startAt, lte: endAt },
       },
       include: {
         user: { select: { id: true, name: true, employeeNo: true } },
