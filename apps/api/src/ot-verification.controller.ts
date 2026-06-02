@@ -16,17 +16,6 @@ type AccessRecord = {
 
 type VerificationStatus = 'OK' | 'WARN' | 'FAIL' | 'NO_DATA';
 
-type AttendanceRecord = {
-  id: string;
-  type: string;
-  date: string;
-  startAt: string | null;
-  endAt: string | null;
-  hours: number;
-  status: string;
-  reason: string | null;
-};
-
 type OtWithVerification = {
   id: string;
   userId: string;
@@ -47,8 +36,6 @@ type OtWithVerification = {
   allRecords: AccessRecord[];
   verificationNote: string;
   isHolidayWorkDuplicate: boolean; // 대체근무일과 중복 여부
-  // 해당 사번/날짜의 모든 근태 신청
-  allAttendanceRecords: AttendanceRecord[];
 };
 
 const CAMS_API_URL = 'https://selfservice.icams.co.kr';
@@ -217,42 +204,6 @@ export class OtVerificationController {
         ? (otEndAt.getTime() - otStartAt.getTime()) / (1000 * 60 * 60)
         : 0;
 
-      // 해당 사번/날짜의 모든 근태 신청 조회
-      const otDateStart = new Date(otDate + 'T00:00:00.000Z');
-      const otDateEnd = new Date(otDate + 'T23:59:59.999Z');
-      const allAttendanceRaw = await (this.prisma as any).attendanceRequest.findMany({
-        where: {
-          userId: ot.userId,
-          date: { gte: otDateStart, lte: otDateEnd },
-        },
-        orderBy: { startAt: 'asc' },
-      });
-      const allAttendanceIds = allAttendanceRaw.map((r: any) => r.id);
-      const allAttendanceApprovals = allAttendanceIds.length
-        ? await this.prisma.approvalRequest.findMany({
-            where: { subjectType: 'ATTENDANCE', subjectId: { in: allAttendanceIds } },
-            select: { subjectId: true, status: true },
-          })
-        : [];
-      const allAttendanceStatusMap = new Map<string, string>();
-      for (const a of allAttendanceApprovals) allAttendanceStatusMap.set(a.subjectId, a.status as string);
-
-      const allAttendanceRecords: AttendanceRecord[] = allAttendanceRaw.map((r: any) => {
-        const rStart = r.startAt ? new Date(r.startAt) : null;
-        const rEnd = r.endAt ? new Date(r.endAt) : null;
-        const rHours = rStart && rEnd ? (rEnd.getTime() - rStart.getTime()) / (1000 * 60 * 60) : 0;
-        return {
-          id: r.id,
-          type: r.type,
-          date: new Date(r.date).toISOString().slice(0, 10),
-          startAt: rStart?.toISOString() || null,
-          endAt: rEnd?.toISOString() || null,
-          hours: rHours,
-          status: allAttendanceStatusMap.get(r.id) || r.status || 'PENDING',
-          reason: r.reason,
-        };
-      });
-
       const item: OtWithVerification = {
         id: ot.id,
         userId: ot.userId,
@@ -272,7 +223,6 @@ export class OtVerificationController {
         allRecords: accessRecords,
         verificationNote,
         isHolidayWorkDuplicate: isHolidayWorkDate,
-        allAttendanceRecords,
       };
 
       // 필터링
@@ -340,6 +290,8 @@ export class OtVerificationController {
       limit: '500',
     });
 
+    console.log(`[OT-Verification] 입출입 조회: employeeId=${employeeId}, startDate=${startDate}, endDate=${endDate}`);
+
     try {
       const response = await fetch(
         `${CAMS_API_URL}/api/erp/access-records?${params}`,
@@ -355,7 +307,9 @@ export class OtVerificationController {
       }
 
       const data = await response.json();
-      return data.records || [];
+      const records = data.records || [];
+      console.log(`[OT-Verification] 입출입 결과: ${records.length}건`);
+      return records;
     } catch (e: any) {
       console.error('[OT-Verification] CAMS API error:', e.message);
       throw e;
