@@ -171,14 +171,8 @@ export class OtVerificationController {
       const userName = ot.user?.name || user?.name || '';
       if (employeeNo || userName) {
         try {
-          // otDate는 "YYYY-MM-DD" 형식 - 직접 파싱하여 timezone 문제 방지
-          const [year, mon, day] = otDate.split('-').map(Number);
-          // 월 경계 처리
-          const startDateObj = new Date(Date.UTC(year, mon - 1, day - 1));
-          const endDateObj = new Date(Date.UTC(year, mon - 1, day + 1));
-          const startDateStr = startDateObj.toISOString().slice(0, 10);
-          const endDateStr = endDateObj.toISOString().slice(0, 10);
-          accessRecords = await this.fetchAccessRecords(employeeNo || '', startDateStr, endDateStr, userName);
+          // OT 날짜만 조회 (해당 날짜의 첫 기록=출근, 마지막 기록=퇴근)
+          accessRecords = await this.fetchAccessRecords(employeeNo || '', otDate, otDate, userName);
         } catch (e: any) {
           verificationNote = `입출입 기록 조회 실패: ${e.message}`;
         }
@@ -477,71 +471,33 @@ export class OtVerificationController {
       (a, b) => new Date(a.access_time).getTime() - new Date(b.access_time).getTime(),
     );
 
-    // OT 날짜의 시작 (당일 00:00 KST = 전날 15:00 UTC)
-    const otDateObj = new Date(otDate + 'T00:00:00+09:00');
-    const otDateStart = otDateObj.getTime();
-    const otDateEnd = otDateStart + 24 * 60 * 60 * 1000; // 다음날 00:00
+    // 단순 로직: 첫 기록 = 출근, 마지막 기록 = 퇴근
+    const firstRecord = sorted[0];
+    const lastRecord = sorted[sorted.length - 1];
 
-    // 평일 OT의 경우: 출근(아침)~OT종료(저녁) 패턴
-    // - beforeRecord: OT 시작 전, 당일 아침~OT시작 사이 기록 (출근)
-    // - afterRecord: OT 종료 후 기록 (퇴근)
+    const firstTime = new Date(firstRecord.access_time);
+    const lastTime = new Date(lastRecord.access_time);
 
-    // beforeRecord: OT 시작 전 마지막 기록 (당일 06:00 이후 ~ OT 시작)
-    const morningThreshold = otDateStart + 6 * 60 * 60 * 1000; // 당일 06:00 KST
-    let beforeRecord: AccessRecord | null = null;
-    for (const r of sorted) {
-      const t = new Date(r.access_time).getTime();
-      if (t <= otStart.getTime()) {
-        beforeRecord = r;
-      }
-    }
-
-    // afterRecord: OT 종료 후 첫 기록 (다음날 06시까지)
-    const endThreshold = otEnd.getTime() + 6 * 60 * 60 * 1000;
-    let afterRecord: AccessRecord | null = null;
-    for (const r of sorted) {
-      const t = new Date(r.access_time).getTime();
-      if (t >= otEnd.getTime() && t <= endThreshold) {
-        afterRecord = r;
-        break;
-      }
-    }
-
-    // 검증 로직 개선
+    // 검증: 퇴근 시간이 OT 종료 시간 이후인지
     let verificationStatus: VerificationStatus = 'OK';
     let note = '';
 
-    const hasBefore = !!beforeRecord;
-    const hasAfter = !!afterRecord;
-
-    // 출근 기록이 전날 밤인 경우 체크 (당일 06:00 이전)
-    const beforeTime = beforeRecord ? new Date(beforeRecord.access_time).getTime() : 0;
-    const isBeforePreviousNight = beforeRecord && beforeTime < morningThreshold;
-
-    if (!hasBefore && !hasAfter) {
-      // 둘 다 없음 → 빨강
-      verificationStatus = 'FAIL';
-      note = '출근/퇴근 기록 없음';
-    } else if (!hasBefore) {
-      // 출근 기록만 없음 → 노랑
+    if (sorted.length === 1) {
+      // 기록이 1개뿐
       verificationStatus = 'WARN';
-      note = '출근 기록 미확인 (OT 전 입출입 없음)';
-    } else if (!hasAfter) {
-      // 퇴근 기록만 없음 → 노랑
+      note = `입출입 기록 1건만 있음 (${firstTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})`;
+    } else if (lastTime.getTime() < otEnd.getTime()) {
+      // 마지막 기록이 OT 종료 전
       verificationStatus = 'WARN';
-      note = '퇴근 기록 미확인 (OT 후 입출입 없음)';
-    } else if (isBeforePreviousNight) {
-      // 출근 기록이 전날 밤 → 노랑 (들어올 때 안 찍었을 가능성)
-      verificationStatus = 'WARN';
-      note = '출근 기록이 전날 밤 (입실 미태깅 의심)';
+      note = `퇴근(${lastTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})이 OT종료(${otEnd.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}) 전`;
     } else {
-      // 둘 다 있고 정상 → 초록
+      // 정상
       verificationStatus = 'OK';
-      note = '입출입 기록 확인됨';
+      note = `출근 ${firstTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} / 퇴근 ${lastTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
     }
 
     const verified = verificationStatus === 'OK';
 
-    return { verified, verificationStatus, beforeRecord, afterRecord, note };
+    return { verified, verificationStatus, beforeRecord: firstRecord, afterRecord: lastRecord, note };
   }
 }
