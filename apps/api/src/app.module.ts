@@ -49,6 +49,7 @@ import { VouchersController } from './vouchers.controller';
 import { CamsSyncController } from './cams-sync.controller';
 import { AccessLogController } from './access-log.controller';
 import { OtVerificationController } from './ot-verification.controller';
+import { SyncController } from './sync.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 import { ProcessSchedulerService } from './process-scheduler.service';
 import { DataverseService } from './dataverse.service';
@@ -101,6 +102,7 @@ import { DataverseService } from './dataverse.service';
     CamsSyncController,
     AccessLogController,
     OtVerificationController,
+    SyncController,
   ],
   providers: [
     PrismaService,
