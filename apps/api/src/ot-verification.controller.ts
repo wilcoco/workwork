@@ -260,6 +260,100 @@ export class OtVerificationController {
     return { count: records.length, records };
   }
 
+  @Get('daily-report')
+  async dailyAccessReport(
+    @Query('date') date?: string,
+    @Query('actorId') actorId?: string,
+  ) {
+    if (!date) throw new BadRequestException('date 필요 (YYYY-MM-DD)');
+
+    // 권한 확인
+    let isExec = false;
+    if (actorId) {
+      const actor = await (this.prisma as any).user.findUnique({
+        where: { id: actorId },
+        select: { role: true },
+      });
+      isExec = actor?.role === 'CEO' || actor?.role === 'EXEC';
+    }
+    if (!isExec) throw new BadRequestException('임원 권한 필요');
+
+    const startAt = new Date(date + 'T00:00:00+09:00');
+    const endAt = new Date(date + 'T23:59:59+09:00');
+
+    // 해당 날짜 전체 입출입 기록 조회
+    const ktLogs = await (this.prisma as any).ktAccessLog.findMany({
+      where: { eventAt: { gte: startAt, lte: endAt } },
+      orderBy: { eventAt: 'asc' },
+    });
+    const secomLogs = await (this.prisma as any).secomAlarm.findMany({
+      where: { eventAt: { gte: startAt, lte: endAt } },
+      orderBy: { eventAt: 'asc' },
+    });
+    const capsLogs = await (this.prisma as any).capsAlarm.findMany({
+      where: { eventAt: { gte: startAt, lte: endAt } },
+      orderBy: { eventAt: 'asc' },
+    });
+
+    // 해당 날짜 OT 신청 조회
+    const dateStart = new Date(Date.UTC(
+      parseInt(date.slice(0, 4)),
+      parseInt(date.slice(5, 7)) - 1,
+      parseInt(date.slice(8, 10)),
+      0, 0, 0, 0
+    ));
+    const dateEnd = new Date(dateStart);
+    dateEnd.setUTCDate(dateEnd.getUTCDate() + 1);
+
+    const otRequests = await (this.prisma as any).attendanceRequest.findMany({
+      where: {
+        type: 'OT',
+        date: { gte: dateStart, lt: dateEnd },
+      },
+      include: {
+        user: { select: { id: true, name: true, employeeNo: true } },
+      },
+    });
+
+    const formatLog = (log: any, source: string) => ({
+      source,
+      eventAt: log.eventAt?.toISOString() || '',
+      employeeNo: log.employeeNo || '',
+      personName: log.personName || '',
+      location: log.gateName || log.zoneName || log.doorName || '',
+      direction: log.direction || '',
+    });
+
+    const allAccessRecords = [
+      ...ktLogs.map((l: any) => formatLog(l, 'KT')),
+      ...secomLogs.map((l: any) => formatLog(l, 'SECOM')),
+      ...capsLogs.map((l: any) => formatLog(l, 'CAPS')),
+    ].sort((a, b) => new Date(a.eventAt).getTime() - new Date(b.eventAt).getTime());
+
+    const otList = otRequests.map((ot: any) => ({
+      id: ot.id,
+      userId: ot.userId,
+      userName: ot.user?.name || '',
+      employeeNo: ot.user?.employeeNo || '',
+      startAt: ot.startAt?.toISOString() || '',
+      endAt: ot.endAt?.toISOString() || '',
+      reason: ot.reason || '',
+    }));
+
+    return {
+      date,
+      summary: {
+        ktCount: ktLogs.length,
+        secomCount: secomLogs.length,
+        capsCount: capsLogs.length,
+        totalAccessRecords: allAccessRecords.length,
+        otCount: otList.length,
+      },
+      accessRecords: allAccessRecords,
+      otRequests: otList,
+    };
+  }
+
   private extractEmployeeNo(email: string): string | null {
     if (!email) return null;
     // 이메일에서 사번 추출 시도 (예: 103485@company.com → 103485)
