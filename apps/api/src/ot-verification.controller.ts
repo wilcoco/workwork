@@ -38,9 +38,6 @@ type OtWithVerification = {
   isHolidayWorkDuplicate: boolean; // 대체근무일과 중복 여부
 };
 
-const CAMS_API_URL = 'https://selfservice.icams.co.kr';
-const CAMS_API_KEY = process.env.ERP_API_KEY || '6147';
-
 @Controller('ot-verification')
 export class OtVerificationController {
   constructor(private prisma: PrismaService) {}
@@ -274,46 +271,92 @@ export class OtVerificationController {
   }
 
   private async fetchAccessRecords(
-    employeeId: string,
+    employeeNo: string,
     startDate: string,
     endDate?: string,
   ): Promise<AccessRecord[]> {
-    if (!CAMS_API_KEY) {
-      console.warn('[OT-Verification] ERP_API_KEY not configured');
-      return [];
-    }
+    // 로컬 DB에서 조회 (KtAccessLog, SecomAlarm, CapsAlarm 통합)
+    const startAt = new Date(startDate + 'T00:00:00+09:00');
+    const endAt = new Date((endDate || startDate) + 'T23:59:59+09:00');
 
-    const params = new URLSearchParams({
-      employee_id: employeeId,
-      start_date: startDate,
-      end_date: endDate || startDate,
-      limit: '500',
+    console.log(`[OT-Verification] 입출입 조회: employeeNo=${employeeNo}, startDate=${startDate}, endDate=${endDate}`);
+
+    const results: AccessRecord[] = [];
+
+    // 1. KtAccessLog (케이티텔레캅 - 복지동, 정문)
+    const ktLogs = await (this.prisma as any).ktAccessLog.findMany({
+      where: {
+        employeeNo,
+        eventAt: { gte: startAt, lte: endAt },
+      },
+      orderBy: { eventAt: 'asc' },
     });
-
-    console.log(`[OT-Verification] 입출입 조회: employeeId=${employeeId}, startDate=${startDate}, endDate=${endDate}`);
-
-    try {
-      const response = await fetch(
-        `${CAMS_API_URL}/api/erp/access-records?${params}`,
-        {
-          headers: { 'x-api-key': CAMS_API_KEY },
-          signal: AbortSignal.timeout(10000),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`CAMS API error: ${response.status} - ${text}`);
-      }
-
-      const data = await response.json();
-      const records = data.records || [];
-      console.log(`[OT-Verification] 입출입 결과: ${records.length}건`);
-      return records;
-    } catch (e: any) {
-      console.error('[OT-Verification] CAMS API error:', e.message);
-      throw e;
+    for (const log of ktLogs) {
+      results.push({
+        id: log.id,
+        source: 'KT',
+        employee_id: log.employeeNo || '',
+        employee_name: log.personName || '',
+        access_time: log.eventAt?.toISOString() || '',
+        access_date: log.eventAt?.toISOString().slice(0, 10) || '',
+        location: log.gateName || '',
+        gate: log.gateId || '',
+        direction: log.direction || '',
+        access_type: 'ACCESS',
+      });
     }
+
+    // 2. SecomAlarm (에스원 - 함평공장)
+    const secomLogs = await (this.prisma as any).secomAlarm.findMany({
+      where: {
+        employeeNo,
+        eventAt: { gte: startAt, lte: endAt },
+      },
+      orderBy: { eventAt: 'asc' },
+    });
+    for (const log of secomLogs) {
+      results.push({
+        id: log.id,
+        source: 'SECOM',
+        employee_id: log.employeeNo || '',
+        employee_name: log.personName || '',
+        access_time: log.eventAt?.toISOString() || '',
+        access_date: log.eventAt?.toISOString().slice(0, 10) || '',
+        location: log.zoneName || '',
+        gate: log.zoneId || '',
+        direction: log.direction || '',
+        access_type: log.alarmType || 'ACCESS',
+      });
+    }
+
+    // 3. CapsAlarm (캡스 - 사무실)
+    const capsLogs = await (this.prisma as any).capsAlarm.findMany({
+      where: {
+        employeeNo,
+        eventAt: { gte: startAt, lte: endAt },
+      },
+      orderBy: { eventAt: 'asc' },
+    });
+    for (const log of capsLogs) {
+      results.push({
+        id: log.id,
+        source: 'CAPS',
+        employee_id: log.employeeNo || '',
+        employee_name: log.personName || '',
+        access_time: log.eventAt?.toISOString() || '',
+        access_date: log.eventAt?.toISOString().slice(0, 10) || '',
+        location: log.doorName || '',
+        gate: log.doorId || '',
+        direction: log.direction || '',
+        access_type: log.alarmType || 'ACCESS',
+      });
+    }
+
+    // 시간순 정렬
+    results.sort((a, b) => new Date(a.access_time).getTime() - new Date(b.access_time).getTime());
+
+    console.log(`[OT-Verification] 입출입 결과: KT=${ktLogs.length}, SECOM=${secomLogs.length}, CAPS=${capsLogs.length}, 총=${results.length}건`);
+    return results;
   }
 
   private verifyOt(
