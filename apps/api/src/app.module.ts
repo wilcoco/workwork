@@ -50,6 +50,7 @@ import { CamsSyncController } from './cams-sync.controller';
 import { AccessLogController } from './access-log.controller';
 import { OtVerificationController } from './ot-verification.controller';
 import { SyncController } from './sync.controller';
+import { KeyInitiativesController } from './key-initiatives.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 import { ProcessSchedulerService } from './process-scheduler.service';
 import { DataverseService } from './dataverse.service';
@@ -103,6 +104,7 @@ import { DataverseService } from './dataverse.service';
     AccessLogController,
     OtVerificationController,
     SyncController,
+    KeyInitiativesController,
   ],
   providers: [
     PrismaService,

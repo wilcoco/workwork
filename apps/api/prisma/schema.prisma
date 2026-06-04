@@ -100,6 +100,7 @@ model OrgUnit {
   processTemplates ProcessTemplate[]
   worklogTeamDailyEvals WorklogTeamDailyEval[]
   weeklyReports WeeklyReport[] @relation("WeeklyReportOrg")
+  keyInitiatives KeyInitiative[]
 }
 
 model User {
@@ -166,6 +167,10 @@ model User {
   instructionsAssigned WorklogInstruction[] @relation("InstructionAssignee")
   instructionsGiven    WorklogInstruction[] @relation("InstructionAssigner")
   worklogSupplements   WorklogSupplement[]  @relation("WorklogSupplementAuthor")
+
+  keyInitiativesAssigned KeyInitiative[] @relation("KeyInitiativeAssignee")
+  keyInitiativesCreated  KeyInitiative[] @relation("KeyInitiativeCreator")
+  keyInitiativeProgress  KeyInitiativeProgress[]
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -1329,4 +1334,59 @@ model CamsVoucherAttachment {
 
   @@unique([voucherId, seq])
   @@index([voucherId])
+}
+
+// ============================================================
+// 중점 추진 과제 (Key Initiatives)
+// ============================================================
+
+enum KeyInitiativeStatus {
+  NOT_STARTED  // 미착수
+  IN_PROGRESS  // 진행중
+  DELAYED      // 지연
+  COMPLETED    // 완료
+  CANCELLED    // 취소
+}
+
+model KeyInitiative {
+  id           String              @id @default(cuid())
+  title        String              // 과제명
+  goal         String?             @db.Text // 과제 목표
+  description  String?             @db.Text // 상세 설명
+  status       KeyInitiativeStatus @default(NOT_STARTED)
+  priority     Int                 @default(0) // 우선순위 (높을수록 상위)
+  startDate    DateTime?           // 시작일
+  dueDate      DateTime?           // 기한
+  completedAt  DateTime?           // 완료일
+  assigneeId   String?             // 담당자
+  assignee     User?               @relation("KeyInitiativeAssignee", fields: [assigneeId], references: [id])
+  createdById  String              // 등록자
+  createdBy    User                @relation("KeyInitiativeCreator", fields: [createdById], references: [id])
+  orgUnitId    String?             // 담당 부서
+  orgUnit      OrgUnit?            @relation(fields: [orgUnitId], references: [id])
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  progress     KeyInitiativeProgress[]
+
+  @@index([status])
+  @@index([assigneeId])
+  @@index([createdById])
+  @@index([dueDate])
+  @@index([orgUnitId])
+}
+
+model KeyInitiativeProgress {
+  id           String        @id @default(cuid())
+  initiativeId String
+  initiative   KeyInitiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  content      String        @db.Text // 진행 내용
+  progressPct  Int?          // 진행률 (0-100)
+  createdById  String        // 작성자
+  createdBy    User          @relation(fields: [createdById], references: [id])
+  createdAt    DateTime      @default(now())
+
+  @@index([initiativeId])
+  @@index([createdById])
+  @@index([createdAt])
 }

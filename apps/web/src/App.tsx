@@ -44,6 +44,7 @@ import { BusinessTripRequest } from './pages/BusinessTripRequest';
 import { AttendanceReport } from './pages/AttendanceReport';
 import { OtVerification } from './pages/OtVerification';
 import { AccessRecordReport } from './pages/AccessRecordReport';
+import { KeyInitiatives } from './pages/KeyInitiatives';
 import { AdminHolidays } from './pages/AdminHolidays';
 import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
 import { ProcessMy } from './pages/ProcessMy';
@@ -369,6 +370,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/attendance/report" element={<AttendanceReport />} />
           <Route path="/attendance/ot-verification" element={<OtVerification />} />
           <Route path="/attendance/access-report" element={<AccessRecordReport />} />
+          <Route path="/key-initiatives" element={<KeyInitiatives />} />
           <Route path="/business-trip/request" element={<BusinessTripRequest />} />
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
           <Route path="/process/dashboard" element={<ProcessDashboard />} />
@@ -470,11 +472,12 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           {canEvaluate && <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>}
           <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
-        <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr')}>
+        <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives')}>
           <Link to="/okr/input">OKR 입력</Link>
           <Link to="/okr/tree">OKR 조회</Link>
           <Link to="/okr/team">팀 KPI 입력</Link>
           <Link to="/okr/team-board">팀 KPI 조회</Link>
+          <Link to="/key-initiatives">중점 추진 과제</Link>
         </NavDropdown>
         {SHOW_APPROVALS && (
           <NavDropdown label="결재" active={location.pathname.startsWith('/approvals')}>
@@ -679,6 +682,14 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/okr/tree', label: 'OKR 조회' },
         { to: '/okr/team', label: '팀 KPI 입력' },
         { to: '/okr/team-board', label: '팀 KPI 조회' },
+        { to: '/key-initiatives', label: '중점 추진 과제' },
+      ];
+    }
+    if (path.startsWith('/key-initiatives')) {
+      return [
+        { to: '/key-initiatives', label: '중점 추진 과제' },
+        { to: '/okr/input', label: 'OKR 입력' },
+        { to: '/okr/tree', label: 'OKR 조회' },
       ];
     }
     if (SHOW_APPROVALS && path.startsWith('/approvals')) {
