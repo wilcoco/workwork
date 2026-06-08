@@ -121,7 +121,7 @@ export function AttendanceRequest() {
   }
 
   // 주간 근무시간 계산용 date 추출
-  const dateForWeekly = type === 'VACATION' ? vacationDate : (startDatetime ? startDatetime.slice(0, 10) : '');
+  const dateForWeekly = (type === 'VACATION' || type === 'PUBLIC_DUTY') ? vacationDate : (startDatetime ? startDatetime.slice(0, 10) : '');
   const startTimeForWeekly = startDatetime ? startDatetime.slice(11, 16) : '';
   const endTimeForWeekly = endDatetime ? endDatetime.slice(11, 16) : '';
 
@@ -211,10 +211,10 @@ export function AttendanceRequest() {
       alert('로그인이 필요합니다');
       return;
     }
-    // 휴가는 vacationDate, 그 외는 startDatetime 필요
-    if (type === 'VACATION') {
+    // 휴가/공가는 vacationDate, 그 외는 startDatetime 필요
+    if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
       if (!vacationDate) {
-        alert('휴가 날짜를 입력해 주세요');
+        alert(type === 'VACATION' ? '휴가 날짜를 입력해 주세요' : '공가 날짜를 입력해 주세요');
         return;
       }
     } else {
@@ -247,7 +247,7 @@ export function AttendanceRequest() {
         reason: reason || undefined,
       };
 
-      if (type === 'VACATION') {
+      if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
         payload.date = vacationDate;
       } else {
         // datetime-local 값을 KST ISO 문자열로 변환
