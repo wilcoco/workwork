@@ -241,6 +241,9 @@ export function AttendanceRequest() {
       // 휴가/공가는 여러 날짜를 각각 신청, 그 외는 단건 신청
       if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
         // 날짜별로 개별 신청
+        const successDates: string[] = [];
+        const failedDates: { date: string; error: string }[] = [];
+
         for (const date of vacationDates) {
           const payload: Record<string, any> = {
             userId,
@@ -253,10 +256,30 @@ export function AttendanceRequest() {
           if (attachments.length > 0) {
             payload.attachments = attachments;
           }
-          await apiJson(`/api/attendance`, {
-            method: 'POST',
-            body: JSON.stringify(payload),
-          });
+          try {
+            await apiJson(`/api/attendance`, {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            });
+            successDates.push(date);
+          } catch (err: any) {
+            failedDates.push({ date, error: err?.message || '알 수 없는 오류' });
+          }
+        }
+
+        await loadCalendar();
+
+        if (failedDates.length === 0) {
+          alert(`${successDates.length}건의 ${type === 'VACATION' ? '휴가' : '공가'} 신청이 등록되었습니다`);
+          setVacationDates([]);
+          setReason('');
+          setAttachments([]);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        } else if (successDates.length === 0) {
+          alert(`신청 실패:\n${failedDates.map(f => `${f.date}: ${f.error}`).join('\n')}`);
+        } else {
+          alert(`일부 신청 완료:\n성공: ${successDates.join(', ')}\n\n실패:\n${failedDates.map(f => `${f.date}: ${f.error}`).join('\n')}`);
+          setVacationDates(failedDates.map(f => f.date));
         }
       } else {
         const payload: Record<string, any> = {
@@ -284,17 +307,16 @@ export function AttendanceRequest() {
           method: 'POST',
           body: JSON.stringify(payload),
         });
+        await loadCalendar();
+        alert('근태 신청이 등록되었습니다');
+        // 폼 초기화
+        setStartDatetime('');
+        setEndDatetime('');
+        setReason('');
+        setAltRestDate('');
+        setAttachments([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
-      await loadCalendar();
-      alert('근태 신청이 등록되었습니다');
-      // 폼 초기화
-      setStartDatetime('');
-      setEndDatetime('');
-      setVacationDates([]);
-      setReason('');
-      setAltRestDate('');
-      setAttachments([]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (e: any) {
       alert(e?.message || '근태 신청에 실패했습니다');
     } finally {
