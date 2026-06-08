@@ -475,6 +475,7 @@ enum AttendanceType {
   FLEXIBLE
   HOLIDAY_WORK
   HOLIDAY_REST
+  PUBLIC_DUTY
 }
 
 enum ProcessType {

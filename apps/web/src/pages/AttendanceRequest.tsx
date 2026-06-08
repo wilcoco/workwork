@@ -4,7 +4,7 @@ import { apiJson, apiFetch } from '../lib/api';
 
 type AttachmentFile = { url: string; name: string; size?: number; type?: string };
 
-type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'HOLIDAY_REST';
+type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'HOLIDAY_REST' | 'PUBLIC_DUTY';
 
 type CalendarItem = {
   id: string;
@@ -412,6 +412,7 @@ export function AttendanceRequest() {
                 <option value="ALL">전체</option>
                 <option value="OT">OT</option>
                 <option value="VACATION">휴가</option>
+                <option value="PUBLIC_DUTY">공가</option>
                 <option value="EARLY_LEAVE">조퇴</option>
                 <option value="FLEXIBLE">유연근무</option>
                 <option value="HOLIDAY">대체휴무</option>
@@ -556,6 +557,7 @@ export function AttendanceRequest() {
           <select value={type} onChange={(e) => setType(e.target.value as AttendanceType)}>
             <option value="OT">OT 신청</option>
             <option value="VACATION">휴가 신청</option>
+            <option value="PUBLIC_DUTY">공가 신청 (예비군 등)</option>
             <option value="EARLY_LEAVE">조퇴 신청</option>
             <option value="FLEXIBLE">유연 근무 신청</option>
             <option value="HOLIDAY_WORK">휴일 대체 신청 (별도 OT 신청을 하지 마세요)</option>
@@ -566,9 +568,9 @@ export function AttendanceRequest() {
             ⚠️ 대체 휴일 근무를 하는 경우 OT 신청을 별도로 하지 마세요. "휴일 대체 신청"을 이용해주세요.
           </div>
         )}
-        {type === 'VACATION' ? (
+        {(type === 'VACATION' || type === 'PUBLIC_DUTY') ? (
           <label style={{ display: 'grid', gap: 4 }}>
-            <span>휴가 일자</span>
+            <span>{type === 'VACATION' ? '휴가 일자' : '공가 일자'}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="date" value={vacationDate} onChange={(e) => setVacationDate(e.target.value)} />
               <span style={{ fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column' }}>
@@ -830,6 +832,7 @@ function buildLabel(ev: CalendarItem): string {
   let t: string;
   if (ev.type === 'OT') t = 'OT';
   else if (ev.type === 'VACATION') t = '휴가';
+  else if (ev.type === 'PUBLIC_DUTY') t = '공가';
   else if (ev.type === 'EARLY_LEAVE') t = '조퇴';
   else if (ev.type === 'FLEXIBLE') t = '유연근무';
   else if (ev.type === 'HOLIDAY_WORK') t = '대체근무일';
@@ -837,7 +840,7 @@ function buildLabel(ev: CalendarItem): string {
   else t = ev.type;
 
   let base: string;
-  if (ev.type === 'VACATION' || ev.type === 'HOLIDAY_REST') {
+  if (ev.type === 'VACATION' || ev.type === 'PUBLIC_DUTY' || ev.type === 'HOLIDAY_REST') {
     base = `${t} (종일)`;
   } else {
     const s = ev.startAt ? formatTime(ev.startAt) : '';
@@ -857,6 +860,7 @@ function buildTitle(ev: CalendarItem): string {
 function getAttendanceTypeLabel(ev: CalendarItem): string {
   if (ev.type === 'OT') return 'OT';
   if (ev.type === 'VACATION') return '휴가';
+  if (ev.type === 'PUBLIC_DUTY') return '공가';
   if (ev.type === 'EARLY_LEAVE') return '조퇴';
   if (ev.type === 'FLEXIBLE') return '유연근무';
   if (ev.type === 'HOLIDAY_WORK') return '대체근무일';
@@ -876,6 +880,7 @@ function getBg(ev: CalendarItem): string {
   const typeColors: Record<string, string> = {
     OT: '59, 130, 246',           // 파랑
     VACATION: '34, 197, 94',      // 초록
+    PUBLIC_DUTY: '234, 179, 8',   // 노랑 (공가)
     EARLY_LEAVE: '249, 115, 22',  // 주황
     FLEXIBLE: '168, 85, 247',     // 보라
     HOLIDAY_WORK: '236, 72, 153', // 핑크

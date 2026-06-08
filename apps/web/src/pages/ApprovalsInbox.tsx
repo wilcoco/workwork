@@ -191,6 +191,7 @@ export function ApprovalsInbox() {
             let kind: string;
             if (doc.type === 'OT') kind = 'OT';
             else if (doc.type === 'VACATION') kind = '휴가';
+            else if (doc.type === 'PUBLIC_DUTY') kind = '공가';
             else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
             else if (doc.type === 'FLEXIBLE') kind = '유연근무';
             else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일대체';
@@ -199,7 +200,7 @@ export function ApprovalsInbox() {
             const dateShort = doc.date ? new Date(doc.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
             const timeRange = doc.startAt && doc.endAt
               ? `${new Date(doc.startAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}~${new Date(doc.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
-              : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
+              : (doc.type === 'VACATION' || doc.type === 'PUBLIC_DUTY' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
             const otMins = doc.type === 'OT' && doc.startAt && doc.endAt
               ? Math.round((new Date(doc.endAt).getTime() - new Date(doc.startAt).getTime()) / 60000)
               : 0;
@@ -356,6 +357,7 @@ export function ApprovalsInbox() {
                 let kind: string;
                 if (doc.type === 'OT') kind = 'OT';
                 else if (doc.type === 'VACATION') kind = '휴가';
+                else if (doc.type === 'PUBLIC_DUTY') kind = '공가';
                 else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
                 else if (doc.type === 'FLEXIBLE') kind = '유연근무';
                 else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
@@ -369,7 +371,7 @@ export function ApprovalsInbox() {
                 title = `근태 신청 - ${kind}${dateShort ? ` | ${dateShort}` : ''}${otStr}`.trim();
                 const timeRange = doc.startAt && doc.endAt
                   ? `${new Date(doc.startAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} ~ ${new Date(doc.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
-                  : (doc.type === 'VACATION' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
+                  : (doc.type === 'VACATION' || doc.type === 'PUBLIC_DUTY' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
                 const parts = [
                   doc.requesterName || '',
                   timeRange,

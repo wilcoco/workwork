@@ -21,8 +21,8 @@ class CreateAttendanceDto {
   approverIds?: string[];
 
   @IsString()
-  @IsIn(['OT', 'VACATION', 'EARLY_LEAVE', 'FLEXIBLE', 'HOLIDAY_WORK'])
-  type!: 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK';
+  @IsIn(['OT', 'VACATION', 'EARLY_LEAVE', 'FLEXIBLE', 'HOLIDAY_WORK', 'PUBLIC_DUTY'])
+  type!: 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'PUBLIC_DUTY';
 
   @IsString()
   date!: string; // YYYY-MM-DD
@@ -114,8 +114,8 @@ export class AttendanceController {
       const firstApprover = approverLine[0] || dto.approverId || dto.userId;
 
       const rec = await (this.prisma as any).$transaction(async (tx: any) => {
-        // 휴가와 다른 근태는 같은 날에 함께 신청할 수 없다.
-        if (dto.type === 'VACATION') {
+        // 휴가/공가와 다른 근태는 같은 날에 함께 신청할 수 없다.
+        if (dto.type === 'VACATION' || dto.type === 'PUBLIC_DUTY') {
           const existing = await tx.attendanceRequest.findFirst({
             where: {
               userId: dto.userId,
@@ -124,19 +124,21 @@ export class AttendanceController {
             },
           });
           if (existing) {
-            throw new BadRequestException('해당 일자에 이미 다른 근태 신청이 있어 휴가를 신청할 수 없습니다');
+            throw new BadRequestException(dto.type === 'VACATION'
+              ? '해당 일자에 이미 다른 근태 신청이 있어 휴가를 신청할 수 없습니다'
+              : '해당 일자에 이미 다른 근태 신청이 있어 공가를 신청할 수 없습니다');
           }
         } else {
-          const vacation = await tx.attendanceRequest.findFirst({
+          const dayOff = await tx.attendanceRequest.findFirst({
             where: {
               userId: dto.userId,
-              type: 'VACATION',
+              type: { in: ['VACATION', 'PUBLIC_DUTY'] as any },
               date: baseDate,
               status: { notIn: ['REJECTED', 'CANCELLED'] as any },
             },
           });
-          if (vacation) {
-            throw new BadRequestException('해당 일자에 이미 휴가가 신청되어 있어 다른 근태를 신청할 수 없습니다');
+          if (dayOff) {
+            throw new BadRequestException('해당 일자에 이미 휴가 또는 공가가 신청되어 있어 다른 근태를 신청할 수 없습니다');
           }
         }
 
@@ -419,7 +421,7 @@ export class AttendanceController {
         if (it.startAt && it.endAt) {
           agg.otHours += hoursBetween(it.startAt as any as Date, it.endAt as any as Date);
         }
-      } else if (it.type === 'VACATION' || it.type === 'HOLIDAY_REST') {
+      } else if (it.type === 'VACATION' || it.type === 'PUBLIC_DUTY' || it.type === 'HOLIDAY_REST') {
         agg.vacationHours += 8; // 1일 8시간
       } else if (it.type === 'EARLY_LEAVE') {
         if (it.startAt && it.endAt) {
@@ -547,8 +549,8 @@ export class AttendanceController {
           otHours += h;
           agg.ot += h;
         }
-      } else if (it.type === 'VACATION' || it.type === 'HOLIDAY_REST') {
-        // 휴가 1일 = 8시간 차감 (평일 기준, 공휴일은 이미 base에서 빠져 있으므로 추가 차감 없음)
+      } else if (it.type === 'VACATION' || it.type === 'PUBLIC_DUTY' || it.type === 'HOLIDAY_REST') {
+        // 휴가/공가 1일 = 8시간 차감 (평일 기준, 공휴일은 이미 base에서 빠져 있으므로 추가 차감 없음)
         if (dow >= 1 && dow <= 5 && !holidaySet.has(key)) {
           vacationHours += 8;
           agg.vacation += 8;
@@ -752,7 +754,7 @@ export class AttendanceController {
         hours: (it.type === 'OT' || it.type === 'EARLY_LEAVE' || it.type === 'FLEXIBLE' || it.type === 'HOLIDAY_WORK')
           ? hoursBetween(it.startAt, it.endAt)
           : null,
-        days: (it.type === 'VACATION' || it.type === 'HOLIDAY_REST') ? 1 : null,
+        days: (it.type === 'VACATION' || it.type === 'PUBLIC_DUTY' || it.type === 'HOLIDAY_REST') ? 1 : null,
         status: it.status,
         reason: it.reason,
         currentApproverName,
