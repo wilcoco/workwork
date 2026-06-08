@@ -40,7 +40,7 @@ export function AttendanceRequest() {
   const [type, setType] = useState<AttendanceType>('OT');
   const [startDatetime, setStartDatetime] = useState(''); // datetime-local: YYYY-MM-DDTHH:MM
   const [endDatetime, setEndDatetime] = useState('');     // datetime-local: YYYY-MM-DDTHH:MM
-  const [vacationDate, setVacationDate] = useState('');   // 휴가용: YYYY-MM-DD
+  const [vacationDates, setVacationDates] = useState<string[]>([]);   // 휴가/공가용: YYYY-MM-DD[]
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [altRestDate, setAltRestDate] = useState(''); // 휴일 대체 신청용: 같은 주 평일 휴식일
@@ -120,8 +120,8 @@ export function AttendanceRequest() {
     }
   }
 
-  // 주간 근무시간 계산용 date 추출
-  const dateForWeekly = (type === 'VACATION' || type === 'PUBLIC_DUTY') ? vacationDate : (startDatetime ? startDatetime.slice(0, 10) : '');
+  // 주간 근무시간 계산용 date 추출 (휴가/공가는 첫 번째 선택된 날짜 기준)
+  const dateForWeekly = (type === 'VACATION' || type === 'PUBLIC_DUTY') ? (vacationDates[0] || '') : (startDatetime ? startDatetime.slice(0, 10) : '');
   const startTimeForWeekly = startDatetime ? startDatetime.slice(11, 16) : '';
   const endTimeForWeekly = endDatetime ? endDatetime.slice(11, 16) : '';
 
@@ -211,10 +211,10 @@ export function AttendanceRequest() {
       alert('로그인이 필요합니다');
       return;
     }
-    // 휴가/공가는 vacationDate, 그 외는 startDatetime 필요
+    // 휴가/공가는 vacationDates, 그 외는 startDatetime 필요
     if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
-      if (!vacationDate) {
-        alert(type === 'VACATION' ? '휴가 날짜를 입력해 주세요' : '공가 날짜를 입력해 주세요');
+      if (vacationDates.length === 0) {
+        alert(type === 'VACATION' ? '휴가 날짜를 선택해 주세요' : '공가 날짜를 선택해 주세요');
         return;
       }
     } else {
@@ -238,43 +238,59 @@ export function AttendanceRequest() {
     setSubmitting(true);
     setError(null);
     try {
-      // 휴가는 date만, 그 외는 startAt/endAt (datetime-local + KST)
-      const payload: Record<string, any> = {
-        userId,
-        approverId: cleanedApprovers[0],
-        approverIds: cleanedApprovers,
-        type,
-        reason: reason || undefined,
-      };
-
+      // 휴가/공가는 여러 날짜를 각각 신청, 그 외는 단건 신청
       if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
-        payload.date = vacationDate;
+        // 날짜별로 개별 신청
+        for (const date of vacationDates) {
+          const payload: Record<string, any> = {
+            userId,
+            approverId: cleanedApprovers[0],
+            approverIds: cleanedApprovers,
+            type,
+            reason: reason || undefined,
+            date,
+          };
+          if (attachments.length > 0) {
+            payload.attachments = attachments;
+          }
+          await apiJson(`/api/attendance`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+        }
       } else {
+        const payload: Record<string, any> = {
+          userId,
+          approverId: cleanedApprovers[0],
+          approverIds: cleanedApprovers,
+          type,
+          reason: reason || undefined,
+        };
         // datetime-local 값을 KST ISO 문자열로 변환
         payload.startAt = startDatetime + ':00+09:00';
         payload.endAt = endDatetime + ':00+09:00';
         // 기존 API 호환을 위한 date 필드 (시작일 기준)
         payload.date = startDatetime.slice(0, 10);
-      }
 
-      if (type === 'HOLIDAY_WORK') {
-        payload.altRestDate = altRestDate;
-      }
+        if (type === 'HOLIDAY_WORK') {
+          payload.altRestDate = altRestDate;
+        }
 
-      if (attachments.length > 0) {
-        payload.attachments = attachments;
-      }
+        if (attachments.length > 0) {
+          payload.attachments = attachments;
+        }
 
-      await apiJson(`/api/attendance`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+        await apiJson(`/api/attendance`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
       await loadCalendar();
       alert('근태 신청이 등록되었습니다');
       // 폼 초기화
       setStartDatetime('');
       setEndDatetime('');
-      setVacationDate('');
+      setVacationDates([]);
       setReason('');
       setAltRestDate('');
       setAttachments([]);
@@ -569,26 +585,61 @@ export function AttendanceRequest() {
           </div>
         )}
         {(type === 'VACATION' || type === 'PUBLIC_DUTY') ? (
-          <label style={{ display: 'grid', gap: 4 }}>
-            <span>{type === 'VACATION' ? '휴가 일자' : '공가 일자'}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="date" value={vacationDate} onChange={(e) => setVacationDate(e.target.value)} />
-              <span style={{ fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column' }}>
-                <span>
-                  해당 주 업무시간:{' '}
-                  {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')}
-                </span>
-                {!weeklyLoading && weeklyDays.length > 0 && (
-                  <span>
-                    {weeklyDays.map((d, idx) => {
-                      const label = d.totalHours.toFixed(1);
-                      return `${idx > 0 ? ' / ' : ''}${d.date.slice(5)}: ${label}h`;
-                    }).join('')}
-                  </span>
-                )}
-              </span>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <span style={{ fontWeight: 500 }}>{type === 'VACATION' ? '휴가 일자' : '공가 일자'} (여러 날짜 선택 가능)</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                type="date"
+                onChange={(e) => {
+                  const date = e.target.value;
+                  if (date && !vacationDates.includes(date)) {
+                    setVacationDates([...vacationDates, date].sort());
+                  }
+                  e.target.value = '';
+                }}
+                style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }}
+              />
+              <span style={{ fontSize: 12, color: '#64748b' }}>날짜를 클릭하여 추가</span>
             </div>
-          </label>
+            {vacationDates.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {vacationDates.map((date) => (
+                  <span
+                    key={date}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: '4px 8px',
+                      background: '#e0f2fe',
+                      borderRadius: 6,
+                      fontSize: 13,
+                    }}
+                  >
+                    {date}
+                    <button
+                      type="button"
+                      onClick={() => setVacationDates(vacationDates.filter((d) => d !== date))}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontSize: 14,
+                        color: '#64748b',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <span style={{ fontSize: 12, color: '#475569' }}>
+              해당 주 업무시간:{' '}
+              {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')}
+            </span>
+          </div>
         ) : (
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
