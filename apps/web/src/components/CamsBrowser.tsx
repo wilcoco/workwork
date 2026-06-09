@@ -113,7 +113,7 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
   async function recordView(docId: string) {
     if (!userId || !docId) return;
     try {
-      await apiFetch('/api/document-views', {
+      await apiJson('/api/document-views', {
         method: 'POST',
         body: JSON.stringify({ userId, docType, docId }),
       });
