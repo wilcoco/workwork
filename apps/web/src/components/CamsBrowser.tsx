@@ -92,6 +92,36 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
   // narrowing has to happen here.
   const [filterText, setFilterText] = useState<string>('');
   const [userId] = useState(() => typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '');
+  // 조회한 문서 ID 목록 (읽음 표시용)
+  const [viewedDocIds, setViewedDocIds] = useState<Set<string>>(new Set());
+  const docType = config.apiPath.includes('proposal') ? 'proposal' : 'voucher';
+
+  // 조회 기록 로드
+  useEffect(() => {
+    if (!userId) return;
+    void (async () => {
+      try {
+        const res = await apiJson<{ viewedDocIds: string[] }>(`/api/document-views?userId=${userId}&docType=${docType}`);
+        setViewedDocIds(new Set(res.viewedDocIds || []));
+      } catch {
+        // ignore
+      }
+    })();
+  }, [userId, docType]);
+
+  // 문서 조회 시 기록 저장
+  async function recordView(docId: string) {
+    if (!userId || !docId) return;
+    try {
+      await apiFetch('/api/document-views', {
+        method: 'POST',
+        body: JSON.stringify({ userId, docType, docId }),
+      });
+      setViewedDocIds((prev) => new Set([...prev, docId]));
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     if (userId) void fetchList('');
@@ -109,6 +139,10 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
       const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await apiJson<ListResp>(`${config.apiPath}/list${qs}`);
       setData(res);
+      // 상세 조회 시 조회 기록 저장
+      if (trimmed) {
+        void recordView(trimmed);
+      }
     } catch (e: any) {
       setError(e?.message || '조회 실패');
       setData(null);
@@ -219,7 +253,7 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
               <Doc grids={grids} config={config} />
             )
           ) : (
-            <ListWithExpand grids={grids} config={config} filterText={filterText} userId={userId} />
+            <ListWithExpand grids={grids} config={config} filterText={filterText} userId={userId} viewedDocIds={viewedDocIds} onView={recordView} />
           )}
         </>
       )}
@@ -235,11 +269,15 @@ function ListWithExpand({
   config,
   filterText,
   userId,
+  viewedDocIds,
+  onView,
 }: {
   grids: ParsedGrid[];
   config: CamsBrowserConfig;
   filterText: string;
   userId: string;
+  viewedDocIds: Set<string>;
+  onView: (docId: string) => void;
 }) {
   const labelFor = useLabelFor();
   // Single-open accordion: each row keeps its own `open` boolean,
@@ -311,6 +349,8 @@ function ListWithExpand({
                     closeSignal={closeSignal}
                     requestExclusiveOpen={(k) => setCloseSignal((s) => ({ n: s.n + 1, owner: k }))}
                     userId={userId}
+                    viewed={viewedDocIds.has(key)}
+                    onView={onView}
                   />
                 );
               })
@@ -331,6 +371,8 @@ function ListRow({
   closeSignal,
   requestExclusiveOpen,
   userId,
+  viewed,
+  onView,
 }: {
   rowKey: string;
   row: GridRow;
@@ -340,6 +382,8 @@ function ListRow({
   closeSignal: { n: number; owner: string };
   requestExclusiveOpen: (key: string) => void;
   userId: string;
+  viewed: boolean;
+  onView: (docId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<ListResp | null>(null);
@@ -358,6 +402,10 @@ function ListRow({
     if (open) { setOpen(false); return; }
     setOpen(true);
     requestExclusiveOpen(rowKey);
+    // 조회 기록 저장
+    if (slpNo) {
+      onView(slpNo);
+    }
     if (!slpNo || detail || loading) return;
     setLoading(true);
     setError(null);
@@ -378,12 +426,19 @@ function ListRow({
     <>
       <tr
         onClick={toggle}
-        style={{ borderTop: '1px solid #e5e7eb', cursor: slpNo ? 'pointer' : 'default', background: open ? '#f8fafc' : undefined }}
+        style={{
+          borderTop: '1px solid #e5e7eb',
+          cursor: slpNo ? 'pointer' : 'default',
+          background: open ? '#f8fafc' : viewed ? '#f0fdf4' : undefined,
+        }}
       >
         <td style={{ ...td, width: 32, color: '#64748b', textAlign: 'center' }}>
           {slpNo ? (open ? '▾' : '▸') : ''}
         </td>
-        <td style={{ ...td, color: '#94a3b8', width: 40 }}>{index + 1}</td>
+        <td style={{ ...td, color: '#94a3b8', width: 40 }}>
+          {viewed && <span title="조회함" style={{ color: '#22c55e', marginRight: 4 }}>✓</span>}
+          {index + 1}
+        </td>
         {cols.map((c) => (
           <td key={c} style={td}>{String(row[c] ?? '')}</td>
         ))}

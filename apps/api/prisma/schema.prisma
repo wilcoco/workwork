@@ -171,6 +171,7 @@ model User {
   keyInitiativesAssigned KeyInitiative[] @relation("KeyInitiativeAssignee")
   keyInitiativesCreated  KeyInitiative[] @relation("KeyInitiativeCreator")
   keyInitiativeProgress  KeyInitiativeProgress[]
+  documentViewLogs       DocumentViewLog[]
 
   teamsPhotoBytes Bytes?
   teamsPhotoContentType String?
@@ -1390,4 +1391,19 @@ model KeyInitiativeProgress {
   @@index([initiativeId])
   @@index([createdById])
   @@index([createdAt])
+}
+
+
+// 품의서/전표 조회 로그 (사용자별 읽음 표시)
+model DocumentViewLog {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  docType      String   // "proposal" | "voucher"
+  docId        String   // slpNo (품의번호/전표번호)
+  viewedAt     DateTime @default(now())
+
+  @@unique([userId, docType, docId])
+  @@index([userId])
+  @@index([docType, docId])
 }
