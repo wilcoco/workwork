@@ -323,6 +323,7 @@ function ListWithExpand({
             <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
               <th style={{ ...th, width: 32 }}></th>
               <th style={{ ...th, width: 40 }}>#</th>
+              <th style={{ ...th, width: 60 }}>읽음</th>
               {cols.map((c) => (
                 <th key={c} style={th}>{labelFor(c)}</th>
               ))}
@@ -331,7 +332,7 @@ function ListWithExpand({
           <tbody>
             {visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={cols.length + 2} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+                <td colSpan={cols.length + 3} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
                   검색 결과 없음
                 </td>
               </tr>
@@ -436,8 +437,14 @@ function ListRow({
           {slpNo ? (open ? '▾' : '▸') : ''}
         </td>
         <td style={{ ...td, color: '#94a3b8', width: 40 }}>
-          {viewed && <span title="조회함" style={{ color: '#22c55e', marginRight: 4 }}>✓</span>}
           {index + 1}
+        </td>
+        <td style={{ ...td, width: 60, textAlign: 'center' }}>
+          {viewed ? (
+            <span style={{ color: '#16a34a', fontWeight: 600, fontSize: 12 }}>읽었음</span>
+          ) : (
+            <span style={{ color: '#94a3b8', fontSize: 12 }}>-</span>
+          )}
         </td>
         {cols.map((c) => (
           <td key={c} style={td}>{String(row[c] ?? '')}</td>
@@ -445,7 +452,7 @@ function ListRow({
       </tr>
       {open && (
         <tr style={{ background: '#f8fafc', borderTop: '1px solid #e5e7eb' }}>
-          <td colSpan={cols.length + 2} style={{ padding: 16 }}>
+          <td colSpan={cols.length + 3} style={{ padding: 16 }}>
             {loading && <div style={{ fontSize: 13, color: '#64748b' }}>조회 중…</div>}
             {error && (
               <div style={{ fontSize: 13, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10 }}>
