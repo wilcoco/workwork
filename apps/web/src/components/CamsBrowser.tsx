@@ -103,8 +103,8 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
       try {
         const res = await apiJson<{ viewedDocIds: string[] }>(`/api/document-views?userId=${userId}&docType=${docType}`);
         setViewedDocIds(new Set(res.viewedDocIds || []));
-      } catch {
-        // ignore
+      } catch (e) {
+        console.warn('[DocumentViewLog] 조회 기록 로드 실패:', e);
       }
     })();
   }, [userId, docType]);
@@ -118,8 +118,8 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
         body: JSON.stringify({ userId, docType, docId }),
       });
       setViewedDocIds((prev) => new Set([...prev, docId]));
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn('[DocumentViewLog] 조회 기록 저장 실패:', e);
     }
   }
 
@@ -297,9 +297,9 @@ function ListWithExpand({
     return st === '09';
   });
 
-  // Reorder columns so the most useful ones come first. 상태 컬럼 제외
+  // Reorder columns so the most useful ones come first. 불필요한 컬럼 숨김
   const colOrder = ['slpno', 'date', 'title', 'aspnote', 'sname', 'dname', 'amt', 'amount'];
-  const hiddenCols = ['status', 'state']; // 숨길 컬럼
+  const hiddenCols = ['status', 'state', 'jname', 'sbn', 'no']; // 숨길 컬럼
   const cols = [
     ...colOrder.filter((c) => listGrid.fields.includes(c)),
     ...listGrid.fields.filter((c) => !colOrder.includes(c) && !hiddenCols.includes(c)),
