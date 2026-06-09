@@ -287,6 +287,8 @@ function ListWithExpand({
   // opened. Every other row sees the new signal and closes itself.
   // Declared above the early-return for stable hook order.
   const [closeSignal, setCloseSignal] = useState({ n: 0, owner: '' });
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
   if (!listGrid) return null;
@@ -308,14 +310,61 @@ function ListWithExpand({
   // Client-side filter: case-insensitive substring across every visible
   // cell so a user can search by title, drafter, dept or any free text.
   const q = filterText.trim().toLowerCase();
-  const visibleRows = q
+  const filteredRows = q
     ? approvedRows.filter((row) => cols.some((c) => String(row[c] ?? '').toLowerCase().includes(q)))
     : approvedRows;
 
+  // 페이징
+  const totalPages = Math.ceil(filteredRows.length / pageSize);
+  const startIdx = (page - 1) * pageSize;
+  const visibleRows = filteredRows.slice(startIdx, startIdx + pageSize);
+
+  // 검색/필터 변경 시 첫 페이지로 이동
+  useEffect(() => {
+    setPage(1);
+  }, [filterText]);
+
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#475569' }}>
-        결재완료 <strong>{approvedRows.length}</strong>건{q && <> · 검색결과 <strong>{visibleRows.length}</strong>건</>}
+      <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <span>
+          결재완료 <strong>{approvedRows.length}</strong>건
+          {q && <> · 검색결과 <strong>{filteredRows.length}</strong>건</>}
+          {filteredRows.length > pageSize && <> · {page}/{totalPages} 페이지</>}
+        </span>
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => setPage(1)}
+              disabled={page === 1}
+              style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}
+            >
+              ««
+            </button>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}
+            >
+              «
+            </button>
+            <span style={{ padding: '4px 8px', fontSize: 12 }}>{page} / {totalPages}</span>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.5 : 1 }}
+            >
+              »
+            </button>
+            <button
+              onClick={() => setPage(totalPages)}
+              disabled={page === totalPages}
+              style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #cbd5e1', borderRadius: 4, background: '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.5 : 1 }}
+            >
+              »»
+            </button>
+          </div>
+        )}
       </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -345,7 +394,7 @@ function ListWithExpand({
                     rowKey={key}
                     row={row}
                     cols={cols}
-                    index={i}
+                    index={startIdx + i}
                     config={config}
                     closeSignal={closeSignal}
                     requestExclusiveOpen={(k) => setCloseSignal((s) => ({ n: s.n + 1, owner: k }))}
