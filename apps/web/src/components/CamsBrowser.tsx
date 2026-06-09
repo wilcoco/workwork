@@ -408,6 +408,39 @@ function ListWithExpand({
           </tbody>
         </table>
       </div>
+      {totalPages > 1 && (
+        <div style={{ padding: '12px', background: '#f8fafc', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => setPage(1)}
+            disabled={page === 1}
+            style={{ padding: '6px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}
+          >
+            ⏮ 처음
+          </button>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            style={{ padding: '6px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}
+          >
+            ◀ 이전
+          </button>
+          <span style={{ padding: '6px 12px', fontSize: 13, fontWeight: 600 }}>{page} / {totalPages} 페이지</span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            style={{ padding: '6px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.5 : 1 }}
+          >
+            다음 ▶
+          </button>
+          <button
+            onClick={() => setPage(totalPages)}
+            disabled={page === totalPages}
+            style={{ padding: '6px 12px', fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.5 : 1 }}
+          >
+            마지막 ⏭
+          </button>
+        </div>
+      )}
     </div>
   );
 }
