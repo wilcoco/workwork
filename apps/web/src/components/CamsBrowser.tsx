@@ -96,12 +96,12 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
   const [viewedDocIds, setViewedDocIds] = useState<Set<string>>(new Set());
   const docType = config.apiPath.includes('proposal') ? 'proposal' : 'voucher';
 
-  // 조회 기록 로드
+  // 조회 기록 로드 (캐시 방지를 위해 timestamp 추가)
   useEffect(() => {
     if (!userId) return;
     void (async () => {
       try {
-        const res = await apiJson<{ viewedDocIds: string[] }>(`/api/document-views?userId=${userId}&docType=${docType}`);
+        const res = await apiJson<{ viewedDocIds: string[] }>(`/api/document-views?userId=${userId}&docType=${docType}&_t=${Date.now()}`);
         setViewedDocIds(new Set(res.viewedDocIds || []));
       } catch (e) {
         console.warn('[DocumentViewLog] 조회 기록 로드 실패:', e);
