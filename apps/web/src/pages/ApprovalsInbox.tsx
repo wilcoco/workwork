@@ -46,6 +46,8 @@ export function ApprovalsInbox() {
       params.set('approverId', userId);
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
       if (subjectTypeFilter !== 'ALL') params.set('subjectType', subjectTypeFilter);
+      // PENDING 필터일 때는 자신의 차례인 것만 보여줌
+      if (statusFilter === 'PENDING') params.set('currentApproverOnly', '1');
       params.set('limit', String(PAGE_SIZE));
       params.set('offset', String((page - 1) * PAGE_SIZE));
       params.set('withTotal', '1');
