@@ -14,8 +14,11 @@ export class ProcessTemplatesController {
     for (const e of bpmn.edges) {
       const tgt = String(e.target);
       const src = String(e.source);
-      if (!incoming.has(tgt)) incoming.set(tgt, []);
-      incoming.get(tgt)!.push(src);
+      // 루프백 엣지는 선행관계(incoming)에서 제외 — 포함하면 상호 선행 데드락으로 첫 태스크가 READY가 되지 못함
+      if (!e.isLoopBack) {
+        if (!incoming.has(tgt)) incoming.set(tgt, []);
+        incoming.get(tgt)!.push(src);
+      }
       if (!outgoing.has(src)) outgoing.set(src, []);
       outgoing.get(src)!.push(e);
     }
