@@ -981,6 +981,8 @@ export class ProcessesController {
                 }
               }
             }
+            // 최종 안전망: 담당자가 끝내 정해지지 않으면 시작자에게 배정 (인박스 누락으로 프로세스가 멈추는 것 방지)
+            if (!assigneeId && rec.status !== 'CHAIN_WAIT') assigneeId = String(startedById);
             finalCreates.push({ ...rec, assigneeId });
           }
           await tx.processTaskInstance.createMany({ data: finalCreates });

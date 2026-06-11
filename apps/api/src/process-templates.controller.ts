@@ -51,6 +51,10 @@ export class ProcessTemplatesController {
       const s = String(t || 'TASK').toUpperCase();
       return ['TASK', 'WORKLOG', 'COOPERATION', 'APPROVAL'].includes(s) ? s : 'TASK';
     };
+    const normAssigneeType = (t: any) => {
+      const s = String(t || '').toUpperCase();
+      return ['USER', 'ORG_UNIT', 'ROLE'].includes(s) ? s : undefined;
+    };
     // Build loopBack map from edges with isLoopBack: true
     const loopBackMap = new Map<string, { targetId: string; condition: string }>();
     for (const e of bpmn.edges) {
@@ -123,6 +127,10 @@ export class ProcessTemplatesController {
         name: String(n.name || ''),
         description: n.description != null ? String(n.description) : undefined,
         assigneeHint: n.assigneeHint != null ? String(n.assigneeHint) : undefined,
+        assigneeType: normAssigneeType(n.assigneeType),
+        assigneeUserId: n.assigneeUserId != null && String(n.assigneeUserId).trim() ? String(n.assigneeUserId).trim() : undefined,
+        assigneeOrgUnitId: n.assigneeOrgUnitId != null && String(n.assigneeOrgUnitId).trim() ? String(n.assigneeOrgUnitId).trim() : undefined,
+        assigneeRoleCode: n.assigneeRoleCode != null && String(n.assigneeRoleCode).trim() ? String(n.assigneeRoleCode).trim() : undefined,
         stageLabel: n.stageLabel != null ? String(n.stageLabel) : undefined,
         taskType: normTaskType(n.taskType),
         orderHint: typeof n.orderHint === 'number' ? n.orderHint : idx,
@@ -435,6 +443,10 @@ export class ProcessTemplatesController {
                 name: t.name,
                 description: t.description,
                 assigneeHint: t.assigneeHint,
+                assigneeType: t.assigneeType,
+                assigneeUserId: t.assigneeUserId,
+                assigneeOrgUnitId: t.assigneeOrgUnitId,
+                assigneeRoleCode: t.assigneeRoleCode,
                 stageLabel: t.stageLabel,
                 taskType: t.taskType,
                 orderHint: typeof t.orderHint === 'number' ? t.orderHint : idx,
@@ -677,6 +689,10 @@ export class ProcessTemplatesController {
                 name: t.name,
                 description: t.description,
                 assigneeHint: t.assigneeHint,
+                assigneeType: t.assigneeType,
+                assigneeUserId: t.assigneeUserId,
+                assigneeOrgUnitId: t.assigneeOrgUnitId,
+                assigneeRoleCode: t.assigneeRoleCode,
                 stageLabel: t.stageLabel,
                 taskType: t.taskType,
                 orderHint: typeof t.orderHint === 'number' ? t.orderHint : idx,

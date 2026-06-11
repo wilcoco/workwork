@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
+import { apiJson } from '../lib/api';
 import ReactFlow, {
   Background,
   Controls,
@@ -95,6 +96,10 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         taskType: (n.data && (n.data as any).taskType) || undefined,
         description: (n.data && (n.data as any).description) || undefined,
         assigneeHint: (n.data && (n.data as any).assigneeHint) || undefined,
+        assigneeType: (n.data && (n.data as any).assigneeType) || undefined,
+        assigneeUserId: (n.data && (n.data as any).assigneeUserId) || undefined,
+        assigneeOrgUnitId: (n.data && (n.data as any).assigneeOrgUnitId) || undefined,
+        assigneeRoleCode: (n.data && (n.data as any).assigneeRoleCode) || undefined,
         emailToTemplate: (n.data && (n.data as any).emailToTemplate) || undefined,
         emailCcTemplate: (n.data && (n.data as any).emailCcTemplate) || undefined,
         emailSubjectTemplate: (n.data && (n.data as any).emailSubjectTemplate) || undefined,
@@ -137,6 +142,10 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             taskType: n.taskType || undefined,
             description: n.description || undefined,
             assigneeHint: n.assigneeHint || undefined,
+            assigneeType: n.assigneeType || undefined,
+            assigneeUserId: n.assigneeUserId || undefined,
+            assigneeOrgUnitId: n.assigneeOrgUnitId || undefined,
+            assigneeRoleCode: n.assigneeRoleCode || undefined,
             emailToTemplate: n.emailToTemplate || undefined,
             emailCcTemplate: n.emailCcTemplate || undefined,
             emailSubjectTemplate: n.emailSubjectTemplate || undefined,
@@ -353,6 +362,23 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     setSelectedEdgeId(null);
   };
 
+  const [orgOptions, setOrgOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [userOptions, setUserOptions] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
+  const [userQuery, setUserQuery] = useState('');
+  useEffect(() => {
+    apiJson<{ items: Array<{ id: string; name: string }> }>('/api/orgs')
+      .then((r) => setOrgOptions(r.items || []))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      apiJson<{ items: Array<{ id: string; name: string; orgName?: string }> }>(`/api/orgs/members/all${userQuery.trim() ? `?q=${encodeURIComponent(userQuery.trim())}` : ''}`)
+        .then((r) => setUserOptions(r.items || []))
+        .catch(() => {});
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [userQuery]);
+
   const onNodeLabelChange = (id: string, key: string, value: any) => {
     setNodes((nds: Node<any>[]) => nds.map((n: Node<any>) => {
       if (n.id !== id) return n;
@@ -398,6 +424,44 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                   />
                 </div>
                 <label>담당자 힌트<input value={(n.data as any)?.assigneeHint || ''} onChange={(e) => onNodeLabelChange(n.id, 'assigneeHint', e.target.value)} /></label>
+                <label>담당 지정<select
+                  value={(n.data as any)?.assigneeType || ''}
+                  onChange={(e) => {
+                    const v = e.target.value || undefined;
+                    onNodeLabelChange(n.id, 'assigneeType', v);
+                    onNodeLabelChange(n.id, 'assigneeUserId', undefined);
+                    onNodeLabelChange(n.id, 'assigneeOrgUnitId', undefined);
+                    onNodeLabelChange(n.id, 'assigneeRoleCode', undefined);
+                  }}>
+                  <option value="">미지정 (시작 시 수동 배정)</option>
+                  <option value="ORG_UNIT">조직 (해당 조직 팀장에게 배정)</option>
+                  <option value="USER">특정 사용자</option>
+                </select></label>
+                {(n.data as any)?.assigneeType === 'ORG_UNIT' && (
+                  <label>담당 조직<select
+                    value={(n.data as any)?.assigneeOrgUnitId || ''}
+                    onChange={(e) => onNodeLabelChange(n.id, 'assigneeOrgUnitId', e.target.value || undefined)}>
+                    <option value="">조직 선택...</option>
+                    {(n.data as any)?.assigneeOrgUnitId && !orgOptions.some((o) => o.id === (n.data as any)?.assigneeOrgUnitId) && (
+                      <option value={(n.data as any)?.assigneeOrgUnitId}>(현재 지정된 조직)</option>
+                    )}
+                    {orgOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select></label>
+                )}
+                {(n.data as any)?.assigneeType === 'USER' && (
+                  <>
+                    <label>사용자 검색<input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="이름으로 검색" /></label>
+                    <label>담당 사용자<select
+                      value={(n.data as any)?.assigneeUserId || ''}
+                      onChange={(e) => onNodeLabelChange(n.id, 'assigneeUserId', e.target.value || undefined)}>
+                      <option value="">사용자 선택...</option>
+                      {(n.data as any)?.assigneeUserId && !userOptions.some((u) => u.id === (n.data as any)?.assigneeUserId) && (
+                        <option value={(n.data as any)?.assigneeUserId}>(현재 지정된 사용자)</option>
+                      )}
+                      {userOptions.map((u) => <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` (${u.orgName})` : ''}</option>)}
+                    </select></label>
+                  </>
+                )}
                 <label>메일 To 템플릿<input value={(n.data as any)?.emailToTemplate || ''} onChange={(e) => onNodeLabelChange(n.id, 'emailToTemplate', e.target.value)} /></label>
                 <label>메일 Cc 템플릿<input value={(n.data as any)?.emailCcTemplate || ''} onChange={(e) => onNodeLabelChange(n.id, 'emailCcTemplate', e.target.value)} /></label>
                 <label>메일 제목 템플릿<input value={(n.data as any)?.emailSubjectTemplate || ''} onChange={(e) => onNodeLabelChange(n.id, 'emailSubjectTemplate', e.target.value)} /></label>
@@ -521,7 +585,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         ))}
       </div>
     );
-  }, [nodes, toJson, fromJson, jsonText, edges, selectedNodeId, selectedEdgeId]);
+  }, [nodes, toJson, fromJson, jsonText, edges, selectedNodeId, selectedEdgeId, orgOptions, userOptions, userQuery]);
 
   return (
     <div ref={containerRef} style={{ display: 'grid', gridTemplateColumns: `${graphWidth}px 6px minmax(320px, 1fr)`, gap: 8, border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480, overflow: 'hidden' }}>
