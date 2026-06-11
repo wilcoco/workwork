@@ -19,6 +19,7 @@ type CreateInitiativeDto = {
   dueDate?: string;
   assigneeId?: string;
   orgUnitId?: string;
+  alignsToObjectiveId?: string;
 };
 
 type UpdateInitiativeDto = Partial<CreateInitiativeDto> & {
@@ -61,6 +62,7 @@ export class KeyInitiativesController {
         assignee: { select: { id: true, name: true, email: true } },
         createdBy: { select: { id: true, name: true } },
         orgUnit: { select: { id: true, name: true } },
+        alignsToObjective: { select: { id: true, title: true, pillar: true } },
         progress: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -104,6 +106,7 @@ export class KeyInitiativesController {
         assignee: item.assignee,
         createdBy: item.createdBy,
         orgUnit: item.orgUnit,
+        alignsToObjective: item.alignsToObjective || null,
         progressCount: item._count.progress,
         latestProgress: latestProgress ? {
           id: latestProgress.id,
@@ -127,6 +130,7 @@ export class KeyInitiativesController {
         assignee: { select: { id: true, name: true, email: true } },
         createdBy: { select: { id: true, name: true } },
         orgUnit: { select: { id: true, name: true } },
+        alignsToObjective: { select: { id: true, title: true, pillar: true } },
         progress: {
           orderBy: { createdAt: 'desc' },
           include: {
@@ -179,6 +183,7 @@ export class KeyInitiativesController {
 
     if (dto.assigneeId) data.assigneeId = dto.assigneeId;
     if (dto.orgUnitId) data.orgUnitId = dto.orgUnitId;
+    if (dto.alignsToObjectiveId) data.alignsToObjectiveId = dto.alignsToObjectiveId;
 
     const created = await (this.prisma as any).keyInitiative.create({
       data,
@@ -206,6 +211,7 @@ export class KeyInitiativesController {
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.assigneeId !== undefined) data.assigneeId = dto.assigneeId || null;
     if (dto.orgUnitId !== undefined) data.orgUnitId = dto.orgUnitId || null;
+    if (dto.alignsToObjectiveId !== undefined) data.alignsToObjectiveId = dto.alignsToObjectiveId || null;
 
     if (dto.startDate !== undefined) {
       data.startDate = dto.startDate ? new Date(dto.startDate + 'T00:00:00+09:00') : null;

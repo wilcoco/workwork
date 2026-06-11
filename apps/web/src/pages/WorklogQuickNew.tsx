@@ -60,6 +60,9 @@ export function WorklogQuickNew() {
   const [myInstructions, setMyInstructions] = useState<Array<{ id: string; title: string; description?: string; assignerName?: string; sourceWorklogId?: string; dueDate?: string | null }>>([])
   const [plannerTasks, setPlannerTasks] = useState<Array<{ id: string; title: string; planName: string; percentComplete: number; dueDateTime: string | null }>>([])
   const [plannerSyncing, setPlannerSyncing] = useState(false);
+  // 중점 추진 과제 (내가 담당자이거나 등록자인 진행 중 과제)
+  const [myKeyInits, setMyKeyInits] = useState<Array<{ id: string; title: string; status: string; dueDate?: string | null; latestPct?: number | null }>>([]);
+  const [kiProgressPct, setKiProgressPct] = useState<string>('');
   const [processDetailPopup, setProcessDetailPopup] = useState<any>(null);
   const [processDetailLoading, setProcessDetailLoading] = useState(false);
   const [tags, setTags] = useState<DocumentTagsValue>({});
@@ -81,9 +84,15 @@ export function WorklogQuickNew() {
     remarks: '',
   });
 
-  function canUpdateKrForTask(t: { isKpi?: boolean; krOwnerId?: string | null } | undefined) {
+  function canUpdateKrForTask(t: { isKpi?: boolean; krOwnerId?: string | null; krId?: string } | undefined) {
     if (!t) return false;
-    if (t.isKpi) return myRole === 'MANAGER';
+    // KPI: 팀 매니저 또는 해당 KR에 할당된(my-kpis에 포함된) 구성원이면 입력 가능
+    if (t.isKpi) {
+      if (myRole === 'MANAGER') return true;
+      const krId = t.krId || '';
+      if (krId && (teamKpis.some((k) => k.id === krId) || teamTasks.some((x) => x.krId === krId))) return true;
+      return false;
+    }
     return !!(t.krOwnerId && t.krOwnerId === myUserId);
   }
 
@@ -273,6 +282,24 @@ export function WorklogQuickNew() {
     })();
   }, [myUserId, processInstanceId, taskInstanceId]);
 
+  // Load my key initiatives (중점 추진 과제 — 내가 담당자인 진행 중 과제)
+  useEffect(() => {
+    (async () => {
+      if (!myUserId) return;
+      try {
+        const items = await apiJson<any[]>(`/api/key-initiatives?assigneeId=${encodeURIComponent(myUserId)}`);
+        const open = (items || []).filter((x) => x.status !== 'COMPLETED' && x.status !== 'CANCELLED');
+        setMyKeyInits(open.map((x) => ({
+          id: x.id,
+          title: x.title,
+          status: x.status,
+          dueDate: x.dueDate || null,
+          latestPct: x.latestProgress?.progressPct ?? null,
+        })));
+      } catch {}
+    })();
+  }, [myUserId]);
+
   // Load my open WorklogInstructions (assigned to me) for selection
   useEffect(() => {
     (async () => {
@@ -429,7 +456,7 @@ export function WorklogQuickNew() {
     try {
       const userId = localStorage.getItem('userId') || '';
       if (!userId) throw new Error('로그인이 필요합니다');
-      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:') || selection.startsWith('new:') || selection.startsWith('planner:') || selection.startsWith('inst:'))) throw new Error('대상을 선택하세요');
+      if (!selection || !(selection.startsWith('init:') || selection.startsWith('kr:') || selection.startsWith('help:') || selection.startsWith('proc:') || selection.startsWith('new:') || selection.startsWith('planner:') || selection.startsWith('inst:') || selection.startsWith('ki:'))) throw new Error('대상을 선택하세요');
       if (Number(timeSpentHours) < 0) throw new Error('업무 소요 시간(시간)은 0 이상이어야 합니다');
       if (![0, 10, 20, 30, 40, 50].includes(Number(timeSpentMinutes10))) throw new Error('업무 소요 시간(분)은 10분 단위로 선택해 주세요');
       const computedMinutes = (Number(timeSpentHours) || 0) * 60 + (Number(timeSpentMinutes10) || 0);
@@ -449,13 +476,15 @@ export function WorklogQuickNew() {
               ? (title || 'KPI 보고')
               : (selection.startsWith('proc:')
                 ? (title || '프로세스 업무')
-                : (selection.startsWith('new:') || selection.startsWith('planner:') || selection.startsWith('inst:')
-                  ? (title || (selection.startsWith('planner:')
-                      ? 'Planner 태스크'
-                      : selection.startsWith('inst:')
-                        ? (myInstructions.find((x) => x.id === selection.substring(5))?.title || '업무 지시 처리')
-                        : '신규 과제'))
-                  : undefined)),
+                : (selection.startsWith('ki:')
+                  ? (myKeyInits.find((x) => x.id === selection.substring(3))?.title || title || '중점 추진 과제')
+                  : (selection.startsWith('new:') || selection.startsWith('planner:') || selection.startsWith('inst:')
+                    ? (title || (selection.startsWith('planner:')
+                        ? 'Planner 태스크'
+                        : selection.startsWith('inst:')
+                          ? (myInstructions.find((x) => x.id === selection.substring(5))?.title || '업무 지시 처리')
+                          : '신규 과제'))
+                    : undefined))),
             title,
             content: structuredMode
               ? (() => {
@@ -497,6 +526,14 @@ export function WorklogQuickNew() {
             tags: (tags.itemCode || tags.moldCode || tags.carModelCode || tags.supplierCode || tags.equipmentCode || hashTags.length) ? { ...tags, hashTags: hashTags.length ? hashTags : undefined } : undefined,
             structuredData: (() => {
               const base: any = structuredMode ? { ...sections } : {};
+              // 중점 추진 과제 선택 시 과제 정보 저장 (일지 상세에서 출처 표시)
+              if (selection.startsWith('ki:')) {
+                const kid = selection.substring(3);
+                const ki = myKeyInits.find((t) => t.id === kid);
+                if (ki) {
+                  base.keyInitiative = { id: kid, title: ki.title, savedAt: new Date().toISOString() };
+                }
+              }
               // Planner 선택 시 taskId/제목을 즉시 저장 (sync 실패해도 breadcrumb 최소 1단 보장)
               if (selection.startsWith('planner:')) {
                 const pid = selection.substring(8);
@@ -524,6 +561,7 @@ export function WorklogQuickNew() {
       const isNew = selection.startsWith('new:');
       const isPlanner = selection.startsWith('planner:');
       const isInst = selection.startsWith('inst:');
+      const isKi = selection.startsWith('ki:');
       const createdInitId = String((wl as any)?.initiativeId || '');
       const selectedId = isKR
         ? selection.substring(3)
@@ -556,7 +594,8 @@ export function WorklogQuickNew() {
       }
       // Progress: KR value (explicit or achieved) — help 선택 시에는 KR가 없으므로 그대로 조건 유지
       if ((isKR || selected?.krId) && (krValue !== '' || krAchieved)) {
-        const canUpdateKr = isKR ? (myRole === 'MANAGER') : canUpdateKrForTask(selected as any);
+        // kr: 직접 선택은 본인에게 할당된 KPI(teamKpis)만 노출되므로 매니저가 아니어도 입력 가능
+        const canUpdateKr = isKR ? (myRole === 'MANAGER' || teamKpis.some((k) => k.id === selectedId)) : canUpdateKrForTask(selected as any);
         if (canUpdateKr) {
           let valueToSend: number | null = null;
           if (krValue !== '') {
@@ -576,6 +615,23 @@ export function WorklogQuickNew() {
             } catch {}
           }
         }
+      }
+      // 중점 추진 과제: 일지 내용을 과제 진행 컨텐츠로 축적 (진행률 입력 시 상태 자동 갱신)
+      if (isKi) {
+        const kiId = selection.substring(3);
+        try {
+          const bodyText = structuredMode
+            ? sections.todayTasks.filter((t) => t.name.trim()).map((t) => t.name).join(', ')
+            : (plainMode ? contentPlain : stripHtml(contentHtml));
+          const head = title || '업무일지 진행 기록';
+          const snippet = bodyText && bodyText !== head ? ` — ${bodyText.slice(0, 300)}` : '';
+          const payload: any = { content: `${head}${snippet}` };
+          if (kiProgressPct !== '') payload.progressPct = Math.max(0, Math.min(100, Number(kiProgressPct)));
+          await apiJson(`/api/key-initiatives/${encodeURIComponent(kiId)}/progress?actorId=${encodeURIComponent(userId)}`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+        } catch {}
       }
       // Help: 업무 요청 선택으로 생성된 업무일지인 경우, 해당 HelpTicket을 업무 요청 완료로 표시하고 대응 업무일지 링크를 저장한다.
       if (isHelp) {
@@ -835,6 +891,7 @@ export function WorklogQuickNew() {
               setError(null);
               setKrValue('');
               setKrAchieved(false);
+              setKiProgressPct('');
               // Auto-fill title from instruction title if user hasn't typed one yet.
               if (v.startsWith('inst:') && !title.trim()) {
                 const ins = myInstructions.find((x) => x.id === v.substring(5));
@@ -860,6 +917,15 @@ export function WorklogQuickNew() {
                   ))}
                 </optgroup>
               )}
+              {myKeyInits.length > 0 && (
+                <optgroup label="🚩 중점 추진 과제">
+                  {myKeyInits.map((t) => (
+                    <option key={`ki-${t.id}`} value={`ki:${t.id}`}>
+                      중점과제: {t.title}{t.latestPct != null ? ` (${t.latestPct}%)` : ''}{t.dueDate ? ` · 기한 ${String(t.dueDate).slice(0, 10)}` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
               <optgroup label="OKR 과제">
                 {(() => {
                   // OKR 과제에는 순수 OKR만 노출하고, KPI에 속한 과제와 결재/업무 요청(Auto Objective) 과제는 모두 제외한다.
@@ -882,6 +948,15 @@ export function WorklogQuickNew() {
                   });
                 })()}
               </optgroup>
+              {teamKpis.length > 0 && (
+                <optgroup label="📊 KPI 지표 입력 (할당된 지표)">
+                  {teamKpis.map((k) => (
+                    <option key={`kr-${k.id}`} value={`kr:${k.id}`}>
+                      {k.title}{k.krTarget != null ? ` (목표 ${k.krTarget}${k.krUnit || ''})` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
               <optgroup label="KPI 과제">
                 {teamKpis.length ? (
                   teamKpis.flatMap((k) => {
@@ -1025,6 +1100,22 @@ export function WorklogQuickNew() {
             <br />
             과제 완료: 이번 업무일지로 해당 과제가 완료되었을 때 체크합니다. (과제 완료로 기록됩니다)
           </div>
+          {selection.startsWith('ki:') && (() => {
+            const ki = myKeyInits.find((t) => t.id === selection.substring(3));
+            if (!ki) return null;
+            return (
+              <div className="card" style={{ padding: 10, display: 'grid', gap: 6, border: '1px solid #fbbf24', background: '#FFFBEB' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>🚩 중점 추진 과제 진행 기록</div>
+                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45 }}>
+                  이 일지의 제목과 내용이 과제 진행 컨텐츠로 함께 기록됩니다. 진행률을 입력하면 과제 상태가 자동 갱신됩니다 (100% 입력 시 완료 처리).
+                </div>
+                <label style={{ maxWidth: 240 }}>
+                  진행률(%) 입력(선택{ki.latestPct != null ? ` · 현재 ${ki.latestPct}%` : ''})
+                  <input type="number" min={0} max={100} step={5} value={kiProgressPct} onChange={(e) => setKiProgressPct(e.target.value)} style={input} placeholder="예: 60" />
+                </label>
+              </div>
+            );
+          })()}
           {(() => {
             if (!selection) return null;
             const isKR = selection.startsWith('kr:');
@@ -1041,7 +1132,8 @@ export function WorklogQuickNew() {
             const dirLabel = meta.direction === 'AT_MOST' ? '이하 (≤ 목표가 좋음)' : '이상 (≥ 목표가 좋음)';
             const inputDisabled = (() => {
               if (!selection) return true;
-              if (isKR) return myRole !== 'MANAGER';
+              // kr: 직접 선택 — teamKpis는 본인에게 할당된 KPI만 내려오므로 입력 허용
+              if (isKR) return !(myRole === 'MANAGER' || teamKpis.some((k) => k.id === id));
               const sId = id;
               const mine = myTasks.some((x) => x.id === sId);
               const team = teamTasks.some((x) => x.id === sId);
@@ -1049,7 +1141,11 @@ export function WorklogQuickNew() {
                 const t = myTasks.find((x) => x.id === sId) as any;
                 return !canUpdateKrForTask(t);
               }
-              if (team) return myRole !== 'MANAGER';
+              // teamTasks는 my-kpis(KR 할당) 기반이므로 할당된 구성원 본인도 입력 가능
+              if (team) {
+                const t = teamTasks.find((x) => x.id === sId) as any;
+                return !canUpdateKrForTask(t);
+              }
               return true;
             })();
             const achievedDisabled = inputDisabled;

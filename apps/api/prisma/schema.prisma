@@ -200,6 +200,7 @@ model Objective {
   alignsToKr   KeyResult? @relation("ObjectiveAlignedToKR", fields: [alignsToKrId], references: [id])
   keyResults  KeyResult[]
   pillar      Pillar?
+  keyInitiatives KeyInitiative[] @relation("KeyInitiativeAlignment")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -1366,6 +1367,8 @@ model KeyInitiative {
   createdBy    User                @relation("KeyInitiativeCreator", fields: [createdById], references: [id])
   orgUnitId    String?             // 담당 부서
   orgUnit      OrgUnit?            @relation(fields: [orgUnitId], references: [id])
+  alignsToObjectiveId String?      // 정렬된 OKR Objective (프로젝트성/돌발성 과제도 OKR 축에 연결)
+  alignsToObjective   Objective?   @relation("KeyInitiativeAlignment", fields: [alignsToObjectiveId], references: [id])
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
 
@@ -1376,6 +1379,7 @@ model KeyInitiative {
   @@index([createdById])
   @@index([dueDate])
   @@index([orgUnitId])
+  @@index([alignsToObjectiveId])
 }
 
 model KeyInitiativeProgress {

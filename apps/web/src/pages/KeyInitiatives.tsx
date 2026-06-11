@@ -3,6 +3,7 @@ import { apiJson } from '../lib/api';
 
 type User = { id: string; name: string; email?: string };
 type OrgUnit = { id: string; name: string };
+type ObjectiveOption = { id: string; title: string; pillar?: string | null; orgUnit?: { name?: string } | null };
 
 type ProgressItem = {
   id: string;
@@ -25,6 +26,7 @@ type InitiativeItem = {
   assignee: User | null;
   createdBy: User;
   orgUnit: OrgUnit | null;
+  alignsToObjective: { id: string; title: string; pillar?: string | null } | null;
   progressCount: number;
   latestProgress: ProgressItem | null;
   warning: string | null;
@@ -57,6 +59,7 @@ export function KeyInitiatives() {
   const [filterStatus, setFilterStatus] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
+  const [objectives, setObjectives] = useState<ObjectiveOption[]>([]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -69,6 +72,7 @@ export function KeyInitiatives() {
     dueDate: '',
     assigneeId: '',
     orgUnitId: '',
+    alignsToObjectiveId: '',
   });
 
   const [selectedItem, setSelectedItem] = useState<InitiativeItem | null>(null);
@@ -79,6 +83,7 @@ export function KeyInitiatives() {
     loadData();
     loadUsers();
     loadOrgUnits();
+    loadObjectives();
   }, []);
 
   async function loadData() {
@@ -110,6 +115,13 @@ export function KeyInitiatives() {
     } catch {}
   }
 
+  async function loadObjectives() {
+    try {
+      const res = await apiJson<{ items: ObjectiveOption[] }>('/api/okrs/objectives');
+      setObjectives(res.items || []);
+    } catch {}
+  }
+
   async function handleSubmit() {
     try {
       if (editingId) {
@@ -125,7 +137,7 @@ export function KeyInitiatives() {
       }
       setShowForm(false);
       setEditingId(null);
-      setForm({ title: '', goal: '', description: '', priority: 0, startDate: '', dueDate: '', assigneeId: '', orgUnitId: '' });
+      setForm({ title: '', goal: '', description: '', priority: 0, startDate: '', dueDate: '', assigneeId: '', orgUnitId: '', alignsToObjectiveId: '' });
       loadData();
     } catch (e: any) {
       alert(e?.message || '저장 실패');
@@ -192,6 +204,7 @@ export function KeyInitiatives() {
       dueDate: item.dueDate || '',
       assigneeId: item.assignee?.id || '',
       orgUnitId: item.orgUnit?.id || '',
+      alignsToObjectiveId: item.alignsToObjective?.id || '',
     });
     setShowForm(true);
   }
@@ -236,7 +249,7 @@ export function KeyInitiatives() {
             ))}
           </select>
           <button
-            onClick={() => { setShowForm(true); setEditingId(null); setForm({ title: '', goal: '', description: '', priority: 0, startDate: '', dueDate: '', assigneeId: '', orgUnitId: '' }); }}
+            onClick={() => { setShowForm(true); setEditingId(null); setForm({ title: '', goal: '', description: '', priority: 0, startDate: '', dueDate: '', assigneeId: '', orgUnitId: '', alignsToObjectiveId: '' }); }}
             style={{ padding: '6px 14px', background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
           >
             + 과제 등록
@@ -267,6 +280,21 @@ export function KeyInitiatives() {
                 rows={2}
                 style={{ width: '100%', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13, resize: 'vertical' }}
               />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: '#64748b' }}>연결된 OKR (목표 정렬 · 선택)</label>
+              <select
+                value={form.alignsToObjectiveId}
+                onChange={(e) => setForm({ ...form, alignsToObjectiveId: e.target.value })}
+                style={{ width: '100%', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}
+              >
+                <option value="">미정렬 (돌발성/독립 과제)</option>
+                {objectives.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.orgUnit?.name ? `[${o.orgUnit.name}] ` : ''}{o.title}
+                  </option>
+                ))}
+              </select>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
@@ -383,6 +411,11 @@ export function KeyInitiatives() {
                     {item.goal && (
                       <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.goal}
+                      </div>
+                    )}
+                    {item.alignsToObjective && (
+                      <div style={{ fontSize: 11, color: '#0F3D73', marginTop: 2, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        🎯 OKR: {item.alignsToObjective.title}
                       </div>
                     )}
                   </td>
