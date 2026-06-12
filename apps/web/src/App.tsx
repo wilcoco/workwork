@@ -62,6 +62,7 @@ import { AuthPending } from './pages/AuthPending';
 import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 import { WorkManuals } from './pages/WorkManuals';
 import { WorkManualExt } from './pages/WorkManualExt';
+import { ProcessFromManual } from './pages/ProcessFromManual';
 import { WeeklyReport } from './pages/WeeklyReport';
 import { MeetingMinutes } from './pages/MeetingMinutes';
 import { PlannerTasks } from './pages/PlannerTasks';
@@ -325,6 +326,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
           <Route path="/manuals" element={<WorkManuals />} />
           <Route path="/manuals/ext" element={<WorkManualExt />} />
+          <Route path="/process/from-manual" element={<ProcessFromManual />} />
           <Route path="/worklogs/weekly" element={<WeeklyReport />} />
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/signup" element={<Navigate to="/login" replace />} />
@@ -520,7 +522,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
           <Link to="/manuals">업무 메뉴얼</Link>
-          <Link to="/manuals/ext">매뉴얼 → 프로세스 생성 (AI)</Link>
+          <Link to="/process/from-manual">매뉴얼로 프로세스 만들기 (AI)</Link>
         </NavDropdown>
         <NavDropdown label="회의록" active={location.pathname.startsWith('/meetings')}>
           <Link to="/meetings">회의록</Link>
@@ -748,7 +750,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         { to: '/process/templates', label: '프로세스 템플릿' },
         { to: '/manuals', label: '업무 메뉴얼' },
-        { to: '/manuals/ext', label: '매뉴얼 → 프로세스 생성 (AI)' },
+        { to: '/process/from-manual', label: '매뉴얼로 프로세스 만들기 (AI)' },
       ];
     }
     if (path.startsWith('/meetings')) {

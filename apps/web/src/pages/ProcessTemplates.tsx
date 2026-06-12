@@ -735,7 +735,7 @@ export function ProcessTemplates() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h2>프로세스 템플릿 목록</h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="btn" onClick={() => nav('/manuals/ext')}>매뉴얼에서 AI로 생성</button>
+            <button className="btn" onClick={() => nav('/process/from-manual')}>매뉴얼에서 AI로 생성</button>
             <button className="btn btn-primary" onClick={newTemplate}>새 템플릿</button>
           </div>
         </div>

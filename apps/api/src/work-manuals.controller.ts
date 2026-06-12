@@ -70,6 +70,7 @@ class AiBpmnDto {
   @IsString() @IsNotEmpty()
   userId!: string;
   aiModel?: string; // 'claude' | 'openai'
+  answers?: Array<{ question?: string; answer?: string }>; // BPMN 보완 질문에 대한 답변
 }
 
 class AiQuestionsDto {
@@ -479,6 +480,76 @@ export class WorkManualsController {
     return updated;
   }
 
+  /**
+   * 자연어 매뉴얼을 BPMN으로 변환하기 전에, 실행 가능한 프로세스를 만드는 데
+   * 부족한 정보(담당, 결재, 분기, 기한, 반려 처리 등)를 묻는 질문을 생성한다.
+   */
+  @Post(':id/ai/bpmn-questions')
+  async aiBpmnQuestions(@Param('id') id: string, @Body() dto: AiQuestionsDto) {
+    const uid = String(dto.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+
+    const title = String(manual?.title || '').trim();
+    const content = String(manual?.content || '').trim();
+    if (!content) throw new BadRequestException('manual content required');
+    const clipped = content.length > 12000 ? content.slice(0, 12000) : content;
+
+    const orgUnitsAll = await this.prisma.orgUnit.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    const orgListText = orgUnitsAll
+      .filter((o) => !/^personal\s*-/i.test(o.name || ''))
+      .slice(0, 200)
+      .map((o) => o.name)
+      .join(', ');
+
+    const sys = `당신은 자연어 업무 메뉴얼을 실행 가능한 BPMN 업무 프로세스로 변환하기 위해, 부족한 정보를 묻는 질문을 만드는 도우미입니다.
+반드시 JSON만 출력하세요.
+
+질문 대상 (메뉴얼에서 빠져 있거나 불명확한 것만):
+1. 단계 누락/순서: 단계가 빠졌거나 진행 순서가 모호한 부분
+2. 담당: 각 단계를 어느 부서/누가 수행하는지 (조직 목록 참고: ${orgListText || '(없음)'})
+3. 결재: 승인/결재가 필요한 단계와 결재자
+4. 분기: 조건에 따라 갈라지는 지점과 그 조건 (예: 금액 기준, 합격/불합격)
+5. 기한: 단계별 완료 기한 (며칠/몇 시간 이내)
+6. 반려/실패 처리: 반려·불합격 시 어느 단계로 돌아가는지
+
+규칙:
+- 이미 메뉴얼에 명확히 적힌 것은 묻지 마세요.
+- 최대 6개. 중요한 것부터. 부족한 게 없으면 빈 배열을 반환하세요.
+- 현장 직원이 한 문장으로 바로 답할 수 있게 구체적으로 물어보세요.
+
+출력 JSON: { "questions": [{ "id": number, "question": string }] }`;
+
+    const schema = {
+      type: 'object' as const,
+      properties: {
+        questions: { type: 'array', items: { type: 'object', properties: { id: { type: 'number' }, question: { type: 'string' } }, required: ['id', 'question'] } },
+      },
+      required: ['questions'],
+    };
+
+    let parsed: any;
+    try {
+      const result = await callAI({
+        system: sys,
+        user: `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`,
+        model: aiModel,
+        temperature: 0.3,
+        maxTokens: 2000,
+        jsonSchema: aiModel === 'claude' ? { name: 'bpmn_questions', schema } : undefined,
+      });
+      parsed = result.parsed;
+    } catch (e: any) {
+      throw new BadRequestException(e?.message || 'AI call failed');
+    }
+
+    const questions = (Array.isArray(parsed?.questions) ? parsed.questions : [])
+      .map((q: any, i: number) => ({ id: typeof q?.id === 'number' ? q.id : i + 1, question: String(q?.question || '').trim() }))
+      .filter((q: any) => q.question)
+      .slice(0, 6);
+    return { questions, aiModel };
+  }
+
   @Post(':id/ai/bpmn')
   async aiBpmn(@Param('id') id: string, @Body() dto: AiBpmnDto) {
     const uid = String(dto.userId || '').trim();
@@ -585,7 +656,12 @@ ${orgListText || '(없음)'}
 - 각 STEP의 "- taskType: WORKLOG|APPROVAL|COOPERATION" 값을 taskType에 매핑
 - STEP 블록의 목적/입력/산출물/업무일지/완료조건은 description에 요약(HTML)`;
 
-    const userMsg = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`;
+    const qaText = (Array.isArray(dto.answers) ? dto.answers : [])
+      .map((a) => ({ q: String(a?.question || '').trim(), a: String(a?.answer || '').trim() }))
+      .filter((x) => x.a)
+      .map((x) => (x.q ? `Q: ${x.q}\nA: ${x.a}` : `A: ${x.a}`))
+      .join('\n\n');
+    const userMsg = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}${qaText ? `\n\n[보완 질의응답 — 매뉴얼 내용과 함께 반드시 반영하세요]\n${qaText}` : ''}`;
 
     // Claude: Tool Use schema for guaranteed JSON structure + Extended Thinking
     const bpmnToolSchema = {
