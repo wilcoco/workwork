@@ -721,47 +721,9 @@ export function WorkManualExt() {
   async function createModuleIntegration(moduleKey: string) {
     if (!manual?.id) return;
 
-    // BPMN 연동: AI로 BPMN 생성 → 프로세스 템플릿 생성 → 편집기 이동
+    // BPMN 연동: 생성·검토·발행은 "매뉴얼로 프로세스 만들기" 위저드 한 곳에서 처리
     if (moduleKey === 'bpmn_engine') {
-      setModLoading('bpmn_engine');
-      try {
-        const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(manual.id)}/ai/bpmn`, {
-          method: 'POST',
-          body: JSON.stringify({ userId }),
-        });
-        const tmplTitle = String(r?.title || manual.title || '').trim();
-        const bpmnJson = r?.bpmnJson;
-        if (!bpmnJson) throw new Error('AI BPMN 응답이 올바르지 않습니다.');
-
-        const created = await apiJson<{ id: string }>('/api/process-templates', {
-          method: 'POST',
-          body: JSON.stringify({
-            title: tmplTitle,
-            description: `매뉴얼 「${manual.title}」에서 AI로 생성된 BPMN 프로세스`,
-            type: 'PROJECT',
-            ownerId: userId,
-            actorId: userId,
-            visibility: 'PRIVATE',
-            bpmnJson,
-            tasks: [],
-            sourceManualId: manual.id,
-          }),
-        });
-        const tmplId = String(created?.id || '').trim();
-        if (!tmplId) throw new Error('프로세스 템플릿 생성 실패');
-        // 자동 발행
-        try {
-          await apiJson(`/api/process-templates/${encodeURIComponent(tmplId)}/publish`, {
-            method: 'POST',
-            body: JSON.stringify({ actorId: userId }),
-          });
-        } catch { /* publish 실패해도 DRAFT 유지 */ }
-        setModKbCreated(false); // reset
-        bumpAiCall(); bumpModuleAttempt(true);
-        toast('BPMN 프로세스 템플릿이 생성·발행되었습니다.', 'success');
-        nav(`/process/templates?openId=${encodeURIComponent(tmplId)}`);
-      } catch (e: any) { bumpModuleAttempt(false); toast(e?.message || 'BPMN 생성 실패', 'error'); }
-      finally { setModLoading(''); }
+      nav(`/process/from-manual?manualId=${encodeURIComponent(manual.id)}`);
       return;
     }
 

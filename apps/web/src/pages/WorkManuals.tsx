@@ -747,46 +747,12 @@ export function WorkManuals() {
     }
     if (shouldIssues.length) {
       setValidation({ issues: v.issues });
-      const ok = await toastConfirm(`AI로 BPMN 생성 전에 보완하면 좋은 항목이 ${shouldIssues.length}개 있습니다.\n\n그래도 AI로 BPMN 생성을 진행할까요?`);
+      const ok = await toastConfirm(`프로세스 생성 전에 보완하면 좋은 항목이 ${shouldIssues.length}개 있습니다.\n\n그래도 진행할까요?`);
       if (!ok) return;
     }
 
-    setAiLoading(true);
-    try {
-      // ... (rest of the code remains the same)
-      const r = await apiJson<{ title: string; bpmnJson: any }>(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/ai/bpmn`, {
-        method: 'POST',
-        body: JSON.stringify({ userId, aiModel }),
-      });
-      const tmplTitle = String(r?.title || '').trim();
-      const bpmnJson = r?.bpmnJson;
-      if (!tmplTitle || !bpmnJson) throw new Error('AI 응답이 올바르지 않습니다.');
-
-      const ok = await toastConfirm(`AI가 BPMN 초안을 만들었습니다.\n\n템플릿 제목: ${tmplTitle}\n\n이 초안으로 프로세스 템플릿을 생성할까요?`);
-      if (!ok) return;
-
-      const created = await apiJson<any>(`/api/process-templates`, {
-        method: 'POST',
-        body: JSON.stringify({
-          title: tmplTitle,
-          description: '',
-          type: 'PROJECT',
-          ownerId: userId,
-          actorId: userId,
-          visibility: 'PRIVATE',
-          bpmnJson,
-          tasks: [],
-        }),
-      });
-      const id = String(created?.id || '').trim();
-      if (!id) throw new Error('템플릿 생성 응답이 올바르지 않습니다.');
-      toast('프로세스 템플릿이 생성되었습니다.', 'success');
-      nav(`/process/templates?openId=${encodeURIComponent(id)}`);
-    } catch (e: any) {
-      toast(e?.message || 'AI BPMN 생성에 실패했습니다.', 'error');
-    } finally {
-      setAiLoading(false);
-    }
+    // 생성·검토·발행은 "매뉴얼로 프로세스 만들기" 위저드 한 곳에서 처리 (AI 보완 질문 → BPMN → 편집 → 발행)
+    nav(`/process/from-manual?manualId=${encodeURIComponent(String(editing.id))}`);
   }
 
   return (
@@ -1296,7 +1262,7 @@ export function WorkManuals() {
                   <button className="btn btn-outline" type="button" onClick={() => setPhase(2)}>← 이전: 프로세스 단계</button>
                   {selected.status === 'APPROVED' ? (
                     <button className="btn" type="button" onClick={aiToBpmn} disabled={aiLoading} style={{ padding: '8px 20px' }}>
-                      {aiLoading ? '프로세스 생성중…' : 'AI로 프로세스 템플릿 생성'}
+                      {aiLoading ? '프로세스 생성중…' : '프로세스 만들기 (AI) →'}
                     </button>
                   ) : (
                     <button className="btn" type="button" disabled style={{ padding: '8px 20px', opacity: 0.5 }}>

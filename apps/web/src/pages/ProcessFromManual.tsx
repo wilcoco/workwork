@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
@@ -15,6 +15,9 @@ export function ProcessFromManual() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [aiModel, setAiModel] = useState<'openai' | 'claude'>('claude');
   const [loading, setLoading] = useState('');
+  // 업무 메뉴얼 화면에서 기존 매뉴얼을 가지고 진입한 경우 (?manualId=)
+  const initialManualId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('manualId') || '' : '';
+  const [loadedFromManual, setLoadedFromManual] = useState(false);
 
   // step 1
   const [title, setTitle] = useState('');
@@ -32,6 +35,23 @@ export function ProcessFromManual() {
   // step 4
   const [templateId, setTemplateId] = useState('');
 
+  useEffect(() => {
+    if (!initialManualId || !userId) return;
+    (async () => {
+      try {
+        const m = await apiJson<{ id: string; title: string; content?: string }>(
+          `/api/work-manuals/${encodeURIComponent(initialManualId)}?userId=${encodeURIComponent(userId)}`,
+        );
+        setManualId(m.id);
+        setTitle(String(m.title || ''));
+        setContent(String(m.content || ''));
+        setLoadedFromManual(true);
+      } catch (e: any) {
+        toast(e?.message || '매뉴얼을 불러오지 못했습니다.', 'error');
+      }
+    })();
+  }, [initialManualId, userId]);
+
   const taskCount = useMemo(() => {
     try {
       const j = JSON.parse(bpmnJsonText || '{}');
@@ -44,6 +64,8 @@ export function ProcessFromManual() {
     const c = content.trim();
     if (!t) throw new Error('업무명을 입력하세요.');
     if (!c) throw new Error('업무 매뉴얼 내용을 입력하세요.');
+    // 기존 매뉴얼에서 진입한 경우: 매뉴얼은 읽기 전용 소스로만 사용 (내용 수정은 업무 메뉴얼 화면에서)
+    if (loadedFromManual && manualId) return manualId;
     if (manualId) {
       await apiJson(`/api/work-manuals/${encodeURIComponent(manualId)}`, {
         method: 'PUT',
@@ -148,6 +170,8 @@ export function ProcessFromManual() {
   function reset() {
     setStep(1); setTitle(''); setContent(''); setManualId('');
     setQuestions([]); setAnswers({}); setBpmnTitle(''); setBpmnJsonText(''); setTemplateId('');
+    setLoadedFromManual(false);
+    if (initialManualId) nav('/process/from-manual', { replace: true });
   }
 
   if (!userId) {
@@ -196,13 +220,16 @@ export function ProcessFromManual() {
       {step === 1 && (
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontSize: 13, color: '#64748b' }}>
-            업무를 평소 말로 설명하듯 적어주세요. AI가 부족한 정보를 질문으로 보완한 뒤 실행 가능한 업무 프로세스로 만들어 드립니다.
+            {loadedFromManual
+              ? '업무 메뉴얼에서 불러온 내용입니다. 내용 수정이 필요하면 업무 메뉴얼 화면에서 수정 후 다시 시도하세요.'
+              : '업무를 평소 말로 설명하듯 적어주세요. AI가 부족한 정보를 질문으로 보완한 뒤 실행 가능한 업무 프로세스로 만들어 드립니다.'}
           </div>
           <label>업무명
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 구매 발주 처리" />
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 구매 발주 처리" readOnly={loadedFromManual} />
           </label>
           <label>업무 매뉴얼 (자연어)
-            <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={14}
+            <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={14} readOnly={loadedFromManual}
+              style={loadedFromManual ? { background: '#f8fafc', color: '#475569' } : undefined}
               placeholder={'예: 자재가 필요하면 자재관리팀 담당자가 발주 요청서를 작성한다.\n경영관리팀장이 발주를 승인하고, 반려되면 요청서를 다시 작성한다.\n승인되면 발주서를 발송하고 48시간 내 입고를 확인한다.'} />
           </label>
           <div style={{ display: 'flex', gap: 8 }}>

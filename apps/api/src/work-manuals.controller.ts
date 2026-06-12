@@ -1940,4 +1940,11 @@ ${clippedContext}`;
     });
     return { periodicAlarm: a, source: 'skill-file' };
   }
+
+  // 단건 조회 — 와일드카드 라우트이므로 다른 GET 라우트들보다 뒤(클래스 마지막)에 선언해야 함
+  @Get(':id')
+  async getOne(@Param('id') id: string, @Query('userId') userId?: string) {
+    const uid = String(userId || '').trim();
+    return this.requireOwner(uid, id);
+  }
 }
