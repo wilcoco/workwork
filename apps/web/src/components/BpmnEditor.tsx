@@ -39,26 +39,84 @@ function InnerFlow(props: any) {
   );
 }
 
+const HANDLE_STYLE = { width: 12, height: 12, background: '#0F3D73', border: '2px solid #ffffff' } as const;
+
 function LabeledNode({ data }: { data: any }) {
   const kind = data?.kind as string | undefined;
-  const bg = kind === 'start' ? '#ecfdf5' : kind === 'end' ? '#fee2e2' : '#ffffff';
-  const bd = kind === 'start' ? '#16a34a' : kind === 'end' ? '#dc2626' : '#cbd5e1';
+  const tt = String(data?.taskType || '').toUpperCase();
+  const name = data?.label || data?.name || '';
+
+  // 시작/종료: 원형
+  if (kind === 'start' || kind === 'end') {
+    const isStart = kind === 'start';
+    return (
+      <div style={{ width: 160, display: 'flex', justifyContent: 'center' }}>
+        <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+        <div style={{
+          width: 52, height: 52, borderRadius: 999,
+          border: `2px solid ${isStart ? '#16a34a' : '#dc2626'}`,
+          background: isStart ? '#ecfdf5' : '#fee2e2',
+          color: isStart ? '#15803d' : '#b91c1c',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 11, fontWeight: 800,
+        }}>{isStart ? '시작' : '종료'}</div>
+        <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
+      </div>
+    );
+  }
+
+  // 결재 + 분기 게이트웨이: 마름모꼴 (의사결정 지점)
+  const isApproval = kind === 'task' && tt === 'APPROVAL';
+  const isXor = kind === 'gateway_xor';
+  const isParallel = kind === 'gateway_parallel';
+  if (isApproval || isXor || isParallel) {
+    const color = isApproval ? '#d97706' : isParallel ? '#0891b2' : '#7c3aed';
+    const bg = isApproval ? '#fffbeb' : isParallel ? '#ecfeff' : '#f5f3ff';
+    const badge = isApproval ? '결재' : isParallel ? '동시' : '분기';
+    return (
+      <div style={{ width: 160, display: 'grid', justifyItems: 'center', gap: 3 }}>
+        <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+        <div style={{ width: 72, height: 72, position: 'relative' }}>
+          <div style={{ position: 'absolute', inset: 9, transform: 'rotate(45deg)', background: bg, border: `2px solid ${color}`, borderRadius: 6 }} />
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color }}>{badge}</div>
+        </div>
+        {isApproval && name ? (
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', textAlign: 'center', maxWidth: 150, lineHeight: 1.25 }}>{name}</div>
+        ) : (!isApproval && name && name !== 'XOR' && name !== 'AND') ? (
+          <div style={{ fontSize: 10, color: '#64748b', textAlign: 'center', maxWidth: 150 }}>{name}</div>
+        ) : null}
+        <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
+      </div>
+    );
+  }
+
+  // 일반 업무 태스크: 둥근 사각형 + 유형 배지
+  const badge = tt === 'COOPERATION' ? '🤝 업무요청' : tt === 'TASK' ? '☑️ 일반' : '📝 업무일지';
   return (
     <div style={{
-      padding: 8,
-      border: `1px solid ${bd}`,
-      borderRadius: 6,
-      background: bg,
+      padding: '6px 8px 8px',
+      border: '1.5px solid #94a3b8',
+      borderRadius: 10,
+      background: '#ffffff',
       minWidth: 160,
       textAlign: 'center',
-      fontSize: 12,
-      fontWeight: 600,
+      boxShadow: '0 1px 2px rgba(15,23,42,0.08)',
     }}>
-      <Handle type="target" position={Position.Top} style={{ width: 12, height: 12, background: '#0F3D73', border: '2px solid #ffffff' }} />
-      <div>{data?.label || data?.name || ''}</div>
-      <Handle type="source" position={Position.Bottom} style={{ width: 12, height: 12, background: '#0F3D73', border: '2px solid #ffffff' }} />
+      <Handle type="target" position={Position.Top} style={HANDLE_STYLE} />
+      <div style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>{badge}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>{name}</div>
+      <Handle type="source" position={Position.Bottom} style={HANDLE_STYLE} />
     </div>
   );
+}
+
+/** 조건식을 사람이 읽는 분기 라벨로 변환 (저장되는 condition 값은 그대로 유지) */
+function friendlyEdgeLabel(condition?: string, isLoopBack?: boolean): string | undefined {
+  const c = String(condition || '').trim();
+  if (/approval\.status\s*==\s*'APPROVED'/i.test(c)) return '✔ 승인';
+  if (/approval\.status\s*==\s*'REJECTED'/i.test(c)) return isLoopBack ? '✖ 반려 → 다시 작성' : '✖ 반려';
+  if (isLoopBack) return c ? `↩ ${c}` : '↩ 되돌림';
+  return c || undefined;
 }
 
 export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: string; onChangeJson: (t: string) => void; height?: number | string }) {
@@ -163,16 +221,21 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         const edgeData: any = {};
         if (e.condition) edgeData.condition = String(e.condition);
         if (e.isLoopBack) edgeData.isLoopBack = true;
-        const labelParts: string[] = [];
-        if (e.condition) labelParts.push(String(e.condition));
-        if (e.isLoopBack) labelParts.push('[LoopBack]');
+        const cond = e.condition ? String(e.condition) : '';
+        const isApproved = /approval\.status\s*==\s*'APPROVED'/i.test(cond);
+        const isRejected = /approval\.status\s*==\s*'REJECTED'/i.test(cond) || !!e.isLoopBack;
+        const stroke = isRejected ? '#dc2626' : isApproved ? '#16a34a' : undefined;
         return {
           id: String(e.id || `${e.source}-${e.target}`),
           source: String(e.source),
           target: String(e.target),
           data: Object.keys(edgeData).length ? edgeData : undefined,
-          label: labelParts.length ? labelParts.join(' ') : undefined,
-          style: e.isLoopBack ? { stroke: '#f97316', strokeWidth: 2, strokeDasharray: '6 3' } : undefined,
+          label: friendlyEdgeLabel(cond, !!e.isLoopBack),
+          labelStyle: stroke ? { fill: stroke, fontWeight: 700, fontSize: 11 } : { fontSize: 11 },
+          labelBgStyle: { fill: '#ffffff', fillOpacity: 0.9 },
+          style: e.isLoopBack
+            ? { stroke: '#dc2626', strokeWidth: 2, strokeDasharray: '6 3' }
+            : stroke ? { stroke, strokeWidth: 2 } : undefined,
           animated: !!e.isLoopBack,
         };
       });
@@ -524,7 +587,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                   placeholder="예: last.approval.status == 'APPROVED'"
                   onChange={(ev) => {
                     const val = ev.target.value;
-                    setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: val || undefined } : x)));
+                    setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: friendlyEdgeLabel(val, !!(x as any).data?.isLoopBack) } : x)));
                   }}
                 />
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
@@ -533,7 +596,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                     className="btn btn-sm btn-outline"
                     onClick={() => {
                       const val = "last.approval.status == 'APPROVED'";
-                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: val || undefined } : x)));
+                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: friendlyEdgeLabel(val, !!(x as any).data?.isLoopBack) } : x)));
                     }}
                   >승인</button>
                   <button
@@ -541,7 +604,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                     className="btn btn-sm btn-outline"
                     onClick={() => {
                       const val = "last.approval.status == 'REJECTED'";
-                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: val || undefined } : x)));
+                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: friendlyEdgeLabel(val, !!(x as any).data?.isLoopBack) } : x)));
                     }}
                   >반려</button>
                   <button
@@ -549,7 +612,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                     className="btn btn-sm btn-ghost"
                     onClick={() => {
                       const val = '';
-                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: val || undefined } : x)));
+                      setEdges((prev: Edge<any>[]) => prev.map((x) => (String(x.id) === String(e.id) ? { ...x, data: { ...(x as any).data, condition: val }, label: friendlyEdgeLabel(val, !!(x as any).data?.isLoopBack) } : x)));
                     }}
                   >비우기</button>
                 </div>
