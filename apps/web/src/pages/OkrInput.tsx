@@ -80,7 +80,7 @@ export function OkrInput() {
       if (!oTitle) throw new Error('Objective 제목');
       const selO = oMonths.map((v, i) => v ? i : -1).filter(i => i >= 0);
       if (!selO.length) throw new Error('Objective 기간');
-      if (myRole !== 'CEO' && !parentKrId) throw new Error('상위 O-KR');
+      // 상위 O-KR은 선택 사항: 정렬이 기본 권장이지만, 어떤 역할이든 '상위 없음(자체 시작)'으로 비정렬 트리를 시작할 수 있다.
       const validRows = rows.filter(r => r.title && r.metric && r.target !== '' && r.unit);
       if (!validRows.length) throw new Error('KR 최소 1개');
 
@@ -93,7 +93,7 @@ export function OkrInput() {
 
       const obj = await apiJson<{ id: string }>(`/api/okrs/objectives`, {
         method: 'POST',
-        body: JSON.stringify({ userId, title: oTitle, description: oDesc || undefined, periodStart, periodEnd, alignsToKrId: myRole === 'CEO' ? undefined : parentKrId }),
+        body: JSON.stringify({ userId, title: oTitle, description: oDesc || undefined, periodStart, periodEnd, alignsToKrId: (myRole === 'CEO' ? undefined : (parentKrId || undefined)) }),
       });
 
       for (const r of validRows) {
@@ -172,6 +172,10 @@ export function OkrInput() {
               <b>상위에서 분기</b>: 상단의 <b>역할 선택</b> 후 <b>상위 O-KR 선택</b>에서 <u>부모 KR 1개만</u> 지정하고, 자신의 Objective/KR을 작성합니다.
             </div>
             <div>
+              <b>자체 시작(비정렬)</b>: 전사 목표와 별개의 목표가 필요하면 상위 O-KR을 <u>"상위 없음 — 자체 시작"</u>으로 두고 작성합니다.
+              임원·팀장·팀원 누구든 새 목표 트리의 출발점이 될 수 있고, 하위 역할은 그 KR을 받아 동일하게 전개합니다.
+            </div>
+            <div>
               <b>좋은 KR 팁</b>: 방향(<code>이상</code>/<code>이하</code>)을 명확히, <code>metric</code>/<code>unit</code>/<code>target</code> 필수, 월 단위로 최신 기록 유지.
             </div>
             <div>
@@ -225,7 +229,7 @@ export function OkrInput() {
             </select>
             {myRole !== 'CEO' && (
               <select value={parentKrId} onChange={(e) => setParentKrId(e.target.value)} style={{ ...input, appearance: 'auto' as any }}>
-                <option value="">상위 O-KR 선택</option>
+                <option value="">⊘ 상위 없음 — 자체 시작 (비정렬)</option>
                 {parentKrs.map((kr) => (
                   <option key={kr.id} value={kr.id}>[{`${roleLabel(kr.objective?.owner?.role)}-${kr.objective?.owner?.name || ''}`}] {kr.objective?.title} / KR: {kr.title}</option>
                 ))}
@@ -235,6 +239,13 @@ export function OkrInput() {
           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>
             역할/조직 변경은 관리자(대표)가 구성원 관리에서 설정합니다.
           </div>
+          {myRole !== 'CEO' && !parentKrId && (
+            <div style={{ fontSize: 12, color: '#9a3412', background: '#FFF7ED', border: '1px solid #fed7aa', borderRadius: 8, padding: '6px 10px', marginTop: 6 }}>
+              ⊘ <b>자체 시작(비정렬)</b>: 전사 목표에 정렬하지 않고 새 목표 트리를 시작합니다.
+              임원이 시작하면 팀장이, 팀장이 시작하면 팀원이 이 목표의 KR을 "상위 O-KR 선택"에서 받아 내려갈 수 있습니다.
+              전사 정렬이 가능한 목표라면 상위 O-KR을 선택하는 것을 권장합니다.
+            </div>
+          )}
         </div>
       </section>
 

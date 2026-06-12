@@ -169,7 +169,10 @@ export class OkrsController {
   async createObjective(@Body() dto: CreateObjectiveDto, @Query('context') context?: string) {
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
     if (!user) throw new BadRequestException('user not found');
-    // Validation: for general OKR, if no parent KR, restrict to CEO (top-level creation)
+    // Validation: parent KR is optional for ALL roles.
+    // 정렬(상위 KR 수신)이 기본 권장이지만, 임원/팀장/팀원도 상위 없이 자체 시작(비정렬 트리 루트)이 가능하다.
+    // 비정렬로 시작한 Objective의 KR은 하위 역할의 '상위 O-KR 선택' 목록에 자동으로 나타나므로
+    // 임원→팀장→팀원, 팀장→팀원 등 어느 레벨에서든 새 캐스케이드를 시작할 수 있다.
     let parentKr: any = null;
     if (dto.alignsToKrId) {
       parentKr = await this.prisma.keyResult.findUnique({
@@ -177,10 +180,6 @@ export class OkrsController {
         include: { objective: { include: { owner: true, orgUnit: true } } },
       });
       if (!parentKr) throw new BadRequestException('parent KR not found');
-    } else if (context !== 'team') {
-      if (user.role !== ('CEO' as any)) {
-        throw new BadRequestException('non-CEO must align to a parent KR');
-      }
     }
 
     if (dto.orgUnitId) {
