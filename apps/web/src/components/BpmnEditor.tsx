@@ -532,13 +532,40 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                   <label>마감 D+일<input type="number" min={0} value={(n.data as any)?.deadlineOffsetDays ?? ''} onChange={(e) => onNodeLabelChange(n.id, 'deadlineOffsetDays', e.target.value ? Number(e.target.value) : undefined)} placeholder="예: 7" /></label>
                   <label>SLA(시간)<input type="number" min={0} value={(n.data as any)?.slaHours ?? ''} onChange={(e) => onNodeLabelChange(n.id, 'slaHours', e.target.value ? Number(e.target.value) : undefined)} placeholder="예: 48" /></label>
                 </div>
-                <label>담당자 순번(쉼표로 ID 나열)
-                  <input
-                    placeholder="userA,userB,userC"
-                    value={(n.data as any)?.approvalUserIds || ''}
-                    onChange={(e) => onNodeLabelChange(n.id, 'approvalUserIds', e.target.value)}
-                  />
-                </label>
+                {String((n.data as any)?.taskType || '').toUpperCase() === 'APPROVAL' && (() => {
+                  const csv = String((n.data as any)?.approvalUserIds || '');
+                  const line = csv.split(',').map((s) => s.trim()).filter(Boolean);
+                  const nameOf = (uid: string) => {
+                    const u = userOptions.find((x) => x.id === uid);
+                    return u ? `${u.name}${u.orgName ? ` (${u.orgName})` : ''}` : uid;
+                  };
+                  const setLine = (next: string[]) => onNodeLabelChange(n.id, 'approvalUserIds', next.join(','));
+                  return (
+                    <div style={{ border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: 8, padding: 8, display: 'grid', gap: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>결재선 (순서대로 결재)</div>
+                      {line.length === 0 && <div style={{ fontSize: 11, color: '#b45309' }}>결재자를 순서대로 추가하세요. 비워두면 시작할 때 직접 지정해야 합니다.</div>}
+                      {line.map((uid, idx) => (
+                        <div key={`${uid}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                          <span style={{ width: 18, height: 18, borderRadius: 999, background: '#d97706', color: '#fff', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{idx + 1}</span>
+                          <span style={{ flex: 1 }}>{nameOf(uid)}</span>
+                          <button type="button" className="btn btn-ghost" style={{ padding: '0 6px' }} disabled={idx === 0}
+                            onClick={() => { const nx = [...line]; [nx[idx - 1], nx[idx]] = [nx[idx], nx[idx - 1]]; setLine(nx); }}>↑</button>
+                          <button type="button" className="btn btn-ghost" style={{ padding: '0 6px' }}
+                            onClick={() => setLine(line.filter((_, i) => i !== idx))}>×</button>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input style={{ flex: 1 }} placeholder="이름 검색" value={userQuery} onChange={(e) => setUserQuery(e.target.value)} />
+                        <select value="" onChange={(e) => { const v = e.target.value; if (v && !line.includes(v)) setLine([...line, v]); }}>
+                          <option value="">결재자 추가...</option>
+                          {userOptions.filter((u) => !line.includes(u.id)).map((u) => (
+                            <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` (${u.orgName})` : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
             {(n.type === 'gateway_parallel' || n.type === 'gateway_xor') && (

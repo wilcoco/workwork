@@ -135,6 +135,13 @@ export function ProcessFromManual() {
       if (!Array.isArray(bpmnJson?.nodes) || !bpmnJson.nodes.some((n: any) => String(n?.type) === 'task')) {
         throw new Error('업무 단계(task)가 1개 이상 필요합니다.');
       }
+      // 결재 단계는 결재선(또는 담당)을 반드시 명시해야 실행 시 결재가 올바르게 돌아간다
+      const missingLine = bpmnJson.nodes.filter((n: any) =>
+        String(n?.type) === 'task' && String(n?.taskType || '').toUpperCase() === 'APPROVAL'
+        && !String(n?.approvalUserIds || '').trim() && !n?.assigneeUserId && !n?.assigneeOrgUnitId);
+      if (missingLine.length) {
+        throw new Error(`결재 단계에 결재선이 없습니다: ${missingLine.map((n: any) => `「${n.name}」`).join(', ')} — 그래프에서 해당 결재 노드를 클릭해 "결재선"에 결재자를 순서대로 추가하세요.`);
+      }
       const created = await apiJson<{ id: string }>('/api/process-templates', {
         method: 'POST',
         body: JSON.stringify({
@@ -266,8 +273,9 @@ export function ProcessFromManual() {
       {step === 3 && (
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontSize: 13, color: '#64748b' }}>
-            AI가 만든 프로세스 초안입니다. 필요하면 노드를 눌러 이름·담당·기한을 수정하세요 (수정 없이 바로 완성해도 됩니다).
-            담당이 지정되지 않은 단계는 프로세스 시작 시 시작자에게 배정됩니다.
+            AI가 만든 프로세스 초안입니다. 필요하면 노드를 눌러 이름·담당·기한을 수정하세요.
+            <b> 결재(마름모) 단계는 노드를 클릭해 결재선(결재자 순서)을 반드시 지정해야 완성할 수 있습니다.</b>{' '}
+            일반 단계의 담당이 비어 있으면 프로세스 시작 시 시작자에게 배정됩니다.
           </div>
           <label>프로세스 이름
             <input value={bpmnTitle} onChange={(e) => setBpmnTitle(e.target.value)} />
