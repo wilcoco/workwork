@@ -49,6 +49,7 @@ import { MyGoalsDashboard } from './pages/MyGoalsDashboard';
 import { OrgGoalsOverview } from './pages/OrgGoalsOverview';
 import { OkrKpiGuide } from './pages/OkrKpiGuide';
 import { AdminHolidays } from './pages/AdminHolidays';
+import { AdminAuditLogs } from './pages/AdminAuditLogs';
 import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
 import { ProcessMy } from './pages/ProcessMy';
 import { ProcessStart } from './pages/ProcessStart';
@@ -354,6 +355,10 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
             element={adminGuard(<AdminMembers />)}
           />
           <Route
+            path="/admin/audit-logs"
+            element={adminGuard(<AdminAuditLogs />)}
+          />
+          <Route
             path="/admin/tools"
             element={adminGuard(<AdminTools />)}
           />
@@ -549,6 +554,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
             <Link to="/admin/holidays">휴일 캘린더</Link>
             <Link to="/admin/cars">차량 관리</Link>
             <Link to="/admin/masters">기준정보 관리</Link>
+            <Link to="/admin/audit-logs">변경 이력</Link>
             <Link to="/admin/tools">시스템 도구</Link>
           </NavDropdown>
         )}
@@ -739,6 +745,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/admin/holidays', label: '휴일 캘린더' },
         { to: '/admin/cars', label: '차량 관리' },
         { to: '/admin/masters', label: '기준정보 관리' },
+        { to: '/admin/audit-logs', label: '변경 이력' },
         { to: '/admin/tools', label: '시스템 도구' },
       ];
     }

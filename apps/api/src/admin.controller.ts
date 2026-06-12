@@ -11,6 +11,77 @@ export class AdminController {
     if (!actor || (actor.role as any) !== 'CEO') throw new ForbiddenException('only CEO can perform this action');
   }
 
+  // 변경 이력(감사 로그) 조회 — Event 테이블의 Updated/Deleted 기록
+  @Get('audit-logs')
+  async auditLogs(
+    @Query('userId') userId?: string,
+    @Query('subjectType') subjectType?: string,
+    @Query('action') action?: string, // 'updated' | 'deleted'
+    @Query('actorId') actorId?: string,
+    @Query('days') days?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    await this.assertCeo(userId);
+    // 기본: Updated/Deleted로 끝나는 감사 로그만
+    const where: any = {};
+    if (action === 'deleted') where.activity = { endsWith: 'Deleted' };
+    else if (action === 'updated') where.activity = { endsWith: 'Updated' };
+    else where.OR = [{ activity: { endsWith: 'Updated' } }, { activity: { endsWith: 'Deleted' } }];
+    if (subjectType) where.subjectType = subjectType;
+    if (actorId) where.userId = actorId;
+    const d = Math.max(1, Math.min(365, Number(days) || 30));
+    where.ts = { gte: new Date(Date.now() - d * 86400000) };
+
+    const p = Math.max(1, Number(page) || 1);
+    const ps = Math.max(1, Math.min(100, Number(pageSize) || 30));
+    const [total, items] = await Promise.all([
+      this.prisma.event.count({ where }),
+      this.prisma.event.findMany({
+        where,
+        orderBy: { ts: 'desc' },
+        skip: (p - 1) * ps,
+        take: ps,
+      }),
+    ]);
+
+    // 행위자 이름 매핑
+    const userIds = Array.from(new Set(items.map((e) => e.userId).filter(Boolean))) as string[];
+    const users = userIds.length
+      ? await this.prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+      : [];
+    const nameById: Record<string, string> = {};
+    for (const u of users) nameById[u.id] = u.name;
+
+    return {
+      total,
+      page: p,
+      pageSize: ps,
+      items: items.map((e) => ({
+        id: e.id,
+        ts: e.ts,
+        subjectType: e.subjectType,
+        subjectId: e.subjectId,
+        activity: e.activity,
+        actorId: e.userId,
+        actorName: e.userId ? nameById[e.userId] || e.userId : null,
+        attrs: e.attrs,
+      })),
+    };
+  }
+
+  // 감사 로그 대상 유형 목록 (필터 드롭다운용)
+  @Get('audit-logs/subject-types')
+  async auditLogSubjectTypes(@Query('userId') userId?: string) {
+    await this.assertCeo(userId);
+    const rows = await this.prisma.event.findMany({
+      where: { OR: [{ activity: { endsWith: 'Updated' } }, { activity: { endsWith: 'Deleted' } }] },
+      select: { subjectType: true },
+      distinct: ['subjectType'],
+    });
+    return { items: rows.map((r) => r.subjectType).sort() };
+  }
+
   @Post('users/:id/activate')
   async activateUser(
     @Param('id') id: string,
