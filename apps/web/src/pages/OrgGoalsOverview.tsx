@@ -25,6 +25,7 @@ type Member = {
   userId: string; name: string; role: string;
   quant: { count: number; ok: number; warn: number; noData: number };
   qual: { active: number; done: number; total: number };
+  personal: { active: number; done: number; total: number };
   kiOpen: number; kiDelayed: number;
   lastWorklogAt: string | null;
 };
@@ -260,6 +261,7 @@ export function OrgGoalsOverview() {
                           <th style={th}>이름</th>
                           <th style={th}>정량 지표 (달성/미달/미입력)</th>
                           <th style={th}>정성 과제 (완료/전체)</th>
+                          <th style={th}>개인 업무</th>
                           <th style={th}>중점 과제</th>
                           <th style={th}>최근 일지</th>
                         </tr>
@@ -276,6 +278,7 @@ export function OrgGoalsOverview() {
                                   : <span style={{ color: '#cbd5e1' }}>—</span>}
                               </td>
                               <td style={td}>{mb.qual.total > 0 ? <MiniBar done={mb.qual.done} total={mb.qual.total} color="#16a34a" /> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                              <td style={td}>{(mb.personal?.total ?? 0) > 0 ? <span style={{ fontSize: 12 }}>진행 {mb.personal.active} · 완료 {mb.personal.done}</span> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
                               <td style={td}>
                                 {mb.kiOpen > 0 ? (<>{mb.kiOpen}건{mb.kiDelayed > 0 && <b style={{ color: '#dc2626' }}> · 지연 {mb.kiDelayed}</b>}</>) : <span style={{ color: '#cbd5e1' }}>—</span>}
                               </td>

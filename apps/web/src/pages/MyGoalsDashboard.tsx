@@ -49,7 +49,8 @@ type KiItem = {
 
 type Summary = {
   quantCount: number; quantOk: number; quantWarn: number; quantNoData: number;
-  qualActive: number; qualDone: number; kiOpen: number; kiDelayed: number;
+  qualActive: number; qualDone: number; personalActive: number; personalDone: number;
+  kiOpen: number; kiDelayed: number;
 };
 
 const STATE_LABELS: Record<string, string> = { PLANNED: '계획', ACTIVE: '진행', BLOCKED: '차단', DONE: '완료', CANCELLED: '취소' };
@@ -87,11 +88,13 @@ export function MyGoalsDashboard() {
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [quant, setQuant] = useState<QuantItem[]>([]);
   const [qual, setQual] = useState<QualItem[]>([]);
+  const [personalQual, setPersonalQual] = useState<QualItem[]>([]);
   const [keyInits, setKeyInits] = useState<KiItem[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDoneQual, setShowDoneQual] = useState(false);
+  const [showDonePersonal, setShowDonePersonal] = useState(false);
   const [showClosedKi, setShowClosedKi] = useState(false);
 
   useEffect(() => {
@@ -100,11 +103,12 @@ export function MyGoalsDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiJson<{ quant: QuantItem[]; qual: QualItem[]; keyInits: KiItem[]; summary: Summary }>(
+        const res = await apiJson<{ quant: QuantItem[]; qual: QualItem[]; personalQual: QualItem[]; keyInits: KiItem[]; summary: Summary }>(
           `/api/goals-dashboard/my?userId=${encodeURIComponent(userId)}`,
         );
         setQuant(res.quant || []);
         setQual(res.qual || []);
+        setPersonalQual(res.personalQual || []);
         setKeyInits(res.keyInits || []);
         setSummary(res.summary || null);
       } catch (e: any) {
@@ -119,6 +123,7 @@ export function MyGoalsDashboard() {
   const td: React.CSSProperties = { borderBottom: '1px solid #f1f5f9', padding: '8px 10px', fontSize: 13, verticalAlign: 'top' };
 
   const qualVisible = qual.filter((q) => showDoneQual || (q.state !== 'DONE' && q.state !== 'CANCELLED'));
+  const personalVisible = personalQual.filter((q) => showDonePersonal || (q.state !== 'DONE' && q.state !== 'CANCELLED'));
   const kiVisible = keyInits.filter((k) => showClosedKi || (k.status !== 'COMPLETED' && k.status !== 'CANCELLED'));
 
   return (
@@ -146,6 +151,11 @@ export function MyGoalsDashboard() {
             <div style={{ fontSize: 12, color: '#166534', fontWeight: 700 }}>🎯 정성 목표 (OKR 과제)</div>
             <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{summary.qualActive}<span style={{ fontSize: 13, fontWeight: 500, color: '#64748b' }}> 개 진행</span></div>
             <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>완료 <b style={{ color: '#16a34a' }}>{summary.qualDone}</b></div>
+          </div>
+          <div style={{ padding: 14, background: '#F5F3FF', border: '1px solid #ddd6fe', borderRadius: 10 }}>
+            <div style={{ fontSize: 12, color: '#5b21b6', fontWeight: 700 }}>📂 개인 일반 업무</div>
+            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>{summary.personalActive}<span style={{ fontSize: 13, fontWeight: 500, color: '#64748b' }}> 개 진행</span></div>
+            <div style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>완료 <b style={{ color: '#16a34a' }}>{summary.personalDone}</b></div>
           </div>
           <div style={{ padding: 14, background: '#FFFBEB', border: '1px solid #fde68a', borderRadius: 10 }}>
             <div style={{ fontSize: 12, color: '#92400e', fontWeight: 700 }}>🚩 중점 추진 과제</div>
@@ -233,6 +243,47 @@ export function MyGoalsDashboard() {
                     </td>
                     <td style={td}><Badge text={STATE_LABELS[q.state] || q.state} color={STATE_COLORS[q.state] || '#94a3b8'} /></td>
                     <td style={{ ...td, fontSize: 12 }}>{fmtDate(q.startAt)} ~ {fmtDate(q.endAt || q.dueAt)}</td>
+                    <td style={td}>{q.worklogCount}건</td>
+                    <td style={td}>{fmtDate(q.lastWorklogAt)}</td>
+                    <td style={td}><Link to="/quick" style={{ fontSize: 12, color: '#0F3D73', fontWeight: 600 }}>일지 작성 →</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* 개인 일반 업무 (전사 목표 비정렬) */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ margin: '4px 0 8px', fontSize: 15 }}>📂 개인 일반 업무 — 전사 목표에 정렬되지 않은 과제</h3>
+          <label style={{ fontSize: 12, color: '#64748b', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input type="checkbox" checked={showDonePersonal} onChange={(e) => setShowDonePersonal(e.target.checked)} /> 완료 포함
+          </label>
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
+          업무일지에서 "과제 미선택(키워드 직접 입력)"으로 작성하면 여기에 개인 과제로 쌓입니다. OKR·KPI에 묶이지 않는 일상 업무도 빠짐없이 기록됩니다.
+        </div>
+        {personalVisible.length === 0 ? (
+          <div style={{ padding: 16, color: '#94a3b8', fontSize: 13, background: '#f8fafc', borderRadius: 8 }}>비정렬 개인 과제가 없습니다.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={th}>과제</th>
+                  <th style={th}>상태</th>
+                  <th style={th}>일지</th>
+                  <th style={th}>최근 일지</th>
+                  <th style={th}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {personalVisible.map((q) => (
+                  <tr key={q.id}>
+                    <td style={{ ...td, fontWeight: 600 }}>{q.title}</td>
+                    <td style={td}><Badge text={STATE_LABELS[q.state] || q.state} color={STATE_COLORS[q.state] || '#94a3b8'} /></td>
                     <td style={td}>{q.worklogCount}건</td>
                     <td style={td}>{fmtDate(q.lastWorklogAt)}</td>
                     <td style={td}><Link to="/quick" style={{ fontSize: 12, color: '#0F3D73', fontWeight: 600 }}>일지 작성 →</Link></td>

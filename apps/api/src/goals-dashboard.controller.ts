@@ -93,21 +93,22 @@ export class GoalsDashboardController {
       },
       orderBy: { updatedAt: 'desc' },
     });
-    const qual = inits
-      .filter((i: any) => !this.isAutoObjective(i.keyResult?.objective?.title))
-      .map((i: any) => ({
-        id: i.id,
-        title: i.title,
-        objTitle: i.keyResult?.objective?.title || '',
-        krTitle: i.keyResult?.title || '',
-        isKpi: !!i.keyResult?.objective?.pillar,
-        state: i.state,
-        dueAt: i.dueAt,
-        startAt: i.startAt,
-        endAt: i.endAt,
-        worklogCount: i._count?.worklogs ?? 0,
-        lastWorklogAt: i.worklogs?.[0]?.date || null,
-      }));
+    const mapInit = (i: any) => ({
+      id: i.id,
+      title: i.title,
+      objTitle: i.keyResult?.objective?.title || '',
+      krTitle: i.keyResult?.title || '',
+      isKpi: !!i.keyResult?.objective?.pillar,
+      state: i.state,
+      dueAt: i.dueAt,
+      startAt: i.startAt,
+      endAt: i.endAt,
+      worklogCount: i._count?.worklogs ?? 0,
+      lastWorklogAt: i.worklogs?.[0]?.date || null,
+    });
+    // 전사 목표에 정렬된 과제와, 일지 '과제 미선택(키워드)'로 생성된 비정렬 개인 업무(Auto Objective)를 분리
+    const qual = inits.filter((i: any) => !this.isAutoObjective(i.keyResult?.objective?.title)).map(mapInit);
+    const personalQual = inits.filter((i: any) => this.isAutoObjective(i.keyResult?.objective?.title)).map(mapInit);
 
     // ── 중점 추진 과제: 내가 담당자이거나 등록자인 과제
     const kis = await (this.prisma as any).keyInitiative.findMany({
@@ -146,11 +147,13 @@ export class GoalsDashboardController {
       quantNoData: quant.filter((q) => q.status === 'NONE').length,
       qualActive: qual.filter((q) => q.state === 'ACTIVE' || q.state === 'PLANNED').length,
       qualDone: qual.filter((q) => q.state === 'DONE').length,
+      personalActive: personalQual.filter((q) => q.state === 'ACTIVE' || q.state === 'PLANNED').length,
+      personalDone: personalQual.filter((q) => q.state === 'DONE').length,
       kiOpen: keyInits.filter((k: any) => k.status !== 'COMPLETED' && k.status !== 'CANCELLED').length,
       kiDelayed: keyInits.filter((k: any) => k.status === 'DELAYED' || (k.warning || '').includes('초과')).length,
     };
 
-    return { quant, qual, keyInits, summary };
+    return { quant, qual, personalQual, keyInits, summary };
   }
 
   @Get('org-overview')
@@ -222,13 +225,15 @@ export class GoalsDashboardController {
       select: { id: true, state: true, ownerId: true, keyResult: { select: { objective: { select: { title: true, pillar: true } } } } },
     });
     const initsByUser: Record<string, { active: number; done: number; total: number }> = {};
+    const personalByUser: Record<string, { active: number; done: number; total: number }> = {};
     for (const i of userInits) {
-      if (this.isAutoObjective((i as any).keyResult?.objective?.title)) continue;
+      const isPersonal = this.isAutoObjective((i as any).keyResult?.objective?.title);
+      const bucket = isPersonal ? personalByUser : initsByUser;
       const u = i.ownerId;
-      if (!initsByUser[u]) initsByUser[u] = { active: 0, done: 0, total: 0 };
-      initsByUser[u].total += 1;
-      if (i.state === 'DONE') initsByUser[u].done += 1;
-      else if (i.state === 'ACTIVE' || i.state === 'PLANNED' || i.state === 'BLOCKED') initsByUser[u].active += 1;
+      if (!bucket[u]) bucket[u] = { active: 0, done: 0, total: 0 };
+      bucket[u].total += 1;
+      if (i.state === 'DONE') bucket[u].done += 1;
+      else if (i.state === 'ACTIVE' || i.state === 'PLANNED' || i.state === 'BLOCKED') bucket[u].active += 1;
     }
 
     const now = new Date();
@@ -306,6 +311,7 @@ export class GoalsDashboardController {
             if (st === 'OK') ok += 1; else if (st === 'WARN') warn += 1; else noData += 1;
           }
           const qi = initsByUser[u.id] || { active: 0, done: 0, total: 0 };
+          const pi = personalByUser[u.id] || { active: 0, done: 0, total: 0 };
           const myKis = kis.filter((k: any) => k.assigneeId === u.id && k.status !== 'COMPLETED' && k.status !== 'CANCELLED');
           return {
             userId: u.id,
@@ -313,6 +319,7 @@ export class GoalsDashboardController {
             role: u.role,
             quant: { count: myKrIds.length, ok, warn, noData },
             qual: qi,
+            personal: pi,
             kiOpen: myKis.length,
             kiDelayed: myKis.filter((k: any) => k.status === 'DELAYED').length,
             lastWorklogAt: lastWlByUser[u.id] || null,
