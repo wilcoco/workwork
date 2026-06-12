@@ -78,9 +78,9 @@ async function callClaude(opts: CallAIOptions): Promise<CallAIResult> {
   const f: any = (globalThis as any).fetch;
   if (!f) throw new Error('Server fetch not available.');
 
-  // Default to Claude Opus 4 (top-tier) for the highest quality analysis.
-  // Override via CLAUDE_MODEL env if a cheaper/faster model is desired.
-  const claudeModel = process.env.CLAUDE_MODEL || 'claude-opus-4-20250514';
+  // Default to Claude Opus 4.8 (latest top-tier) for the highest quality analysis.
+  // Override via CLAUDE_MODEL env if a cheaper/faster model is desired (e.g. claude-sonnet-4-6).
+  const claudeModel = process.env.CLAUDE_MODEL || 'claude-opus-4-8';
   const maxTokens = opts.maxTokens || 4096;
 
   const body: any = {
