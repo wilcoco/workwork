@@ -115,15 +115,15 @@ export function KeyInitiatives() {
 
   async function loadUsers() {
     try {
-      const res = await apiJson<User[]>('/api/users');
-      setUsers(res || []);
+      const res = await apiJson<{ items: User[] }>('/api/users');
+      setUsers(res.items || []);
     } catch {}
   }
 
   async function loadOrgUnits() {
     try {
-      const res = await apiJson<OrgUnit[]>('/api/orgs');
-      setOrgUnits(res || []);
+      const res = await apiJson<{ items: OrgUnit[] }>('/api/orgs');
+      setOrgUnits(res.items || []);
     } catch {}
   }
 
