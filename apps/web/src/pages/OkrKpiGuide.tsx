@@ -66,32 +66,51 @@ export function OkrKpiGuide() {
       {/* STEP 1 */}
       <div style={{ ...card, borderLeft: '6px solid #7c3aed' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <RoleChip text="STEP 1 · 대표 / 임원" color="#7c3aed" />
-          <b>회사·실 목표 정의</b>
+          <RoleChip text="STEP 1 · 대표이사" color="#7c3aed" />
+          <b>회사 최상단 목표 정의 (유일하게 상위 선택 없음)</b>
           <span style={{ fontSize: 12, color: '#64748b' }}>연초 · 분기초</span>
         </div>
         <ol style={{ margin: '10px 0 8px 20px', padding: 0, fontSize: 13, lineHeight: 1.8 }}>
-          <li><b>정성 목표 (OKR) 입력</b> 화면에서 역할 <b>"대표/임원"</b>을 선택합니다.</li>
-          <li>회사·실 단위 <b>Objective</b>(목표 스토리)를 작성합니다 — 기간(분기/연도) 포함.</li>
+          <li><b>정성 목표 (OKR) 입력</b> 화면에서 역할 <b>"대표"</b>를 선택합니다.</li>
+          <li>회사 전체 <b>Objective</b>(목표 스토리)를 작성합니다 — 기간(분기/연도) 포함.</li>
           <li>각 Objective 아래에 <b>KR</b>(핵심결과)을 정의합니다 — 지표명·목표값·단위·방향(이상/이하) 필수.</li>
         </ol>
-        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>→ 여기서 만든 회사 KR이 모든 하위 팀 목표의 <b>부모</b>가 됩니다.</div>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>→ <b>대표만</b> 상위 선택 없이 목표를 만들 수 있습니다. 대표의 KR이 임원·팀장·팀원 모든 목표의 출발점이 됩니다.</div>
         <GoLink to="/okr/input" label="정성 목표 (OKR) 입력" />
       </div>
       <StepArrow />
 
       {/* STEP 2 */}
+      <div style={{ ...card, borderLeft: '6px solid #6d28d9' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <RoleChip text="STEP 2 · 임원 / 실장" color="#6d28d9" />
+          <b>대표 KR을 받아 실(부문) 목표 전개</b>
+          <span style={{ fontSize: 12, color: '#64748b' }}>연초 · 분기초</span>
+        </div>
+        <ol style={{ margin: '10px 0 8px 20px', padding: 0, fontSize: 13, lineHeight: 1.8 }}>
+          <li><b>정성 목표 (OKR) 입력</b>에서 역할 <b>"임원"</b>을 선택합니다.</li>
+          <li><b>상위 O-KR 선택</b>에서 <b>대표의 KR 1개</b>를 지정합니다 — 임원도 상위 선택 없이는 저장되지 않습니다.</li>
+          <li>받은 KR을 달성하기 위한 실 단위 <b>Objective + KR</b>로 전개합니다.</li>
+        </ol>
+        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+          예) 대표 KR "전체 공정 불량률 0.6% 이하" 수신 → 생산실장 Objective "도장 공정 안정화" + KR "도장 불량률 0.5% 이하"
+        </div>
+        <GoLink to="/okr/input" label="정성 목표 (OKR) 입력" />
+      </div>
+      <StepArrow />
+
+      {/* STEP 3 */}
       <div style={{ ...card, borderLeft: '6px solid #0F3D73' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <RoleChip text="STEP 2 · 실장 / 팀장" color="#0F3D73" />
-          <b>팀 목표 전개 + 담당자 지정</b>
+          <RoleChip text="STEP 3 · 팀장" color="#0F3D73" />
+          <b>실 KR을 받아 팀 목표 전개 + 담당자 지정</b>
           <span style={{ fontSize: 12, color: '#64748b' }}>분기초 · 월초</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10, marginTop: 10, fontSize: 13 }}>
           <div style={{ padding: 12, background: '#F0FDF4', borderRadius: 10 }}>
             <b>🎯 정성 (팀 OKR)</b>
             <ol style={{ margin: '6px 0 8px 18px', padding: 0, lineHeight: 1.7 }}>
-              <li>역할 <b>"팀장"</b> 선택 → <b>상위 KR 1개</b>를 지정합니다.</li>
+              <li>역할 <b>"팀장"</b> 선택 → <b>상위(실장/임원)의 KR 1개</b>를 지정합니다.</li>
               <li>팀 Objective를 작성하고 팀 KR로 전개합니다.</li>
             </ol>
             <GoLink to="/okr/input" label="정성 목표 (OKR) 입력" />
@@ -115,7 +134,7 @@ export function OkrKpiGuide() {
       {/* STEP 3 */}
       <div style={{ ...card, borderLeft: '6px solid #16a34a' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <RoleChip text="STEP 3 · 담당자 / 팀원" color="#16a34a" />
+          <RoleChip text="STEP 4 · 담당자 / 팀원" color="#16a34a" />
           <b>내 과제 확인 + 일지로 실적 입력</b>
           <span style={{ fontSize: 12, color: '#64748b' }}>매일 · 수시</span>
         </div>
@@ -140,7 +159,7 @@ export function OkrKpiGuide() {
       {/* STEP 4 */}
       <div style={{ ...card, borderLeft: '6px solid #d97706' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <RoleChip text="STEP 4 · 팀장 / 경영진" color="#d97706" />
+          <RoleChip text="STEP 5 · 팀장 / 경영진" color="#d97706" />
           <b>모니터링 & 리뷰</b>
           <span style={{ fontSize: 12, color: '#64748b' }}>매주 · 매월</span>
         </div>
@@ -157,7 +176,8 @@ export function OkrKpiGuide() {
       <div style={{ ...card, background: '#FEF2F2', border: '1px solid #fecaca' }}>
         <div style={{ fontWeight: 800, marginBottom: 6 }}>⚠ 자주 막히는 부분</div>
         <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 13, lineHeight: 1.8 }}>
-          <li><b>팀원 일지에 KPI 지표가 안 보여요</b> → STEP 2에서 팀 KPI의 <b>참여자(담당자)</b>로 지정되었는지 확인하세요.</li>
+          <li><b>임원도 최상단 목표를 만들 수 있나요?</b> → 아니요. <b>대표만</b> 상위 선택 없이 만들 수 있고, 임원은 반드시 대표의 KR 1개를 받아 실 목표를 전개합니다.</li>
+          <li><b>팀원 일지에 KPI 지표가 안 보여요</b> → STEP 3에서 팀 KPI의 <b>참여자(담당자)</b>로 지정되었는지 확인하세요.</li>
           <li><b>달성/미달 판정 기준</b> → 가장 최근 입력값 vs 목표값을 방향(이상/이하)에 따라 비교합니다.</li>
           <li><b>입력 주기</b> → KPI 지표값은 최소 월 1회 입력을 권장합니다. 입력이 없으면 "미입력"으로 표시됩니다.</li>
           <li><b>중점 과제가 안 보여요</b> → 과제의 <b>담당자</b>로 지정된 사람의 일지·내 업무 과제에만 표시됩니다.</li>
