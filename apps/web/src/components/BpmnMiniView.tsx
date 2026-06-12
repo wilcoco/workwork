@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import ReactFlow, { Background, MiniMap, Controls, Node, Edge, useEdgesState, useNodesState } from 'reactflow';
 import 'reactflow/dist/style.css';
+import { friendlyEdgeLabel, edgeStroke } from './bpmnVisual';
 
 export function BpmnMiniView({ bpmn, height = 260 }: { bpmn: any; height?: number }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<any>>([]);
@@ -67,38 +68,49 @@ export function BpmnMiniView({ bpmn, height = 260 }: { bpmn: any; height?: numbe
         const level = levelMap.get(nid) ?? idx;
         const col = colMap.get(nid) ?? 0;
         const nodeType = String(n.type || '');
+        const tt = String(n.taskType || '').toUpperCase();
+        const isApproval = nodeType === 'task' && tt === 'APPROVAL';
         const isGw = nodeType === 'gateway_parallel' || nodeType === 'gateway_xor';
         const isStart = nodeType === 'start';
         const isEnd = nodeType === 'end';
-        const gwColor = nodeType === 'gateway_parallel' ? '#3b82f6' : '#f97316';
-        const label = isGw
-          ? (nodeType === 'gateway_parallel' ? (n.name || 'AND') : (n.name || 'XOR'))
-          : (n.name || n.type || nid);
+        // 결재·분기·동시 진행은 모두 마름모(의사결정/제어 지점)로 표현
+        const gwColor = isApproval ? '#d97706' : nodeType === 'gateway_parallel' ? '#0891b2' : '#7c3aed';
+        const gwBadge = isApproval ? '결재' : nodeType === 'gateway_parallel' ? '동시' : '분기';
+        const name = String(n.name || '');
+        const label = (isGw || isApproval)
+          ? React.createElement('span', { style: { display: 'inline-block', transform: 'rotate(-45deg)', textAlign: 'center', lineHeight: 1.15 } },
+              React.createElement('div', { style: { fontWeight: 800 } }, gwBadge),
+              isApproval && name ? React.createElement('div', { style: { fontSize: 8, fontWeight: 600, maxWidth: 52, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: name }, name) : null)
+          : (name || n.type || nid);
         return {
           id: nid,
           type: 'default',
           position: { x: 120 + col * 180, y: 60 + level * 100 },
-          data: { label: isGw ? React.createElement('span', { style: { display: 'inline-block', transform: 'rotate(-45deg)' } }, label) : label },
-          style: isGw
-            ? { background: gwColor + '18', border: `2px solid ${gwColor}`, borderRadius: 4, fontWeight: 700, fontSize: 11, color: gwColor, transform: 'rotate(45deg)', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+          data: { label },
+          style: (isGw || isApproval)
+            ? { background: gwColor + '18', border: `2px solid ${gwColor}`, borderRadius: 6, fontWeight: 700, fontSize: 10, color: gwColor, transform: 'rotate(45deg)', width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }
             : isStart
             ? { background: '#ecfdf5', border: '2px solid #16a34a', borderRadius: '50%', width: 60, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }
             : isEnd
             ? { background: '#fee2e2', border: '2px solid #dc2626', borderRadius: '50%', width: 60, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }
-            : undefined,
+            : { borderRadius: 10, fontSize: 11 },
         };
       });
       const ee: Edge<any>[] = rawEdges.map((e: any, i: number) => {
         const isLoop = !!e.isLoopBack;
-        const labelParts: string[] = [];
-        if (e.condition) labelParts.push(String(e.condition).length > 30 ? String(e.condition).slice(0, 28) + '..' : String(e.condition));
-        if (isLoop) labelParts.push('[Loop]');
+        const cond = e.condition ? String(e.condition) : '';
+        const stroke = edgeStroke(cond, isLoop);
+        const label = friendlyEdgeLabel(cond, isLoop);
         return {
           id: String(e.id || `${e.source}-${e.target}-${i}`),
           source: String(e.source),
           target: String(e.target),
-          label: labelParts.length ? labelParts.join(' ') : undefined,
-          style: isLoop ? { stroke: '#f97316', strokeWidth: 2, strokeDasharray: '6 3' } : undefined,
+          label: label && label.length > 24 ? label.slice(0, 22) + '..' : label,
+          labelStyle: stroke ? { fill: stroke, fontWeight: 700, fontSize: 10 } : { fontSize: 10 },
+          labelBgStyle: { fill: '#ffffff', fillOpacity: 0.9 },
+          style: isLoop
+            ? { stroke: '#dc2626', strokeWidth: 2, strokeDasharray: '6 3' }
+            : stroke ? { stroke, strokeWidth: 2 } : undefined,
           animated: isLoop,
           type: 'smoothstep',
         };

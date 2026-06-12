@@ -3,6 +3,7 @@ import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
 import { apiJson } from '../lib/api';
+import { friendlyEdgeLabel, edgeStroke } from './bpmnVisual';
 import ReactFlow, {
   Background,
   Controls,
@@ -110,14 +111,6 @@ function LabeledNode({ data }: { data: any }) {
   );
 }
 
-/** 조건식을 사람이 읽는 분기 라벨로 변환 (저장되는 condition 값은 그대로 유지) */
-function friendlyEdgeLabel(condition?: string, isLoopBack?: boolean): string | undefined {
-  const c = String(condition || '').trim();
-  if (/approval\.status\s*==\s*'APPROVED'/i.test(c)) return '✔ 승인';
-  if (/approval\.status\s*==\s*'REJECTED'/i.test(c)) return isLoopBack ? '✖ 반려 → 다시 작성' : '✖ 반려';
-  if (isLoopBack) return c ? `↩ ${c}` : '↩ 되돌림';
-  return c || undefined;
-}
 
 export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: string; onChangeJson: (t: string) => void; height?: number | string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<any>>([]);
@@ -222,9 +215,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         if (e.condition) edgeData.condition = String(e.condition);
         if (e.isLoopBack) edgeData.isLoopBack = true;
         const cond = e.condition ? String(e.condition) : '';
-        const isApproved = /approval\.status\s*==\s*'APPROVED'/i.test(cond);
-        const isRejected = /approval\.status\s*==\s*'REJECTED'/i.test(cond) || !!e.isLoopBack;
-        const stroke = isRejected ? '#dc2626' : isApproved ? '#16a34a' : undefined;
+        const stroke = edgeStroke(cond, !!e.isLoopBack);
         return {
           id: String(e.id || `${e.source}-${e.target}`),
           source: String(e.source),
