@@ -75,7 +75,30 @@ export function ProcessStart() {
   useEffect(() => {
     if (selectedFull?.title) setCloneTitle(`${selectedFull.title} (사본)`);
   }, [selectedFull?.id]);
-  const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string; orgName?: string; orgUnitId?: string }>>([]);
+  const [orgsFlat, setOrgsFlat] = useState<Array<{ id: string; name: string; type: string; parentId?: string | null }>>([]);
+  // 태스크별 담당자 선택 필터: 실/본부 → 팀
+  const [taskOrgFilter, setTaskOrgFilter] = useState<Record<string, { top?: string; team?: string }>>({});
+  const orgChildren = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const o of orgsFlat) {
+      if (o.parentId) {
+        if (!m.has(o.parentId)) m.set(o.parentId, []);
+        m.get(o.parentId)!.push(o.id);
+      }
+    }
+    return m;
+  }, [orgsFlat]);
+  const orgDescendants = (rootId: string): Set<string> => {
+    const out = new Set<string>([rootId]);
+    const stack = [rootId];
+    while (stack.length) {
+      for (const c of (orgChildren.get(stack.pop()!) || [])) {
+        if (!out.has(c)) { out.add(c); stack.push(c); }
+      }
+    }
+    return out;
+  };
   const [assignees, setAssignees] = useState<Record<string, string[]>>({});
   const [plans, setPlans] = useState<Record<string, { plannedStartAt?: string; plannedEndAt?: string; deadlineAt?: string }>>({});
   const [taskEmails, setTaskEmails] = useState<Record<string, { emailTo?: string; emailCc?: string; emailSubject?: string; emailBody?: string }>>({});
@@ -88,6 +111,27 @@ export function ProcessStart() {
   useEffect(() => {
     setTaskEmails({});
   }, [tplId]);
+
+  // 템플릿의 D+N 기한으로 각 단계 종료 예정일을 자동 계산 (시작 시점 = 오늘 기준, 수정 가능)
+  useEffect(() => {
+    const tasks = selectedFull?.tasks || [];
+    if (!tasks.length) return;
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setPlans((prev) => {
+      const next = { ...prev };
+      for (const t of tasks as any[]) {
+        const off = Number(t?.deadlineOffsetDays);
+        if (!Number.isFinite(off) || off <= 0) continue;
+        const key = String(t.id);
+        const cur = next[key] || {};
+        if (cur.plannedEndAt) continue;
+        const d = new Date(now.getTime() + off * 86400000);
+        next[key] = { ...cur, plannedEndAt: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T18:00` };
+      }
+      return next;
+    });
+  }, [selectedFull?.id]);
 
   // Fallback preview from BPMN if compiled tasks are not present
   const taskPreview: Array<any> = useMemo(() => {
@@ -254,8 +298,12 @@ export function ProcessStart() {
   useEffect(() => {
     (async () => {
       try {
-        const ul = await apiJson<{ items: Array<{ id: string; name: string; orgName?: string }> }>(`/api/users`);
+        const ul = await apiJson<{ items: Array<{ id: string; name: string; orgName?: string; orgUnitId?: string }> }>(`/api/users`);
         setUsers(ul?.items || []);
+      } catch {}
+      try {
+        const og = await apiJson<{ items: Array<{ id: string; name: string; type: string; parentId?: string | null }> }>(`/api/orgs`);
+        setOrgsFlat((og?.items || []).filter((o: any) => !/^personal\s*-/i.test(String(o.name || ''))));
       } catch {}
     })();
   }, []);
@@ -649,29 +697,65 @@ export function ProcessStart() {
                         />
                       )}
                       <div style={{ marginTop: 6 }}>
-                        <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>담당자(복수 선택 가능)</label>
+                        <label style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>담당자 (복수 선택 시 순서대로 처리)</label>
                         {t.__source === 'bpmn' ? (
                           <div style={{ fontSize: 12, color: '#9ca3af' }}>템플릿 저장 후 지정 가능</div>
-                        ) : (
-                          <div style={{ maxHeight: 120, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6, padding: 4 }}>
-                            {users.map((u) => {
-                              const sel = (t.id && (assignees[String(t.id)] || []).includes(u.id)) || false;
-                              return (
-                                <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', cursor: 'pointer', borderRadius: 4, background: sel ? '#EFF6FF' : 'transparent', fontSize: 12 }}>
-                                  <input type="checkbox" checked={sel} onChange={() => {
-                                    if (!t.id) return;
-                                    setAssignees((prev) => {
-                                      const cur = prev[String(t.id)] || [];
-                                      const next = sel ? cur.filter(x => x !== u.id) : [...cur, u.id];
-                                      return { ...prev, [String(t.id)]: next };
-                                    });
-                                  }} />
-                                  <span>{u.name}{u.orgName ? ` · ${u.orgName}` : ''}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
+                        ) : (() => {
+                          const tid = String(t.id);
+                          const selIds = assignees[tid] || [];
+                          const filt = taskOrgFilter[tid] || {};
+                          const tops = orgsFlat.filter((o) => !o.parentId);
+                          const teamScope = filt.top ? orgDescendants(filt.top) : null;
+                          const teams = orgsFlat.filter((o) => !teamScope || teamScope.has(o.id));
+                          const pool = users.filter((u) => {
+                            if (filt.team) return u.orgUnitId === filt.team;
+                            if (teamScope) return !!u.orgUnitId && teamScope.has(u.orgUnitId);
+                            return true;
+                          });
+                          const nameOf = (uid: string) => {
+                            const u = users.find((x) => x.id === uid);
+                            return u ? `${u.name}${u.orgName ? ` · ${u.orgName}` : ''}` : uid;
+                          };
+                          return (
+                            <div style={{ display: 'grid', gap: 6 }}>
+                              {selIds.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                  {selIds.map((uid, idx) => (
+                                    <span key={uid} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, background: '#EFF6FF', border: '1px solid #bfdbfe', borderRadius: 999, padding: '2px 8px' }}>
+                                      {selIds.length > 1 && <b style={{ color: '#1d4ed8' }}>{idx + 1}</b>}
+                                      {nameOf(uid)}
+                                      <span style={{ cursor: 'pointer', color: '#64748b', fontWeight: 700 }}
+                                        onClick={() => setAssignees((prev) => ({ ...prev, [tid]: (prev[tid] || []).filter((x) => x !== uid) }))}>×</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr', gap: 6 }}>
+                                <select value={filt.top || ''} onChange={(e) => setTaskOrgFilter((prev) => ({ ...prev, [tid]: { top: e.target.value || undefined, team: undefined } }))}>
+                                  <option value="">실/본부 전체</option>
+                                  {tops.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                </select>
+                                <select value={filt.team || ''} onChange={(e) => setTaskOrgFilter((prev) => ({ ...prev, [tid]: { ...prev[tid], team: e.target.value || undefined } }))}>
+                                  <option value="">팀 전체</option>
+                                  {teams.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                </select>
+                                <select value="" onChange={(e) => {
+                                  const v = e.target.value;
+                                  if (!v) return;
+                                  setAssignees((prev) => {
+                                    const cur = prev[tid] || [];
+                                    return cur.includes(v) ? prev : { ...prev, [tid]: [...cur, v] };
+                                  });
+                                }}>
+                                  <option value="">담당자 추가... ({pool.length}명)</option>
+                                  {pool.map((u) => (
+                                    <option key={u.id} value={u.id} disabled={selIds.includes(u.id)}>{u.name}{u.orgName ? ` (${u.orgName})` : ''}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="resp-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 8 }}>
                         <label>
@@ -683,7 +767,12 @@ export function ProcessStart() {
                           />
                         </label>
                         <label>
-                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>종료</span>
+                          <span style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
+                            종료
+                            {Number((t as any).deadlineOffsetDays) > 0 && (
+                              <span style={{ marginLeft: 6, color: '#d97706', fontWeight: 700 }}>D+{(t as any).deadlineOffsetDays} 자동 계산됨</span>
+                            )}
+                          </span>
                           <input type="datetime-local"
                             value={(t.id && plans[String(t.id)]?.plannedEndAt) || ''}
                             onChange={(e) => t.id && setPlans((prev) => ({ ...prev, [String(t.id)]: { ...prev[String(t.id)], plannedEndAt: e.target.value } }))}

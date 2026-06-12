@@ -281,6 +281,35 @@ export function ProcessFromManual() {
             <input value={bpmnTitle} onChange={(e) => setBpmnTitle(e.target.value)} />
           </label>
           <div style={{ fontSize: 12, color: '#64748b' }}>업무 단계 {taskCount}개</div>
+          {/* 단계별 기한 일괄 입력 — 시작 후 D+일, 그래프 노드와 양방향 동기화 */}
+          {(() => {
+            let j: any;
+            try { j = JSON.parse(bpmnJsonText || '{}'); } catch { return null; }
+            const taskNodes = (j?.nodes || []).filter((n: any) => String(n?.type) === 'task');
+            if (!taskNodes.length) return null;
+            const setOffset = (nodeId: string, v: number | undefined) => {
+              const next = { ...j, nodes: j.nodes.map((n: any) => (String(n.id) === nodeId ? { ...n, deadlineOffsetDays: v } : n)) };
+              setBpmnJsonText(JSON.stringify(next, null, 2));
+            };
+            return (
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>단계별 완료 기한 <span style={{ fontWeight: 400, color: '#64748b' }}>— 프로세스 시작 후 며칠(D+일) 안에 끝나야 하는지. 시작할 때 날짜로 자동 계산됩니다.</span></div>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  {taskNodes.map((n: any) => (
+                    <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                      <span style={{ flex: 1 }}>{n.name}</span>
+                      <span style={{ color: '#94a3b8', fontSize: 11 }}>D+</span>
+                      <input type="number" min={1} style={{ width: 70 }}
+                        value={n.deadlineOffsetDays ?? ''}
+                        placeholder="일"
+                        onChange={(e) => setOffset(String(n.id), e.target.value ? Number(e.target.value) : undefined)} />
+                      {!n.deadlineOffsetDays && <span style={{ color: '#d97706', fontSize: 11 }}>미입력</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} height={560} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn" onClick={() => setStep(questions.length ? 2 : 1)} disabled={!!loading}>← 이전</button>
