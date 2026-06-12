@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { AuditLogService } from './audit-log.service';
 
 type CreateInitiativeDto = {
   title: string;
@@ -37,7 +38,7 @@ type AddProgressDto = {
 
 @Controller('key-initiatives')
 export class KeyInitiativesController {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private audit: AuditLogService) {}
 
   @Get()
   async list(
@@ -247,6 +248,7 @@ export class KeyInitiativesController {
       },
     });
 
+    await this.audit.log('KeyInitiative', id, 'KeyInitiativeUpdated', actorId, this.audit.diff(existing, dto, ['title', 'goal', 'description', 'priority', 'status', 'assigneeId', 'orgUnitId', 'alignsToObjectiveId', 'startDate', 'dueDate', 'completedAt']));
     return updated;
   }
 
@@ -260,8 +262,12 @@ export class KeyInitiativesController {
     const role = String((actor as any)?.role || '');
     const allowed = role === 'CEO' || existing.createdById === actorId;
     if (!allowed) throw new ForbiddenException('본인이 등록한 과제만 삭제할 수 있습니다');
+    const progressCount = await (this.prisma as any).keyInitiativeProgress.count({ where: { initiativeId: id } });
     await (this.prisma as any).keyInitiativeProgress.deleteMany({ where: { initiativeId: id } });
     await (this.prisma as any).keyInitiative.delete({ where: { id } });
+    await this.audit.log('KeyInitiative', id, 'KeyInitiativeDeleted', actorId, {
+      snapshot: { title: existing.title, status: existing.status, assigneeId: existing.assigneeId, createdById: existing.createdById, orgUnitId: existing.orgUnitId, dueDate: existing.dueDate, deletedProgressCount: progressCount },
+    });
     return { success: true };
   }
 
@@ -317,8 +323,20 @@ export class KeyInitiativesController {
     @Param('progressId') progressId: string,
     @Query('actorId') actorId?: string,
   ) {
+    const existing = await (this.prisma as any).keyInitiativeProgress.findUnique({ where: { id: progressId } });
+    if (!existing) throw new NotFoundException('진행 기록을 찾을 수 없습니다');
+    // 본인이 작성한 진행 기록만 삭제 가능 (대표는 전체 허용)
+    if (!actorId) throw new BadRequestException('actorId 필요');
+    const actor = await this.prisma.user.findUnique({ where: { id: actorId } });
+    const role = String((actor as any)?.role || '');
+    if (!(role === 'CEO' || existing.createdById === actorId)) {
+      throw new ForbiddenException('본인이 작성한 진행 기록만 삭제할 수 있습니다');
+    }
     await (this.prisma as any).keyInitiativeProgress.delete({
       where: { id: progressId },
+    });
+    await this.audit.log('KeyInitiativeProgress', progressId, 'KeyInitiativeProgressDeleted', actorId, {
+      snapshot: { initiativeId: id, content: existing.content, progressPct: existing.progressPct, createdById: existing.createdById },
     });
     return { success: true };
   }

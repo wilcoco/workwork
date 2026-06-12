@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Put, Query, Delete, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { IsDateString, IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
+import { AuditLogService } from './audit-log.service';
 
 class CreateObjectiveDto {
   @IsString() @IsNotEmpty() userId!: string;
@@ -72,7 +73,7 @@ class UpdateKeyResultDto {
 
 @Controller('okrs')
 export class OkrsController {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private audit: AuditLogService) {}
 
   // Recursively delete an Objective: delete its KRs (and their initiatives + child objectives aligned to those KRs),
   // delete child Objectives by parentId as well, then delete the Objective itself.
@@ -317,6 +318,7 @@ export class OkrsController {
       pillar: (dto.pillar as any) ?? undefined,
     };
     const rec = await this.prisma.objective.update({ where: { id }, data });
+    await this.audit.log('Objective', id, 'ObjectiveUpdated', userId, this.audit.diff(exists, dto, ['title', 'description', 'periodStart', 'periodEnd', 'pillar']));
     return rec;
   }
 
@@ -345,6 +347,7 @@ export class OkrsController {
       analysis25: typeof dto.analysis25 === 'string' ? dto.analysis25 : undefined,
     };
     const rec = await this.prisma.keyResult.update({ where: { id }, data });
+    await this.audit.log('KeyResult', id, 'KrUpdated', userId, this.audit.diff(kr, dto, ['title', 'metric', 'target', 'unit', 'weight', 'type', 'pillar', 'baseline', 'year25Target', 'direction', 'cadence', 'analysis25']));
     return rec;
   }
 
@@ -405,6 +408,9 @@ export class OkrsController {
     await this.prisma.$transaction(async (tx) => {
       await this.deleteObjectiveCascade(id, tx);
     });
+    await this.audit.log('Objective', id, 'ObjectiveDeleted', userId, {
+      snapshot: { title: exists.title, ownerId: exists.ownerId, orgUnitId: (exists as any).orgUnitId, periodStart: exists.periodStart, periodEnd: exists.periodEnd, pillar: (exists as any).pillar, context },
+    });
     return { ok: true };
   }
 
@@ -434,6 +440,9 @@ export class OkrsController {
     console.log('[okrs] deleteKr', { id, DATABASE_URL: process.env.DATABASE_URL, context, role: user.role, sameTeam });
     await this.prisma.$transaction(async (tx) => {
       await this.deleteKrCascade(id, tx);
+    });
+    await this.audit.log('KeyResult', id, 'KrDeleted', userId, {
+      snapshot: { title: kr.title, metric: kr.metric, target: kr.target, unit: kr.unit, ownerId: kr.ownerId, objectiveId: kr.objectiveId, objectiveTitle: (kr as any).objective?.title, context },
     });
     return { ok: true };
   }

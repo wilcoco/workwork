@@ -56,6 +56,7 @@ import { GoalsDashboardController } from './goals-dashboard.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 import { ProcessSchedulerService } from './process-scheduler.service';
 import { DataverseService } from './dataverse.service';
+import { AuditLogService } from './audit-log.service';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true })],
@@ -112,6 +113,7 @@ import { DataverseService } from './dataverse.service';
   ],
   providers: [
     PrismaService,
+    AuditLogService,
     TeamsNotificationService,
     ProcessDeadlineService,
     ProcessSchedulerService,
