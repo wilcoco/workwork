@@ -45,6 +45,8 @@ import { AttendanceReport } from './pages/AttendanceReport';
 import { OtVerification } from './pages/OtVerification';
 import { AccessRecordReport } from './pages/AccessRecordReport';
 import { KeyInitiatives } from './pages/KeyInitiatives';
+import { MyGoalsDashboard } from './pages/MyGoalsDashboard';
+import { OrgGoalsOverview } from './pages/OrgGoalsOverview';
 import { AdminHolidays } from './pages/AdminHolidays';
 import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
 import { ProcessMy } from './pages/ProcessMy';
@@ -371,6 +373,8 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/attendance/ot-verification" element={<OtVerification />} />
           <Route path="/attendance/access-report" element={<AccessRecordReport />} />
           <Route path="/key-initiatives" element={<KeyInitiatives />} />
+          <Route path="/goals/my" element={<MyGoalsDashboard />} />
+          <Route path="/goals/overview" element={<OrgGoalsOverview />} />
           <Route path="/business-trip/request" element={<BusinessTripRequest />} />
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
           <Route path="/process/dashboard" element={<ProcessDashboard />} />
@@ -472,11 +476,13 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           {canEvaluate && <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>}
           <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
-        <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives')}>
-          <Link to="/okr/input">OKR 입력</Link>
-          <Link to="/okr/tree">OKR 조회</Link>
-          <Link to="/okr/team">팀 KPI 입력</Link>
-          <Link to="/okr/team-board">팀 KPI 조회</Link>
+        <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives') || location.pathname.startsWith('/goals')}>
+          <Link to="/goals/my">내 업무 과제</Link>
+          {canEvaluate && <Link to="/goals/overview">전사 목표 현황</Link>}
+          <Link to="/okr/input">정성 목표 (OKR) 입력</Link>
+          <Link to="/okr/tree">정성 목표 (OKR) 조회</Link>
+          <Link to="/okr/team">정량 목표 (팀 KPI) 입력</Link>
+          <Link to="/okr/team-board">정량 목표 (팀 KPI) 조회</Link>
           <Link to="/key-initiatives">중점 추진 과제</Link>
         </NavDropdown>
         {SHOW_APPROVALS && (
@@ -676,20 +682,23 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         ? [...base.slice(0, 4), { to: '/worklogs/eval-monthly', label: '업무 평가 리포트' }, ...base.slice(4)]
         : base;
     }
-    if (path.startsWith('/okr')) {
-      return [
-        { to: '/okr/input', label: 'OKR 입력' },
-        { to: '/okr/tree', label: 'OKR 조회' },
-        { to: '/okr/team', label: '팀 KPI 입력' },
-        { to: '/okr/team-board', label: '팀 KPI 조회' },
+    if (path.startsWith('/okr') || path.startsWith('/goals')) {
+      const base = [
+        { to: '/goals/my', label: '내 업무 과제' },
+        { to: '/okr/input', label: '정성 목표 (OKR) 입력' },
+        { to: '/okr/tree', label: '정성 목표 (OKR) 조회' },
+        { to: '/okr/team', label: '정량 목표 (팀 KPI) 입력' },
+        { to: '/okr/team-board', label: '정량 목표 (팀 KPI) 조회' },
         { to: '/key-initiatives', label: '중점 추진 과제' },
       ];
+      return canEvaluate ? [base[0], { to: '/goals/overview', label: '전사 목표 현황' }, ...base.slice(1)] : base;
     }
     if (path.startsWith('/key-initiatives')) {
       return [
         { to: '/key-initiatives', label: '중점 추진 과제' },
-        { to: '/okr/input', label: 'OKR 입력' },
-        { to: '/okr/tree', label: 'OKR 조회' },
+        { to: '/goals/my', label: '내 업무 과제' },
+        { to: '/okr/input', label: '정성 목표 (OKR) 입력' },
+        { to: '/okr/tree', label: '정성 목표 (OKR) 조회' },
       ];
     }
     if (SHOW_APPROVALS && path.startsWith('/approvals')) {
