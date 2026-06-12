@@ -510,15 +510,14 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/attendance/access-report">입출입 리포트</Link>
           <Link to="/business-trip/request">출장 신청</Link>
         </NavDropdown>
-        <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
+        <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process') || location.pathname.startsWith('/manuals')}>
           <Link to={`/process/start?return=${encodeURIComponent(location.pathname + location.search)}`}>새 프로세스 시작</Link>
           <Link to="/process/inbox">내 할 일</Link>
           <Link to="/process/my">참여 프로세스</Link>
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
-        </NavDropdown>
-        <NavDropdown label="매뉴얼" active={location.pathname.startsWith('/manuals')}>
           <Link to="/manuals">업무 메뉴얼</Link>
+          <Link to="/manuals/ext">매뉴얼 → 프로세스 생성 (AI)</Link>
         </NavDropdown>
         <NavDropdown label="회의록" active={location.pathname.startsWith('/meetings')}>
           <Link to="/meetings">회의록</Link>
@@ -737,18 +736,15 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/admin/tools', label: '시스템 도구' },
       ];
     }
-    if (path.startsWith('/process')) {
+    if (path.startsWith('/process') || path.startsWith('/manuals')) {
       return [
         { to: '/process/start', label: '새 프로세스 시작' },
         { to: '/process/inbox', label: '내 할 일' },
         { to: '/process/my', label: '참여 프로세스' },
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         { to: '/process/templates', label: '프로세스 템플릿' },
-      ];
-    }
-    if (path.startsWith('/manuals')) {
-      return [
         { to: '/manuals', label: '업무 메뉴얼' },
+        { to: '/manuals/ext', label: '매뉴얼 → 프로세스 생성 (AI)' },
       ];
     }
     if (path.startsWith('/meetings')) {

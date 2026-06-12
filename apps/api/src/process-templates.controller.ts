@@ -398,6 +398,7 @@ export class ProcessTemplatesController {
       status,
       bpmnJson,
       tasks,
+      sourceManualId,
     } = body;
 
     if (!ownerId) {
@@ -429,6 +430,7 @@ export class ProcessTemplatesController {
             orgUnitId: orgUnitId ?? owner.orgUnitId ?? undefined,
             recurrenceType,
             recurrenceDetail,
+            sourceManualId: sourceManualId ? String(sourceManualId) : undefined,
             bpmnJson,
             resultInputRequired,
             expectedDurationDays,

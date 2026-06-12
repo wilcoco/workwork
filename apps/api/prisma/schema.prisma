@@ -814,6 +814,7 @@ model ProcessTemplate {
   orgUnit                    OrgUnit?           @relation(fields: [orgUnitId], references: [id])
   recurrenceType             String?
   recurrenceDetail           String?
+  sourceManualId             String? // 이 템플릿을 생성한 업무 매뉴얼 (WorkManual.id, 느슨한 연결)
   scheduleEnabled            Boolean            @default(false)
   scheduleNextRunAt          DateTime?
   scheduleLastRunAt          DateTime?

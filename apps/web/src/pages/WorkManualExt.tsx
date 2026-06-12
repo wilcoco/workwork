@@ -744,6 +744,7 @@ export function WorkManualExt() {
             visibility: 'PRIVATE',
             bpmnJson,
             tasks: [],
+            sourceManualId: manual.id,
           }),
         });
         const tmplId = String(created?.id || '').trim();

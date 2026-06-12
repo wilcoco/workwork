@@ -44,6 +44,7 @@ interface ProcessTemplateDto {
   allowExtendDeadline?: boolean;
   status?: string;
   official?: boolean;
+  sourceManualId?: string;
   tasks: ProcessTaskTemplateDto[];
   createdAt?: string;
   updatedAt?: string;
@@ -734,6 +735,7 @@ export function ProcessTemplates() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <h2>프로세스 템플릿 목록</h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn" onClick={() => nav('/manuals/ext')}>매뉴얼에서 AI로 생성</button>
             <button className="btn btn-primary" onClick={newTemplate}>새 템플릿</button>
           </div>
         </div>
@@ -823,6 +825,14 @@ export function ProcessTemplates() {
                 ) : null}
                 {String(editing.status || 'ACTIVE').toUpperCase() === 'DRAFT' && String(editing.ownerId || '') === String(userId || '') ? (
                   <button className="btn btn-primary" onClick={publishTemplate} disabled={!editing?.id}>게시</button>
+                ) : null}
+                {editing?.sourceManualId ? (
+                  <span
+                    onClick={() => nav('/manuals')}
+                    title="이 템플릿은 업무 매뉴얼에서 AI로 생성되었습니다. 클릭하면 매뉴얼 목록으로 이동합니다."
+                    style={{ fontSize: 12, color: '#1d4ed8', background: '#dbeafe', border: '1px solid #93c5fd', padding: '2px 6px', borderRadius: 6, cursor: 'pointer' }}>
+                    📖 매뉴얼에서 생성됨
+                  </span>
                 ) : null}
                 {editing?.official ? (
                   <span style={{ fontSize: 12, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '2px 6px', borderRadius: 6 }}>★ 공식 템플릿</span>
