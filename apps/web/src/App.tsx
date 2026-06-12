@@ -47,6 +47,7 @@ import { AccessRecordReport } from './pages/AccessRecordReport';
 import { KeyInitiatives } from './pages/KeyInitiatives';
 import { MyGoalsDashboard } from './pages/MyGoalsDashboard';
 import { OrgGoalsOverview } from './pages/OrgGoalsOverview';
+import { OkrKpiGuide } from './pages/OkrKpiGuide';
 import { AdminHolidays } from './pages/AdminHolidays';
 import { ProcessInstanceDetail } from './pages/ProcessInstanceDetail';
 import { ProcessMy } from './pages/ProcessMy';
@@ -108,14 +109,14 @@ function getPageGuide(path: string, SHOW_APPROVALS: boolean, SHOW_COOPS: boolean
   if (path === '/' || path.startsWith('/login') || path.startsWith('/signup') || path.startsWith('/auth/')) return null;
   if (path === '/quick' || path.startsWith('/search') || path.startsWith('/worklogs')) return null;
 
-  if (path.startsWith('/okr') || path === '/me/goals' || path === '/okr-map') {
+  if (path.startsWith('/okr') || path === '/me/goals' || path === '/okr-map' || path.startsWith('/goals')) {
     return {
       title: '목표관리',
       items: [
-        'OKR 입력에서 개인/팀 OKR을 등록합니다. 저장 후 목록/트리에서 바로 확인됩니다.',
-        'OKR 조회(트리)에서 상위 목표–KR–세부 과제 흐름을 확인하고, 필요한 항목을 클릭해 상세로 이동합니다.',
-        '팀 KPI 입력에서 팀 KPI를 등록하고(평가 주기/기준값 포함), 운영 방식에 맞게 지표를 관리합니다.',
-        '팀 KPI 조회에서 KPI 현황을 한눈에 확인합니다.',
+        '입력 순서: ① 대표/임원이 정성 목표(OKR)에서 회사·실 목표 정의 → ② 팀장이 팀 OKR 전개 + 정량 목표(팀 KPI) 등록·담당자 지정 → ③ 담당자가 업무일지로 실적 입력. 자세한 안내는 "입력 가이드" 메뉴를 참고하세요.',
+        '내 업무 과제에서 나에게 할당된 정량 지표·정성 과제·중점 과제를 한눈에 확인합니다.',
+        '정량 목표(팀 KPI)는 지표값(숫자)으로, 정성 목표(OKR)·중점 추진 과제는 진행 내용으로 업무일지에서 입력합니다.',
+        '전사 목표 현황(팀장 이상)에서 실·팀·개인별 진행상황을 모니터링합니다.',
       ],
     };
   }
@@ -375,6 +376,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/key-initiatives" element={<KeyInitiatives />} />
           <Route path="/goals/my" element={<MyGoalsDashboard />} />
           <Route path="/goals/overview" element={<OrgGoalsOverview />} />
+          <Route path="/goals/guide" element={<OkrKpiGuide />} />
           <Route path="/business-trip/request" element={<BusinessTripRequest />} />
           <Route path="/process/instances/:id" element={<ProcessInstanceDetail />} />
           <Route path="/process/dashboard" element={<ProcessDashboard />} />
@@ -477,6 +479,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
         <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives') || location.pathname.startsWith('/goals')}>
+          <Link to="/goals/guide">📖 입력 가이드</Link>
           <Link to="/goals/my">내 업무 과제</Link>
           {canEvaluate && <Link to="/goals/overview">전사 목표 현황</Link>}
           <Link to="/okr/input">정성 목표 (OKR) 입력</Link>
@@ -683,6 +686,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
     }
     if (path.startsWith('/okr') || path.startsWith('/goals')) {
       const base = [
+        { to: '/goals/guide', label: '입력 가이드' },
         { to: '/goals/my', label: '내 업무 과제' },
         { to: '/okr/input', label: '정성 목표 (OKR) 입력' },
         { to: '/okr/tree', label: '정성 목표 (OKR) 조회' },
