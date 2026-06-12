@@ -17,6 +17,56 @@ export function OkrTree() {
   const [filterTeamId, setFilterTeamId] = useState<string>('');
   const [filterUserId, setFilterUserId] = useState<string>('');
   const [isMobile, setIsMobile] = useState(false);
+  // 인라인 수정 상태 (본인 작성분 또는 대표)
+  const [editObj, setEditObj] = useState<{ id: string; title: string; description: string } | null>(null);
+  const [editKr, setEditKr] = useState<{ id: string; title: string; metric: string; target: string; unit: string } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+
+  async function reloadMap() {
+    const r = await apiJson<{ items: any[] }>(`/api/okrs/map`);
+    setItems(r.items || []);
+  }
+
+  async function saveEditObj() {
+    if (!editObj) return;
+    if (!editObj.title.trim()) { alert('제목을 입력하세요'); return; }
+    setEditSaving(true);
+    try {
+      await apiJson(`/api/okrs/objectives/${encodeURIComponent(editObj.id)}?userId=${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ title: editObj.title, description: editObj.description || undefined }),
+      });
+      setEditObj(null);
+      await reloadMap();
+    } catch (e: any) {
+      alert(e?.message || '수정 실패');
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function saveEditKr() {
+    if (!editKr) return;
+    if (!editKr.title.trim()) { alert('제목을 입력하세요'); return; }
+    setEditSaving(true);
+    try {
+      await apiJson(`/api/okrs/krs/${encodeURIComponent(editKr.id)}?userId=${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: editKr.title,
+          metric: editKr.metric || undefined,
+          target: editKr.target !== '' ? Number(editKr.target) : undefined,
+          unit: editKr.unit || undefined,
+        }),
+      });
+      setEditKr(null);
+      await reloadMap();
+    } catch (e: any) {
+      alert(e?.message || '수정 실패');
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   function roleLabel(r?: string) {
     if (r === 'CEO') return '대표';
@@ -182,24 +232,53 @@ export function OkrTree() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ background: '#E6EEF7', color: '#0F3D73', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>{`${roleLabel(o.owner?.role)}-${o.owner?.name || ''}`}</div>
           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{(o.periodStart ? formatKstDatetime(o.periodStart) : '-') + ' ~ ' + (o.periodEnd ? formatKstDatetime(o.periodEnd) : '-')}</div>
-          {myRole === 'CEO' && (
-            <button
-              className="btn btn-ghost"
-              onClick={async () => {
-                if (!confirm('해당 Objective를 삭제할까요?')) return;
-                try {
-                  await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
-                  const r = await apiJson<{ items: any[] }>(`/api/okrs/map`);
-                  setItems(r.items || []);
-                } catch (e: any) {
-                  alert(e?.message || '삭제 실패');
-                }
-              }}
-            >삭제</button>
+          {(myRole === 'CEO' || o.owner?.id === userId) && (
+            <>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setEditObj({ id: o.id, title: o.title || '', description: o.description || '' })}
+              >수정</button>
+              <button
+                className="btn btn-ghost"
+                onClick={async () => {
+                  if (!confirm('해당 Objective를 삭제할까요?\n하위 KR/과제/진척 기록이 함께 삭제됩니다.')) return;
+                  try {
+                    await apiJson(`/api/okrs/objectives/${encodeURIComponent(o.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                    await reloadMap();
+                  } catch (e: any) {
+                    alert(e?.message || '삭제 실패');
+                  }
+                }}
+              >삭제</button>
+            </>
           )}
         </div>
-        <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{o.title}</div>
-        {o.description && <div style={{ marginTop: 6, color: '#374151' }}>{o.description}</div>}
+        {editObj && editObj.id === o.id ? (
+          <div style={{ marginTop: 8, display: 'grid', gap: 6, background: '#F8FAFC', border: '1px solid #cbd5e1', borderRadius: 8, padding: 10 }}>
+            <input
+              value={editObj.title}
+              onChange={(e) => setEditObj((p) => (p ? { ...p, title: e.target.value } : p))}
+              placeholder="Objective 제목"
+              style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 14, fontWeight: 700 }}
+            />
+            <textarea
+              value={editObj.description}
+              onChange={(e) => setEditObj((p) => (p ? { ...p, description: e.target.value } : p))}
+              placeholder="설명 (선택)"
+              rows={2}
+              style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13, resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setEditObj(null)} disabled={editSaving}>취소</button>
+              <button className="btn" onClick={saveEditObj} disabled={editSaving} style={{ background: '#0F3D73', color: '#fff' }}>{editSaving ? '저장 중…' : '저장'}</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ marginTop: 6, fontWeight: 700, fontSize: 18 }}>{o.title}</div>
+            {o.description && <div style={{ marginTop: 6, color: '#374151' }}>{o.description}</div>}
+          </>
+        )}
 
         {/* KRs */}
         {o.keyResults?.length > 0 && (
@@ -291,26 +370,45 @@ export function OkrTree() {
                     <span style={{ fontSize: 12, fontWeight: 700, color: krProg[kr.id]?.warn ? '#991b1b' : '#0f172a' }}>
                       {'달성: '}{krProg[kr.id]?.latestValue == null ? '-' : `${krProg[kr.id]?.latestValue}${kr.unit ? ' ' + kr.unit : ''}`}
                     </span>
-                    {myRole === 'CEO' && (
-                      <button
-                        className="btn btn-ghost"
-                        onClick={async () => {
-                          if (!confirm('해당 KR을 삭제할까요?')) return;
-                          try {
-                            await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
-                            const r = await apiJson<{ items: any[] }>(`/api/okrs/map`);
-                            setItems(r.items || []);
-                          } catch (e: any) {
-                            alert(e?.message || '삭제 실패');
-                          }
-                        }}
-                      >삭제</button>
+                    {(myRole === 'CEO' || kr.ownerId === userId || o.owner?.id === userId) && (
+                      <>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => setEditKr({ id: kr.id, title: kr.title || '', metric: kr.metric || '', target: kr.target != null ? String(kr.target) : '', unit: kr.unit || '' })}
+                        >수정</button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={async () => {
+                            if (!confirm('해당 KR을 삭제할까요?\n하위 과제/진척 기록이 함께 삭제됩니다.')) return;
+                            try {
+                              await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+                              await reloadMap();
+                            } catch (e: any) {
+                              alert(e?.message || '삭제 실패');
+                            }
+                          }}
+                        >삭제</button>
+                      </>
                     )}
                     <button className="btn btn-ghost" onClick={() => setExpanded((prev) => ({ ...prev, [kr.id]: !isOpen }))}>
                       {isOpen ? '접기' : `하위 보기 (${(kr.children || []).length})`}
                     </button>
                   </div>
                 </div>
+                {editKr && editKr.id === kr.id && (
+                  <div style={{ marginTop: 8, display: 'grid', gap: 6, background: '#F8FAFC', border: '1px solid #cbd5e1', borderRadius: 8, padding: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1fr', gap: 6 }}>
+                      <input value={editKr.title} onChange={(e) => setEditKr((p) => (p ? { ...p, title: e.target.value } : p))} placeholder="KR 제목" style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }} />
+                      <input value={editKr.metric} onChange={(e) => setEditKr((p) => (p ? { ...p, metric: e.target.value } : p))} placeholder="지표명" style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }} />
+                      <input type="number" step="any" value={editKr.target} onChange={(e) => setEditKr((p) => (p ? { ...p, target: e.target.value } : p))} placeholder="목표값" style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }} />
+                      <input value={editKr.unit} onChange={(e) => setEditKr((p) => (p ? { ...p, unit: e.target.value } : p))} placeholder="단위" style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button className="btn btn-ghost" onClick={() => setEditKr(null)} disabled={editSaving}>취소</button>
+                      <button className="btn" onClick={saveEditKr} disabled={editSaving} style={{ background: '#0F3D73', color: '#fff' }}>{editSaving ? '저장 중…' : '저장'}</button>
+                    </div>
+                  </div>
+                )}
                 {/* Child objectives under this KR */}
                 {isOpen && kr.children?.length > 0 && (
                   <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>

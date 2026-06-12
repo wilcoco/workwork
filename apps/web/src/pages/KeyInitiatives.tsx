@@ -55,6 +55,7 @@ export function KeyInitiatives() {
   const [items, setItems] = useState<InitiativeItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [myRole, setMyRole] = useState<string>('');
 
   const [filterStatus, setFilterStatus] = useState('');
   const [users, setUsers] = useState<User[]>([]);
@@ -84,7 +85,18 @@ export function KeyInitiatives() {
     loadUsers();
     loadOrgUnits();
     loadObjectives();
+    (async () => {
+      try {
+        const me = await apiJson<{ role?: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        setMyRole(me?.role || '');
+      } catch {}
+    })();
   }, []);
+
+  // 수정: 등록자/담당자/대표/임원, 삭제: 등록자/대표
+  const canEditItem = (it: InitiativeItem) =>
+    myRole === 'CEO' || myRole === 'EXEC' || it.createdBy?.id === userId || it.assignee?.id === userId;
+  const canDeleteItem = (it: InitiativeItem) => myRole === 'CEO' || it.createdBy?.id === userId;
 
   async function loadData() {
     setLoading(true);
@@ -446,18 +458,22 @@ export function KeyInitiatives() {
                   </td>
                   <td style={td} onClick={(e) => e.stopPropagation()}>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button
-                        onClick={() => startEdit(item)}
-                        style={{ padding: '2px 8px', fontSize: 11, background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                      >
-                        수정
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        style={{ padding: '2px 8px', fontSize: 11, background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-                      >
-                        삭제
-                      </button>
+                      {canEditItem(item) && (
+                        <button
+                          onClick={() => startEdit(item)}
+                          style={{ padding: '2px 8px', fontSize: 11, background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                        >
+                          수정
+                        </button>
+                      )}
+                      {canDeleteItem(item) && (
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          style={{ padding: '2px 8px', fontSize: 11, background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                        >
+                          삭제
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -300,7 +300,15 @@ export class OkrsController {
   }
 
   @Put('objectives/:id')
-  async updateObjective(@Param('id') id: string, @Body() dto: UpdateObjectiveDto) {
+  async updateObjective(@Param('id') id: string, @Body() dto: UpdateObjectiveDto, @Query('userId') userId?: string) {
+    // 본인(Objective owner) 또는 대표만 수정 가능
+    if (!userId) throw new BadRequestException('userId required');
+    const exists = await this.prisma.objective.findUnique({ where: { id } });
+    if (!exists) throw new NotFoundException('objective not found');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor) throw new ForbiddenException('not allowed');
+    const allowed = (actor.role as any) === 'CEO' || exists.ownerId === userId;
+    if (!allowed) throw new ForbiddenException('본인이 작성한 목표만 수정할 수 있습니다');
     const data: any = {
       title: dto.title,
       description: dto.description,
@@ -313,7 +321,15 @@ export class OkrsController {
   }
 
   @Put('krs/:id')
-  async updateKr(@Param('id') id: string, @Body() dto: UpdateKeyResultDto) {
+  async updateKr(@Param('id') id: string, @Body() dto: UpdateKeyResultDto, @Query('userId') userId?: string) {
+    // 본인(KR owner 또는 상위 Objective owner) 또는 대표만 수정 가능
+    if (!userId) throw new BadRequestException('userId required');
+    const kr = await this.prisma.keyResult.findUnique({ where: { id }, include: { objective: true } });
+    if (!kr) throw new NotFoundException('key result not found');
+    const actor = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!actor) throw new ForbiddenException('not allowed');
+    const allowed = (actor.role as any) === 'CEO' || kr.ownerId === userId || (kr as any).objective?.ownerId === userId;
+    if (!allowed) throw new ForbiddenException('본인이 작성한 KR만 수정할 수 있습니다');
     const data: any = {
       title: dto.title,
       metric: dto.metric,
@@ -406,9 +422,9 @@ export class OkrsController {
     const execIsParent = isExec && !!(kr.objective as any)?.orgUnit?.parentId && user.orgUnitId === (kr.objective as any).orgUnit.parentId;
     // Allow CEO always
     let allowed = isCEO;
-    // Allow owner for general OKR
+    // Allow owner for general OKR (KR owner 또는 상위 Objective owner)
     if (!allowed && (!context || context !== 'team')) {
-      allowed = kr.ownerId === userId;
+      allowed = kr.ownerId === userId || (kr as any).objective?.ownerId === userId;
     }
     // Team KPI context: allow EXEC/MANAGER when same team
     if (!allowed && context === 'team') {

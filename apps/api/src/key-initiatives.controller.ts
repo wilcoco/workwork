@@ -1,8 +1,11 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -202,6 +205,14 @@ export class KeyInitiativesController {
     @Body() dto: UpdateInitiativeDto,
     @Query('actorId') actorId?: string,
   ) {
+    // 본인이 등록했거나 담당자인 과제만 수정 가능 (대표/임원은 전체 허용)
+    if (!actorId) throw new BadRequestException('actorId 필요');
+    const existing = await (this.prisma as any).keyInitiative.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('과제를 찾을 수 없습니다');
+    const actor = await this.prisma.user.findUnique({ where: { id: actorId } });
+    const role = String((actor as any)?.role || '');
+    const allowed = role === 'CEO' || role === 'EXEC' || existing.createdById === actorId || existing.assigneeId === actorId;
+    if (!allowed) throw new ForbiddenException('본인이 등록했거나 담당자인 과제만 수정할 수 있습니다');
     const data: any = {};
 
     if (dto.title !== undefined) data.title = dto.title;
@@ -241,6 +252,15 @@ export class KeyInitiativesController {
 
   @Delete(':id')
   async delete(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    // 본인이 등록한 과제만 삭제 가능 (대표는 전체 허용)
+    if (!actorId) throw new BadRequestException('actorId 필요');
+    const existing = await (this.prisma as any).keyInitiative.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('과제를 찾을 수 없습니다');
+    const actor = await this.prisma.user.findUnique({ where: { id: actorId } });
+    const role = String((actor as any)?.role || '');
+    const allowed = role === 'CEO' || existing.createdById === actorId;
+    if (!allowed) throw new ForbiddenException('본인이 등록한 과제만 삭제할 수 있습니다');
+    await (this.prisma as any).keyInitiativeProgress.deleteMany({ where: { initiativeId: id } });
     await (this.prisma as any).keyInitiative.delete({ where: { id } });
     return { success: true };
   }
