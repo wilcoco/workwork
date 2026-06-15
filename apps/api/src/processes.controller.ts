@@ -1777,6 +1777,23 @@ export class ProcessesController {
     // Clear old deadline alerts so they get re-scheduled for the reactivated task
     await tx.processDeadlineAlert.deleteMany({ where: { taskInstanceId: target.id } });
 
+    // 루프백 소스 태스크(예: 반려된 결재)를 NOT_STARTED로 리셋해, 재작업 후 다시 도달하면
+    // 새 결재 요청이 생성되도록 한다. (리셋하지 않으면 COMPLETED로 남아 후속 단계가 영영 안 풀림)
+    if (taskInstanceId !== target.id) {
+      await tx.processTaskInstance.update({
+        where: { id: taskInstanceId },
+        data: {
+          status: 'NOT_STARTED',
+          actualStartAt: null,
+          actualEndAt: null,
+          approvalRequestId: null,
+          decidedById: null,
+          decisionReason: null,
+        },
+      });
+      await tx.processDeadlineAlert.deleteMany({ where: { taskInstanceId } });
+    }
+
     // Notify the target task assignee
     const targetAssigneeId = String(target.assigneeId || '').trim();
     if (targetAssigneeId) {
