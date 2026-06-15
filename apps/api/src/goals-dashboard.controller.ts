@@ -359,4 +359,100 @@ export class GoalsDashboardController {
 
     return { units: result, companyKeyInits: orphanKis };
   }
+
+  // 단일 팀 KPI의 수직 추적: 목표 → 개인 계획(할당) → 실행(입력 시계열) → 결과(달성 추세)
+  // GET /api/goals-dashboard/kpi-detail?krId=
+  @Get('kpi-detail')
+  async kpiDetail(@Query('krId') krId: string) {
+    if (!krId) throw new BadRequestException('krId required');
+
+    const kr = await this.prisma.keyResult.findUnique({
+      where: { id: krId },
+      include: {
+        objective: { include: { orgUnit: { select: { name: true } } } },
+        assignments: { include: { user: { select: { id: true, name: true, role: true } } } },
+      },
+    });
+    if (!kr) throw new BadRequestException('KR not found');
+
+    // 실행: 이 KR에 기록된 모든 진척 입력 (시계열)
+    const entries = await this.prisma.progressEntry.findMany({
+      where: { keyResultId: krId, krValue: { not: null } },
+      include: { actor: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const latest = entries.length ? entries[entries.length - 1] : null;
+    const latestValue = latest?.krValue ?? null;
+
+    // 개인별: 마지막 입력값 / 입력일 / 입력 횟수 (개인 계획 + 실행 합산)
+    const byUser: Record<string, { lastValue: number | null; lastAt: Date | null; count: number }> = {};
+    for (const e of entries) {
+      const u = e.actorId;
+      if (!byUser[u]) byUser[u] = { lastValue: null, lastAt: null, count: 0 };
+      byUser[u].count += 1;
+      byUser[u].lastValue = e.krValue ?? byUser[u].lastValue;
+      byUser[u].lastAt = e.createdAt;
+    }
+    // 할당된 사람을 기준으로, 할당 없이 입력만 한 사람도 누락 없이 포함
+    const assignedIds = new Set(kr.assignments.map((a) => a.userId));
+    const assignees = kr.assignments.map((a) => ({
+      userId: a.userId,
+      name: a.user?.name || '',
+      role: a.user?.role || '',
+      assignRole: a.role || null,
+      assigned: true,
+      ...(byUser[a.userId] || { lastValue: null, lastAt: null, count: 0 }),
+    }));
+    const contributorNames: Record<string, string> = {};
+    for (const e of entries) if (e.actor) contributorNames[e.actorId] = e.actor.name;
+    const extraContributors = Object.keys(byUser)
+      .filter((uid) => !assignedIds.has(uid))
+      .map((uid) => ({
+        userId: uid,
+        name: contributorNames[uid] || '',
+        role: '',
+        assignRole: null,
+        assigned: false,
+        ...byUser[uid],
+      }));
+    const people = [...assignees, ...extraContributors];
+
+    // 실행 시계열 (차트·테이블용)
+    const trend = entries.map((e) => ({
+      id: e.id,
+      krValue: e.krValue,
+      actorName: e.actor?.name || '',
+      periodStart: e.periodStart,
+      periodEnd: e.periodEnd,
+      note: e.note || null,
+      hasWorklog: !!e.worklogId,
+      createdAt: e.createdAt,
+    }));
+
+    return {
+      kr: {
+        id: kr.id,
+        title: kr.title,
+        metric: kr.metric,
+        unit: kr.unit,
+        target: kr.target,
+        baseline: kr.baseline ?? null,
+        direction: kr.direction || 'AT_LEAST',
+        cadence: kr.cadence || 'MONTHLY',
+        pillar: kr.objective?.pillar || null,
+        objTitle: kr.objective?.title || '',
+        orgName: kr.objective?.orgUnit?.name || '',
+      },
+      result: {
+        latestValue,
+        latestAt: latest?.createdAt || null,
+        achievementPct: this.krAchievementPct(latestValue, kr.target, kr.direction),
+        status: this.krStatus(latestValue, kr.target, kr.direction),
+        entryCount: entries.length,
+      },
+      people,
+      trend,
+    };
+  }
 }

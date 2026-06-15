@@ -38,6 +38,17 @@ type Unit = {
   members: Member[];
 };
 
+type KpiDetail = {
+  kr: {
+    id: string; title: string; metric: string; unit: string; target: number;
+    baseline: number | null; direction: 'AT_LEAST' | 'AT_MOST'; cadence: string;
+    pillar: string | null; objTitle: string; orgName: string;
+  };
+  result: { latestValue: number | null; latestAt: string | null; achievementPct: number | null; status: 'OK' | 'WARN' | 'NONE'; entryCount: number };
+  people: { userId: string; name: string; role: string; assignRole: string | null; assigned: boolean; lastValue: number | null; lastAt: string | null; count: number }[];
+  trend: { id: string; krValue: number | null; actorName: string; periodStart: string; periodEnd: string; note: string | null; hasWorklog: boolean; createdAt: string }[];
+};
+
 const KI_LABELS: Record<string, string> = { NOT_STARTED: '미착수', IN_PROGRESS: '진행중', DELAYED: '지연', COMPLETED: '완료', CANCELLED: '취소' };
 const TYPE_LABELS: Record<string, string> = { COMPANY: '회사', DIVISION: '실', TEAM: '팀' };
 
@@ -55,6 +66,27 @@ function addOwn(r: Rollup, u: Unit) {
   r.kiOpen += u.keyInits.total - u.keyInits.completed;
   r.kiDelayed += u.keyInits.delayed;
   r.memberCount += u.members.length;
+}
+
+function Sparkline({ values, target, direction }: { values: number[]; target: number; direction: 'AT_LEAST' | 'AT_MOST' }) {
+  if (values.length === 0) return <span style={{ color: '#cbd5e1', fontSize: 12 }}>입력 없음</span>;
+  const all = [...values, target];
+  const min = Math.min(...all), max = Math.max(...all);
+  const span = max - min || 1;
+  const w = 240, h = 56, pad = 4;
+  const xs = values.length === 1 ? [w / 2] : values.map((_, i) => pad + (i * (w - pad * 2)) / (values.length - 1));
+  const y = (v: number) => h - pad - ((v - min) / span) * (h - pad * 2);
+  const pts = values.map((v, i) => `${xs[i]},${y(v)}`).join(' ');
+  const ty = y(target);
+  const last = values[values.length - 1];
+  const ok = direction === 'AT_LEAST' ? last >= target : last <= target;
+  return (
+    <svg width={w} height={h} style={{ display: 'block' }}>
+      <line x1={0} y1={ty} x2={w} y2={ty} stroke="#f59e0b" strokeWidth={1} strokeDasharray="4 3" />
+      <polyline points={pts} fill="none" stroke={ok ? '#16a34a' : '#dc2626'} strokeWidth={2} />
+      {values.map((v, i) => <circle key={i} cx={xs[i]} cy={y(v)} r={2.5} fill={ok ? '#16a34a' : '#dc2626'} />)}
+    </svg>
+  );
 }
 
 function StatusDot({ status }: { status: 'OK' | 'WARN' | 'NONE' }) {
@@ -80,6 +112,23 @@ export function OrgGoalsOverview() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [detail, setDetail] = useState<KpiDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailErr, setDetailErr] = useState<string | null>(null);
+
+  async function openKpi(krId: string) {
+    setDetail(null);
+    setDetailErr(null);
+    setDetailLoading(true);
+    try {
+      const res = await apiJson<KpiDetail>(`/api/goals-dashboard/kpi-detail?krId=${encodeURIComponent(krId)}`);
+      setDetail(res);
+    } catch (e: any) {
+      setDetailErr(`${e?.message || '상세를 불러오지 못했습니다'}${e?.status ? ` (HTTP ${e.status})` : ''}`);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -196,14 +245,14 @@ export function OrgGoalsOverview() {
               <div style={{ marginLeft: 18, padding: 12, border: '1px dashed #cbd5e1', borderRadius: 10, background: '#fafbfc', display: 'grid', gap: 12 }}>
                 {unit.kpis.length > 0 && (
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e40af', marginBottom: 4 }}>📊 정량 지표 (팀 KPI)</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e40af', marginBottom: 4 }}>📊 정량 지표 (팀 KPI) <span style={{ fontWeight: 400, color: '#94a3b8' }}>— 클릭 시 개인 계획·실행·결과 추적</span></div>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead><tr><th style={th}></th><th style={th}>지표</th><th style={th}>최신값 / 목표</th><th style={th}>달성률</th><th style={th}>최근 입력</th></tr></thead>
                       <tbody>
                         {unit.kpis.map((k) => (
-                          <tr key={k.krId} style={{ background: k.status === 'WARN' ? '#FEF2F2' : undefined }}>
+                          <tr key={k.krId} onClick={() => openKpi(k.krId)} style={{ background: k.status === 'WARN' ? '#FEF2F2' : undefined, cursor: 'pointer' }} title="개인 계획·실행·결과 추적">
                             <td style={td}><StatusDot status={k.status} /></td>
-                            <td style={td}>{k.pillar ? `[${k.pillar}] ` : ''}{k.title}</td>
+                            <td style={{ ...td, color: '#1d4ed8', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{k.pillar ? `[${k.pillar}] ` : ''}{k.title}</td>
                             <td style={td}><b>{k.latestValue ?? '—'}</b> / {k.target}{k.unit ? ` ${k.unit}` : ''} <span style={{ fontSize: 10, color: '#94a3b8' }}>({k.direction === 'AT_MOST' ? '이하' : '이상'})</span></td>
                             <td style={td}>{k.achievementPct != null ? `${k.achievementPct}%` : '—'}</td>
                             <td style={td}>{fmtDate(k.latestAt)}</td>
@@ -352,6 +401,104 @@ export function OrgGoalsOverview() {
             </div>
           )}
         </>
+      )}
+
+      {(detail || detailLoading || detailErr) && (
+        <div
+          onClick={() => { setDetail(null); setDetailErr(null); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, padding: '40px 16px', overflowY: 'auto' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 720, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: '#0F3D73', color: '#fff' }}>
+              <div style={{ fontWeight: 800 }}>📊 KPI 추적 — 목표 → 개인 계획 → 실행 → 결과</div>
+              <button onClick={() => { setDetail(null); setDetailErr(null); }} style={{ background: 'transparent', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ padding: 18, display: 'grid', gap: 16 }}>
+              {detailLoading && <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8' }}>로딩 중…</div>}
+              {detailErr && <div style={{ color: '#ef4444', fontSize: 13 }}>{detailErr}</div>}
+              {detail && (
+                <>
+                  {/* ① 목표 + ④ 결과 */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{detail.kr.orgName} · {detail.kr.objTitle}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>{detail.kr.pillar ? `[${detail.kr.pillar}] ` : ''}{detail.kr.title}</div>
+                      <div style={{ fontSize: 12, color: '#475569' }}>
+                        목표 <b>{detail.kr.target}{detail.kr.unit ? ` ${detail.kr.unit}` : ''}</b> {detail.kr.direction === 'AT_MOST' ? '이하' : '이상'}
+                        {detail.kr.baseline != null && <> · 기준 {detail.kr.baseline}</>}
+                        {detail.kr.cadence && <> · {detail.kr.cadence}</>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>현재 결과</div>
+                      <div style={{ fontSize: 24, fontWeight: 800, color: detail.result.status === 'OK' ? '#16a34a' : detail.result.status === 'WARN' ? '#dc2626' : '#94a3b8' }}>
+                        {detail.result.latestValue ?? '—'}{detail.kr.unit ? ` ${detail.kr.unit}` : ''}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#475569' }}>
+                        {detail.result.achievementPct != null ? `달성률 ${detail.result.achievementPct}%` : '미입력'} · {fmtDate(detail.result.latestAt)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ③ 실행 추세 */}
+                  <div style={{ padding: 12, border: '1px solid #e2e8f0', borderRadius: 10, background: '#fafbfc' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e40af', marginBottom: 6 }}>📈 실행 추세 <span style={{ fontWeight: 400, color: '#94a3b8' }}>(입력 {detail.result.entryCount}건, 주황 점선 = 목표)</span></div>
+                    <Sparkline
+                      values={detail.trend.map((t) => t.krValue).filter((v): v is number => v != null)}
+                      target={detail.kr.target}
+                      direction={detail.kr.direction}
+                    />
+                  </div>
+
+                  {/* ② 개인 계획 + 실행 */}
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#166534', marginBottom: 4 }}>👤 개인 계획·실행 <span style={{ fontWeight: 400, color: '#94a3b8' }}>(할당 구성원 + 입력 기여자)</span></div>
+                    {detail.people.length === 0 ? (
+                      <div style={{ fontSize: 12, color: '#cbd5e1' }}>할당된 구성원이 없습니다. 팀 KPI 입력 화면에서 참여자를 지정하세요.</div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead><tr><th style={th}>이름</th><th style={th}>구분</th><th style={th}>최근 입력값</th><th style={th}>입력 횟수</th><th style={th}>최근 입력일</th></tr></thead>
+                        <tbody>
+                          {detail.people.map((p) => (
+                            <tr key={p.userId} style={{ background: !p.assigned ? '#FFFBEB' : undefined }}>
+                              <td style={{ ...td, fontWeight: 600 }}>{p.name || '—'}</td>
+                              <td style={td}>{p.assigned ? <span style={{ color: '#16a34a' }}>할당{p.assignRole ? ` (${p.assignRole})` : ''}</span> : <span style={{ color: '#d97706' }}>입력만</span>}</td>
+                              <td style={td}>{p.lastValue != null ? <b>{p.lastValue}</b> : <span style={{ color: '#cbd5e1' }}>—</span>}</td>
+                              <td style={td}>{p.count}</td>
+                              <td style={td}>{fmtDate(p.lastAt)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* 실행 이력 (시계열 테이블) */}
+                  {detail.trend.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4 }}>🗂 입력 이력</div>
+                      <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #f1f5f9', borderRadius: 8 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead><tr><th style={th}>일자</th><th style={th}>값</th><th style={th}>입력자</th><th style={th}>비고</th></tr></thead>
+                          <tbody>
+                            {detail.trend.slice().reverse().map((t) => (
+                              <tr key={t.id}>
+                                <td style={td}>{fmtDate(t.createdAt)}</td>
+                                <td style={{ ...td, fontWeight: 600 }}>{t.krValue ?? '—'}</td>
+                                <td style={td}>{t.actorName || '—'}{t.hasWorklog && <span title="업무일지에서 입력" style={{ marginLeft: 4 }}>📝</span>}</td>
+                                <td style={{ ...td, color: '#64748b' }}>{t.note || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
