@@ -26,6 +26,7 @@ export function ApprovalsSubmit() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState('');
+  const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [teamName, setTeamName] = useState<string>(() => (typeof localStorage !== 'undefined' ? (localStorage.getItem('teamName') || '') : ''));
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
@@ -309,8 +310,10 @@ export function ApprovalsSubmit() {
           });
         } catch {}
       }
-      setOkMsg(`요청 완료: ${res2?.id || ''}`);
+      setOkMsg('');
+      setSubmittedId(res2?.id || '');
       toast('결재 요청이 완료되었습니다.', 'success', 5000);
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
       setSteps([]);
       setDueAt('');
       setTitle('');
@@ -441,6 +444,24 @@ export function ApprovalsSubmit() {
           결재 요청
         </LoadingButton>
       </div>
+
+      {submittedId !== null && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}
+          onClick={() => setSubmittedId(null)}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '32px 28px', width: 'min(420px, 92vw)', textAlign: 'center', boxShadow: '0 10px 40px rgba(0,0,0,0.18)', animation: 'toast-in 0.22s ease-out' }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 34 }}>✅</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#166534', marginBottom: 8 }}>결재 요청이 완료되었습니다</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginBottom: 24 }}>
+              결재자에게 알림이 전송되었습니다.{submittedId ? <><br/>요청 번호: <span style={{ fontFamily: 'monospace', color: '#334155' }}>{submittedId}</span></> : null}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button type="button" style={ghostBtn} onClick={() => setSubmittedId(null)}>새로 작성</button>
+              <button type="button" style={primaryBtn} onClick={() => { window.location.href = '/approvals/mine'; }}>올린 결재 보기</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {processDetailPopup && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={() => setProcessDetailPopup(null)}>
