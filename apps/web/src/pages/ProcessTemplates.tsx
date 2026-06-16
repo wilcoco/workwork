@@ -1031,7 +1031,7 @@ export function ProcessTemplates() {
                   >순차 폼 편집</button>
                 </div>
                 {bpmnMode === 'graph' ? (
-                  <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} height={'80vh'} />
+                  <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} height={'85vh'} />
                 ) : (
                   <BpmnFormEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
                 )}

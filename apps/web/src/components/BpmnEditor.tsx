@@ -122,7 +122,6 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const lastContainerWidthRef = useRef<number>(0);
   const nodeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const edgeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const nodeTypes = useMemo(() => ({
@@ -133,7 +132,8 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     gateway_xor: LabeledNode,
   }), []);
   const defaultEdgeOptions = useMemo(() => ({ type: 'smoothstep' as const }), []);
-  const [graphWidth, setGraphWidth] = useState<number>(520);
+  const [panelOpen, setPanelOpen] = useState<boolean>(true);
+  const [panelWidth, setPanelWidth] = useState<number>(380);
   const [resizing, setResizing] = useState<boolean>(false);
   const lastPaneClick = useRef<{ x: number; y: number } | null>(null);
   const syncTimerRef = useRef<number | null>(null);
@@ -285,22 +285,29 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     setSelectedEdgeId(eid);
   }, []);
 
+  // 노드/엣지를 선택하면 세부 메뉴를 자동으로 열고 해당 카드로 스크롤
+  useEffect(() => {
+    if (selectedNodeId || selectedEdgeId) setPanelOpen(true);
+  }, [selectedNodeId, selectedEdgeId]);
+
   useEffect(() => {
     const el = selectedNodeId ? nodeCardRefs.current[selectedNodeId] : (selectedEdgeId ? edgeCardRefs.current[selectedEdgeId] : null);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // 패널 슬라이드 애니메이션(0.25s)이 끝난 뒤 스크롤되도록 약간 지연
+      const t = window.setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 280);
+      return () => window.clearTimeout(t);
     }
   }, [selectedNodeId, selectedEdgeId]);
 
+  // 오버레이 패널 왼쪽 가장자리를 드래그해서 폭 조절
   useEffect(() => {
     function onMove(e: MouseEvent) {
       if (!resizing || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const minGraph = 260;
       const minPanel = 300;
-      const offsetX = e.clientX - rect.left; // graph area width
-      const next = Math.max(minGraph, Math.min(offsetX, rect.width - minPanel));
-      setGraphWidth(next);
+      const maxPanel = Math.max(minPanel, rect.width - 160); // 캔버스가 최소 160px는 보이도록
+      const next = Math.max(minPanel, Math.min(rect.right - e.clientX, maxPanel));
+      setPanelWidth(next);
       e.preventDefault();
     }
     function onUp() {
@@ -317,28 +324,6 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
       window.removeEventListener('mouseup', onUp);
     };
   }, [resizing]);
-
-  // Clamp widths on container resize so the detail panel is never clipped
-  useEffect(() => {
-    const el = containerRef.current as HTMLElement | null;
-    if (!el || !(window as any).ResizeObserver) return;
-    const ro = new (window as any).ResizeObserver((entries: any[]) => {
-      const cr = entries[0]?.contentRect;
-      if (!cr) return;
-      const minGraph = 260;
-      const minPanel = 300;
-      setGraphWidth((prev) => {
-        const lastW = lastContainerWidthRef.current || cr.width;
-        const ratio = lastW ? prev / lastW : 0;
-        lastContainerWidthRef.current = cr.width;
-        const maxGraph = cr.width - minPanel;
-        const scaled = ratio ? ratio * cr.width : prev;
-        return Math.max(minGraph, Math.min(scaled, maxGraph));
-      });
-    });
-    ro.observe(el);
-    return () => { try { ro.disconnect(); } catch {} };
-  }, []);
 
 
   function removeNode(id: string) {
@@ -446,7 +431,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
 
   const sidePanel = useMemo(() => {
     return (
-      <div ref={(r) => (panelRef.current = r)} style={{ minWidth: 300, borderLeft: '1px solid #e5e7eb', padding: 8, display: 'grid', gap: 8, maxHeight: height ?? 480, overflow: 'auto' }}>
+      <div ref={(r) => (panelRef.current = r)} style={{ minWidth: 0, padding: 8, display: 'grid', gap: 8, alignContent: 'start', height: '100%', overflow: 'auto' }}>
         <div style={{ fontSize: 12, color: '#6b7280' }}>그래프에서 노드/엣지를 선택하면 여기 상세가 하이라이트되며 스크롤됩니다.</div>
 
         <h4>노드</h4>
@@ -669,8 +654,9 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
   }, [nodes, toJson, fromJson, jsonText, edges, selectedNodeId, selectedEdgeId, orgOptions, userOptions, userQuery]);
 
   return (
-    <div ref={containerRef} style={{ display: 'grid', gridTemplateColumns: `${graphWidth}px 6px minmax(320px, 1fr)`, gap: 8, border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480, overflow: 'hidden' }}>
-      <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%', minWidth: 0 }}>
+    <div ref={containerRef} style={{ position: 'relative', border: '1px solid #e5e7eb', borderRadius: 8, height: height ?? 480, overflow: 'hidden' }}>
+      {/* 캔버스: 항상 컨테이너 전체 폭 사용 (세부 메뉴는 위에 슬라이딩으로 겹쳐짐) */}
+      <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%', width: '100%' }}>
         <div style={{ position: 'sticky', top: 0, zIndex: 2, background: '#fff', borderBottom: '1px solid #e5e7eb', padding: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" className="btn" onClick={() => addNode('start')}>Start</button>
@@ -714,14 +700,63 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
           </ReactFlowProvider>
         </div>
       </div>
-      <div
-        onMouseDown={() => {
-          setResizing(true);
+      {/* 세부 메뉴 열기/닫기 토글 탭 (오른쪽 가장자리에 항상 표시) */}
+      <button
+        type="button"
+        onClick={() => setPanelOpen((v) => !v)}
+        title={panelOpen ? '세부 메뉴 닫기' : '세부 메뉴 열기'}
+        aria-label={panelOpen ? '세부 메뉴 닫기' : '세부 메뉴 열기'}
+        style={{
+          position: 'absolute',
+          top: 12,
+          right: panelOpen ? panelWidth : 0,
+          transition: resizing ? 'none' : 'right 0.25s ease',
+          zIndex: 6,
+          width: 26,
+          height: 64,
+          border: '1px solid #e5e7eb',
+          borderRight: 'none',
+          borderRadius: '8px 0 0 8px',
+          background: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 13,
+          color: '#374151',
+          boxShadow: '-2px 0 8px rgba(0,0,0,0.06)',
         }}
-        style={{ cursor: 'col-resize', width: 6, background: 'transparent' }}
-      />
-      <div style={{ minWidth: 0 }}>
-        {sidePanel}
+      >
+        {panelOpen ? '▶' : '◀'}
+      </button>
+
+      {/* 세부 메뉴: 슬라이딩 오버레이 패널 */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: panelWidth,
+          maxWidth: '90%',
+          transform: panelOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: resizing ? 'none' : 'transform 0.25s ease',
+          background: '#fff',
+          borderLeft: '1px solid #e5e7eb',
+          boxShadow: panelOpen ? '-8px 0 24px rgba(15,23,42,0.10)' : 'none',
+          zIndex: 5,
+          display: 'flex',
+        }}
+      >
+        {/* 폭 조절 핸들 (패널 왼쪽 가장자리 드래그) */}
+        <div
+          onMouseDown={() => setResizing(true)}
+          title="드래그하여 폭 조절"
+          style={{ flex: '0 0 auto', width: 6, cursor: 'col-resize', background: 'transparent' }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {sidePanel}
+        </div>
       </div>
     </div>
   );
