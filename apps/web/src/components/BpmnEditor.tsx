@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dagre from '@dagrejs/dagre';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
@@ -11,6 +12,7 @@ import ReactFlow, {
   addEdge,
   Connection,
   Edge,
+  MarkerType,
   Node,
   Position,
   Handle,
@@ -22,8 +24,11 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 function InnerFlow(props: any) {
-  const { onPaneCoord, children, ...rest } = props;
+  const { onPaneCoord, onReady, children, ...rest } = props;
   const rf = useReactFlow();
+  useEffect(() => {
+    onReady?.(rf);
+  }, [rf, onReady]);
   return (
     <ReactFlow
       {...rest}
@@ -112,6 +117,43 @@ function LabeledNode({ data }: { data: any }) {
 }
 
 
+// 노드 종류별 대략적인 크기 (dagre 정렬용). 렌더된 실측값이 있으면 우선 사용.
+function nodeBox(n: Node<any>): { w: number; h: number } {
+  const w = (n as any).width || 180;
+  const t = String(n.type || 'task');
+  const fallbackH = t === 'start' || t === 'end' ? 60 : t.startsWith('gateway') ? 96 : 72;
+  return { w, h: (n as any).height || fallbackH };
+}
+
+// dagre로 위→아래(TB) 자동 배치. 같은 계위(rank) 노드는 같은 높이에 정렬되고 화살표 교차가 최소화된다.
+// 반려 루프백 엣지는 사이클을 만들어 레이아웃을 망가뜨리므로 계산에서 제외한다.
+function layoutWithDagre(nodes: Node<any>[], edges: Edge<any>[]): Node<any>[] {
+  if (!nodes.length) return nodes;
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: 'TB', nodesep: 70, ranksep: 90, marginx: 24, marginy: 24, ranker: 'tight-tree' });
+  nodes.forEach((n) => {
+    const b = nodeBox(n);
+    g.setNode(String(n.id), { width: b.w, height: b.h });
+  });
+  edges.forEach((e) => {
+    if ((e as any).data?.isLoopBack) return;
+    g.setEdge(String(e.source), String(e.target));
+  });
+  dagre.layout(g);
+  return nodes.map((n) => {
+    const p = g.node(String(n.id));
+    if (!p) return n;
+    const b = nodeBox(n);
+    return {
+      ...n,
+      position: { x: Math.round(p.x - b.w / 2), y: Math.round(p.y - b.h / 2) },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+    };
+  });
+}
+
 export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: string; onChangeJson: (t: string) => void; height?: number | string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<any>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<any>>([]);
@@ -122,6 +164,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const rfRef = useRef<any>(null);
   const nodeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const edgeCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const nodeTypes = useMemo(() => ({
@@ -131,7 +174,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
     gateway_parallel: LabeledNode,
     gateway_xor: LabeledNode,
   }), []);
-  const defaultEdgeOptions = useMemo(() => ({ type: 'smoothstep' as const }), []);
+  const defaultEdgeOptions = useMemo(() => ({ type: 'smoothstep' as const, markerEnd: { type: MarkerType.ArrowClosed, width: 18, height: 18 } }), []);
   const [panelOpen, setPanelOpen] = useState<boolean>(true);
   const [panelWidth, setPanelWidth] = useState<number>(380);
   const [resizing, setResizing] = useState<boolean>(false);
@@ -335,6 +378,19 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
   function removeEdge(id: string) {
     setEdges((eds: Edge<any>[]) => eds.filter((e) => String(e.id) !== id));
     if (selectedEdgeId === id) setSelectedEdgeId(null);
+  }
+
+  function autoLayout() {
+    setNodes((nds: Node<any>[]) => {
+      // 최신 노드 실측 크기를 반영하기 위해 ReactFlow 인스턴스의 노드를 우선 사용
+      const live = rfRef.current?.getNodes?.() as Node<any>[] | undefined;
+      const base = (live && live.length === nds.length) ? live : nds;
+      return layoutWithDagre(base, edges);
+    });
+    // 배치가 적용된 다음 틱에 화면을 맞춤
+    window.setTimeout(() => {
+      try { rfRef.current?.fitView?.({ padding: 0.2, duration: 300 }); } catch {}
+    }, 60);
   }
 
   function autoLinearize() {
@@ -666,6 +722,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             <button type="button" className="btn" onClick={() => addNode('end')}>End</button>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
+            <button type="button" className="btn btn-primary" onClick={autoLayout} title="연결 흐름에 따라 자동 정렬 (같은 계위는 같은 높이)">자동 배치</button>
             <button type="button" className="btn" onClick={() => setNodes((nds: Node<any>[]) => nds.map((n: Node<any>, idx: number) => ({ ...n, position: { x: 180, y: 60 + idx * 120 } })))}>세로 정렬</button>
             <button type="button" className="btn btn-outline" onClick={autoLinearize}>선형 연결 자동생성</button>
           </div>
@@ -692,6 +749,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
               fitView
               style={{ width: '100%', height: '100%' }}
               onPaneCoord={(p: { x: number; y: number }) => { lastPaneClick.current = p; }}
+              onReady={(rf: any) => { rfRef.current = rf; }}
             >
               <Background />
               <MiniMap />
