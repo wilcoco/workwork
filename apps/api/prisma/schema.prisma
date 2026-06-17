@@ -478,6 +478,7 @@ enum AttendanceType {
   HOLIDAY_WORK
   HOLIDAY_REST
   PUBLIC_DUTY
+  PARENTAL_LEAVE
 }
 
 enum ProcessType {
@@ -789,6 +790,9 @@ model AttendanceRequest {
   user        User           @relation(fields: [userId], references: [id])
   type        AttendanceType
   date        DateTime
+  // 기간 신청(휴가/육아휴직 등)의 종료일. null이면 date 하루짜리 신청.
+  // 시작일=date, 종료일=endDate 로 연속 기간을 한 건(단일 결재)으로 처리한다.
+  endDate     DateTime?
   startAt     DateTime?
   endAt       DateTime?
   reason      String?

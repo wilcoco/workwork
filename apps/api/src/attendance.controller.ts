@@ -21,11 +21,17 @@ class CreateAttendanceDto {
   approverIds?: string[];
 
   @IsString()
-  @IsIn(['OT', 'VACATION', 'EARLY_LEAVE', 'FLEXIBLE', 'HOLIDAY_WORK', 'PUBLIC_DUTY'])
-  type!: 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'PUBLIC_DUTY';
+  @IsIn(['OT', 'VACATION', 'EARLY_LEAVE', 'FLEXIBLE', 'HOLIDAY_WORK', 'PUBLIC_DUTY', 'PARENTAL_LEAVE'])
+  type!: 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'PUBLIC_DUTY' | 'PARENTAL_LEAVE';
 
   @IsString()
-  date!: string; // YYYY-MM-DD
+  date!: string; // YYYY-MM-DD (기간 신청 시 시작일)
+
+  // 기간 신청 종료일(YYYY-MM-DD). 휴가/육아휴직 등 연속 기간을 한 건으로 신청할 때 사용.
+  // 생략하면 date 하루짜리 신청.
+  @IsOptional()
+  @IsString()
+  endDate?: string;
 
   @IsOptional()
   @IsString()
@@ -71,6 +77,22 @@ export class AttendanceController {
       const baseDate = new Date(`${dto.date}T00:00:00.000Z`);
       if (isNaN(baseDate.getTime())) throw new BadRequestException('유효하지 않은 날짜입니다');
 
+      // 기간 신청(휴가/육아휴직): endDate 가 오면 date~endDate 를 한 건으로 처리.
+      // 기간 모드는 종일 휴무 유형에만 허용한다.
+      const DAY_OFF_TYPES = ['VACATION', 'PUBLIC_DUTY', 'PARENTAL_LEAVE'] as const;
+      const isDayOff = (DAY_OFF_TYPES as readonly string[]).includes(dto.type);
+      let rangeEndDate: Date | undefined;
+      if (dto.endDate) {
+        if (!isDayOff) throw new BadRequestException('기간 신청은 휴가·공가·육아휴직만 가능합니다');
+        const e = new Date(`${dto.endDate}T00:00:00.000Z`);
+        if (isNaN(e.getTime())) throw new BadRequestException('유효하지 않은 종료일입니다');
+        if (e.getTime() < baseDate.getTime()) throw new BadRequestException('종료일은 시작일보다 빠를 수 없습니다');
+        // 시작일과 같으면 하루짜리이므로 endDate 는 저장하지 않는다.
+        if (e.getTime() > baseDate.getTime()) rangeEndDate = e;
+      }
+      // 충돌 검사용 기간 끝(종료일 또는 시작일)
+      const rangeEnd = rangeEndDate ?? baseDate;
+
       let startAt: Date | undefined;
       let endAt: Date | undefined;
       if (dto.type === 'OT' || dto.type === 'EARLY_LEAVE' || dto.type === 'FLEXIBLE' || dto.type === 'HOLIDAY_WORK') {
@@ -114,31 +136,34 @@ export class AttendanceController {
       const firstApprover = approverLine[0] || dto.approverId || dto.userId;
 
       const rec = await (this.prisma as any).$transaction(async (tx: any) => {
-        // 휴가/공가와 다른 근태는 같은 날에 함께 신청할 수 없다.
-        if (dto.type === 'VACATION' || dto.type === 'PUBLIC_DUTY') {
-          const existing = await tx.attendanceRequest.findFirst({
-            where: {
-              userId: dto.userId,
-              date: baseDate,
-              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
-            },
-          });
-          if (existing) {
-            throw new BadRequestException(dto.type === 'VACATION'
-              ? '해당 일자에 이미 다른 근태 신청이 있어 휴가를 신청할 수 없습니다'
-              : '해당 일자에 이미 다른 근태 신청이 있어 공가를 신청할 수 없습니다');
+        // 기간 겹침 검사: 새 신청 [baseDate, rangeEnd] 와 기존 신청 [date, endDate ?? date] 가
+        // 겹치는지 본다. 기존.date <= 새.rangeEnd 인 후보를 받아, 기존.end >= 새.baseDate 인 것만 충돌.
+        const overlapCandidates = await tx.attendanceRequest.findMany({
+          where: {
+            userId: dto.userId,
+            date: { lte: rangeEnd },
+            status: { notIn: ['REJECTED', 'CANCELLED', 'rejected', 'cancelled'] as any },
+          },
+          select: { id: true, type: true, date: true, endDate: true },
+        });
+        const overlapping = overlapCandidates.filter((r: any) => {
+          const rEnd: Date = r.endDate ?? r.date;
+          return rEnd.getTime() >= baseDate.getTime();
+        });
+
+        const typeKo = (t: string) => t === 'VACATION' ? '휴가' : t === 'PUBLIC_DUTY' ? '공가' : t === 'PARENTAL_LEAVE' ? '육아휴직' : '근태';
+        if (isDayOff) {
+          // 휴가/공가/육아휴직은 같은 기간에 다른 어떤 근태와도 함께 신청할 수 없다.
+          if (overlapping.length > 0) {
+            throw new BadRequestException(rangeEndDate
+              ? '신청 기간에 이미 다른 근태 신청이 있어 신청할 수 없습니다'
+              : `해당 일자에 이미 다른 근태 신청이 있어 ${typeKo(dto.type)}를 신청할 수 없습니다`);
           }
         } else {
-          const dayOff = await tx.attendanceRequest.findFirst({
-            where: {
-              userId: dto.userId,
-              type: { in: ['VACATION', 'PUBLIC_DUTY'] as any },
-              date: baseDate,
-              status: { notIn: ['REJECTED', 'CANCELLED'] as any },
-            },
-          });
-          if (dayOff) {
-            throw new BadRequestException('해당 일자에 이미 휴가 또는 공가가 신청되어 있어 다른 근태를 신청할 수 없습니다');
+          // 시간 기반 근태: 같은 날 종일 휴무(휴가/공가/육아휴직)가 있으면 불가.
+          const dayOffHit = overlapping.find((r: any) => (DAY_OFF_TYPES as readonly string[]).includes(r.type));
+          if (dayOffHit) {
+            throw new BadRequestException('해당 일자에 이미 휴가·공가·육아휴직이 신청되어 있어 다른 근태를 신청할 수 없습니다');
           }
         }
 
@@ -274,6 +299,7 @@ export class AttendanceController {
               userId: dto.userId,
               type: dto.type,
               date: baseDate,
+              endDate: rangeEndDate,
               startAt,
               endAt,
               reason: dto.reason,
@@ -367,14 +393,26 @@ export class AttendanceController {
     const rangeEnd = new Date(monthEnd);
     rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 7);
 
-    const items = await (this.prisma as any).attendanceRequest.findMany({
+    // 기간(endDate) 신청도 누락 없이: 시작일 <= rangeEnd 이고 종료일(없으면 시작일) >= rangeStart 인 건.
+    const records = await (this.prisma as any).attendanceRequest.findMany({
       where: {
         ...(userId ? { userId } : {}),
-        date: { gte: rangeStart, lte: rangeEnd },
+        date: { lte: rangeEnd },
+        OR: [
+          { endDate: { gte: rangeStart } },
+          { endDate: null, date: { gte: rangeStart } },
+        ],
       },
       orderBy: { date: 'asc' },
       include: { user: true },
     });
+
+    // 기간 안의 공휴일 (주말과 함께 휴가일수에서 제외)
+    const holidayRows = await (this.prisma as any).holiday.findMany({
+      where: { date: { gte: rangeStart, lte: rangeEnd } },
+      select: { date: true },
+    });
+    const holidaySet = new Set<string>(holidayRows.map((h: any) => (h.date as Date).toISOString().slice(0, 10)));
 
     type WeekAgg = { otHours: number; vacationHours: number; earlyLeaveHours: number };
     const weekMap = new Map<string, WeekAgg>();
@@ -394,7 +432,7 @@ export class AttendanceController {
       return diffMs / (1000 * 60 * 60);
     };
 
-    const ids = items.map((it: any) => it.id as string);
+    const ids = records.map((it: any) => it.id as string);
 
     const approvals = ids.length
       ? await this.prisma.approvalRequest.findMany({
@@ -409,9 +447,30 @@ export class AttendanceController {
     const statusMap = new Map<string, string>();
     for (const a of approvals) statusMap.set(a.subjectId, a.status as any);
 
-    for (const it of items) {
-      const d = it.date;
-      const weekKey = `${it.userId}::${getWeekKey(d as any as Date)}`; // 개인별 주간 집계
+    // 기간 휴무(endDate 있는 휴가/공가/육아휴직)는 평일(주말·공휴일 제외)별 일자로 펼친다.
+    // 그 외(시간 기반 근태, 하루짜리 휴무)는 기존대로 1건 = 1일.
+    const DAY_OFF_TYPES = ['VACATION', 'PUBLIC_DUTY', 'PARENTAL_LEAVE'];
+    type Occ = { it: any; day: Date };
+    const occs: Occ[] = [];
+    for (const it of records) {
+      if (it.endDate && DAY_OFF_TYPES.includes(it.type)) {
+        const startMs = Math.max((it.date as Date).getTime(), rangeStart.getTime());
+        const endMs = Math.min((it.endDate as Date).getTime(), rangeEnd.getTime());
+        let cur = new Date(startMs);
+        cur = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate(), 0, 0, 0, 0));
+        for (; cur.getTime() <= endMs; cur = new Date(cur.getTime() + 86400000)) {
+          const dow = cur.getUTCDay();
+          if (dow === 0 || dow === 6) continue; // 주말 제외
+          if (holidaySet.has(cur.toISOString().slice(0, 10))) continue; // 공휴일 제외
+          occs.push({ it, day: new Date(cur) });
+        }
+      } else {
+        occs.push({ it, day: it.date as Date });
+      }
+    }
+
+    for (const { it, day } of occs) {
+      const weekKey = `${it.userId}::${getWeekKey(day)}`; // 개인별 주간 집계
       let agg = weekMap.get(weekKey);
       if (!agg) {
         agg = { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
@@ -421,7 +480,7 @@ export class AttendanceController {
         if (it.startAt && it.endAt) {
           agg.otHours += hoursBetween(it.startAt as any as Date, it.endAt as any as Date);
         }
-      } else if (it.type === 'VACATION' || it.type === 'PUBLIC_DUTY' || it.type === 'HOLIDAY_REST') {
+      } else if (DAY_OFF_TYPES.includes(it.type) || it.type === 'HOLIDAY_REST') {
         agg.vacationHours += 8; // 1일 8시간
       } else if (it.type === 'EARLY_LEAVE') {
         if (it.startAt && it.endAt) {
@@ -430,8 +489,8 @@ export class AttendanceController {
       }
     }
 
-    const result = items.map((it: { id: string; userId: string; type: string; date: Date; startAt: Date | null; endAt: Date | null; reason: string | null; status: string | null; user: { name: string } }) => {
-      const weekKey = `${it.userId}::${getWeekKey(it.date as any as Date)}`; // 개인별 주간 집계
+    const result = occs.map(({ it, day }) => {
+      const weekKey = `${it.userId}::${getWeekKey(day)}`; // 개인별 주간 집계
       const agg = weekMap.get(weekKey) || { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
       const totalHours = 40 + agg.otHours - agg.vacationHours - agg.earlyLeaveHours;
       const overLimit = totalHours > 52;
@@ -442,7 +501,8 @@ export class AttendanceController {
         id: it.id,
         userId: it.userId,
         type: it.type,
-        date: it.date,
+        date: day,
+        endDate: it.endDate ?? null,
         startAt: it.startAt,
         endAt: it.endAt,
         reason: it.reason,
@@ -662,7 +722,14 @@ export class AttendanceController {
     const monthStart = new Date(Date.UTC(year, mon, 1, 0, 0, 0, 0));
     const monthEnd = new Date(Date.UTC(year, mon + 1, 0, 23, 59, 59, 999));
 
-    const where: any = { date: { gte: monthStart, lte: monthEnd } };
+    // 기간(endDate) 신청도 포함: 시작일 <= 월말 이고 종료일(없으면 시작일) >= 월초 인 건.
+    const where: any = {
+      date: { lte: monthEnd },
+      OR: [
+        { endDate: { gte: monthStart } },
+        { endDate: null, date: { gte: monthStart } },
+      ],
+    };
     if (typeFilter) where.type = typeFilter;
     if (userIdFilter) where.userId = userIdFilter;
 
@@ -671,6 +738,28 @@ export class AttendanceController {
       orderBy: [{ userId: 'asc' }, { date: 'asc' }],
       include: { user: { select: { id: true, name: true, orgUnit: { select: { name: true } } } } },
     });
+
+    // 기간 휴무의 '휴가일수'는 해당 월 안의 평일(주말·공휴일 제외)만 집계한다.
+    const holidayRows = await (this.prisma as any).holiday.findMany({
+      where: { date: { gte: monthStart, lte: monthEnd } },
+      select: { date: true },
+    });
+    const reportHolidaySet = new Set<string>(holidayRows.map((h: any) => (h.date as Date).toISOString().slice(0, 10)));
+    const DAY_OFF_TYPES = ['VACATION', 'PUBLIC_DUTY', 'PARENTAL_LEAVE'];
+    const weekdayCountInMonth = (startD: Date, endD: Date): number => {
+      const startMs = Math.max(startD.getTime(), monthStart.getTime());
+      const endMs = Math.min(endD.getTime(), monthEnd.getTime());
+      let cur = new Date(startMs);
+      cur = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate(), 0, 0, 0, 0));
+      let count = 0;
+      for (; cur.getTime() <= endMs; cur = new Date(cur.getTime() + 86400000)) {
+        const dow = cur.getUTCDay();
+        if (dow === 0 || dow === 6) continue;
+        if (reportHolidaySet.has(cur.toISOString().slice(0, 10))) continue;
+        count += 1;
+      }
+      return count;
+    };
 
     // 결재 정보 조회 (모든 결재자 포함)
     const recordIds = records.map((r: any) => r.id);
@@ -742,6 +831,11 @@ export class AttendanceController {
         it.status = computedFinalStatus;
       }
 
+      // 휴가일수: 기간(endDate) 신청은 해당 월 평일 수, 하루짜리 휴무는 1일.
+      let days: number | null = null;
+      if (DAY_OFF_TYPES.includes(it.type) || it.type === 'HOLIDAY_REST') {
+        days = it.endDate ? weekdayCountInMonth(it.date as Date, it.endDate as Date) : 1;
+      }
       return {
         id: it.id,
         userId: it.userId,
@@ -749,12 +843,13 @@ export class AttendanceController {
         teamName: it.user?.orgUnit?.name ?? '',
         type: it.type,
         date: it.date,
+        endDate: it.endDate ?? null,
         startAt: it.startAt,
         endAt: it.endAt,
         hours: (it.type === 'OT' || it.type === 'EARLY_LEAVE' || it.type === 'FLEXIBLE' || it.type === 'HOLIDAY_WORK')
           ? hoursBetween(it.startAt, it.endAt)
           : null,
-        days: (it.type === 'VACATION' || it.type === 'PUBLIC_DUTY' || it.type === 'HOLIDAY_REST') ? 1 : null,
+        days,
         status: it.status,
         reason: it.reason,
         currentApproverName,
@@ -789,6 +884,7 @@ export class AttendanceController {
       id: rec.id,
       type: rec.type,
       date: rec.date,
+      endDate: rec.endDate ?? null,
       startAt: rec.startAt,
       endAt: rec.endAt,
       reason: rec.reason,

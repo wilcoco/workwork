@@ -351,15 +351,21 @@ function describeSubject(it: any): { title: string; meta: string } {
     let kind = String(doc.type || '');
     if (doc.type === 'OT') kind = 'OT';
     else if (doc.type === 'VACATION') kind = '휴가';
+    else if (doc.type === 'PARENTAL_LEAVE') kind = '육아휴직';
     else if (doc.type === 'PUBLIC_DUTY') kind = '공가';
     else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
     else if (doc.type === 'FLEXIBLE') kind = '유연근무';
     else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
     const title = `근태 신청${kind ? ` - ${kind}` : ''}`;
-    const dateStr = doc.date ? new Date(doc.date).toLocaleDateString() : '';
+    // 기간 신청(endDate)이면 시작~종료로 표시
+    const dateStr = doc.date
+      ? (doc.endDate
+          ? `${new Date(doc.date).toLocaleDateString()} ~ ${new Date(doc.endDate).toLocaleDateString()}`
+          : new Date(doc.date).toLocaleDateString())
+      : '';
     const timeRange = doc.startAt && doc.endAt
       ? `${new Date(doc.startAt).toLocaleTimeString()} ~ ${new Date(doc.endAt).toLocaleTimeString()}`
-      : (doc.type === 'VACATION' || doc.type === 'PUBLIC_DUTY' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
+      : (doc.type === 'VACATION' || doc.type === 'PARENTAL_LEAVE' || doc.type === 'PUBLIC_DUTY' || doc.type === 'HOLIDAY_REST' ? (doc.endDate ? '기간 휴무' : '종일') : '');
     const meta = [dateStr, timeRange, doc.reason || ''].filter(Boolean).join(' · ');
     return { title, meta };
   }

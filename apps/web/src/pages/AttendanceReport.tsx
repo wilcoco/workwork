@@ -4,11 +4,16 @@ import { apiJson } from '../lib/api';
 const TYPE_LABELS: Record<string, string> = {
   OT: '초과근무(OT)',
   VACATION: '휴가',
+  PARENTAL_LEAVE: '육아휴직',
+  PUBLIC_DUTY: '공가',
   EARLY_LEAVE: '조기퇴근',
   FLEXIBLE: '유연근무',
   HOLIDAY_WORK: '휴일근무',
   HOLIDAY_REST: '대체휴무',
 };
+
+// 일(日) 단위로 집계/표시하는 종일 휴무 유형
+const DAY_BASED_TYPES = ['VACATION', 'PARENTAL_LEAVE', 'PUBLIC_DUTY', 'HOLIDAY_REST'];
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: '대기',
@@ -38,6 +43,7 @@ type RecordItem = {
   teamName: string;
   type: string;
   date: string;
+  endDate: string | null;
   startAt: string | null;
   endAt: string | null;
   hours: number | null;
@@ -194,7 +200,7 @@ export function AttendanceReport() {
                         <th key={t} style={{ ...th, textAlign: 'right' }}>
                           {TYPE_LABELS[t] || t}
                           <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: 2 }}>
-                            {t === 'VACATION' || t === 'HOLIDAY_REST' ? '(일)' : '(시간)'}
+                            {DAY_BASED_TYPES.includes(t) ? '(일)' : '(시간)'}
                           </span>
                         </th>
                       ))}
@@ -207,7 +213,7 @@ export function AttendanceReport() {
                         <td style={{ ...td, color: '#64748b' }}>{row.teamName}</td>
                         {allTypes.map((t) => (
                           <td key={t} style={{ ...td, textAlign: 'right' }}>
-                            {row.counts[t] != null ? (t === 'VACATION' || t === 'HOLIDAY_REST' ? `${row.counts[t]}일` : `${row.counts[t].toFixed(1)}h`) : '—'}
+                            {row.counts[t] != null ? (DAY_BASED_TYPES.includes(t) ? `${row.counts[t]}일` : `${row.counts[t].toFixed(1)}h`) : '—'}
                           </td>
                         ))}
                       </tr>
@@ -250,7 +256,7 @@ export function AttendanceReport() {
                             {TYPE_LABELS[it.type] || it.type}
                           </span>
                         </td>
-                        <td style={td}>{fmt(it.date)}</td>
+                        <td style={td}>{it.endDate ? `${fmt(it.date)} ~ ${fmt(it.endDate)}` : fmt(it.date)}</td>
                         <td style={{ ...td, color: '#64748b' }}>
                           {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}` : '—'}
                         </td>

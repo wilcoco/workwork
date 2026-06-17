@@ -4,13 +4,14 @@ import { apiJson, apiFetch } from '../lib/api';
 
 type AttachmentFile = { url: string; name: string; size?: number; type?: string };
 
-type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'HOLIDAY_REST' | 'PUBLIC_DUTY';
+type AttendanceType = 'OT' | 'VACATION' | 'EARLY_LEAVE' | 'FLEXIBLE' | 'HOLIDAY_WORK' | 'HOLIDAY_REST' | 'PUBLIC_DUTY' | 'PARENTAL_LEAVE';
 
 type CalendarItem = {
   id: string;
   userId?: string;
   type: AttendanceType;
   date: string; // ISO date string
+  endDate?: string | null; // 기간 신청 종료일
   startAt?: string | null;
   endAt?: string | null;
   reason?: string | null;
@@ -41,6 +42,10 @@ export function AttendanceRequest() {
   const [startDatetime, setStartDatetime] = useState(''); // datetime-local: YYYY-MM-DDTHH:MM
   const [endDatetime, setEndDatetime] = useState('');     // datetime-local: YYYY-MM-DDTHH:MM
   const [vacationDates, setVacationDates] = useState<string[]>([]);   // 휴가/공가용: YYYY-MM-DD[]
+  // 기간 신청(휴가 기간/육아휴직): 시작~종료를 한 건으로
+  const [rangeStart, setRangeStart] = useState('');  // YYYY-MM-DD
+  const [rangeEnd, setRangeEnd] = useState('');      // YYYY-MM-DD
+  const [useRange, setUseRange] = useState(false);   // 휴가에서 기간 모드 토글
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [altRestDate, setAltRestDate] = useState(''); // 휴일 대체 신청용: 같은 주 평일 휴식일
@@ -205,14 +210,28 @@ export function AttendanceRequest() {
 
   const weeks = useMemo(() => buildMonthGrid(calendarMonth, filteredItems, holidays), [calendarMonth, filteredItems, holidays]);
 
+  // 기간(시작~종료) 모드: 육아휴직은 항상, 휴가는 토글로. 한 건·단일 결재로 신청.
+  const rangeMode = type === 'PARENTAL_LEAVE' || (type === 'VACATION' && useRange);
+  // 종일 휴무 유형 (날짜 기반 입력)
+  const isDayOffType = type === 'VACATION' || type === 'PUBLIC_DUTY' || type === 'PARENTAL_LEAVE';
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!userId) {
       alert('로그인이 필요합니다');
       return;
     }
-    // 휴가/공가는 vacationDates, 그 외는 startDatetime 필요
-    if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
+    // 기간 모드: 시작~종료 / 휴가·공가(다중일자): vacationDates / 그 외: startDatetime
+    if (rangeMode) {
+      if (!rangeStart || !rangeEnd) {
+        alert('시작일과 종료일을 선택해 주세요');
+        return;
+      }
+      if (rangeEnd < rangeStart) {
+        alert('종료일은 시작일보다 빠를 수 없습니다');
+        return;
+      }
+    } else if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
       if (vacationDates.length === 0) {
         alert(type === 'VACATION' ? '휴가 날짜를 선택해 주세요' : '공가 날짜를 선택해 주세요');
         return;
@@ -238,8 +257,28 @@ export function AttendanceRequest() {
     setSubmitting(true);
     setError(null);
     try {
-      // 휴가/공가는 여러 날짜를 각각 신청, 그 외는 단건 신청
-      if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
+      // 기간 모드: 시작~종료를 한 건(단일 결재)으로 신청
+      if (rangeMode) {
+        const payload: Record<string, any> = {
+          userId,
+          approverId: cleanedApprovers[0],
+          approverIds: cleanedApprovers,
+          type,
+          reason: reason || undefined,
+          date: rangeStart,
+          endDate: rangeEnd,
+        };
+        if (attachments.length > 0) payload.attachments = attachments;
+        await apiJson(`/api/attendance`, { method: 'POST', body: JSON.stringify(payload) });
+        await loadCalendar();
+        const typeKo = type === 'PARENTAL_LEAVE' ? '육아휴직' : '휴가';
+        alert(`${typeKo} 신청이 등록되었습니다 (${rangeStart} ~ ${rangeEnd}, 결재 1건)`);
+        setRangeStart('');
+        setRangeEnd('');
+        setReason('');
+        setAttachments([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      } else if (type === 'VACATION' || type === 'PUBLIC_DUTY') {
         // 날짜별로 개별 신청
         const successDates: string[] = [];
         const failedDates: { date: string; error: string }[] = [];
@@ -595,6 +634,7 @@ export function AttendanceRequest() {
           <select value={type} onChange={(e) => setType(e.target.value as AttendanceType)}>
             <option value="OT">OT 신청</option>
             <option value="VACATION">휴가 신청</option>
+            <option value="PARENTAL_LEAVE">육아휴직 신청 (기간)</option>
             <option value="PUBLIC_DUTY">공가 신청 (예비군 등)</option>
             <option value="EARLY_LEAVE">조퇴 신청</option>
             <option value="FLEXIBLE">유연 근무 신청</option>
@@ -606,8 +646,26 @@ export function AttendanceRequest() {
             ⚠️ 대체 휴일 근무를 하는 경우 OT 신청을 별도로 하지 마세요. "휴일 대체 신청"을 이용해주세요.
           </div>
         )}
-        {(type === 'VACATION' || type === 'PUBLIC_DUTY') ? (
+        {isDayOffType ? (
           <div style={{ display: 'grid', gap: 8 }}>
+            {type === 'VACATION' && (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" onClick={() => setUseRange(false)} className={!useRange ? 'btn btn-primary' : 'btn'} style={{ height: 30, padding: '0 10px', fontSize: 13 }}>여러 날짜 선택</button>
+                <button type="button" onClick={() => setUseRange(true)} className={useRange ? 'btn btn-primary' : 'btn'} style={{ height: 30, padding: '0 10px', fontSize: 13 }}>기간 지정</button>
+              </div>
+            )}
+            {rangeMode ? (
+              <div style={{ display: 'grid', gap: 6 }}>
+                <span style={{ fontWeight: 500 }}>{type === 'PARENTAL_LEAVE' ? '육아휴직 기간' : '휴가 기간'} (시작 ~ 종료, 한 건으로 결재)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
+                  <span>~</span>
+                  <input type="date" value={rangeEnd} min={rangeStart || undefined} onChange={(e) => setRangeEnd(e.target.value)} style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
+                </div>
+                <span style={{ fontSize: 12, color: '#64748b' }}>기간 내 주말·공휴일은 휴가일수에서 자동 제외됩니다. 결재는 1건으로 진행됩니다.</span>
+              </div>
+            ) : (
+            <>
             <span style={{ fontWeight: 500 }}>{type === 'VACATION' ? '휴가 일자' : '공가 일자'} (여러 날짜 선택 가능)</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <input
@@ -661,6 +719,8 @@ export function AttendanceRequest() {
               해당 주 업무시간:{' '}
               {weeklyLoading ? '계산 중…' : (weeklyHours !== null ? `${weeklyHours.toFixed(1)}시간` : '-')}
             </span>
+            </>
+            )}
           </div>
         ) : (
           <>
@@ -826,6 +886,9 @@ export function AttendanceRequest() {
                     {typeLabel}{ev.requesterName ? ` - ${ev.requesterName}` : ''}
                   </div>
                   <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+                    {ev.endDate && (
+                      <div><strong>기간</strong> {String(ev.date).slice(0, 10)} ~ {String(ev.endDate).slice(0, 10)} <span style={{ color: '#64748b' }}>(주말·공휴일 제외, 결재 1건)</span></div>
+                    )}
                     {ev.requesterName && (
                       <div><strong>신청자</strong> {ev.requesterName}</div>
                     )}
@@ -905,6 +968,7 @@ function buildLabel(ev: CalendarItem): string {
   let t: string;
   if (ev.type === 'OT') t = 'OT';
   else if (ev.type === 'VACATION') t = '휴가';
+  else if (ev.type === 'PARENTAL_LEAVE') t = '육아휴직';
   else if (ev.type === 'PUBLIC_DUTY') t = '공가';
   else if (ev.type === 'EARLY_LEAVE') t = '조퇴';
   else if (ev.type === 'FLEXIBLE') t = '유연근무';
@@ -913,7 +977,7 @@ function buildLabel(ev: CalendarItem): string {
   else t = ev.type;
 
   let base: string;
-  if (ev.type === 'VACATION' || ev.type === 'PUBLIC_DUTY' || ev.type === 'HOLIDAY_REST') {
+  if (ev.type === 'VACATION' || ev.type === 'PARENTAL_LEAVE' || ev.type === 'PUBLIC_DUTY' || ev.type === 'HOLIDAY_REST') {
     base = `${t} (종일)`;
   } else {
     const s = ev.startAt ? formatTime(ev.startAt) : '';
@@ -933,6 +997,7 @@ function buildTitle(ev: CalendarItem): string {
 function getAttendanceTypeLabel(ev: CalendarItem): string {
   if (ev.type === 'OT') return 'OT';
   if (ev.type === 'VACATION') return '휴가';
+  if (ev.type === 'PARENTAL_LEAVE') return '육아휴직';
   if (ev.type === 'PUBLIC_DUTY') return '공가';
   if (ev.type === 'EARLY_LEAVE') return '조퇴';
   if (ev.type === 'FLEXIBLE') return '유연근무';
@@ -953,6 +1018,7 @@ function getBg(ev: CalendarItem): string {
   const typeColors: Record<string, string> = {
     OT: '59, 130, 246',           // 파랑
     VACATION: '34, 197, 94',      // 초록
+    PARENTAL_LEAVE: '13, 148, 136', // 진청록 (육아휴직)
     PUBLIC_DUTY: '234, 179, 8',   // 노랑 (공가)
     EARLY_LEAVE: '249, 115, 22',  // 주황
     FLEXIBLE: '168, 85, 247',     // 보라

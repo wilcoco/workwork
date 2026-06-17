@@ -193,21 +193,25 @@ export function ApprovalsInbox() {
             let kind: string;
             if (doc.type === 'OT') kind = 'OT';
             else if (doc.type === 'VACATION') kind = '휴가';
+            else if (doc.type === 'PARENTAL_LEAVE') kind = '육아휴직';
             else if (doc.type === 'PUBLIC_DUTY') kind = '공가';
             else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
             else if (doc.type === 'FLEXIBLE') kind = '유연근무';
             else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일대체';
             else kind = doc.type;
 
-            const dateShort = doc.date ? new Date(doc.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+            const fmtMd = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' });
+            const dateShort = doc.date ? fmtMd(doc.date) : '';
+            // 기간 신청(endDate)이면 시작~종료로 표시
+            const periodStr = doc.endDate ? `${dateShort}~${fmtMd(doc.endDate)}` : dateShort;
             const timeRange = doc.startAt && doc.endAt
               ? `${new Date(doc.startAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}~${new Date(doc.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
-              : (doc.type === 'VACATION' || doc.type === 'PUBLIC_DUTY' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
+              : (doc.type === 'VACATION' || doc.type === 'PARENTAL_LEAVE' || doc.type === 'PUBLIC_DUTY' || doc.type === 'HOLIDAY_REST' ? (doc.endDate ? '' : '종일') : '');
             const otMins = doc.type === 'OT' && doc.startAt && doc.endAt
               ? Math.round((new Date(doc.endAt).getTime() - new Date(doc.startAt).getTime()) / 60000)
               : 0;
             const durationStr = otMins > 0 ? `${otMins >= 60 ? `${Math.floor(otMins / 60)}h${otMins % 60 ? `${otMins % 60}m` : ''}` : `${otMins}m`}` : '';
-            title = `[${kind}] ${dateShort} ${timeRange}${durationStr ? ` (${durationStr})` : ''}`.trim();
+            title = `[${kind}] ${periodStr} ${timeRange}${durationStr ? ` (${durationStr})` : ''}`.trim();
             const parts = [
               doc.user?.name || doc.requesterName || '',
               doc.reason || '',
@@ -359,21 +363,25 @@ export function ApprovalsInbox() {
                 let kind: string;
                 if (doc.type === 'OT') kind = 'OT';
                 else if (doc.type === 'VACATION') kind = '휴가';
+                else if (doc.type === 'PARENTAL_LEAVE') kind = '육아휴직';
                 else if (doc.type === 'PUBLIC_DUTY') kind = '공가';
                 else if (doc.type === 'EARLY_LEAVE') kind = '조퇴';
                 else if (doc.type === 'FLEXIBLE') kind = '유연근무';
                 else if (doc.type === 'HOLIDAY_WORK' || doc.type === 'HOLIDAY_REST') kind = '휴일 대체 신청';
                 else kind = doc.type;
 
-                const dateShort = doc.date ? new Date(doc.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
+                const fmtMd = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' });
+                const dateShort = doc.date ? fmtMd(doc.date) : '';
+                // 기간 신청(endDate)이면 시작~종료로 표시
+                const periodShort = doc.endDate ? `${dateShort} ~ ${fmtMd(doc.endDate)}` : dateShort;
                 const otMins = doc.type === 'OT' && doc.startAt && doc.endAt
                   ? Math.round((new Date(doc.endAt).getTime() - new Date(doc.startAt).getTime()) / 60000)
                   : 0;
                 const otStr = otMins > 0 ? ` | ${otMins >= 60 ? `${Math.floor(otMins / 60)}시간${otMins % 60 ? ` ${otMins % 60}분` : ''}` : `${otMins}분`}` : '';
-                title = `근태 신청 - ${kind}${dateShort ? ` | ${dateShort}` : ''}${otStr}`.trim();
+                title = `근태 신청 - ${kind}${periodShort ? ` | ${periodShort}` : ''}${otStr}`.trim();
                 const timeRange = doc.startAt && doc.endAt
                   ? `${new Date(doc.startAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })} ~ ${new Date(doc.endAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}`
-                  : (doc.type === 'VACATION' || doc.type === 'PUBLIC_DUTY' || doc.type === 'HOLIDAY_REST' ? '종일' : '');
+                  : (doc.type === 'VACATION' || doc.type === 'PARENTAL_LEAVE' || doc.type === 'PUBLIC_DUTY' || doc.type === 'HOLIDAY_REST' ? (doc.endDate ? '기간 휴무' : '종일') : '');
                 const parts = [
                   doc.requesterName || '',
                   timeRange,
