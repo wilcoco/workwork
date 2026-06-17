@@ -103,22 +103,26 @@ export class ApprovalsController {
     if (q.status) where.status = q.status;
     if (q.subjectType) where.subjectType = q.subjectType.toUpperCase();
     if (q.requestedById) where.requestedById = q.requestedById;
+    // 결재자 범위와 검색어는 각각 별개의 OR 그룹이므로 AND 로 결합한다.
+    // (둘 다 where.OR 에 직접 대입하면 뒤 조건이 앞 조건을 덮어써 결재자 범위가 사라짐)
+    const and: any[] = [];
     if (q.approverId) {
-      where.OR = [
+      and.push({ OR: [
         { approverId: q.approverId },
         { steps: { some: { approverId: q.approverId } } },
-      ];
+      ] });
     }
     const term = String(q.query || '').trim();
     if (term) {
-      where.OR = [
+      and.push({ OR: [
         { subjectType: { contains: term, mode: 'insensitive' as any } },
         { subjectId: { contains: term, mode: 'insensitive' as any } },
         { requestedBy: { name: { contains: term, mode: 'insensitive' as any } } },
         { approver: { name: { contains: term, mode: 'insensitive' as any } } },
         { steps: { some: { comment: { contains: term, mode: 'insensitive' as any } } } },
-      ];
+      ] });
     }
+    if (and.length) where.AND = and;
     if (q.from || q.to) {
       where.createdAt = {};
       if (q.from) (where.createdAt as any).gte = new Date(q.from);
@@ -225,22 +229,25 @@ export class ApprovalsController {
   async summary(@Query() q: ListApprovalsQueryDto) {
     const where: any = {};
     if (q.requestedById) where.requestedById = q.requestedById;
+    // 결재자 범위와 검색어는 각각 별개의 OR 그룹이므로 AND 로 결합한다(list 와 동일).
+    const and: any[] = [];
     if (q.approverId) {
-      where.OR = [
+      and.push({ OR: [
         { approverId: q.approverId },
         { steps: { some: { approverId: q.approverId } } },
-      ];
+      ] });
     }
     const term = String(q.query || '').trim();
     if (term) {
-      where.OR = [
+      and.push({ OR: [
         { subjectType: { contains: term, mode: 'insensitive' as any } },
         { subjectId: { contains: term, mode: 'insensitive' as any } },
         { requestedBy: { name: { contains: term, mode: 'insensitive' as any } } },
         { approver: { name: { contains: term, mode: 'insensitive' as any } } },
         { steps: { some: { comment: { contains: term, mode: 'insensitive' as any } } } },
-      ];
+      ] });
     }
+    if (and.length) where.AND = and;
     if (q.from || q.to) {
       where.createdAt = {};
       if (q.from) (where.createdAt as any).gte = new Date(q.from);
