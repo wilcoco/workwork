@@ -1250,6 +1250,8 @@ function CommentsBox({
   const [error, setError] = useState<string | null>(null);
   // Instruction-mode state
   const [mode, setMode] = useState<'GENERAL' | 'INSTRUCTION'>('GENERAL');
+  // 업무 지시 전환 시 댓글/지시 구분 안내 팝업
+  const [showInstrGuide, setShowInstrGuide] = useState(false);
   const defaultDue = useMemo(() => {
     const d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const y = d.getFullYear();
@@ -1398,7 +1400,7 @@ function CommentsBox({
           <button
             type="button"
             className={mode === 'INSTRUCTION' ? 'btn btn-primary' : 'btn'}
-            onClick={() => setMode('INSTRUCTION')}
+            onClick={() => { if (mode === 'INSTRUCTION') return; setShowInstrGuide(true); }}
             style={{ height: 30, padding: '0 10px', borderRadius: 0, border: 'none' }}
           >📌 업무 지시</button>
         </div>
@@ -1439,6 +1441,36 @@ function CommentsBox({
         </button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
+      {showInstrGuide && (
+        <div
+          onClick={() => setShowInstrGuide(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, maxWidth: 460, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ padding: '14px 18px', background: '#b91c1c', color: '#fff', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>📌 업무 지시 안내</span>
+            </div>
+            <div style={{ padding: 18, fontSize: 14, lineHeight: 1.7, color: '#1f2937' }}>
+              댓글과 업무 지시를 구분해서 작성 부탁합니다.<br /><br />
+              <b>업무 지시</b>는 그에 대한 대답이 업무 일지에 올릴 별도 사안일 때 업무 지시를 사용하시고, <b>댓글</b>로 소통될 수 있는 내용은 댓글로 진행해 주세요.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: '0 18px 18px' }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShowInstrGuide(false)}
+                style={{ height: 34, padding: '0 14px' }}
+              >취소</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => { setMode('INSTRUCTION'); setShowInstrGuide(false); }}
+                style={{ height: 34, padding: '0 14px' }}
+              >확인하고 업무 지시 작성</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
