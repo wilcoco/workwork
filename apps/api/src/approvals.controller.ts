@@ -130,62 +130,60 @@ export class ApprovalsController {
 
     // If offset is provided, use offset-based pagination instead of cursor
     const useCursor = !q.offset && q.cursor;
-    const items = await this.prisma.approvalRequest.findMany({
-      where,
-      take: limit,
-      skip: useCursor ? 1 : offset,
-      ...(useCursor ? { cursor: { id: q.cursor } } : {}),
-      orderBy: { createdAt: 'desc' },
-      include: {
-        requestedBy: true,
-        approver: true,
-        steps: {
-          orderBy: { stepNo: 'asc' },
-          include: { approver: true },
-        },
-      },
-    });
 
-    // Filter to only show items where user is current approver (their turn)
+    // "내 차례"인 결재만 보기: 사용자가 '현재 대기 중인 단계'의 결재자인 건만 표시.
+    // where.OR 는 사용자가 '어느 단계든' 결재자이면 매칭되므로(이미 승인한 단계·
+    // 아직 차례가 안 온 미래 단계 포함), 이 조건으로 DB 페이지네이션을 먼저 하면
+    // 현재 차례가 아닌 건이 페이지를 차지해 실제 결재 대상이 누락된다. 따라서
+    // currentApproverOnly 인 경우 전체를 받아 '내 차례' 필터를 먼저 적용한 뒤
+    // 메모리에서 페이징한다.
     const currentApproverOnly = q.currentApproverOnly === 'true' || q.currentApproverOnly === '1';
-    let filtered = items;
-    if (currentApproverOnly && q.approverId) {
-      filtered = items.filter((a: any) => {
-        if (a.status !== 'PENDING') return false;
-        const steps = a.steps || [];
-        if (steps.length > 0) {
-          // Multi-step: find first PENDING step
-          const pendingStep = steps.find((s: any) => s.status === 'PENDING');
-          return pendingStep && pendingStep.approverId === q.approverId;
-        }
-        // Single-step: check current approver
-        return a.approverId === q.approverId;
-      });
-    }
-
-    const nextCursor = filtered.length === limit ? filtered[filtered.length - 1]?.id : undefined;
-
-    // Optionally count total for offset-based pagination
-    let total: number | undefined;
-    if (wantTotal) {
-      if (currentApproverOnly && q.approverId) {
-        // Need to count filtered results properly - fetch all and count
-        const allItems = await this.prisma.approvalRequest.findMany({
-          where,
-          include: { steps: { orderBy: { stepNo: 'asc' } } },
-        });
-        total = allItems.filter((a: any) => {
-          if (a.status !== 'PENDING') return false;
-          const steps = a.steps || [];
-          if (steps.length > 0) {
-            const pendingStep = steps.find((s: any) => s.status === 'PENDING');
-            return pendingStep && pendingStep.approverId === q.approverId;
-          }
-          return a.approverId === q.approverId;
-        }).length;
-      } else {
-        total = await this.prisma.approvalRequest.count({ where });
+    const isMyTurn = (a: any): boolean => {
+      if (a.status !== 'PENDING') return false;
+      const steps = a.steps || [];
+      if (steps.length > 0) {
+        // Multi-step: 가장 앞선(stepNo asc) PENDING 단계가 현재 차례
+        const pendingStep = steps.find((s: any) => s.status === 'PENDING');
+        return !!pendingStep && pendingStep.approverId === q.approverId;
       }
+      // Single-step: 지정된 결재자
+      return a.approverId === q.approverId;
+    };
+
+    let filtered: any[];
+    let total: number | undefined;
+    let nextCursor: string | undefined;
+
+    if (currentApproverOnly && q.approverId) {
+      const allMatching = await this.prisma.approvalRequest.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          requestedBy: true,
+          approver: true,
+          steps: { orderBy: { stepNo: 'asc' }, include: { approver: true } },
+        },
+      });
+      const myTurn = allMatching.filter(isMyTurn);
+      if (wantTotal) total = myTurn.length;
+      filtered = myTurn.slice(offset, offset + limit);
+      nextCursor = offset + limit < myTurn.length ? filtered[filtered.length - 1]?.id : undefined;
+    } else {
+      const items = await this.prisma.approvalRequest.findMany({
+        where,
+        take: limit,
+        skip: useCursor ? 1 : offset,
+        ...(useCursor ? { cursor: { id: q.cursor } } : {}),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          requestedBy: true,
+          approver: true,
+          steps: { orderBy: { stepNo: 'asc' }, include: { approver: true } },
+        },
+      });
+      filtered = items;
+      nextCursor = filtered.length === limit ? filtered[filtered.length - 1]?.id : undefined;
+      if (wantTotal) total = await this.prisma.approvalRequest.count({ where });
     }
     return {
       items: filtered.map((a: any) => {
