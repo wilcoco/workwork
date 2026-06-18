@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime, formatKstYmd } from '../lib/time';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { UserAvatar } from '../components/UserAvatar';
+
+const statTh: CSSProperties = { borderBottom: '1px solid #e2e8f0', padding: '4px 8px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', whiteSpace: 'nowrap' };
+const statTd: CSSProperties = { borderBottom: '1px solid #f1f5f9', padding: '4px 8px', fontSize: 13, whiteSpace: 'nowrap' };
 
 type WL = { id: string; userId?: string; title: string; excerpt: string; userName?: string; teamName?: string; date: string; createdAt?: string; visibility?: 'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY' };
 type FB = { id: string; subjectId: string; authorId?: string; authorName?: string; authorTeam?: string | null; content: string; createdAt: string };
@@ -41,6 +44,12 @@ export function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overdueTasks, setOverdueTasks] = useState<any[]>([]);
+  // 팀별 업무일지 작성 통계(어제/오늘)
+  const [teamStats, setTeamStats] = useState<{
+    yesterday: string; today: string;
+    teams: Array<{ orgUnitId: string; teamName: string; headcount: number; yesterdayCount: number; todayCount: number; yesterdayPerCapita: number | null; todayPerCapita: number | null }>;
+    totals: { headcount: number; yesterdayCount: number; todayCount: number };
+  } | null>(null);
   // 알림 배너용 상태
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
   const [pendingInstructions, setPendingInstructions] = useState<any[]>([]);
@@ -261,6 +270,13 @@ export function Home() {
   // Total pending approvals count (for banner display)
   const [pendingApprovalsTotal, setPendingApprovalsTotal] = useState<number>(0);
 
+  // 팀별 업무일지 작성 통계 (어제/오늘)
+  useEffect(() => {
+    apiJson<any>('/api/worklogs/team-daily-stats')
+      .then((res) => setTeamStats(res))
+      .catch(() => setTeamStats(null));
+  }, []);
+
   // 알림 배너: 대기 중인 결재, 업무 지시, 내 업무일지 댓글 조회
   useEffect(() => {
     const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -302,6 +318,55 @@ export function Home() {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
+      {/* 팀별 업무일지 작성 통계 (어제/오늘) */}
+      {teamStats && teamStats.teams.length > 0 && (
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12, background: '#fff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 800, fontSize: 14, color: '#0f172a' }}>📊 팀별 업무일지 작성 현황</span>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>건수 (인당) · 기준일 = 업무일지 날짜</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 380 }}>
+              <thead>
+                <tr>
+                  <th style={statTh}>팀</th>
+                  <th style={{ ...statTh, textAlign: 'right' }}>인원</th>
+                  <th style={{ ...statTh, textAlign: 'right' }}>어제 ({teamStats.yesterday.slice(5)})</th>
+                  <th style={{ ...statTh, textAlign: 'right' }}>오늘 ({teamStats.today.slice(5)})</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamStats.teams.map((t) => (
+                  <tr key={t.orgUnitId}>
+                    <td style={statTd}>{t.teamName}</td>
+                    <td style={{ ...statTd, textAlign: 'right', color: '#64748b' }}>{t.headcount}</td>
+                    <td style={{ ...statTd, textAlign: 'right' }}>
+                      <b>{t.yesterdayCount}</b>
+                      <span style={{ color: '#94a3b8', fontSize: 11 }}> {t.yesterdayPerCapita != null ? `(${t.yesterdayPerCapita.toFixed(1)})` : '(–)'}</span>
+                    </td>
+                    <td style={{ ...statTd, textAlign: 'right' }}>
+                      <b>{t.todayCount}</b>
+                      <span style={{ color: '#94a3b8', fontSize: 11 }}> {t.todayPerCapita != null ? `(${t.todayPerCapita.toFixed(1)})` : '(–)'}</span>
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc' }}>
+                  <td style={{ ...statTd, fontWeight: 800 }}>전체</td>
+                  <td style={{ ...statTd, textAlign: 'right', fontWeight: 700, color: '#64748b' }}>{teamStats.totals.headcount}</td>
+                  <td style={{ ...statTd, textAlign: 'right', fontWeight: 700 }}>
+                    {teamStats.totals.yesterdayCount}
+                    <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 400 }}> {teamStats.totals.headcount > 0 ? `(${(teamStats.totals.yesterdayCount / teamStats.totals.headcount).toFixed(1)})` : '(–)'}</span>
+                  </td>
+                  <td style={{ ...statTd, textAlign: 'right', fontWeight: 700 }}>
+                    {teamStats.totals.todayCount}
+                    <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 400 }}> {teamStats.totals.headcount > 0 ? `(${(teamStats.totals.todayCount / teamStats.totals.headcount).toFixed(1)})` : '(–)'}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {/* 알림 배너 */}
       {(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>

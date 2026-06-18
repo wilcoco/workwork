@@ -186,6 +186,86 @@ export class WorklogsController {
   constructor(private prisma: PrismaService) {}
 
   /**
+   * GET /api/worklogs/team-daily-stats
+   * 홈 상단 요약: 어제/오늘(업무일지 기준일, KST)에 팀별로 몇 건 작성됐는지 +
+   * 팀 인원수 대비 인당 작성 건수. (어제 일지를 오늘 올릴 수 있어 두 날짜 모두 표시)
+   */
+  @Get('team-daily-stats')
+  async teamDailyStats() {
+    const kstYmd = (d: Date) => new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
+
+    const now = new Date();
+    const todayYmd = kstYmd(now);
+    const todayStart = new Date(`${todayYmd}T00:00:00+09:00`);
+    const yStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+    const tEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const yesterdayYmd = kstYmd(yStart);
+
+    // 업무일지 기준일(date)이 어제~오늘인 건 — 작성자 소속(orgUnitId)별로 집계
+    const worklogs = await this.prisma.worklog.findMany({
+      where: { date: { gte: yStart, lt: tEnd } },
+      select: { date: true, createdBy: { select: { orgUnitId: true } } },
+    });
+
+    // 팀별 활성 인원수
+    const users = await this.prisma.user.findMany({
+      where: { status: 'ACTIVE' },
+      select: { orgUnitId: true },
+    });
+    const orgs = await this.prisma.orgUnit.findMany({ select: { id: true, name: true } });
+    const nameById = new Map<string, string>();
+    for (const o of orgs) nameById.set(o.id, o.name);
+
+    type Row = { orgUnitId: string; teamName: string; headcount: number; yesterdayCount: number; todayCount: number };
+    const rows = new Map<string, Row>();
+    const ensure = (orgUnitId: string | null): Row => {
+      const key = orgUnitId || '__none__';
+      let r = rows.get(key);
+      if (!r) {
+        r = { orgUnitId: key, teamName: orgUnitId ? (nameById.get(orgUnitId) || '미지정 팀') : '소속 미지정', headcount: 0, yesterdayCount: 0, todayCount: 0 };
+        rows.set(key, r);
+      }
+      return r;
+    };
+
+    for (const u of users) ensure(u.orgUnitId).headcount += 1;
+    for (const w of worklogs) {
+      const r = ensure(w.createdBy?.orgUnitId ?? null);
+      if (w.date.getTime() < todayStart.getTime()) r.yesterdayCount += 1;
+      else r.todayCount += 1;
+    }
+
+    const round1 = (n: number) => Math.round(n * 10) / 10;
+    const teams = Array.from(rows.values())
+      // 인원이 있거나 작성 건이 있는 팀만
+      .filter((r) => r.headcount > 0 || r.yesterdayCount > 0 || r.todayCount > 0)
+      .map((r) => ({
+        orgUnitId: r.orgUnitId,
+        teamName: r.teamName,
+        headcount: r.headcount,
+        yesterdayCount: r.yesterdayCount,
+        todayCount: r.todayCount,
+        yesterdayPerCapita: r.headcount > 0 ? round1(r.yesterdayCount / r.headcount) : null,
+        todayPerCapita: r.headcount > 0 ? round1(r.todayCount / r.headcount) : null,
+      }))
+      .sort((a, b) => a.teamName.localeCompare(b.teamName, 'ko'));
+
+    const totals = teams.reduce(
+      (acc, t) => {
+        acc.headcount += t.headcount;
+        acc.yesterdayCount += t.yesterdayCount;
+        acc.todayCount += t.todayCount;
+        return acc;
+      },
+      { headcount: 0, yesterdayCount: 0, todayCount: 0 },
+    );
+
+    return { yesterday: yesterdayYmd, today: todayYmd, teams, totals };
+  }
+
+  /**
    * PATCH /api/worklogs/:id/planner-info
    * Merge Planner/Project sync metadata (breadcrumb, taskId, titles) into structuredData.planner
    */
