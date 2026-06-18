@@ -214,9 +214,10 @@ export class WorklogsController {
       where: { status: 'ACTIVE' },
       select: { orgUnitId: true },
     });
-    const orgs = await this.prisma.orgUnit.findMany({ select: { id: true, name: true } });
+    const orgs = await this.prisma.orgUnit.findMany({ select: { id: true, name: true, type: true } });
     const nameById = new Map<string, string>();
-    for (const o of orgs) nameById.set(o.id, o.name);
+    const typeById = new Map<string, string>();
+    for (const o of orgs) { nameById.set(o.id, o.name); typeById.set(o.id, String(o.type || '')); }
 
     type Row = { orgUnitId: string; teamName: string; headcount: number; yesterdayCount: number; todayCount: number };
     const rows = new Map<string, Row>();
@@ -239,8 +240,11 @@ export class WorklogsController {
 
     const round1 = (n: number) => Math.round(n * 10) / 10;
     const teams = Array.from(rows.values())
-      // 인원이 있거나 작성 건이 있는 팀만
-      .filter((r) => r.headcount > 0 || r.yesterdayCount > 0 || r.todayCount > 0)
+      // 팀(TEAM)만 대상 — 실(DIVISION)·회사(COMPANY) 등 상위 조직 및 소속 미지정 제외.
+      // 단, '에스콘'은 팀 유형이 아니어도 예외로 포함한다.
+      .filter((r) => typeById.get(r.orgUnitId) === 'TEAM' || r.teamName.includes('에스콘'))
+      // 어제/오늘 업무일지 작성 기록이 있는 팀만
+      .filter((r) => r.yesterdayCount > 0 || r.todayCount > 0)
       .map((r) => ({
         orgUnitId: r.orgUnitId,
         teamName: r.teamName,

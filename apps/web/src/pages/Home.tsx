@@ -50,6 +50,7 @@ export function Home() {
     teams: Array<{ orgUnitId: string; teamName: string; headcount: number; yesterdayCount: number; todayCount: number; yesterdayPerCapita: number | null; todayPerCapita: number | null }>;
     totals: { headcount: number; yesterdayCount: number; todayCount: number };
   } | null>(null);
+  const [teamStatsOpen, setTeamStatsOpen] = useState(false); // 작성현황: 기본 닫힘, 클릭 시 펼침
   // 알림 배너용 상태
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
   const [pendingInstructions, setPendingInstructions] = useState<any[]>([]);
@@ -321,11 +322,18 @@ export function Home() {
       {/* 팀별 업무일지 작성 통계 (어제/오늘) */}
       {teamStats && teamStats.teams.length > 0 && (
         <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 12, background: '#fff' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <div
+            onClick={() => setTeamStatsOpen((v) => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', cursor: 'pointer', userSelect: 'none' }}
+          >
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamStatsOpen ? '▼' : '▶'}</span>
             <span style={{ fontWeight: 800, fontSize: 14, color: '#0f172a' }}>📊 팀별 업무일지 작성 현황</span>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>건수 (인당) · 기준일 = 업무일지 날짜</span>
+            {teamStatsOpen
+              ? <span style={{ fontSize: 12, color: '#94a3b8' }}>건수 (인당) · 기준일 = 업무일지 날짜</span>
+              : <span style={{ fontSize: 12, color: '#94a3b8' }}>어제 {teamStats.totals.yesterdayCount}건 · 오늘 {teamStats.totals.todayCount}건 (클릭하여 펼치기)</span>}
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          {teamStatsOpen && (
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 380 }}>
               <thead>
                 <tr>
@@ -365,6 +373,7 @@ export function Home() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       )}
       {/* 알림 배너 */}
