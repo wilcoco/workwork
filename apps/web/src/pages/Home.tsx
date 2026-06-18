@@ -328,48 +328,55 @@ export function Home() {
           >
             <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamStatsOpen ? '▼' : '▶'}</span>
             <span style={{ fontWeight: 800, fontSize: 14, color: '#0f172a' }}>📊 팀별 업무일지 작성 현황</span>
-            {teamStatsOpen
-              ? <span style={{ fontSize: 12, color: '#94a3b8' }}>건수 (인당) · 기준일 = 업무일지 날짜</span>
-              : <span style={{ fontSize: 12, color: '#94a3b8' }}>어제 {teamStats.totals.yesterdayCount}건 · 오늘 {teamStats.totals.todayCount}건 (클릭하여 펼치기)</span>}
+            {(() => {
+              const tc = teamStats.totals.yesterdayCount + teamStats.totals.todayCount;
+              return teamStatsOpen
+                ? <span style={{ fontSize: 12, color: '#94a3b8' }}>어제+오늘 합계 · 기준일 = 업무일지 날짜 ({teamStats.yesterday.slice(5)}~{teamStats.today.slice(5)})</span>
+                : <span style={{ fontSize: 12, color: '#94a3b8' }}>어제+오늘 {tc}건 (클릭하여 펼치기)</span>;
+            })()}
           </div>
           {teamStatsOpen && (
           <div style={{ overflowX: 'auto', marginTop: 8 }}>
-            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 380 }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 360 }}>
               <thead>
                 <tr>
                   <th style={statTh}>팀</th>
                   <th style={{ ...statTh, textAlign: 'right' }}>인원</th>
-                  <th style={{ ...statTh, textAlign: 'right' }}>어제 ({teamStats.yesterday.slice(5)})</th>
-                  <th style={{ ...statTh, textAlign: 'right' }}>오늘 ({teamStats.today.slice(5)})</th>
+                  <th style={{ ...statTh, textAlign: 'right' }}>작성 건수<br /><span style={{ fontWeight: 400 }}>(어제+오늘)</span></th>
+                  <th style={{ ...statTh, textAlign: 'right' }}>인당 평균</th>
                 </tr>
               </thead>
               <tbody>
-                {teamStats.teams.map((t) => (
-                  <tr key={t.orgUnitId}>
-                    <td style={statTd}>{t.teamName}</td>
-                    <td style={{ ...statTd, textAlign: 'right', color: '#64748b' }}>{t.headcount}</td>
-                    <td style={{ ...statTd, textAlign: 'right' }}>
-                      <b>{t.yesterdayCount}</b>
-                      <span style={{ color: '#94a3b8', fontSize: 11 }}> {t.yesterdayPerCapita != null ? `(${t.yesterdayPerCapita.toFixed(1)})` : '(–)'}</span>
-                    </td>
-                    <td style={{ ...statTd, textAlign: 'right' }}>
-                      <b>{t.todayCount}</b>
-                      <span style={{ color: '#94a3b8', fontSize: 11 }}> {t.todayPerCapita != null ? `(${t.todayPerCapita.toFixed(1)})` : '(–)'}</span>
-                    </td>
-                  </tr>
-                ))}
-                <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc' }}>
-                  <td style={{ ...statTd, fontWeight: 800 }}>전체</td>
-                  <td style={{ ...statTd, textAlign: 'right', fontWeight: 700, color: '#64748b' }}>{teamStats.totals.headcount}</td>
-                  <td style={{ ...statTd, textAlign: 'right', fontWeight: 700 }}>
-                    {teamStats.totals.yesterdayCount}
-                    <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 400 }}> {teamStats.totals.headcount > 0 ? `(${(teamStats.totals.yesterdayCount / teamStats.totals.headcount).toFixed(1)})` : '(–)'}</span>
-                  </td>
-                  <td style={{ ...statTd, textAlign: 'right', fontWeight: 700 }}>
-                    {teamStats.totals.todayCount}
-                    <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 400 }}> {teamStats.totals.headcount > 0 ? `(${(teamStats.totals.todayCount / teamStats.totals.headcount).toFixed(1)})` : '(–)'}</span>
-                  </td>
-                </tr>
+                {teamStats.teams.map((t) => {
+                  const cnt = t.yesterdayCount + t.todayCount;
+                  const avg = t.headcount > 0 ? cnt / t.headcount : null;
+                  return (
+                    <tr key={t.orgUnitId}>
+                      <td style={statTd}>{t.teamName}</td>
+                      <td style={{ ...statTd, textAlign: 'right', color: '#64748b' }}>{t.headcount}</td>
+                      <td style={{ ...statTd, textAlign: 'right' }}>
+                        <b>{cnt}</b>
+                        <span style={{ color: '#94a3b8', fontSize: 11 }}> (어제 {t.yesterdayCount}·오늘 {t.todayCount})</span>
+                      </td>
+                      <td style={{ ...statTd, textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>{avg != null ? avg.toFixed(1) : '–'}</td>
+                    </tr>
+                  );
+                })}
+                {(() => {
+                  const cnt = teamStats.totals.yesterdayCount + teamStats.totals.todayCount;
+                  const avg = teamStats.totals.headcount > 0 ? cnt / teamStats.totals.headcount : null;
+                  return (
+                    <tr style={{ borderTop: '2px solid #e2e8f0', background: '#f8fafc' }}>
+                      <td style={{ ...statTd, fontWeight: 800 }}>전체</td>
+                      <td style={{ ...statTd, textAlign: 'right', fontWeight: 700, color: '#64748b' }}>{teamStats.totals.headcount}</td>
+                      <td style={{ ...statTd, textAlign: 'right', fontWeight: 700 }}>
+                        {cnt}
+                        <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 400 }}> (어제 {teamStats.totals.yesterdayCount}·오늘 {teamStats.totals.todayCount})</span>
+                      </td>
+                      <td style={{ ...statTd, textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>{avg != null ? avg.toFixed(1) : '–'}</td>
+                    </tr>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
