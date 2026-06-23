@@ -188,7 +188,13 @@ function DispatchCard({
             신청자 <b>{item.requesterName}</b>{item.coRiders ? ` · 동승 ${item.coRiders}` : ''}
           </div>
           <div style={{ fontSize: 13, color: '#334155' }}>
-            운행예정 {fmtTime(item.startAt)}~{fmtTime(item.endAt)} · {item.destination} · {item.purpose}
+            운행예정 {fmtTime(item.startAt)}~{fmtTime(item.endAt)}
+          </div>
+          <div style={{ fontSize: 13, color: '#334155' }}>
+            <span style={{ color: '#64748b' }}>목적지</span> <b>{item.destination || '-'}</b>
+          </div>
+          <div style={{ fontSize: 13, color: '#334155' }}>
+            <span style={{ color: '#64748b' }}>목적</span> <b>{item.purpose || '-'}</b>
           </div>
         </div>
         <span style={{ background: p.bg, color: p.color, borderRadius: 999, padding: '3px 12px', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{p.label}</span>
