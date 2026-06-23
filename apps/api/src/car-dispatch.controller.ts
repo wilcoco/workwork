@@ -45,6 +45,10 @@ class CheckDto {
   actorId?: string; // 경비원 user id
 
   @IsOptional()
+  @IsString()
+  at?: string; // 경비원이 입력한 출/입차 시각 (ISO). 미지정 시 현재시각
+
+  @IsOptional()
   @IsInt()
   @Min(0)
   odometer?: number; // 적산거리(km)
@@ -327,23 +331,29 @@ export class CarDispatchController {
     }
   }
 
-  // 출차 확인 (경비)
+  // 출차 확인 (경비) — 출차 시각/적산거리 직접 입력
   @Post(':id/checkout')
   async checkout(@Param('id') id: string, @Body() dto: CheckDto) {
     const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
     if (!rec) throw new BadRequestException('not found');
-    const data: any = { checkoutAt: new Date(), checkedOutById: dto.actorId || null };
+    const data: any = { checkoutAt: parseAt(dto.at), checkedOutById: dto.actorId || null };
     if (typeof dto.odometer === 'number') data.odometerStart = dto.odometer;
+    // 복귀 적산거리가 이미 있으면 주행거리 재계산
+    const odoStart = typeof dto.odometer === 'number' ? dto.odometer : (rec as any).odometerStart;
+    const odoEnd = (rec as any).odometerEnd;
+    if (typeof odoStart === 'number' && typeof odoEnd === 'number' && odoEnd >= odoStart) {
+      data.distanceKm = odoEnd - odoStart;
+    }
     const updated = await this.prisma.carDispatchRequest.update({ where: { id }, data });
     return this.toBoardItem(await this.withRel(updated.id));
   }
 
-  // 입차 확인 (경비) — 복귀 적산거리 입력 시 주행거리 자동 계산
+  // 입차 확인 (경비) — 입차 시각/적산거리 직접 입력, 주행거리 자동 계산
   @Post(':id/checkin')
   async checkin(@Param('id') id: string, @Body() dto: CheckDto) {
     const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
     if (!rec) throw new BadRequestException('not found');
-    const data: any = { checkinAt: new Date(), checkedInById: dto.actorId || null };
+    const data: any = { checkinAt: parseAt(dto.at), checkedInById: dto.actorId || null };
     if (typeof dto.odometer === 'number') data.odometerEnd = dto.odometer;
     const odoStart = (rec as any).odometerStart;
     const odoEnd = typeof dto.odometer === 'number' ? dto.odometer : (rec as any).odometerEnd;
@@ -478,6 +488,15 @@ export class CarDispatchController {
     });
     return rec;
   }
+}
+
+// 경비원이 입력한 시각(ISO) 파싱. 미지정/오류 시 현재시각
+function parseAt(at?: string): Date {
+  if (at) {
+    const d = new Date(at);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return new Date();
 }
 
 // 오늘 날짜(KST, YYYY-MM-DD)
