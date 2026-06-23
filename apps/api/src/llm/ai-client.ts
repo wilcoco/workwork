@@ -193,7 +193,7 @@ export async function extractOdometerFromImage(
   const body: any = {
     model: claudeModel,
     max_tokens: 1024,
-    temperature: 0,
+    // 참고: Opus 4.7/4.8 등 최신 모델은 temperature/top_p/top_k 파라미터를 거부(400)하므로 사용하지 않음
     system,
     messages: [
       {
