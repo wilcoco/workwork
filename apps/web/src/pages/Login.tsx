@@ -197,6 +197,9 @@ export function Login() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete={mode === 'login' ? 'username' : 'email'}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="user@example.com"
             />
           </label>
