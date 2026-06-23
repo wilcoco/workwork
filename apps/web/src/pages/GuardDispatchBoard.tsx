@@ -264,11 +264,23 @@ function DispatchCard({
         <span style={{ fontWeight: 700, color: '#0f172a' }}>주행거리 {item.distanceKm != null ? `${item.distanceKm.toLocaleString()}km` : '-'}</span>
       </div>
 
-      {(item.statusPhotosBefore?.length > 0 || item.statusPhotosAfter?.length > 0) && (
-        <div style={{ borderTop: '1px dashed #e5e7eb', paddingTop: 8, display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>차량 상태 사진 (운전자 등록)</div>
-          <PhotoGroup label="사용 전" photos={item.statusPhotosBefore} onPhoto={onPhoto} resolveUrl={resolveUrl} />
-          <PhotoGroup label="사용 후" photos={item.statusPhotosAfter} onPhoto={onPhoto} resolveUrl={resolveUrl} />
+      {([item.statusPhotosBefore, item.statusPhotosAfter, item.odometerPhotosBefore, item.odometerPhotosAfter].some((a) => (a?.length || 0) > 0)) && (
+        <div style={{ borderTop: '1px dashed #e5e7eb', paddingTop: 8, display: 'grid', gap: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>📸 운전자 등록 사진</div>
+          {((item.statusPhotosBefore?.length || 0) > 0 || (item.statusPhotosAfter?.length || 0) > 0) && (
+            <div style={{ display: 'grid', gap: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>차량 상태</div>
+              <PhotoGroup label="사용 전" photos={item.statusPhotosBefore} onPhoto={onPhoto} resolveUrl={resolveUrl} />
+              <PhotoGroup label="사용 후" photos={item.statusPhotosAfter} onPhoto={onPhoto} resolveUrl={resolveUrl} />
+            </div>
+          )}
+          {((item.odometerPhotosBefore?.length || 0) > 0 || (item.odometerPhotosAfter?.length || 0) > 0) && (
+            <div style={{ display: 'grid', gap: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>계기판(적산거리)</div>
+              <PhotoGroup label="사용 전" photos={item.odometerPhotosBefore} onPhoto={onPhoto} resolveUrl={resolveUrl} />
+              <PhotoGroup label="사용 후" photos={item.odometerPhotosAfter} onPhoto={onPhoto} resolveUrl={resolveUrl} />
+            </div>
+          )}
         </div>
       )}
     </div>
