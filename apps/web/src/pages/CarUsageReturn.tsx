@@ -12,6 +12,7 @@ type Dispatch = {
   endAt: string;
   destination: string;
   purpose: string;
+  status: string;
   odometerStart: number | null;
   odometerEnd: number | null;
   distanceKm: number | null;
@@ -220,6 +221,7 @@ export function CarUsageReturn() {
             {list.map((d) => (
               <option key={d.id} value={d.id}>
                 {fmt(d.startAt)} · {d.carName}{d.carPlateNo ? ` (${d.carPlateNo})` : ''} · {d.destination}
+                {d.status === 'PENDING' ? ' · [결재전]' : ''}
                 {d.usageRegisteredAt ? ' · [등록됨]' : ''}
               </option>
             ))}

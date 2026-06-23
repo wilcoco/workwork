@@ -202,7 +202,12 @@ function DispatchCard({
             <span style={{ color: '#64748b' }}>목적</span> <b>{item.purpose || '-'}</b>
           </div>
         </div>
-        <span style={{ background: p.bg, color: p.color, borderRadius: 999, padding: '3px 12px', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{p.label}</span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          {item.status === 'PENDING' && (
+            <span style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', borderRadius: 999, padding: '3px 10px', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}>결재 전</span>
+          )}
+          <span style={{ background: p.bg, color: p.color, borderRadius: 999, padding: '3px 12px', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{p.label}</span>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>

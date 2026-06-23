@@ -293,7 +293,8 @@ export class CarDispatchController {
 
     const items = await this.prisma.carDispatchRequest.findMany({
       where: {
-        status: 'APPROVED' as any,
+        // 결재 전(PENDING)에도 경비실에서 입·출차 확인이 필요하므로 함께 노출
+        status: { in: ['PENDING', 'APPROVED'] as any },
         OR: [
           // 해당 일자에 운행 일정이 걸쳐 있는 건
           { AND: [{ startAt: { lte: dayEnd } }, { endAt: { gte: dayStart } }] },
@@ -399,7 +400,8 @@ export class CarDispatchController {
   async myUsage(@Query('requesterId') requesterId?: string) {
     if (!requesterId) throw new BadRequestException('requesterId required');
     const items = await this.prisma.carDispatchRequest.findMany({
-      where: { requesterId, status: 'APPROVED' as any },
+      // 결재 전(PENDING)에도 사용 전후 등록이 가능하도록 함께 노출
+      where: { requesterId, status: { in: ['PENDING', 'APPROVED'] as any } },
       orderBy: { startAt: 'desc' },
       include: { car: true, requester: true },
       take: 60,
