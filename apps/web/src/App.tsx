@@ -532,9 +532,10 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
             <Link to="/coops/status">업무 요청 통계</Link>
           </NavDropdown>
         )}
-        <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance') || location.pathname.startsWith('/business-trip')}>
+        <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance') || location.pathname.startsWith('/business-trip') || location.pathname.startsWith('/guard')}>
           <Link to="/dispatch/corporate">법인차량 신청</Link>
           <Link to="/dispatch/return">법인차량 사용 후 등록</Link>
+          {canEvaluate && <Link to="/guard/board">배차 입·출차 현황 (경비실)</Link>}
           <Link to="/dispatch/logistics">물류 배차 신청</Link>
           <Link to="/attendance/request">근태 신청</Link>
           <Link to="/attendance/report">근태 리포트</Link>
@@ -779,10 +780,11 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/coops/status', label: '업무 요청 통계' },
       ];
     }
-    if (path.startsWith('/dispatch') || path.startsWith('/attendance')) {
+    if (path.startsWith('/dispatch') || path.startsWith('/attendance') || path.startsWith('/guard')) {
       return [
         { to: '/dispatch/corporate', label: '법인차량 신청' },
         { to: '/dispatch/return', label: '법인차량 사용 후 등록' },
+        ...(canEvaluate ? [{ to: '/guard/board', label: '배차 입·출차 현황 (경비실)' }] : []),
         { to: '/dispatch/logistics', label: '물류 배차 신청' },
         { to: '/attendance/request', label: '근태 신청' },
         { to: '/attendance/report', label: '근태 리포트' },
