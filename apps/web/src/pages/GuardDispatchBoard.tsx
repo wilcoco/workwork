@@ -17,11 +17,17 @@ type BoardItem = {
   odometerStart: number | null;
   odometerEnd: number | null;
   distanceKm: number | null;
-  statusPhotos: { url?: string; name?: string }[];
-  odometerPhotos: { url?: string; name?: string }[];
+  statusPhotosBefore: Photo[];
+  statusPhotosAfter: Photo[];
+  odometerPhotosBefore: Photo[];
+  odometerPhotosAfter: Photo[];
+  odometerBeforeOcr: number | null;
+  odometerAfterOcr: number | null;
   usageNote: string;
   usageRegisteredAt: string | null;
 };
+
+type Photo = { url?: string; name?: string };
 
 function kstToday(): string {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -174,7 +180,6 @@ function DispatchCard({
     }
   }
 
-  const photos = [...(item.statusPhotos || []), ...(item.odometerPhotos || [])].filter((x) => x && x.url);
   const fieldStyle: React.CSSProperties = { padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6 };
 
   return (
@@ -213,6 +218,13 @@ function DispatchCard({
               출발 적산거리(km)
               <input inputMode="numeric" value={outOdo} onChange={(e) => setOutOdo(e.target.value)} placeholder="예: 45120" style={fieldStyle} />
             </label>
+            <PhotoVerify
+              label="운전자 사용 전 계기판"
+              photos={item.odometerPhotosBefore}
+              recognized={item.odometerBeforeOcr}
+              onPhoto={onPhoto}
+              resolveUrl={resolveUrl}
+            />
             <button type="button" className="btn btn-sm" disabled={busy === 'out'} onClick={() => void save('checkout')}>
               {busy === 'out' ? '저장 중…' : item.checkoutAt ? '출차 수정' : '출차 저장'}
             </button>
@@ -231,6 +243,13 @@ function DispatchCard({
               복귀 적산거리(km)
               <input inputMode="numeric" value={inOdo} onChange={(e) => setInOdo(e.target.value)} placeholder="예: 45260" style={fieldStyle} />
             </label>
+            <PhotoVerify
+              label="운전자 사용 후 계기판"
+              photos={item.odometerPhotosAfter}
+              recognized={item.odometerAfterOcr}
+              onPhoto={onPhoto}
+              resolveUrl={resolveUrl}
+            />
             <button type="button" className="btn btn-sm" disabled={busy === 'in' || !item.checkoutAt} onClick={() => void save('checkin')}>
               {busy === 'in' ? '저장 중…' : item.checkinAt ? '입차 수정' : '입차 저장'}
             </button>
@@ -245,19 +264,80 @@ function DispatchCard({
         <span style={{ fontWeight: 700, color: '#0f172a' }}>주행거리 {item.distanceKm != null ? `${item.distanceKm.toLocaleString()}km` : '-'}</span>
       </div>
 
-      {photos.length > 0 && (
+      {(item.statusPhotosBefore?.length > 0 || item.statusPhotosAfter?.length > 0) && (
+        <div style={{ borderTop: '1px dashed #e5e7eb', paddingTop: 8, display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>차량 상태 사진 (운전자 등록)</div>
+          <PhotoGroup label="사용 전" photos={item.statusPhotosBefore} onPhoto={onPhoto} resolveUrl={resolveUrl} />
+          <PhotoGroup label="사용 후" photos={item.statusPhotosAfter} onPhoto={onPhoto} resolveUrl={resolveUrl} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PhotoVerify({
+  label,
+  photos,
+  recognized,
+  onPhoto,
+  resolveUrl,
+}: {
+  label: string;
+  photos: Photo[];
+  recognized: number | null;
+  onPhoto: (url: string, title: string) => void;
+  resolveUrl: (u?: string) => string;
+}) {
+  const list = (photos || []).filter((x) => x && x.url);
+  if (list.length === 0 && recognized == null) return null;
+  return (
+    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: 8, display: 'grid', gap: 6 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e' }}>
+        📷 사진 인증 · {label}
+        {recognized != null && <span style={{ marginLeft: 6, color: '#0f172a' }}>인식 {recognized.toLocaleString()}km</span>}
+      </div>
+      {list.length > 0 && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {photos.map((ph, i) => (
+          {list.map((ph, i) => (
             <img
               key={i}
               src={resolveUrl(ph.url)}
-              alt={ph.name || 'photo'}
-              style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #e5e7eb', cursor: 'pointer' }}
+              alt={ph.name || 'odometer'}
+              style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid #fcd34d', cursor: 'pointer' }}
               onClick={() => onPhoto(ph.url || '', ph.name || '')}
             />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function PhotoGroup({
+  label,
+  photos,
+  onPhoto,
+  resolveUrl,
+}: {
+  label: string;
+  photos: Photo[];
+  onPhoto: (url: string, title: string) => void;
+  resolveUrl: (u?: string) => string;
+}) {
+  const list = (photos || []).filter((x) => x && x.url);
+  if (list.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12, color: '#64748b', minWidth: 44 }}>{label}</span>
+      {list.map((ph, i) => (
+        <img
+          key={i}
+          src={resolveUrl(ph.url)}
+          alt={ph.name || 'photo'}
+          style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #e5e7eb', cursor: 'pointer' }}
+          onClick={() => onPhoto(ph.url || '', ph.name || '')}
+        />
+      ))}
     </div>
   );
 }

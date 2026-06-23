@@ -61,20 +61,28 @@ class RegisterUsageDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  odometerStart?: number;
+  odometerBeforeOcr?: number; // 사용 전 인식 적산거리
 
   @IsOptional()
   @IsInt()
   @Min(0)
-  odometerEnd?: number;
+  odometerAfterOcr?: number; // 사용 후 인식 적산거리
 
   @IsOptional()
   @IsArray()
-  statusPhotos?: any[]; // [{ url, name }]
+  statusPhotosBefore?: any[]; // [{ url, name }]
 
   @IsOptional()
   @IsArray()
-  odometerPhotos?: any[];
+  statusPhotosAfter?: any[];
+
+  @IsOptional()
+  @IsArray()
+  odometerPhotosBefore?: any[];
+
+  @IsOptional()
+  @IsArray()
+  odometerPhotosAfter?: any[];
 
   @IsOptional()
   @IsString()
@@ -364,7 +372,7 @@ export class CarDispatchController {
     return this.toBoardItem(await this.withRel(updated.id));
   }
 
-  // 차량 사용 후 등록 (운전자) — 차량상태/적산거리 사진 + 주행거리
+  // 차량 사용 전후 등록 (운전자) — 사용전/후 차량상태·계기판 사진 + 인식 적산거리
   @Post(':id/register-usage')
   async registerUsage(@Param('id') id: string, @Body() dto: RegisterUsageDto) {
     const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
@@ -374,17 +382,13 @@ export class CarDispatchController {
       usageRegisteredAt: new Date(),
       usageRegisteredById: dto.actorId,
     };
-    if (Array.isArray(dto.statusPhotos)) data.statusPhotos = dto.statusPhotos;
-    if (Array.isArray(dto.odometerPhotos)) data.odometerPhotos = dto.odometerPhotos;
-    if (typeof dto.odometerStart === 'number') data.odometerStart = dto.odometerStart;
-    if (typeof dto.odometerEnd === 'number') data.odometerEnd = dto.odometerEnd;
+    if (Array.isArray(dto.statusPhotosBefore)) data.statusPhotosBefore = dto.statusPhotosBefore;
+    if (Array.isArray(dto.statusPhotosAfter)) data.statusPhotosAfter = dto.statusPhotosAfter;
+    if (Array.isArray(dto.odometerPhotosBefore)) data.odometerPhotosBefore = dto.odometerPhotosBefore;
+    if (Array.isArray(dto.odometerPhotosAfter)) data.odometerPhotosAfter = dto.odometerPhotosAfter;
+    if (typeof dto.odometerBeforeOcr === 'number') data.odometerBeforeOcr = dto.odometerBeforeOcr;
+    if (typeof dto.odometerAfterOcr === 'number') data.odometerAfterOcr = dto.odometerAfterOcr;
     if (typeof dto.usageNote === 'string') data.usageNote = dto.usageNote;
-
-    const odoStart = typeof dto.odometerStart === 'number' ? dto.odometerStart : (rec as any).odometerStart;
-    const odoEnd = typeof dto.odometerEnd === 'number' ? dto.odometerEnd : (rec as any).odometerEnd;
-    if (typeof odoStart === 'number' && typeof odoEnd === 'number' && odoEnd >= odoStart) {
-      data.distanceKm = odoEnd - odoStart;
-    }
 
     const updated = await this.prisma.carDispatchRequest.update({ where: { id }, data });
     return this.toBoardItem(await this.withRel(updated.id));
@@ -429,8 +433,13 @@ export class CarDispatchController {
       odometerStart: r.odometerStart ?? null,
       odometerEnd: r.odometerEnd ?? null,
       distanceKm: r.distanceKm ?? null,
-      statusPhotos: r.statusPhotos ?? [],
-      odometerPhotos: r.odometerPhotos ?? [],
+      // 운전자 사용 전후 등록 자료
+      statusPhotosBefore: r.statusPhotosBefore ?? [],
+      statusPhotosAfter: r.statusPhotosAfter ?? (r.statusPhotos ?? []), // 구 데이터 하위호환
+      odometerPhotosBefore: r.odometerPhotosBefore ?? [],
+      odometerPhotosAfter: r.odometerPhotosAfter ?? (r.odometerPhotos ?? []),
+      odometerBeforeOcr: r.odometerBeforeOcr ?? null,
+      odometerAfterOcr: r.odometerAfterOcr ?? null,
       usageNote: r.usageNote ?? '',
       usageRegisteredAt: r.usageRegisteredAt ?? null,
     };

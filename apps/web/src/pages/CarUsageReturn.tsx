@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { uploadFiles } from '../lib/upload';
 
+type Photo = { url?: string; name?: string };
+
 type Dispatch = {
   id: string;
   carName: string;
@@ -13,18 +15,81 @@ type Dispatch = {
   odometerStart: number | null;
   odometerEnd: number | null;
   distanceKm: number | null;
-  statusPhotos: Photo[];
-  odometerPhotos: Photo[];
+  statusPhotosBefore: Photo[];
+  statusPhotosAfter: Photo[];
+  odometerPhotosBefore: Photo[];
+  odometerPhotosAfter: Photo[];
+  odometerBeforeOcr: number | null;
+  odometerAfterOcr: number | null;
   usageNote: string;
   usageRegisteredAt: string | null;
 };
-
-type Photo = { url?: string; name?: string };
 
 function fmt(iso: string): string {
   const d = new Date(iso);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+const resolveUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : apiUrl(u || ''));
+const uploadIdFromUrl = (u?: string) => {
+  const m = String(u || '').match(/files\/([^/?#]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+};
+
+const delBtn: React.CSSProperties = {
+  position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10,
+  border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer',
+  lineHeight: '18px', fontSize: 13, padding: 0,
+};
+
+function PhotoUploader({
+  photos,
+  setPhotos,
+  onAdded,
+  onPreview,
+}: {
+  photos: Photo[];
+  setPhotos: (updater: (prev: Photo[]) => Photo[]) => void;
+  onAdded?: (added: Photo[]) => void;
+  onPreview: (url: string) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  async function pick(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const res = await uploadFiles(files);
+      const added = res.map((r) => ({ url: r.url, name: r.name }));
+      setPhotos((prev) => [...prev, ...added]);
+      onAdded?.(added);
+    } catch (e: any) {
+      alert(e?.message || '사진 업로드에 실패했습니다');
+    } finally {
+      setUploading(false);
+    }
+  }
+  return (
+    <div>
+      <input type="file" accept="image/*" capture="environment" multiple onChange={(e) => void pick(e.target.files)} />
+      {uploading && <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>업로드 중…</div>}
+      {photos.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          {photos.map((ph, i) => (
+            <div key={i} style={{ position: 'relative' }}>
+              <img
+                src={resolveUrl(ph.url)}
+                alt={ph.name}
+                style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #e5e7eb', cursor: 'pointer' }}
+                onClick={() => onPreview(resolveUrl(ph.url))}
+              />
+              <button type="button" onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))} style={delBtn}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function CarUsageReturn() {
@@ -33,16 +98,17 @@ export function CarUsageReturn() {
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState('');
 
-  const [statusPhotos, setStatusPhotos] = useState<Photo[]>([]);
-  const [odometerPhotos, setOdometerPhotos] = useState<Photo[]>([]);
-  const [odometerStart, setOdometerStart] = useState('');
-  const [odometerEnd, setOdometerEnd] = useState('');
+  const [statusBefore, setStatusBefore] = useState<Photo[]>([]);
+  const [statusAfter, setStatusAfter] = useState<Photo[]>([]);
+  const [odoPhotosBefore, setOdoPhotosBefore] = useState<Photo[]>([]);
+  const [odoPhotosAfter, setOdoPhotosAfter] = useState<Photo[]>([]);
+  const [odoBefore, setOdoBefore] = useState('');
+  const [odoAfter, setOdoAfter] = useState('');
   const [usageNote, setUsageNote] = useState('');
-  const [uploadingStatus, setUploadingStatus] = useState(false);
-  const [uploadingOdo, setUploadingOdo] = useState(false);
-  const [ocrBusy, setOcrBusy] = useState(false);
-  const [ocrMsg, setOcrMsg] = useState('');
+  const [ocrBusy, setOcrBusy] = useState<'before' | 'after' | null>(null);
+  const [ocrMsg, setOcrMsg] = useState<{ before?: string; after?: string }>({});
   const [submitting, setSubmitting] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
 
   const selected = useMemo(() => list.find((d) => d.id === selectedId) || null, [list, selectedId]);
 
@@ -64,107 +130,70 @@ export function CarUsageReturn() {
   // 선택 변경 시 기존 등록 내용 프리필
   useEffect(() => {
     if (!selected) return;
-    setStatusPhotos(selected.statusPhotos || []);
-    setOdometerPhotos(selected.odometerPhotos || []);
-    setOdometerStart(selected.odometerStart != null ? String(selected.odometerStart) : '');
-    setOdometerEnd(selected.odometerEnd != null ? String(selected.odometerEnd) : '');
+    setStatusBefore(selected.statusPhotosBefore || []);
+    setStatusAfter(selected.statusPhotosAfter || []);
+    setOdoPhotosBefore(selected.odometerPhotosBefore || []);
+    setOdoPhotosAfter(selected.odometerPhotosAfter || []);
+    setOdoBefore(selected.odometerBeforeOcr != null ? String(selected.odometerBeforeOcr) : '');
+    setOdoAfter(selected.odometerAfterOcr != null ? String(selected.odometerAfterOcr) : '');
     setUsageNote(selected.usageNote || '');
-    setOcrMsg('');
+    setOcrMsg({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  const resolveUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : apiUrl(u || ''));
-  const uploadIdFromUrl = (u?: string) => {
-    const m = String(u || '').match(/files\/([^/?#]+)/);
-    return m ? decodeURIComponent(m[1]) : '';
-  };
-
-  async function onPickStatus(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    setUploadingStatus(true);
-    try {
-      const res = await uploadFiles(files);
-      setStatusPhotos((prev) => [...prev, ...res.map((r) => ({ url: r.url, name: r.name }))]);
-    } catch (e: any) {
-      alert(e?.message || '사진 업로드에 실패했습니다');
-    } finally {
-      setUploadingStatus(false);
-    }
-  }
-
-  async function onPickOdometer(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    setUploadingOdo(true);
-    try {
-      const res = await uploadFiles(files);
-      const added = res.map((r) => ({ url: r.url, name: r.name }));
-      setOdometerPhotos((prev) => [...prev, ...added]);
-      // 첫 번째 새 사진으로 자동 OCR
-      const first = added[0];
-      if (first?.url) await runOcr(first.url);
-    } catch (e: any) {
-      alert(e?.message || '사진 업로드에 실패했습니다');
-    } finally {
-      setUploadingOdo(false);
-    }
-  }
-
-  async function runOcr(url: string) {
+  async function runOcr(url: string, which: 'before' | 'after') {
     const uploadId = uploadIdFromUrl(url);
     if (!uploadId) return;
-    setOcrBusy(true);
-    setOcrMsg('계기판 사진에서 적산거리를 읽는 중…');
+    setOcrBusy(which);
+    setOcrMsg((m) => ({ ...m, [which]: '계기판 사진에서 적산거리를 읽는 중…' }));
     try {
-      const res = await apiJson<{ odometerKm: number | null; confidence: string; rawText: string }>(
+      const res = await apiJson<{ odometerKm: number | null; confidence: string }>(
         `/api/car-dispatch/ocr-odometer`,
         { method: 'POST', body: JSON.stringify({ uploadId }) },
       );
       if (res.odometerKm != null) {
-        setOdometerEnd(String(res.odometerKm));
-        setOcrMsg(`인식된 적산거리: ${res.odometerKm.toLocaleString()}km (신뢰도 ${res.confidence}). 값을 확인하고 필요하면 수정하세요.`);
+        if (which === 'before') setOdoBefore(String(res.odometerKm));
+        else setOdoAfter(String(res.odometerKm));
+        setOcrMsg((m) => ({ ...m, [which]: `인식된 적산거리: ${res.odometerKm!.toLocaleString()}km (신뢰도 ${res.confidence}). 확인 후 필요하면 수정하세요.` }));
       } else {
-        setOcrMsg('숫자를 자동으로 읽지 못했습니다. 직접 입력해 주세요.');
+        setOcrMsg((m) => ({ ...m, [which]: '숫자를 자동으로 읽지 못했습니다. 직접 입력해 주세요.' }));
       }
     } catch (e: any) {
-      setOcrMsg(`자동 인식 실패: ${e?.message || ''} — 직접 입력해 주세요.`);
+      setOcrMsg((m) => ({ ...m, [which]: `자동 인식 실패: ${e?.message || ''} — 직접 입력해 주세요.` }));
     } finally {
-      setOcrBusy(false);
+      setOcrBusy(null);
     }
-  }
-
-  function removeStatusPhoto(i: number) {
-    setStatusPhotos((prev) => prev.filter((_, idx) => idx !== i));
-  }
-  function removeOdometerPhoto(i: number) {
-    setOdometerPhotos((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   const distancePreview = useMemo(() => {
-    const s = parseInt(odometerStart.replace(/[^0-9]/g, ''), 10);
-    const e = parseInt(odometerEnd.replace(/[^0-9]/g, ''), 10);
+    const s = parseInt(odoBefore.replace(/[^0-9]/g, ''), 10);
+    const e = parseInt(odoAfter.replace(/[^0-9]/g, ''), 10);
     if (Number.isFinite(s) && Number.isFinite(e) && e >= s) return e - s;
     return null;
-  }, [odometerStart, odometerEnd]);
+  }, [odoBefore, odoAfter]);
 
   async function onSubmit() {
     if (!selected) { alert('차량 사용 건을 선택하세요'); return; }
-    if (statusPhotos.length === 0 && odometerPhotos.length === 0) {
-      if (!window.confirm('사진 없이 등록할까요?')) return;
-    }
+    const noPhotos = statusBefore.length + statusAfter.length + odoPhotosBefore.length + odoPhotosAfter.length === 0;
+    if (noPhotos && !window.confirm('사진 없이 등록할까요?')) return;
+
     const body: any = {
       actorId: userId,
-      statusPhotos,
-      odometerPhotos,
+      statusPhotosBefore: statusBefore,
+      statusPhotosAfter: statusAfter,
+      odometerPhotosBefore: odoPhotosBefore,
+      odometerPhotosAfter: odoPhotosAfter,
       usageNote,
     };
-    const s = parseInt(odometerStart.replace(/[^0-9]/g, ''), 10);
-    const e = parseInt(odometerEnd.replace(/[^0-9]/g, ''), 10);
-    if (Number.isFinite(s)) body.odometerStart = s;
-    if (Number.isFinite(e)) body.odometerEnd = e;
+    const b = parseInt(odoBefore.replace(/[^0-9]/g, ''), 10);
+    const a = parseInt(odoAfter.replace(/[^0-9]/g, ''), 10);
+    if (Number.isFinite(b)) body.odometerBeforeOcr = b;
+    if (Number.isFinite(a)) body.odometerAfterOcr = a;
 
     setSubmitting(true);
     try {
       await apiJson(`/api/car-dispatch/${selected.id}/register-usage`, { method: 'POST', body: JSON.stringify(body) });
-      alert('차량 사용 후 등록이 완료되었습니다');
+      alert('차량 사용 전후 등록이 완료되었습니다');
       await load();
     } catch (e: any) {
       alert(e?.message || '등록에 실패했습니다');
@@ -174,12 +203,13 @@ export function CarUsageReturn() {
   }
 
   const card: React.CSSProperties = { border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' };
+  const sub: React.CSSProperties = { border: '1px solid #f1f5f9', borderRadius: 10, padding: 12, background: '#f8fafc' };
 
   return (
-    <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 720 }}>
-      <h2 style={{ margin: 0 }}>법인차량 사용 후 등록</h2>
+    <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 760 }}>
+      <h2 style={{ margin: 0 }}>법인차량 사용 전후 등록</h2>
       <div style={{ color: '#475569', fontSize: 13 }}>
-        차량 반납 시 <b>차량 상태 사진</b>과 <b>계기판(적산거리) 사진</b>을 등록합니다. 계기판 사진을 올리면 적산거리(km)를 자동으로 읽어 드립니다.
+        차량 사용 <b>전</b>과 <b>후</b> 각각 <b>차량 상태 사진</b>과 <b>계기판(적산거리) 사진</b>을 등록합니다. 계기판 사진을 올리면 적산거리(km)를 자동으로 읽어 드립니다.
       </div>
 
       <div style={card}>
@@ -199,56 +229,68 @@ export function CarUsageReturn() {
 
       {selected && (
         <>
-          <div style={card}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>차량 상태 사진</div>
-            <input type="file" accept="image/*" capture="environment" multiple onChange={(e) => void onPickStatus(e.target.files)} />
-            {uploadingStatus && <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>업로드 중…</div>}
-            {statusPhotos.length > 0 && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                {statusPhotos.map((ph, i) => (
-                  <div key={i} style={{ position: 'relative' }}>
-                    <img src={resolveUrl(ph.url)} alt={ph.name} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                    <button type="button" onClick={() => removeStatusPhoto(i)} style={delBtn}>×</button>
-                  </div>
-                ))}
+          {/* 사용 전 */}
+          <div style={{ ...card, borderTop: '4px solid #2563eb' }}>
+            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>🅰 사용 전</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={sub}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>차량 상태 사진 (사용 전)</div>
+                <PhotoUploader photos={statusBefore} setPhotos={setStatusBefore} onPreview={(u) => setPreview(u)} />
               </div>
-            )}
+              <div style={sub}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>계기판 사진 (사용 전)</div>
+                <PhotoUploader
+                  photos={odoPhotosBefore}
+                  setPhotos={setOdoPhotosBefore}
+                  onPreview={(u) => setPreview(u)}
+                  onAdded={(added) => { if (added[0]?.url) void runOcr(added[0].url, 'before'); }}
+                />
+                <label style={{ display: 'grid', gap: 4, marginTop: 10, maxWidth: 240 }}>
+                  <span style={{ fontSize: 12, color: '#475569' }}>사용 전 적산거리(km)</span>
+                  <input inputMode="numeric" value={odoBefore} onChange={(e) => setOdoBefore(e.target.value)} placeholder="계기판 사진에서 자동 추출" />
+                </label>
+                {(ocrBusy === 'before' || ocrMsg.before) && (
+                  <div style={{ fontSize: 13, color: ocrBusy === 'before' ? '#64748b' : '#0f172a', marginTop: 6 }}>
+                    {ocrBusy === 'before' ? '계기판 사진에서 적산거리를 읽는 중…' : ocrMsg.before}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div style={card}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>계기판(적산거리) 사진</div>
-            <input type="file" accept="image/*" capture="environment" multiple onChange={(e) => void onPickOdometer(e.target.files)} />
-            {uploadingOdo && <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>업로드 중…</div>}
-            {odometerPhotos.length > 0 && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                {odometerPhotos.map((ph, i) => (
-                  <div key={i} style={{ position: 'relative' }}>
-                    <img src={resolveUrl(ph.url)} alt={ph.name} style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                    <button type="button" onClick={() => removeOdometerPhoto(i)} style={delBtn}>×</button>
-                    <button type="button" onClick={() => void runOcr(ph.url || '')} style={{ ...delBtn, top: 'auto', bottom: -6, right: 'auto', left: -6, background: '#0f3d73', width: 'auto', borderRadius: 8, padding: '0 6px', fontSize: 11 }}>읽기</button>
-                  </div>
-                ))}
+          {/* 사용 후 */}
+          <div style={{ ...card, borderTop: '4px solid #16a34a' }}>
+            <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>🅱 사용 후</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={sub}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>차량 상태 사진 (사용 후)</div>
+                <PhotoUploader photos={statusAfter} setPhotos={setStatusAfter} onPreview={(u) => setPreview(u)} />
               </div>
-            )}
-            {(ocrBusy || ocrMsg) && (
-              <div style={{ fontSize: 13, color: ocrBusy ? '#64748b' : '#0f172a', marginTop: 8 }}>{ocrBusy ? '계기판 사진에서 적산거리를 읽는 중…' : ocrMsg}</div>
-            )}
+              <div style={sub}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>계기판 사진 (사용 후)</div>
+                <PhotoUploader
+                  photos={odoPhotosAfter}
+                  setPhotos={setOdoPhotosAfter}
+                  onPreview={(u) => setPreview(u)}
+                  onAdded={(added) => { if (added[0]?.url) void runOcr(added[0].url, 'after'); }}
+                />
+                <label style={{ display: 'grid', gap: 4, marginTop: 10, maxWidth: 240 }}>
+                  <span style={{ fontSize: 12, color: '#475569' }}>사용 후 적산거리(km)</span>
+                  <input inputMode="numeric" value={odoAfter} onChange={(e) => setOdoAfter(e.target.value)} placeholder="계기판 사진에서 자동 추출" />
+                </label>
+                {(ocrBusy === 'after' || ocrMsg.after) && (
+                  <div style={{ fontSize: 13, color: ocrBusy === 'after' ? '#64748b' : '#0f172a', marginTop: 6 }}>
+                    {ocrBusy === 'after' ? '계기판 사진에서 적산거리를 읽는 중…' : ocrMsg.after}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div style={card}>
             <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <label style={{ display: 'grid', gap: 4, flex: 1, minWidth: 140 }}>
-                  <span>출발 적산거리(km) <span style={{ color: '#94a3b8' }}>(선택)</span></span>
-                  <input inputMode="numeric" value={odometerStart} onChange={(e) => setOdometerStart(e.target.value)} placeholder="예: 45120" />
-                </label>
-                <label style={{ display: 'grid', gap: 4, flex: 1, minWidth: 140 }}>
-                  <span>복귀 적산거리(km)</span>
-                  <input inputMode="numeric" value={odometerEnd} onChange={(e) => setOdometerEnd(e.target.value)} placeholder="계기판 사진에서 자동 추출" />
-                </label>
-              </div>
               <div style={{ fontSize: 14, fontWeight: 700, color: distancePreview != null ? '#0f172a' : '#94a3b8' }}>
-                주행거리: {distancePreview != null ? `${distancePreview.toLocaleString()}km` : '출발·복귀 적산거리 입력 시 자동 계산'}
+                주행거리: {distancePreview != null ? `${distancePreview.toLocaleString()}km` : '사용 전·후 적산거리 입력 시 자동 계산'}
               </div>
               <label style={{ display: 'grid', gap: 4 }}>
                 <span>특이사항 <span style={{ color: '#94a3b8' }}>(선택)</span></span>
@@ -259,27 +301,20 @@ export function CarUsageReturn() {
 
           <div>
             <button type="button" className="btn" disabled={submitting} onClick={() => void onSubmit()}>
-              {submitting ? '등록 중…' : '사용 후 등록'}
+              {submitting ? '등록 중…' : '사용 전후 등록'}
             </button>
           </div>
         </>
       )}
+
+      {preview && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: 16 }}
+          onClick={() => setPreview(null)}
+        >
+          <img src={preview} alt="" style={{ maxWidth: '95%', maxHeight: '95%', borderRadius: 8 }} />
+        </div>
+      )}
     </div>
   );
 }
-
-const delBtn: React.CSSProperties = {
-  position: 'absolute',
-  top: -6,
-  right: -6,
-  width: 20,
-  height: 20,
-  borderRadius: 10,
-  border: 'none',
-  background: '#ef4444',
-  color: '#fff',
-  cursor: 'pointer',
-  lineHeight: '18px',
-  fontSize: 13,
-  padding: 0,
-};

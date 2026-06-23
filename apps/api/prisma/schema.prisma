@@ -748,15 +748,23 @@ model CarDispatchRequest {
   checkedOutById String?      // 출차 확인한 사용자(경비) id
   checkedInById  String?      // 입차 확인한 사용자(경비) id
 
-  // 주행거리 / 차량 사용 후 등록 (운전자)
-  odometerStart Int?          // 출발 적산거리(km)
-  odometerEnd   Int?          // 복귀 적산거리(km)
+  // 주행거리 (경비실 입력 = 공식 확인값)
+  odometerStart Int?          // 출발 적산거리(km) - 경비 확인
+  odometerEnd   Int?          // 복귀 적산거리(km) - 경비 확인
   distanceKm    Int?          // 주행거리(km) = end - start
-  statusPhotos  Json?         // 차량 상태 사진 URL 배열
-  odometerPhotos Json?        // 계기판(적산거리계) 사진 URL 배열
-  usageNote     String?       // 사용 후 특이사항
-  usageRegisteredAt DateTime? // 사용 후 등록 시각
-  usageRegisteredById String? // 사용 후 등록한 운전자 id
+
+  // 차량 사용 전후 등록 (운전자)
+  statusPhotos  Json?         // (구) 차량 상태 사진 URL 배열 — 하위호환
+  odometerPhotos Json?        // (구) 계기판 사진 URL 배열 — 하위호환
+  statusPhotosBefore   Json?  // 차량 상태 사진(사용 전)
+  statusPhotosAfter    Json?  // 차량 상태 사진(사용 후)
+  odometerPhotosBefore Json?  // 계기판 사진(사용 전)
+  odometerPhotosAfter  Json?  // 계기판 사진(사용 후)
+  odometerBeforeOcr Int?      // 사용 전 인식 적산거리(km, 운전자 사진 OCR)
+  odometerAfterOcr  Int?      // 사용 후 인식 적산거리(km, 운전자 사진 OCR)
+  usageNote     String?       // 특이사항
+  usageRegisteredAt DateTime? // 사용 전후 등록 시각
+  usageRegisteredById String? // 등록한 운전자 id
 
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
