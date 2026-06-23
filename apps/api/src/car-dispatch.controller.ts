@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { IsOptional, IsString } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
+import { extractOdometerFromImage } from './llm/ai-client';
 
 class CreateCarDispatchDto {
   @IsString()
@@ -36,6 +37,54 @@ class CreateCarDispatchDto {
   @IsOptional()
   @IsString()
   cargoDetails?: string;
+}
+
+class CheckDto {
+  @IsOptional()
+  @IsString()
+  actorId?: string; // 경비원 user id
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  odometer?: number; // 적산거리(km)
+}
+
+class RegisterUsageDto {
+  @IsString()
+  actorId!: string; // 운전자 user id
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  odometerStart?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  odometerEnd?: number;
+
+  @IsOptional()
+  @IsArray()
+  statusPhotos?: any[]; // [{ url, name }]
+
+  @IsOptional()
+  @IsArray()
+  odometerPhotos?: any[];
+
+  @IsOptional()
+  @IsString()
+  usageNote?: string;
+}
+
+class OcrOdometerDto {
+  @IsOptional()
+  @IsString()
+  uploadId?: string;
+
+  @IsOptional()
+  @IsString()
+  url?: string;
 }
 
 @Controller('car-dispatch')
@@ -223,6 +272,160 @@ export class CarDispatchController {
     };
   }
 
+  // 경비실 입·출차 현황판: 특정 일자(KST)에 배차된 차량 + 아직 미입차(운행중) 차량
+  @Get('guard-board')
+  async guardBoard(@Query('date') date?: string) {
+    const ymd = (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : kstToday();
+    const dayStart = new Date(`${ymd}T00:00:00+09:00`);
+    const dayEnd = new Date(`${ymd}T23:59:59.999+09:00`);
+
+    const items = await this.prisma.carDispatchRequest.findMany({
+      where: {
+        status: 'APPROVED' as any,
+        OR: [
+          // 해당 일자에 운행 일정이 걸쳐 있는 건
+          { AND: [{ startAt: { lte: dayEnd } }, { endAt: { gte: dayStart } }] },
+          // 출차했지만 아직 입차하지 않은 건 (날짜 무관, 운행중)
+          { AND: [{ checkoutAt: { not: null } }, { checkinAt: null }] },
+        ],
+      },
+      orderBy: { startAt: 'asc' },
+      include: { car: true, requester: true },
+      take: 300,
+    });
+
+    return {
+      date: ymd,
+      items: items.map((r) => this.toBoardItem(r)),
+    };
+  }
+
+  // 계기판 사진(업로드)에서 적산거리(km) OCR 추출
+  @Post('ocr-odometer')
+  async ocrOdometer(@Body() dto: OcrOdometerDto) {
+    let uploadId = String(dto.uploadId || '').trim();
+    if (!uploadId && dto.url) {
+      // '/api/files/<id>' 형태의 URL에서 id 추출
+      const m = String(dto.url).match(/files\/([^/?#]+)/);
+      if (m) uploadId = decodeURIComponent(m[1]);
+    }
+    if (!uploadId) throw new BadRequestException('uploadId 또는 url이 필요합니다');
+
+    const up = await this.prisma.upload.findUnique({ where: { id: uploadId } });
+    if (!up) throw new BadRequestException('업로드 파일을 찾을 수 없습니다');
+    const ct = String(up.contentType || '').toLowerCase();
+    if (!ct.startsWith('image/')) throw new BadRequestException('이미지 파일만 분석할 수 있습니다');
+
+    const base64 = Buffer.from(up.data as any).toString('base64');
+    try {
+      const result = await extractOdometerFromImage(base64, ct);
+      return result;
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error('odometer OCR failed', e);
+      throw new BadRequestException(e?.message || '적산거리 추출에 실패했습니다');
+    }
+  }
+
+  // 출차 확인 (경비)
+  @Post(':id/checkout')
+  async checkout(@Param('id') id: string, @Body() dto: CheckDto) {
+    const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
+    if (!rec) throw new BadRequestException('not found');
+    const data: any = { checkoutAt: new Date(), checkedOutById: dto.actorId || null };
+    if (typeof dto.odometer === 'number') data.odometerStart = dto.odometer;
+    const updated = await this.prisma.carDispatchRequest.update({ where: { id }, data });
+    return this.toBoardItem(await this.withRel(updated.id));
+  }
+
+  // 입차 확인 (경비) — 복귀 적산거리 입력 시 주행거리 자동 계산
+  @Post(':id/checkin')
+  async checkin(@Param('id') id: string, @Body() dto: CheckDto) {
+    const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
+    if (!rec) throw new BadRequestException('not found');
+    const data: any = { checkinAt: new Date(), checkedInById: dto.actorId || null };
+    if (typeof dto.odometer === 'number') data.odometerEnd = dto.odometer;
+    const odoStart = (rec as any).odometerStart;
+    const odoEnd = typeof dto.odometer === 'number' ? dto.odometer : (rec as any).odometerEnd;
+    if (typeof odoStart === 'number' && typeof odoEnd === 'number' && odoEnd >= odoStart) {
+      data.distanceKm = odoEnd - odoStart;
+    }
+    const updated = await this.prisma.carDispatchRequest.update({ where: { id }, data });
+    return this.toBoardItem(await this.withRel(updated.id));
+  }
+
+  // 차량 사용 후 등록 (운전자) — 차량상태/적산거리 사진 + 주행거리
+  @Post(':id/register-usage')
+  async registerUsage(@Param('id') id: string, @Body() dto: RegisterUsageDto) {
+    const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
+    if (!rec) throw new BadRequestException('not found');
+
+    const data: any = {
+      usageRegisteredAt: new Date(),
+      usageRegisteredById: dto.actorId,
+    };
+    if (Array.isArray(dto.statusPhotos)) data.statusPhotos = dto.statusPhotos;
+    if (Array.isArray(dto.odometerPhotos)) data.odometerPhotos = dto.odometerPhotos;
+    if (typeof dto.odometerStart === 'number') data.odometerStart = dto.odometerStart;
+    if (typeof dto.odometerEnd === 'number') data.odometerEnd = dto.odometerEnd;
+    if (typeof dto.usageNote === 'string') data.usageNote = dto.usageNote;
+
+    const odoStart = typeof dto.odometerStart === 'number' ? dto.odometerStart : (rec as any).odometerStart;
+    const odoEnd = typeof dto.odometerEnd === 'number' ? dto.odometerEnd : (rec as any).odometerEnd;
+    if (typeof odoStart === 'number' && typeof odoEnd === 'number' && odoEnd >= odoStart) {
+      data.distanceKm = odoEnd - odoStart;
+    }
+
+    const updated = await this.prisma.carDispatchRequest.update({ where: { id }, data });
+    return this.toBoardItem(await this.withRel(updated.id));
+  }
+
+  // 내가 신청한 배차 중 사용 후 등록 가능한 건(승인됨, 최근순)
+  @Get('my-usage')
+  async myUsage(@Query('requesterId') requesterId?: string) {
+    if (!requesterId) throw new BadRequestException('requesterId required');
+    const items = await this.prisma.carDispatchRequest.findMany({
+      where: { requesterId, status: 'APPROVED' as any },
+      orderBy: { startAt: 'desc' },
+      include: { car: true, requester: true },
+      take: 60,
+    });
+    return { items: items.map((r) => this.toBoardItem(r)) };
+  }
+
+  private async withRel(id: string) {
+    return this.prisma.carDispatchRequest.findUnique({
+      where: { id },
+      include: { car: true, requester: true },
+    }) as any;
+  }
+
+  private toBoardItem(r: any) {
+    return {
+      id: r.id,
+      carId: r.carId,
+      carName: r.car?.name ?? '',
+      carPlateNo: r.car?.plateNo ?? '',
+      requesterId: r.requesterId,
+      requesterName: r.requester?.name ?? '',
+      coRiders: r.coRiders || '',
+      startAt: r.startAt,
+      endAt: r.endAt,
+      destination: r.destination,
+      purpose: r.purpose,
+      status: r.status,
+      checkoutAt: r.checkoutAt ?? null,
+      checkinAt: r.checkinAt ?? null,
+      odometerStart: r.odometerStart ?? null,
+      odometerEnd: r.odometerEnd ?? null,
+      distanceKm: r.distanceKm ?? null,
+      statusPhotos: r.statusPhotos ?? [],
+      odometerPhotos: r.odometerPhotos ?? [],
+      usageNote: r.usageNote ?? '',
+      usageRegisteredAt: r.usageRegisteredAt ?? null,
+    };
+  }
+
   @Get(':id')
   async getOne(@Param('id') id: string) {
     const rec = await this.prisma.carDispatchRequest.findUnique({
@@ -244,6 +447,15 @@ export class CarDispatchController {
       destination: rec.destination,
       purpose: rec.purpose,
       status: rec.status,
+      checkoutAt: (rec as any).checkoutAt ?? null,
+      checkinAt: (rec as any).checkinAt ?? null,
+      odometerStart: (rec as any).odometerStart ?? null,
+      odometerEnd: (rec as any).odometerEnd ?? null,
+      distanceKm: (rec as any).distanceKm ?? null,
+      statusPhotos: (rec as any).statusPhotos ?? [],
+      odometerPhotos: (rec as any).odometerPhotos ?? [],
+      usageNote: (rec as any).usageNote ?? '',
+      usageRegisteredAt: (rec as any).usageRegisteredAt ?? null,
       createdAt: rec.createdAt,
       updatedAt: rec.updatedAt,
     };
@@ -266,4 +478,11 @@ export class CarDispatchController {
     });
     return rec;
   }
+}
+
+// 오늘 날짜(KST, YYYY-MM-DD)
+function kstToday(): string {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10);
 }

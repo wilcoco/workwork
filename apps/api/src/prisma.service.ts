@@ -127,5 +127,30 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         });
       }
     });
+
+    // 경비실 전용 계정(guard) — 배차 입/출차 관리 화면만 접근.
+    // GUARD enum 값이 아직 마이그레이션되지 않은 환경에서도 부팅이 깨지지 않도록 별도 try/catch.
+    try {
+      const existingGuard = await this.user.findUnique({ where: { email: 'guard' } });
+      const passwordHash = await bcrypt.hash('cams2002guard', 10);
+      if (!existingGuard) {
+        await this.user.create({
+          data: {
+            email: 'guard',
+            name: '경비실',
+            role: 'GUARD' as any,
+            status: 'ACTIVE',
+            activatedAt: new Date(),
+            passwordHash,
+          },
+        });
+        this.logger.log('Seeded guard account (email=guard)');
+      } else if (existingGuard.role !== ('GUARD' as any)) {
+        // 기존 계정 역할 보정 (재시드 안전)
+        await this.user.update({ where: { id: existingGuard.id }, data: { role: 'GUARD' as any } });
+      }
+    } catch (e) {
+      this.logger.warn(`guard account seed skipped: ${String((e as any)?.message || e)}`);
+    }
   }
 }

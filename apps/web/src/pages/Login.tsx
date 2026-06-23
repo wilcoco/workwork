@@ -122,7 +122,9 @@ export function Login() {
         throw new Error(String(json?.message || json?.error || (mode === 'login' ? '로그인 실패' : '가입 실패')));
       }
       persistSession(json);
-      nav(returnTo || '/');
+      // 전체 새로고침으로 진입 — 앱 최상위 상태(token/역할)가 새로 평가되어
+      // 경비실 계정(GUARD) 등 역할 기반 화면 제한이 즉시 올바르게 적용됨
+      window.location.href = returnTo || '/';
     } catch (e: any) {
       setError(String(e?.message || '요청 실패'));
     } finally {
@@ -191,7 +193,7 @@ export function Login() {
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 12, color: '#374151' }}>아이디(이메일)</span>
             <input
-              type="email"
+              type={mode === 'login' ? 'text' : 'email'}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete={mode === 'login' ? 'username' : 'email'}

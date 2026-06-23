@@ -151,7 +151,8 @@ export class AuthController {
     const allowedDomains = this.getAllowedExternalDomains();
     if (allowedDomains.length > 0) {
       const role = String((user as any).role || '');
-      const isInternalAdmin = role === 'CEO' || role === 'EXEC';
+      // CEO/EXEC(내부 관리자)와 GUARD(경비실 전용, 비-이메일 아이디 'guard')는 도메인 화이트리스트 예외
+      const isInternalAdmin = role === 'CEO' || role === 'EXEC' || role === 'GUARD';
       if (!isInternalAdmin) {
         const domain = this.extractEmailDomain(dto.username);
         if (!domain || !allowedDomains.includes(domain)) {

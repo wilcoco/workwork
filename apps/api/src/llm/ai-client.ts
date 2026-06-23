@@ -159,6 +159,104 @@ async function callClaude(opts: CallAIOptions): Promise<CallAIResult> {
   return { parsed, raw, model: 'claude', thinkingText };
 }
 
+// ─── Vision: 계기판(적산거리계) 사진에서 주행거리(km) 추출 ──
+export interface OdometerOcrResult {
+  odometerKm: number | null;
+  confidence: 'high' | 'medium' | 'low';
+  rawText: string;
+}
+
+/**
+ * 차량 계기판 사진(base64)에서 적산거리(총 주행거리, km)를 OCR로 추출한다.
+ * Claude Opus 4.8 비전 모델 사용. ANTHROPIC_API_KEY 미설정 시 예외.
+ */
+export async function extractOdometerFromImage(
+  imageBase64: string,
+  mediaType: string,
+): Promise<OdometerOcrResult> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY. 적산거리 추출(OCR)을 사용할 수 없습니다.');
+
+  const f: any = (globalThis as any).fetch;
+  if (!f) throw new Error('Server fetch not available.');
+
+  const claudeModel = process.env.CLAUDE_MODEL || 'claude-opus-4-8';
+  // Anthropic은 image/jpeg|png|gif|webp 만 허용. 그 외는 jpeg로 가정.
+  const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const mt = allowed.includes((mediaType || '').toLowerCase()) ? mediaType.toLowerCase() : 'image/jpeg';
+
+  const system =
+    '당신은 차량 계기판 사진에서 적산거리(odometer, 총 누적 주행거리)를 읽어내는 OCR 보조원입니다. ' +
+    '단위는 km이며 정수입니다. 트립미터(TRIP A/B, 구간거리)가 아닌 총 적산거리(ODO)를 읽어야 합니다. ' +
+    '숫자를 명확히 읽을 수 없으면 odometerKm 을 null 로 두세요. 반드시 JSON 도구로만 답하세요.';
+
+  const body: any = {
+    model: claudeModel,
+    max_tokens: 1024,
+    temperature: 0,
+    system,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mt, data: imageBase64 } },
+          {
+            type: 'text',
+            text: '이 계기판 사진에서 총 적산거리(km)를 읽어 JSON으로 보고하세요.',
+          },
+        ],
+      },
+    ],
+    tools: [
+      {
+        name: 'report_odometer',
+        description: '계기판에서 읽은 적산거리(km)를 보고',
+        input_schema: {
+          type: 'object',
+          properties: {
+            odometerKm: { type: ['integer', 'null'], description: '총 적산거리(km), 읽을 수 없으면 null' },
+            confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+            rawText: { type: 'string', description: '사진에서 읽은 숫자 원문' },
+          },
+          required: ['odometerKm', 'confidence', 'rawText'],
+        },
+      },
+    ],
+    tool_choice: { type: 'tool', name: 'report_odometer' },
+  };
+
+  const resp = await f('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`Claude vision error: ${resp.status} ${text}`);
+  }
+
+  const data = await resp.json();
+  const blocks: any[] = data?.content || [];
+  const tool = blocks.find((b: any) => b.type === 'tool_use');
+  const input = tool?.input || {};
+  let odo = input.odometerKm;
+  if (typeof odo === 'string') {
+    const n = parseInt(String(odo).replace(/[^0-9]/g, ''), 10);
+    odo = Number.isFinite(n) ? n : null;
+  }
+  if (typeof odo !== 'number' || !Number.isFinite(odo)) odo = null;
+  return {
+    odometerKm: odo,
+    confidence: ['high', 'medium', 'low'].includes(input.confidence) ? input.confidence : 'low',
+    rawText: String(input.rawText || ''),
+  };
+}
+
 // ─── Main entry point ────────────────────────────────────
 export async function callAI(opts: CallAIOptions): Promise<CallAIResult> {
   const model = opts.model || 'openai';

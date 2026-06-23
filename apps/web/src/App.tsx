@@ -39,6 +39,8 @@ import { AdminTools } from './pages/AdminTools';
 import { CarAdmin } from './pages/CarAdmin';
 import { CarDispatchCorporate } from './pages/CarDispatchCorporate';
 import { CarDispatchLogistics } from './pages/CarDispatchLogistics';
+import { CarUsageReturn } from './pages/CarUsageReturn';
+import { GuardDispatchBoard } from './pages/GuardDispatchBoard';
 import { AttendanceRequest } from './pages/AttendanceRequest';
 import { BusinessTripRequest } from './pages/BusinessTripRequest';
 import { AttendanceReport } from './pages/AttendanceReport';
@@ -197,7 +199,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
 
   const [token, setToken] = useState<string | null>(typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null);
   const [myUserId, setMyUserId] = useState(typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '');
-  const [me, setMe] = useState<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' } | null | undefined>(undefined);
+  const [me, setMe] = useState<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | 'GUARD' } | null | undefined>(undefined);
   const [teamsSsoAttempted, setTeamsSsoAttempted] = useState(false);
 
   // Teams SSO: auto-login when inside Teams and no token
@@ -249,6 +251,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
   const ssoInProgress = !token && !teamsSsoAttempted;
 
   const isCeo = me?.role === 'CEO';
+  const isGuard = me?.role === 'GUARD';
   // "대표 이상" — 임원/대표에게만 접근을 허용하는 메뉴 (품의서/전표 등).
   const isExec = me?.role === 'CEO' || me?.role === 'EXEC';
   const canEvaluate = me?.role === 'CEO' || me?.role === 'EXEC' || me?.role === 'MANAGER' || me?.role === 'EXTERNAL';
@@ -281,13 +284,29 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
         return;
       }
       try {
-        const m = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' }>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
+        const m = await apiJson<{ role: 'CEO' | 'EXEC' | 'MANAGER' | 'INDIVIDUAL' | 'EXTERNAL' | 'GUARD' }>(`/api/users/me?userId=${encodeURIComponent(myUserId)}`);
         setMe(m);
       } catch {
         setMe(null);
       }
     })();
   }, [myUserId]);
+
+  // 경비실 전용 계정(GUARD): 배차 입·출차 현황 화면만 노출, 나머지는 모두 차단
+  if (token && isGuard) {
+    return (
+      <>
+        {!isEmbed && <DeployBanner />}
+        {!isEmbed && <GuardHeaderBar />}
+        <div className="container page">
+          <Routes>
+            <Route path="/guard/board" element={<GuardDispatchBoard />} />
+            <Route path="*" element={<Navigate to="/guard/board" replace />} />
+          </Routes>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -376,6 +395,8 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           />
           <Route path="/dispatch/corporate" element={<CarDispatchCorporate />} />
           <Route path="/dispatch/logistics" element={<CarDispatchLogistics />} />
+          <Route path="/dispatch/return" element={<CarUsageReturn />} />
+          <Route path="/guard/board" element={<GuardDispatchBoard />} />
           <Route path="/attendance/request" element={<AttendanceRequest />} />
           <Route path="/attendance/report" element={<AttendanceReport />} />
           <Route path="/attendance/ot-verification" element={<OtVerification />} />
@@ -513,6 +534,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
         )}
         <NavDropdown label="신청" active={location.pathname.startsWith('/dispatch') || location.pathname.startsWith('/attendance') || location.pathname.startsWith('/business-trip')}>
           <Link to="/dispatch/corporate">법인차량 신청</Link>
+          <Link to="/dispatch/return">법인차량 사용 후 등록</Link>
           <Link to="/dispatch/logistics">물류 배차 신청</Link>
           <Link to="/attendance/request">근태 신청</Link>
           <Link to="/attendance/report">근태 리포트</Link>
@@ -569,6 +591,35 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
               <Link to="/login">로그인</Link>
             </>
           )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function GuardHeaderBar() {
+  const nav = useNavigate();
+  const userName = typeof localStorage !== 'undefined' ? localStorage.getItem('userName') || '경비실' : '경비실';
+  const onLogout = () => {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('userId');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('userLogin');
+      localStorage.removeItem('teamName');
+    }
+    nav('/login');
+  };
+  return (
+    <div className="header">
+      <div className="container">
+        <span className="logo" aria-label="배차 현황">
+          <img src="/camslogo.jpg" alt="로고" />
+        </span>
+        <span style={{ marginLeft: 12, fontWeight: 800 }}>배차 입·출차 현황</span>
+        <span className="nav-right">
+          <span className="user-chip">{userName}</span>
+          <button onClick={onLogout} className="btn btn-ghost">로그아웃</button>
         </span>
       </div>
     </div>
@@ -731,6 +782,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
     if (path.startsWith('/dispatch') || path.startsWith('/attendance')) {
       return [
         { to: '/dispatch/corporate', label: '법인차량 신청' },
+        { to: '/dispatch/return', label: '법인차량 사용 후 등록' },
         { to: '/dispatch/logistics', label: '물류 배차 신청' },
         { to: '/attendance/request', label: '근태 신청' },
         { to: '/attendance/report', label: '근태 리포트' },
