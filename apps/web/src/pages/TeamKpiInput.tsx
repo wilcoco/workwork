@@ -46,6 +46,55 @@ export function TeamKpiInput() {
     { title: '', desc: '', months: Array(12).fill(false) },
   ]);
 
+  // KPI 아이템 인라인 수정
+  const [editForm, setEditForm] = useState<any | null>(null);
+
+  function openEdit(kr: any) {
+    setEditForm({
+      id: kr.id,
+      title: kr.title ?? '',
+      metric: kr.metric ?? '',
+      unit: kr.unit ?? '',
+      pillar: kr.pillar ?? 'Q',
+      cadence: kr.cadence ?? '',
+      direction: kr.direction ?? 'AT_LEAST',
+      year25Target: kr.year25Target ?? '',
+      baseline: kr.baseline ?? '',
+      target: kr.target ?? '',
+      weight: kr.weight ?? '',
+      analysis25: kr.analysis25 ?? '',
+    });
+  }
+
+  async function saveEdit() {
+    if (!editForm) return;
+    const numOrUndef = (v: any) => (v === '' || v == null ? undefined : Number(String(v).replace(/,/g, '')));
+    const body: any = {
+      title: editForm.title || undefined,
+      metric: editForm.metric ?? undefined,
+      unit: editForm.unit || undefined,
+      pillar: editForm.pillar || undefined,
+      cadence: editForm.cadence || undefined,
+      direction: editForm.direction || undefined,
+      year25Target: numOrUndef(editForm.year25Target),
+      baseline: numOrUndef(editForm.baseline),
+      target: numOrUndef(editForm.target),
+      weight: numOrUndef(editForm.weight),
+      analysis25: typeof editForm.analysis25 === 'string' ? editForm.analysis25 : undefined,
+    };
+    try {
+      await apiJson(`/api/okrs/krs/${encodeURIComponent(editForm.id)}?userId=${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      });
+      const res = await apiJson<{ items: any[] }>(`/api/okrs/objectives${orgUnitId ? `?orgUnitId=${encodeURIComponent(orgUnitId)}` : ''}`);
+      setObjectives(res.items || []);
+      setEditForm(null);
+    } catch (e: any) {
+      setError(e.message || '수정 실패');
+    }
+  }
+
   // (removed) separate initiative entry UI replaced by taskRows within KPI form
 
   useEffect(() => {
@@ -350,6 +399,9 @@ export function TeamKpiInput() {
                       {typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}
                     </div>
                     {(!!orgUnitId) && (
+                      <button className="btn btn-ghost" onClick={() => openEdit(kr)}>수정</button>
+                    )}
+                    {(!!orgUnitId) && (
                       <button
                         className="btn btn-ghost"
                         onClick={async () => {
@@ -406,6 +458,9 @@ export function TeamKpiInput() {
                           <div style={{ fontWeight: 600 }}>{o.title} / KR: {kr.title}</div>
                           <div style={{ color: '#334155' }}>(25목표: {kr.year25Target != null ? kr.year25Target : '-'} / 25실적: {kr.baseline != null ? kr.baseline : '-'} / 26목표: {kr.target != null ? kr.target : '-'}{kr.unit ? ' ' + kr.unit : ''})</div>
                           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}{typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}</div>
+                          {(!!orgUnitId) && (
+                            <button className="btn btn-ghost" onClick={() => openEdit(kr)}>수정</button>
+                          )}
                           {(!!orgUnitId) && (
                             <button
                               className="btn btn-ghost"
@@ -507,6 +562,64 @@ export function TeamKpiInput() {
           {!objectives.length && <div style={{ color: '#6b7280' }}>선택한 팀의 OKR/KPI가 없습니다.</div>}
         </div>
       </div>
+
+      {editForm && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: 16 }}
+          onClick={() => setEditForm(null)}
+        >
+          <div style={{ background: '#fff', borderRadius: 12, padding: 18, width: 460, maxWidth: '96%', maxHeight: '92vh', overflowY: 'auto', display: 'grid', gap: 8 }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: 0 }}>KPI 수정</h3>
+            {(() => {
+              const f = editForm;
+              const set = (k: string, v: any) => setEditForm((p: any) => ({ ...p, [k]: v }));
+              const fld: React.CSSProperties = { padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, width: '100%' };
+              return (
+                <>
+                  <label style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>KPI명</span>
+                    <input style={fld} value={f.title} onChange={(e) => set('title', e.target.value)} /></label>
+                  <label style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>내용/산식 (추진계획)</span>
+                    <textarea style={fld} rows={2} value={f.metric} onChange={(e) => set('metric', e.target.value)} /></label>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 120 }}><span style={{ fontSize: 12, color: '#475569' }}>단위</span>
+                      <input style={fld} value={f.unit} onChange={(e) => set('unit', e.target.value)} /></label>
+                    <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 120 }}><span style={{ fontSize: 12, color: '#475569' }}>분야</span>
+                      <select style={fld} value={f.pillar} onChange={(e) => set('pillar', e.target.value)}>
+                        <option value="C">생산성</option><option value="Q">품질</option><option value="D">납기</option><option value="DEV">개발</option><option value="P">역량</option>
+                      </select></label>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 120 }}><span style={{ fontSize: 12, color: '#475569' }}>주기</span>
+                      <select style={fld} value={f.cadence} onChange={(e) => set('cadence', e.target.value)}>
+                        <option value="">(미지정)</option><option value="MONTHLY">월</option><option value="QUARTERLY">분기</option><option value="HALF_YEARLY">반기</option><option value="YEARLY">연</option>
+                      </select></label>
+                    <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 120 }}><span style={{ fontSize: 12, color: '#475569' }}>방향</span>
+                      <select style={fld} value={f.direction} onChange={(e) => set('direction', e.target.value)}>
+                        <option value="AT_LEAST">↑ 이상 좋음</option><option value="AT_MOST">↓ 이하 좋음</option>
+                      </select></label>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 90 }}><span style={{ fontSize: 12, color: '#475569' }}>25목표</span>
+                      <input style={fld} inputMode="decimal" value={f.year25Target} onChange={(e) => set('year25Target', e.target.value)} /></label>
+                    <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 90 }}><span style={{ fontSize: 12, color: '#475569' }}>25실적</span>
+                      <input style={fld} inputMode="decimal" value={f.baseline} onChange={(e) => set('baseline', e.target.value)} /></label>
+                    <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 90 }}><span style={{ fontSize: 12, color: '#475569' }}>26목표</span>
+                      <input style={fld} inputMode="decimal" value={f.target} onChange={(e) => set('target', e.target.value)} /></label>
+                    <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 90 }}><span style={{ fontSize: 12, color: '#475569' }}>비중(%)</span>
+                      <input style={fld} inputMode="decimal" value={f.weight} onChange={(e) => set('weight', e.target.value)} /></label>
+                  </div>
+                  <label style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>25년 추진실적/분석</span>
+                    <textarea style={fld} rows={2} value={f.analysis25} onChange={(e) => set('analysis25', e.target.value)} /></label>
+                </>
+              );
+            })()}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setEditForm(null)}>취소</button>
+              <button type="button" className="btn btn-primary" onClick={() => void saveEdit()}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
