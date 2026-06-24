@@ -52,9 +52,29 @@ export function CarDispatchCorporate() {
   const [isMobile, setIsMobile] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<{ ev: CalendarItem; dateLabel: string } | null>(null);
 
+  // 협의(추가/교환) 배차
+  type Conflict = { id: string; requesterName: string; startAt: string; endAt: string };
+  const [conflict, setConflict] = useState<{ c: Conflict; payload: any } | null>(null);
+  const [coUseNote, setCoUseNote] = useState('');
+  const [coUseInbox, setCoUseInbox] = useState<any[]>([]);
+  const [coUseMine, setCoUseMine] = useState<any[]>([]);
+
+  async function loadCoUse() {
+    if (!userId) return;
+    try {
+      const [inbox, mine] = await Promise.all([
+        apiJson<{ items: any[] }>(`/api/car-dispatch/co-use-inbox?userId=${encodeURIComponent(userId)}`),
+        apiJson<{ items: any[] }>(`/api/car-dispatch/co-use-mine?requesterId=${encodeURIComponent(userId)}`),
+      ]);
+      setCoUseInbox(inbox.items || []);
+      setCoUseMine(mine.items || []);
+    } catch { /* ignore */ }
+  }
+
   useEffect(() => {
     void loadCars();
     void loadMembers();
+    void loadCoUse();
   }, []);
 
   useEffect(() => {
@@ -115,6 +135,29 @@ export function CarDispatchCorporate() {
 
   const weeks = useMemo(() => buildMonthGrid(calendarMonth, items), [calendarMonth, items]);
 
+  async function submitCoUse() {
+    if (!conflict) return;
+    try {
+      await apiJson(`/api/car-dispatch/co-use`, { method: 'POST', body: JSON.stringify({ ...conflict.payload, note: coUseNote || undefined }) });
+      setConflict(null);
+      setCoUseNote('');
+      await loadCoUse();
+      alert(`${conflict.c.requesterName || '선점자'}님에게 협의 배차 요청을 보냈습니다. 동의하면 결재가 진행됩니다.`);
+    } catch (e: any) {
+      alert(e?.message || '협의 요청에 실패했습니다');
+    }
+  }
+
+  async function respondCoUse(id: string, kind: 'agree' | 'decline') {
+    try {
+      await apiJson(`/api/car-dispatch/${id}/${kind}`, { method: 'POST', body: JSON.stringify({ actorId: userId }) });
+      await loadCoUse();
+      await loadCalendar();
+    } catch (e: any) {
+      alert(e?.message || '처리에 실패했습니다');
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!userId) {
@@ -146,9 +189,17 @@ export function CarDispatchCorporate() {
       await loadCalendar();
       alert('배차 신청이 등록되었습니다');
     } catch (e: any) {
-      const msg = e?.message || '';
-      if (msg.includes('이미 배차된 시간')) alert('이미 배차된 시간입니다. 다른 시간대를 선택해 주세요.');
-      else alert(msg || '배차 신청에 실패했습니다');
+      const body = e?.body;
+      if (body && body.code === 'DISPATCH_CONFLICT' && body.conflict) {
+        // 선점자와 협의(추가/교환) 배차 제안
+        setCoUseNote('');
+        setConflict({
+          c: body.conflict,
+          payload: { carId, requesterId: userId, approverId: approverId || undefined, coRiders: coRiders || undefined, startAt: startAtIso, endAt: endAtIso, destination, purpose, conflictDispatchId: body.conflict.id },
+        });
+      } else {
+        alert(e?.message || '배차 신청에 실패했습니다');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -296,6 +347,71 @@ export function CarDispatchCorporate() {
           </div>
         </form>
       </div>
+
+      {(coUseInbox.length > 0 || coUseMine.length > 0) && (
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
+          {coUseInbox.length > 0 && (
+            <div style={{ border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 12, padding: 12 }}>
+              <div style={{ fontWeight: 800, color: '#92400e', marginBottom: 8 }}>🔔 내게 온 협의 배차 요청 (선점자)</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {coUseInbox.map((r) => (
+                  <div key={r.id} style={{ border: '1px solid #fcd34d', borderRadius: 8, padding: 8, background: '#fff' }}>
+                    <div style={{ fontSize: 13 }}>
+                      <b>{r.requesterName}</b>님 · {r.carName}{r.carPlateNo ? ` (${r.carPlateNo})` : ''}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#475569' }}>{formatDateTime(r.startAt)}~{formatTime(r.endAt)} · {r.destination} · {r.purpose}</div>
+                    {r.negotiationNote && <div style={{ fontSize: 13, color: '#92400e', marginTop: 2 }}>“{r.negotiationNote}”</div>}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                      <button type="button" className="btn btn-sm" onClick={() => void respondCoUse(r.id, 'agree')}>동의(결재 진행)</button>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => void respondCoUse(r.id, 'decline')}>거절</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {coUseMine.length > 0 && (
+            <div style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 12, padding: 12 }}>
+              <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>내가 보낸 협의 배차 요청</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {coUseMine.map((r) => {
+                  const st = r.negotiationStatus === 'AGREED' ? { t: '동의됨(결재 진행)', c: '#166534', b: '#dcfce7' } : r.negotiationStatus === 'DECLINED' ? { t: '거절됨', c: '#991b1b', b: '#fee2e2' } : { t: '대기중', c: '#854d0e', b: '#fef9c3' };
+                  return (
+                    <div key={r.id} style={{ border: '1px solid #f1f5f9', borderRadius: 8, padding: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ fontSize: 13 }}>{r.carName} · {formatDateTime(r.startAt)}~{formatTime(r.endAt)}</div>
+                        <span style={{ background: st.b, color: st.c, borderRadius: 999, padding: '1px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{st.t}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b' }}>{r.destination} · {r.purpose}{r.negotiationNote ? ` · “${r.negotiationNote}”` : ''}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {conflict && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600, padding: 16 }} onClick={() => setConflict(null)}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 18, width: 420, maxWidth: '95%', display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>이미 선점된 시간입니다</div>
+            <div style={{ fontSize: 14, color: '#334155' }}>
+              <b>{conflict.c.requesterName || '다른 사용자'}</b>님이 {formatDateTime(conflict.c.startAt)}~{formatTime(conflict.c.endAt)}에 선점했습니다.<br />
+              남는 시간 사용·차량 교환 등 <b>협의 배차</b>를 선점자에게 요청할 수 있습니다.
+            </div>
+            <label style={{ display: 'grid', gap: 4 }}>
+              <span style={{ fontSize: 12, color: '#475569' }}>협의 메모 (예: 오후 2시 이후 사용 / 차량 교환 희망)</span>
+              <textarea value={coUseNote} onChange={(e) => setCoUseNote(e.target.value)} rows={3} style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
+            </label>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-sm btn-ghost" onClick={() => setConflict(null)}>취소</button>
+              <button type="button" className="btn btn-sm" onClick={() => void submitCoUse()}>협의 배차 요청</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedEvent ? (
         <div
         style={{
@@ -390,4 +506,11 @@ function formatTime(iso: string): string {
   const h = String(d.getHours()).padStart(2, '0');
   const m = String(d.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const da = String(d.getDate()).padStart(2, '0');
+  return `${mo}/${da} ${formatTime(iso)}`;
 }

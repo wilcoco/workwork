@@ -740,6 +740,14 @@ model CarDispatchRequest {
   purpose      String
   driverName   String?        // 경비실 긴급 등록 시 운전자명(시스템 계정이 아닌 경우)
   guardCreated Boolean        @default(false) // 경비실 직접(긴급) 등록 여부
+
+  // 선점자와 협의한 추가/교환 배차
+  coUse              Boolean   @default(false) // 협의(추가/교환) 배차 여부
+  negotiatedWithId   String?   // 선점자(협의 상대) user id
+  negotiationStatus  String?   // REQUESTED | AGREED | DECLINED
+  negotiationNote    String?   // 협의 메모 (예: 남는 시간 사용 / 차량 교환)
+  conflictDispatchId String?   // 협의 대상이 된 선점 배차 id
+
   dispatchType String         @default("CORPORATE") // CORPORATE | LOGISTICS
   cargoDetails String?        // 화물 내용 (물류 전용)
   status       DispatchStatus @default(PENDING)

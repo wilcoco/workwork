@@ -129,9 +129,162 @@ class GuardCreateDto {
   endAt?: string; // ISO, 미지정 시 startAt + 1h
 }
 
+class CoUseDto {
+  @IsString() carId!: string;
+  @IsString() requesterId!: string;
+  @IsOptional() @IsString() approverId?: string;
+  @IsOptional() @IsString() coRiders?: string;
+  @IsString() startAt!: string;
+  @IsString() endAt!: string;
+  @IsString() destination!: string;
+  @IsString() purpose!: string;
+  @IsString() conflictDispatchId!: string; // 선점 배차 id
+  @IsOptional() @IsString() note?: string;  // 협의 메모 (남는 시간/교환 등)
+}
+
+class NegotiateDto {
+  @IsString() actorId!: string; // 선점자(협의 상대)
+}
+
 @Controller('car-dispatch')
 export class CarDispatchController {
   constructor(private prisma: PrismaService) {}
+
+  // 배차 결재 라인 생성 (홍정수 1차 + 추가 결재자) — create/agree 공용
+  private async createCarApproval(tx: any, dispatchId: string, requesterId: string, approverId?: string) {
+    const CAR_MANAGER_EMAIL = 'json@cams2002.onmicrosoft.com';
+    const carManager = await tx.user.findFirst({ where: { email: CAR_MANAGER_EMAIL }, select: { id: true } });
+    const carManagerId = carManager?.id;
+    if (!carManagerId) throw new BadRequestException('배차 담당자(홍정수)를 찾을 수 없습니다');
+    const extra = approverId && approverId !== carManagerId ? approverId : null;
+    const line = extra ? [carManagerId, extra] : [carManagerId];
+    const approval = await tx.approvalRequest.create({
+      data: { subjectType: 'CAR_DISPATCH', subjectId: dispatchId, approverId: carManagerId, requestedById: requesterId },
+    });
+    for (let i = 0; i < line.length; i++) {
+      await tx.approvalStep.create({ data: { requestId: approval.id, stepNo: i + 1, approverId: line[i], status: 'PENDING' as any } });
+    }
+    await tx.event.create({
+      data: { subjectType: 'CAR_DISPATCH', subjectId: dispatchId, activity: 'ApprovalRequested', userId: requesterId, attrs: { approverId: carManagerId, requestId: approval.id, steps: line.length, line } },
+    });
+    await tx.notification.create({
+      data: { userId: carManagerId, type: 'ApprovalRequested', subjectType: 'CAR_DISPATCH', subjectId: dispatchId, payload: { requestId: approval.id, requestedById: requesterId } },
+    });
+  }
+
+  // 협의(추가/교환) 배차 요청 — 선점 시간이 겹쳐도 선점자 동의를 전제로 등록
+  @Post('co-use')
+  async coUseRequest(@Body() dto: CoUseDto) {
+    const startAt = new Date(dto.startAt);
+    const endAt = new Date(dto.endAt);
+    if (isNaN(startAt.getTime()) || isNaN(endAt.getTime()) || endAt <= startAt) {
+      throw new BadRequestException('유효하지 않은 일시입니다');
+    }
+    const conflict = await this.prisma.carDispatchRequest.findUnique({ where: { id: dto.conflictDispatchId } });
+    if (!conflict) throw new BadRequestException('협의 대상 배차를 찾을 수 없습니다');
+    const negotiatedWithId = (conflict as any).requesterId;
+    if (negotiatedWithId === dto.requesterId) throw new BadRequestException('본인 선점 배차에는 협의 요청할 수 없습니다');
+
+    const rec = await this.prisma.$transaction(async (tx) => {
+      const dispatch = await tx.carDispatchRequest.create({
+        data: {
+          carId: dto.carId,
+          requesterId: dto.requesterId,
+          approverId: dto.requesterId, // 임시(동의 후 결재라인에서 갱신)
+          coRiders: dto.coRiders,
+          startAt, endAt,
+          destination: dto.destination,
+          purpose: dto.purpose,
+          dispatchType: 'CORPORATE',
+          status: 'PENDING' as any,
+          coUse: true,
+          negotiatedWithId,
+          negotiationStatus: 'REQUESTED',
+          negotiationNote: dto.note,
+          conflictDispatchId: dto.conflictDispatchId,
+        } as any,
+      });
+      // 선점자에게 협의 요청 알림
+      await tx.notification.create({
+        data: { userId: negotiatedWithId, type: 'CarCoUseRequested', subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, payload: { requestedById: dto.requesterId, note: dto.note || '' } },
+      });
+      return dispatch;
+    });
+    return rec;
+  }
+
+  // 선점자가 협의 동의 → 정식 결재 라인 생성
+  @Post(':id/agree')
+  async agreeCoUse(@Param('id') id: string, @Body() dto: NegotiateDto) {
+    const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
+    if (!rec) throw new BadRequestException('not found');
+    if (!(rec as any).coUse || (rec as any).negotiationStatus !== 'REQUESTED') throw new BadRequestException('협의 대기중인 요청이 아닙니다');
+    if ((rec as any).negotiatedWithId !== dto.actorId) throw new BadRequestException('선점자만 협의에 응답할 수 있습니다');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.carDispatchRequest.update({ where: { id }, data: { negotiationStatus: 'AGREED' } as any });
+      await this.createCarApproval(tx, id, (rec as any).requesterId, undefined);
+      await tx.notification.create({
+        data: { userId: (rec as any).requesterId, type: 'CarCoUseAgreed', subjectType: 'CAR_DISPATCH', subjectId: id, payload: { agreedById: dto.actorId } },
+      });
+    });
+    return this.toBoardItem(await this.withRel(id));
+  }
+
+  // 선점자가 협의 거절 → 요청 취소
+  @Post(':id/decline')
+  async declineCoUse(@Param('id') id: string, @Body() dto: NegotiateDto) {
+    const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
+    if (!rec) throw new BadRequestException('not found');
+    if ((rec as any).negotiatedWithId !== dto.actorId) throw new BadRequestException('선점자만 협의에 응답할 수 있습니다');
+    await this.prisma.$transaction(async (tx) => {
+      await tx.carDispatchRequest.update({ where: { id }, data: { negotiationStatus: 'DECLINED', status: 'CANCELLED' as any } as any });
+      await tx.notification.create({
+        data: { userId: (rec as any).requesterId, type: 'CarCoUseDeclined', subjectType: 'CAR_DISPATCH', subjectId: id, payload: { declinedById: dto.actorId } },
+      });
+    });
+    return { ok: true };
+  }
+
+  // 내게 온 협의 요청(내가 선점자)
+  @Get('co-use-inbox')
+  async coUseInbox(@Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const items = await this.prisma.carDispatchRequest.findMany({
+      where: { negotiatedWithId: userId, negotiationStatus: 'REQUESTED' } as any,
+      orderBy: { createdAt: 'desc' },
+      include: { car: true, requester: true },
+      take: 50,
+    });
+    return { items: items.map((r) => this.coUseItem(r)) };
+  }
+
+  // 내가 보낸 협의 요청
+  @Get('co-use-mine')
+  async coUseMine(@Query('requesterId') requesterId?: string) {
+    if (!requesterId) throw new BadRequestException('requesterId required');
+    const items = await this.prisma.carDispatchRequest.findMany({
+      where: { requesterId, coUse: true } as any,
+      orderBy: { createdAt: 'desc' },
+      include: { car: true },
+      take: 50,
+    });
+    return { items: items.map((r) => this.coUseItem(r)) };
+  }
+
+  private coUseItem(r: any) {
+    return {
+      id: r.id,
+      carName: r.car?.name ?? '',
+      carPlateNo: r.car?.plateNo ?? '',
+      requesterName: r.requester?.name ?? '',
+      startAt: r.startAt, endAt: r.endAt,
+      destination: r.destination, purpose: r.purpose,
+      negotiationStatus: r.negotiationStatus,
+      negotiationNote: r.negotiationNote || '',
+      status: r.status,
+    };
+  }
 
   // 신규 배차 신청 (선점 체크 포함)
   @Post()
@@ -160,7 +313,19 @@ export class CarDispatchController {
         },
       });
       if (conflict) {
-        throw new BadRequestException('이미 배차된 시간입니다');
+        const owner = await this.prisma.user.findUnique({ where: { id: (conflict as any).requesterId }, select: { name: true } });
+        // 선점자 정보를 함께 내려, 프론트에서 협의(추가/교환) 배차를 제안할 수 있게 함
+        throw new BadRequestException({
+          message: '이미 배차된 시간입니다',
+          code: 'DISPATCH_CONFLICT',
+          conflict: {
+            id: (conflict as any).id,
+            requesterId: (conflict as any).requesterId,
+            requesterName: owner?.name || '',
+            startAt: (conflict as any).startAt,
+            endAt: (conflict as any).endAt,
+          },
+        });
       }
 
       // 배차 담당(홍정수)을 1차 결재자로 고정
