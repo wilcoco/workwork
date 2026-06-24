@@ -780,6 +780,19 @@ model CarDispatchRequest {
   updatedAt    DateTime       @updatedAt
 }
 
+// 차량 교환 요청 (두 배차의 차량을 맞바꿈)
+model CarSwapRequest {
+  id             String   @id @default(cuid())
+  fromDispatchId String   // 요청자 본인 배차
+  toDispatchId   String   // 상대(선점자) 배차
+  requestedById  String
+  targetUserId   String
+  status         String   @default("REQUESTED") // REQUESTED | AGREED | DECLINED
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 model LogisticsDispatchRequest {
   id               String         @id @default(cuid())
   requesterId      String

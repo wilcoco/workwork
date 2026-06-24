@@ -21,6 +21,7 @@ type CalendarItem = {
   startAt: string;
   endAt: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  requesterId?: string;
   requesterName: string;
   destination: string;
   purpose: string;
@@ -58,17 +59,49 @@ export function CarDispatchCorporate() {
   const [coUseNote, setCoUseNote] = useState('');
   const [coUseInbox, setCoUseInbox] = useState<any[]>([]);
   const [coUseMine, setCoUseMine] = useState<any[]>([]);
+  // 차량 교환
+  const [swapInbox, setSwapInbox] = useState<any[]>([]);
+  const [swapMine, setSwapMine] = useState<any[]>([]);
+  const [swapFromId, setSwapFromId] = useState('');
+  const [swapToId, setSwapToId] = useState('');
+  const [swapNote, setSwapNote] = useState('');
 
   async function loadCoUse() {
     if (!userId) return;
     try {
-      const [inbox, mine] = await Promise.all([
+      const [inbox, mine, sIn, sMine] = await Promise.all([
         apiJson<{ items: any[] }>(`/api/car-dispatch/co-use-inbox?userId=${encodeURIComponent(userId)}`),
         apiJson<{ items: any[] }>(`/api/car-dispatch/co-use-mine?requesterId=${encodeURIComponent(userId)}`),
+        apiJson<{ items: any[] }>(`/api/car-dispatch/swap-inbox?userId=${encodeURIComponent(userId)}`),
+        apiJson<{ items: any[] }>(`/api/car-dispatch/swap-mine?userId=${encodeURIComponent(userId)}`),
       ]);
       setCoUseInbox(inbox.items || []);
       setCoUseMine(mine.items || []);
+      setSwapInbox(sIn.items || []);
+      setSwapMine(sMine.items || []);
     } catch { /* ignore */ }
+  }
+
+  async function submitSwap() {
+    if (!swapFromId || !swapToId) { alert('내 배차와 교환할 상대 배차를 선택하세요'); return; }
+    try {
+      await apiJson(`/api/car-dispatch/swap`, { method: 'POST', body: JSON.stringify({ fromDispatchId: swapFromId, toDispatchId: swapToId, actorId: userId, note: swapNote || undefined }) });
+      setSwapFromId(''); setSwapToId(''); setSwapNote('');
+      await loadCoUse();
+      alert('차량 교환 요청을 보냈습니다. 상대가 동의하면 차량이 맞바뀝니다.');
+    } catch (e: any) {
+      alert(e?.message || '교환 요청에 실패했습니다');
+    }
+  }
+
+  async function respondSwap(id: string, kind: 'agree' | 'decline') {
+    try {
+      await apiJson(`/api/car-dispatch/swap/${id}/${kind}`, { method: 'POST', body: JSON.stringify({ actorId: userId }) });
+      await loadCoUse();
+      await loadCalendar();
+    } catch (e: any) {
+      alert(e?.message || '처리에 실패했습니다');
+    }
   }
 
   useEffect(() => {
@@ -142,7 +175,7 @@ export function CarDispatchCorporate() {
       setConflict(null);
       setCoUseNote('');
       await loadCoUse();
-      alert(`${conflict.c.requesterName || '선점자'}님에게 협의 배차 요청을 보냈습니다. 동의하면 결재가 진행됩니다.`);
+      alert(`${conflict.c.requesterName || '선점자'}님에게 협의 배차 요청을 보냈습니다. 선점자가 동의하면 별도 결재 없이 확정됩니다.`);
     } catch (e: any) {
       alert(e?.message || '협의 요청에 실패했습니다');
     }
@@ -375,7 +408,7 @@ export function CarDispatchCorporate() {
               <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>내가 보낸 협의 배차 요청</div>
               <div style={{ display: 'grid', gap: 8 }}>
                 {coUseMine.map((r) => {
-                  const st = r.negotiationStatus === 'AGREED' ? { t: '동의됨(결재 진행)', c: '#166534', b: '#dcfce7' } : r.negotiationStatus === 'DECLINED' ? { t: '거절됨', c: '#991b1b', b: '#fee2e2' } : { t: '대기중', c: '#854d0e', b: '#fef9c3' };
+                  const st = r.negotiationStatus === 'AGREED' ? { t: '동의됨(확정)', c: '#166534', b: '#dcfce7' } : r.negotiationStatus === 'DECLINED' ? { t: '거절됨', c: '#991b1b', b: '#fee2e2' } : { t: '대기중', c: '#854d0e', b: '#fef9c3' };
                   return (
                     <div key={r.id} style={{ border: '1px solid #f1f5f9', borderRadius: 8, padding: 8 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -391,6 +424,77 @@ export function CarDispatchCorporate() {
           )}
         </div>
       )}
+
+      {/* 차량 교환 */}
+      <details style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: '8px 12px' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 800, color: '#0f172a' }}>🔄 차량 교환 요청 (같은 시간 선점한 다른 차량과 맞바꾸기)</summary>
+        <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+          {(() => {
+            const mine = items.filter((i) => i.requesterId === userId && (i.status === 'PENDING' || i.status === 'APPROVED'));
+            const from = items.find((i) => i.id === swapFromId);
+            const overlap = (a: CalendarItem, b: CalendarItem) => new Date(a.startAt) < new Date(b.endAt) && new Date(b.startAt) < new Date(a.endAt);
+            const candidates = from ? items.filter((i) => i.id !== from.id && i.requesterId && i.requesterId !== userId && i.carId !== from.carId && (i.status === 'PENDING' || i.status === 'APPROVED') && overlap(from, i)) : [];
+            return (
+              <>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  <span style={{ fontSize: 12, color: '#475569' }}>내 배차 (교환할 내 차량)</span>
+                  <select value={swapFromId} onChange={(e) => { setSwapFromId(e.target.value); setSwapToId(''); }} style={{ padding: '6px 8px' }}>
+                    <option value="">선택 ({calendarMonth} 기준)</option>
+                    {mine.map((m) => <option key={m.id} value={m.id}>{m.carName} · {formatDateTime(m.startAt)}~{formatTime(m.endAt)} · {m.destination}</option>)}
+                  </select>
+                </label>
+                {from && (
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <span style={{ fontSize: 12, color: '#475569' }}>교환할 상대 배차 (같은 시간대 다른 차량)</span>
+                    <select value={swapToId} onChange={(e) => setSwapToId(e.target.value)} style={{ padding: '6px 8px' }}>
+                      <option value="">선택</option>
+                      {candidates.map((c) => <option key={c.id} value={c.id}>{c.requesterName} · {c.carName} · {formatDateTime(c.startAt)}~{formatTime(c.endAt)}</option>)}
+                    </select>
+                    {candidates.length === 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>겹치는 시간대의 다른 차량 배차가 없습니다.</span>}
+                  </label>
+                )}
+                <label style={{ display: 'grid', gap: 4 }}>
+                  <span style={{ fontSize: 12, color: '#475569' }}>메모 (선택)</span>
+                  <input value={swapNote} onChange={(e) => setSwapNote(e.target.value)} style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6 }} />
+                </label>
+                <div><button type="button" className="btn btn-sm" disabled={!swapFromId || !swapToId} onClick={() => void submitSwap()}>교환 요청 보내기</button></div>
+              </>
+            );
+          })()}
+
+          {swapInbox.length > 0 && (
+            <div style={{ border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, color: '#92400e', marginBottom: 6 }}>🔔 내게 온 차량 교환 요청</div>
+              <div style={{ display: 'grid', gap: 8 }}>
+                {swapInbox.map((r) => (
+                  <div key={r.id} style={{ border: '1px solid #fcd34d', borderRadius: 8, padding: 8, background: '#fff', fontSize: 13 }}>
+                    <div><b>{r.from?.requesterName}</b>님이 교환 요청: <b>{r.from?.carName}</b> ↔ 내 <b>{r.to?.carName}</b></div>
+                    <div style={{ color: '#64748b' }}>{r.to ? `${formatDateTime(r.to.startAt)}~${formatTime(r.to.endAt)}` : ''}{r.note ? ` · “${r.note}”` : ''}</div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                      <button type="button" className="btn btn-sm" onClick={() => void respondSwap(r.id, 'agree')}>동의(차량 맞바꿈)</button>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => void respondSwap(r.id, 'decline')}>거절</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {swapMine.length > 0 && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 700, color: '#0f172a' }}>내가 보낸 교환 요청</div>
+              {swapMine.map((r) => {
+                const st = r.status === 'AGREED' ? { t: '교환 완료', c: '#166534', b: '#dcfce7' } : r.status === 'DECLINED' ? { t: '거절됨', c: '#991b1b', b: '#fee2e2' } : { t: '대기중', c: '#854d0e', b: '#fef9c3' };
+                return (
+                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, border: '1px solid #f1f5f9', borderRadius: 8, padding: 8 }}>
+                    <div>{r.from?.carName} ↔ {r.to?.carName} ({r.to?.requesterName})</div>
+                    <span style={{ background: st.b, color: st.c, borderRadius: 999, padding: '1px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{st.t}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </details>
 
       {conflict && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600, padding: 16 }} onClick={() => setConflict(null)}>

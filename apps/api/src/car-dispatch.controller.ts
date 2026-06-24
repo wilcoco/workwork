@@ -221,9 +221,12 @@ export class CarDispatchController {
     if (!(rec as any).coUse || (rec as any).negotiationStatus !== 'REQUESTED') throw new BadRequestException('협의 대기중인 요청이 아닙니다');
     if ((rec as any).negotiatedWithId !== dto.actorId) throw new BadRequestException('선점자만 협의에 응답할 수 있습니다');
 
+    // 선점자 동의 = 즉시 확정 (별도 결재 없이 진행)
     await this.prisma.$transaction(async (tx) => {
-      await tx.carDispatchRequest.update({ where: { id }, data: { negotiationStatus: 'AGREED' } as any });
-      await this.createCarApproval(tx, id, (rec as any).requesterId, undefined);
+      await tx.carDispatchRequest.update({ where: { id }, data: { negotiationStatus: 'AGREED', status: 'APPROVED' as any } as any });
+      await tx.event.create({
+        data: { subjectType: 'CAR_DISPATCH', subjectId: id, activity: 'Approved', userId: dto.actorId, attrs: { coUseAgreed: true } },
+      });
       await tx.notification.create({
         data: { userId: (rec as any).requesterId, type: 'CarCoUseAgreed', subjectType: 'CAR_DISPATCH', subjectId: id, payload: { agreedById: dto.actorId } },
       });
@@ -367,31 +370,35 @@ export class CarDispatchController {
           },
         });
 
+        // 신청자 = 결재자인 단계는 자동 승인 처리
+        let allApproved = true;
+        let firstPending: string | null = null;
         for (let i = 0; i < approvalLine.length; i++) {
+          const isAuto = approvalLine[i] === dto.requesterId;
           await tx.approvalStep.create({
-            data: { requestId: approval.id, stepNo: i + 1, approverId: approvalLine[i], status: 'PENDING' as any },
+            data: { requestId: approval.id, stepNo: i + 1, approverId: approvalLine[i], status: (isAuto ? 'APPROVED' : 'PENDING') as any, actedAt: isAuto ? new Date() : null },
           });
+          if (!isAuto) { allApproved = false; if (!firstPending) firstPending = approvalLine[i]; }
         }
 
-        // 3) 이벤트 & 알림
-        await tx.event.create({
-          data: {
-            subjectType: 'CAR_DISPATCH',
-            subjectId: dispatch.id,
-            activity: 'ApprovalRequested',
-            userId: dto.requesterId,
-            attrs: { approverId: firstApprover, requestId: approval.id, steps: approvalLine.length, line: approvalLine },
-          },
-        });
-        await tx.notification.create({
-          data: {
-            userId: firstApprover,
-            type: 'ApprovalRequested',
-            subjectType: 'CAR_DISPATCH',
-            subjectId: dispatch.id,
-            payload: { requestId: approval.id, requestedById: dto.requesterId },
-          },
-        });
+        if (allApproved) {
+          // 모든 결재자가 본인(신청자) → 즉시 승인 확정
+          await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: 'APPROVED' as any } });
+          await tx.carDispatchRequest.update({ where: { id: dispatch.id }, data: { status: 'APPROVED' as any } });
+          await tx.event.create({
+            data: { subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, activity: 'Approved', userId: dto.requesterId, attrs: { auto: true, requestId: approval.id } },
+          });
+          (dispatch as any).status = 'APPROVED';
+        } else {
+          await tx.event.create({
+            data: { subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, activity: 'ApprovalRequested', userId: dto.requesterId, attrs: { approverId: firstPending, requestId: approval.id, steps: approvalLine.length, line: approvalLine } },
+          });
+          if (firstPending) {
+            await tx.notification.create({
+              data: { userId: firstPending, type: 'ApprovalRequested', subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, payload: { requestId: approval.id, requestedById: dto.requesterId } },
+            });
+          }
+        }
 
         return dispatch;
       });
@@ -472,11 +479,87 @@ export class CarDispatchController {
         startAt: r.startAt,
         endAt: r.endAt,
         status: r.status,
+        requesterId: r.requesterId,
         requesterName: r.requester?.name ?? '',
         destination: r.destination,
         purpose: r.purpose,
       })),
     };
+  }
+
+  // ── 차량 교환 요청 ──────────────────────────────
+  @Post('swap')
+  async swapRequest(@Body() dto: { fromDispatchId?: string; toDispatchId?: string; actorId?: string; note?: string }) {
+    if (!dto.fromDispatchId || !dto.toDispatchId || !dto.actorId) throw new BadRequestException('필수 항목 누락');
+    const from = await this.prisma.carDispatchRequest.findUnique({ where: { id: dto.fromDispatchId } });
+    const to = await this.prisma.carDispatchRequest.findUnique({ where: { id: dto.toDispatchId } });
+    if (!from || !to) throw new BadRequestException('배차를 찾을 수 없습니다');
+    if ((from as any).requesterId !== dto.actorId) throw new BadRequestException('본인 배차에서만 교환을 요청할 수 있습니다');
+    if ((to as any).requesterId === dto.actorId) throw new BadRequestException('상대 배차를 선택하세요');
+    if ((from as any).carId === (to as any).carId) throw new BadRequestException('같은 차량은 교환할 수 없습니다');
+    const req = await (this.prisma as any).carSwapRequest.create({
+      data: { fromDispatchId: dto.fromDispatchId, toDispatchId: dto.toDispatchId, requestedById: dto.actorId, targetUserId: (to as any).requesterId, note: dto.note || null },
+    });
+    await this.prisma.notification.create({
+      data: { userId: (to as any).requesterId, type: 'CarSwapRequested', subjectType: 'CAR_SWAP', subjectId: req.id, payload: { requestedById: dto.actorId, note: dto.note || '' } },
+    });
+    return req;
+  }
+
+  @Post('swap/:id/agree')
+  async swapAgree(@Param('id') id: string, @Body() dto: { actorId?: string }) {
+    const req = await (this.prisma as any).carSwapRequest.findUnique({ where: { id } });
+    if (!req) throw new BadRequestException('not found');
+    if (req.status !== 'REQUESTED') throw new BadRequestException('이미 처리된 요청입니다');
+    if (req.targetUserId !== dto.actorId) throw new BadRequestException('상대방만 응답할 수 있습니다');
+    const from = await this.prisma.carDispatchRequest.findUnique({ where: { id: req.fromDispatchId } });
+    const to = await this.prisma.carDispatchRequest.findUnique({ where: { id: req.toDispatchId } });
+    if (!from || !to) throw new BadRequestException('배차를 찾을 수 없습니다');
+    await this.prisma.$transaction(async (tx) => {
+      // 두 배차의 차량을 맞바꿈
+      await tx.carDispatchRequest.update({ where: { id: from.id }, data: { carId: (to as any).carId } });
+      await tx.carDispatchRequest.update({ where: { id: to.id }, data: { carId: (from as any).carId } });
+      await (tx as any).carSwapRequest.update({ where: { id }, data: { status: 'AGREED' } });
+      await tx.notification.create({
+        data: { userId: req.requestedById, type: 'CarSwapAgreed', subjectType: 'CAR_SWAP', subjectId: id, payload: { agreedById: dto.actorId } },
+      });
+    });
+    return { ok: true };
+  }
+
+  @Post('swap/:id/decline')
+  async swapDecline(@Param('id') id: string, @Body() dto: { actorId?: string }) {
+    const req = await (this.prisma as any).carSwapRequest.findUnique({ where: { id } });
+    if (!req) throw new BadRequestException('not found');
+    if (req.targetUserId !== dto.actorId) throw new BadRequestException('상대방만 응답할 수 있습니다');
+    await (this.prisma as any).carSwapRequest.update({ where: { id }, data: { status: 'DECLINED' } });
+    await this.prisma.notification.create({
+      data: { userId: req.requestedById, type: 'CarSwapDeclined', subjectType: 'CAR_SWAP', subjectId: id, payload: { declinedById: dto.actorId } },
+    });
+    return { ok: true };
+  }
+
+  @Get('swap-inbox')
+  async swapInbox(@Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const reqs = await (this.prisma as any).carSwapRequest.findMany({ where: { targetUserId: userId, status: 'REQUESTED' }, orderBy: { createdAt: 'desc' }, take: 50 });
+    return { items: await this.enrichSwaps(reqs) };
+  }
+
+  @Get('swap-mine')
+  async swapMine(@Query('userId') userId?: string) {
+    if (!userId) throw new BadRequestException('userId required');
+    const reqs = await (this.prisma as any).carSwapRequest.findMany({ where: { requestedById: userId }, orderBy: { createdAt: 'desc' }, take: 50 });
+    return { items: await this.enrichSwaps(reqs) };
+  }
+
+  private async enrichSwaps(reqs: any[]) {
+    const ids = Array.from(new Set(reqs.flatMap((r) => [r.fromDispatchId, r.toDispatchId])));
+    const ds = await this.prisma.carDispatchRequest.findMany({ where: { id: { in: ids } }, include: { car: true, requester: true } });
+    const map: Record<string, any> = {};
+    for (const d of ds) map[d.id] = d;
+    const fmt = (d: any) => d ? { carName: d.car?.name ?? '', requesterName: d.requester?.name ?? '', startAt: d.startAt, endAt: d.endAt, destination: d.destination } : null;
+    return reqs.map((r) => ({ id: r.id, status: r.status, note: r.note || '', from: fmt(map[r.fromDispatchId]), to: fmt(map[r.toDispatchId]) }));
   }
 
   // 경비실 입·출차 현황판: 특정 일자(KST)에 배차된 차량 + 아직 미입차(운행중) 차량
