@@ -59,6 +59,8 @@ export function CarDispatchCorporate() {
   const [coUseNote, setCoUseNote] = useState('');
   const [coUseInbox, setCoUseInbox] = useState<any[]>([]);
   const [coUseMine, setCoUseMine] = useState<any[]>([]);
+  const [canEditAny, setCanEditAny] = useState(false);
+  const [editVals, setEditVals] = useState<any | null>(null);
   // 차량 교환
   const [swapInbox, setSwapInbox] = useState<any[]>([]);
   const [swapMine, setSwapMine] = useState<any[]>([]);
@@ -108,7 +110,46 @@ export function CarDispatchCorporate() {
     void loadCars();
     void loadMembers();
     void loadCoUse();
+    (async () => {
+      if (!userId) return;
+      try {
+        const me = await apiJson<{ role?: string; isAdmin?: boolean }>(`/api/users/me?userId=${encodeURIComponent(userId)}`);
+        setCanEditAny(!!me.isAdmin || me.role === 'CEO');
+      } catch { /* ignore */ }
+    })();
   }, []);
+
+  function openEditEvent(ev: CalendarItem) {
+    const d = new Date(ev.startAt); const e = new Date(ev.endAt);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setEditVals({
+      id: ev.id, carId: ev.carId,
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      start: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+      end: `${pad(e.getHours())}:${pad(e.getMinutes())}`,
+      destination: ev.destination, purpose: ev.purpose, coRiders: ev.coRiders || '',
+    });
+  }
+  async function saveEditEvent() {
+    if (!editVals) return;
+    try {
+      await apiJson(`/api/car-dispatch/${editVals.id}`, { method: 'PUT', body: JSON.stringify({
+        actorId: userId, carId: editVals.carId,
+        startAt: toIso(editVals.date, editVals.start), endAt: toIso(editVals.date, editVals.end),
+        destination: editVals.destination, purpose: editVals.purpose, coRiders: editVals.coRiders,
+      }) });
+      setEditVals(null); setSelectedEvent(null); await loadCalendar();
+      alert('수정되었습니다');
+    } catch (e: any) { alert(e?.message || '수정에 실패했습니다'); }
+  }
+  async function cancelEventDispatch() {
+    if (!editVals) return;
+    if (!confirm('이 배차를 취소할까요?')) return;
+    try {
+      await apiJson(`/api/car-dispatch/${editVals.id}`, { method: 'PUT', body: JSON.stringify({ actorId: userId, cancel: true }) });
+      setEditVals(null); setSelectedEvent(null); await loadCalendar();
+    } catch (e: any) { alert(e?.message || '취소에 실패했습니다'); }
+  }
 
   useEffect(() => {
     const update = () => {
@@ -543,6 +584,44 @@ export function CarDispatchCorporate() {
         >
           {(() => {
             const { ev, dateLabel } = selectedEvent;
+            const editable = canEditAny || (!!ev.requesterId && ev.requesterId === userId);
+            const isEditing = editVals && editVals.id === ev.id;
+            if (isEditing) {
+              const fld: React.CSSProperties = { padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, width: '100%' };
+              const set = (k: string, v: any) => setEditVals((p: any) => ({ ...p, [k]: v }));
+              return (
+                <>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>배차 수정</div>
+                  <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
+                    <label style={{ display: 'grid', gap: 3 }}><span style={{ color: '#475569' }}>차량</span>
+                      <select style={fld} value={editVals.carId} onChange={(e) => set('carId', e.target.value)}>
+                        {cars.map((c) => <option key={c.id} value={c.id}>{c.name}{c.type ? ` (${c.type})` : ''}</option>)}
+                      </select></label>
+                    <label style={{ display: 'grid', gap: 3 }}><span style={{ color: '#475569' }}>일자</span>
+                      <input type="date" style={fld} value={editVals.date} onChange={(e) => set('date', e.target.value)} /></label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <label style={{ display: 'grid', gap: 3, flex: 1 }}><span style={{ color: '#475569' }}>시작</span>
+                        <input type="time" style={fld} value={editVals.start} onChange={(e) => set('start', e.target.value)} /></label>
+                      <label style={{ display: 'grid', gap: 3, flex: 1 }}><span style={{ color: '#475569' }}>종료</span>
+                        <input type="time" style={fld} value={editVals.end} onChange={(e) => set('end', e.target.value)} /></label>
+                    </div>
+                    <label style={{ display: 'grid', gap: 3 }}><span style={{ color: '#475569' }}>목적지</span>
+                      <input style={fld} value={editVals.destination} onChange={(e) => set('destination', e.target.value)} /></label>
+                    <label style={{ display: 'grid', gap: 3 }}><span style={{ color: '#475569' }}>목적</span>
+                      <input style={fld} value={editVals.purpose} onChange={(e) => set('purpose', e.target.value)} /></label>
+                    <label style={{ display: 'grid', gap: 3 }}><span style={{ color: '#475569' }}>동승자</span>
+                      <input style={fld} value={editVals.coRiders} onChange={(e) => set('coRiders', e.target.value)} /></label>
+                  </div>
+                  <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+                    <button type="button" className="btn btn-sm btn-ghost" style={{ color: '#b91c1c' }} onClick={() => void cancelEventDispatch()}>배차 취소</button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEditVals(null)}>되돌리기</button>
+                      <button type="button" className="btn btn-sm" onClick={() => void saveEditEvent()}>저장</button>
+                    </div>
+                  </div>
+                </>
+              );
+            }
             return (
               <>
                 <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>{dateLabel}</div>
@@ -560,12 +639,13 @@ export function CarDispatchCorporate() {
                   )}
                   <div><strong>목적</strong> {ev.purpose}</div>
                 </div>
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  {editable && <button type="button" className="btn btn-sm" onClick={() => openEditEvent(ev)}>수정</button>}
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => setSelectedEvent(null)}>닫기</button>
+                </div>
               </>
             );
           })()}
-          <div style={{ marginTop: 12, textAlign: 'right' }}>
-            <button type="button" className="btn btn-sm" onClick={() => setSelectedEvent(null)}>닫기</button>
-          </div>
         </div>
       </div>
       ) : null}

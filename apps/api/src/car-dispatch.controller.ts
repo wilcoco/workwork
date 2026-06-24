@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { IsArray, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import { extractOdometerFromImage } from './llm/ai-client';
@@ -370,35 +370,18 @@ export class CarDispatchController {
           },
         });
 
-        // 신청자 = 결재자인 단계는 자동 승인 처리
-        let allApproved = true;
-        let firstPending: string | null = null;
+        // 모든 배차 신청은 자동 결재(승인) 처리 — 사후 수정 가능
         for (let i = 0; i < approvalLine.length; i++) {
-          const isAuto = approvalLine[i] === dto.requesterId;
           await tx.approvalStep.create({
-            data: { requestId: approval.id, stepNo: i + 1, approverId: approvalLine[i], status: (isAuto ? 'APPROVED' : 'PENDING') as any, actedAt: isAuto ? new Date() : null },
+            data: { requestId: approval.id, stepNo: i + 1, approverId: approvalLine[i], status: 'APPROVED' as any, actedAt: new Date() },
           });
-          if (!isAuto) { allApproved = false; if (!firstPending) firstPending = approvalLine[i]; }
         }
-
-        if (allApproved) {
-          // 모든 결재자가 본인(신청자) → 즉시 승인 확정
-          await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: 'APPROVED' as any } });
-          await tx.carDispatchRequest.update({ where: { id: dispatch.id }, data: { status: 'APPROVED' as any } });
-          await tx.event.create({
-            data: { subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, activity: 'Approved', userId: dto.requesterId, attrs: { auto: true, requestId: approval.id } },
-          });
-          (dispatch as any).status = 'APPROVED';
-        } else {
-          await tx.event.create({
-            data: { subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, activity: 'ApprovalRequested', userId: dto.requesterId, attrs: { approverId: firstPending, requestId: approval.id, steps: approvalLine.length, line: approvalLine } },
-          });
-          if (firstPending) {
-            await tx.notification.create({
-              data: { userId: firstPending, type: 'ApprovalRequested', subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, payload: { requestId: approval.id, requestedById: dto.requesterId } },
-            });
-          }
-        }
+        await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: 'APPROVED' as any } });
+        await tx.carDispatchRequest.update({ where: { id: dispatch.id }, data: { status: 'APPROVED' as any } });
+        await tx.event.create({
+          data: { subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, activity: 'Approved', userId: dto.requesterId, attrs: { auto: true, requestId: approval.id } },
+        });
+        (dispatch as any).status = 'APPROVED';
 
         return dispatch;
       });
@@ -885,6 +868,32 @@ export class CarDispatchController {
       data: { status: 'REJECTED' as any },
     });
     return rec;
+  }
+
+  // 배차 사후 수정 — 신청자 본인 / 대표(CEO) / 배차담당(홍정수)
+  @Put(':id')
+  async edit(@Param('id') id: string, @Body() dto: { actorId?: string; carId?: string; startAt?: string; endAt?: string; destination?: string; purpose?: string; coRiders?: string; cancel?: boolean }) {
+    const rec = await this.prisma.carDispatchRequest.findUnique({ where: { id } });
+    if (!rec) throw new BadRequestException('not found');
+    const actor = dto.actorId ? await this.prisma.user.findUnique({ where: { id: dto.actorId } }) : null;
+    const CAR_MANAGER_EMAIL = 'json@cams2002.onmicrosoft.com';
+    const isCeo = (actor?.role as any) === 'CEO';
+    const isManager = String(actor?.email || '').toLowerCase() === CAR_MANAGER_EMAIL;
+    const isRequester = !!actor && actor.id === (rec as any).requesterId;
+    if (!(isCeo || isManager || isRequester)) throw new BadRequestException('수정 권한이 없습니다 (신청자/대표/배차담당만)');
+
+    const data: any = {};
+    if (dto.cancel) data.status = 'CANCELLED';
+    if (typeof dto.carId === 'string' && dto.carId) data.carId = dto.carId;
+    if (typeof dto.destination === 'string') data.destination = dto.destination;
+    if (typeof dto.purpose === 'string') data.purpose = dto.purpose;
+    if (typeof dto.coRiders === 'string') data.coRiders = dto.coRiders;
+    if (dto.startAt) { const d = new Date(dto.startAt); if (!isNaN(d.getTime())) data.startAt = d; }
+    if (dto.endAt) { const d = new Date(dto.endAt); if (!isNaN(d.getTime())) data.endAt = d; }
+    if (data.startAt && data.endAt && data.endAt <= data.startAt) throw new BadRequestException('종료 시간이 시작 시간보다 빠를 수 없습니다');
+
+    const updated = await this.prisma.carDispatchRequest.update({ where: { id }, data });
+    return updated;
   }
 }
 
