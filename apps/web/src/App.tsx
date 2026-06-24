@@ -23,6 +23,7 @@ import { TeamKpiInput } from './pages/TeamKpiInput';
 import { TeamKpiBoard } from './pages/TeamKpiBoard';
 import { KpiResultInput } from './pages/KpiResultInput';
 import { KpiReport } from './pages/KpiReport';
+import { TeamTasks } from './pages/TeamTasks';
 import { WorklogStatsDaily } from './pages/WorklogStatsDaily';
 import { WorklogAi } from './pages/WorklogAi';
 import { TeamOkrInput } from './pages/TeamOkrInput';
@@ -368,6 +369,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/team-board" element={<TeamKpiBoard />} />
           <Route path="/okr/kpi-result" element={<KpiResultInput />} />
           <Route path="/okr/kpi-report" element={<KpiReport />} />
+          <Route path="/team-tasks" element={<TeamTasks />} />
           <Route path="/okr/team-okr" element={<TeamOkrInput />} />
           <Route
             path="/admin/orgs"
@@ -510,7 +512,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           {canEvaluate && <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>}
           <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
-        <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives') || location.pathname.startsWith('/goals')}>
+        <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives') || location.pathname.startsWith('/goals') || location.pathname.startsWith('/team-tasks')}>
           <Link to="/goals/guide">📖 입력 가이드</Link>
           <Link to="/goals/my">내 업무 과제</Link>
           {canEvaluate && <Link to="/goals/overview">전사 목표 현황</Link>}
@@ -521,6 +523,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/okr/team-board">정량 목표 (팀 KPI) 조회</Link>
           <Link to="/okr/kpi-report">팀 KPI 리포트</Link>
           <Link to="/key-initiatives">중점 추진 과제</Link>
+          <Link to="/team-tasks">팀 과제 관리</Link>
         </NavDropdown>
         {SHOW_APPROVALS && (
           <NavDropdown label="결재" active={location.pathname.startsWith('/approvals')}>
@@ -750,7 +753,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         ? [...base.slice(0, 4), { to: '/worklogs/eval-monthly', label: '업무 평가 리포트' }, ...base.slice(4)]
         : base;
     }
-    if (path.startsWith('/okr') || path.startsWith('/goals')) {
+    if (path.startsWith('/okr') || path.startsWith('/goals') || path.startsWith('/team-tasks')) {
       const base = [
         { to: '/goals/guide', label: '입력 가이드' },
         { to: '/goals/my', label: '내 업무 과제' },
@@ -761,6 +764,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/okr/team-board', label: '정량 목표 (팀 KPI) 조회' },
         { to: '/okr/kpi-report', label: '팀 KPI 리포트' },
         { to: '/key-initiatives', label: '중점 추진 과제' },
+        { to: '/team-tasks', label: '팀 과제 관리' },
       ];
       return canEvaluate ? [base[0], { to: '/goals/overview', label: '전사 목표 현황' }, ...base.slice(1)] : base;
     }

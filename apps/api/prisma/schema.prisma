@@ -780,6 +780,35 @@ model CarDispatchRequest {
   updatedAt    DateTime       @updatedAt
 }
 
+// 팀 과제 관리 (과제 → 항목 → 마일스톤 재귀 트리)
+// 각 노드: 준비자료/결과보고/첨부, KPI·OKR 세부태스크 연동
+model TeamTaskNode {
+  id            String   @id @default(cuid())
+  orgUnitId     String
+  parentId      String?
+  parent        TeamTaskNode?  @relation("TeamTaskTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children      TeamTaskNode[] @relation("TeamTaskTree")
+  title         String
+  order         Int      @default(0)
+  milestoneDate DateTime?       // 마일스톤 일자
+  status        String?         // OPEN | DONE
+  prepNote      String?         // 준비 자료(내용)
+  resultNote    String?         // 결과 보고(내용)
+  attachments   Json?           // [{ url, name, uploadId }]
+  keyResultId   String?         // 연동 KPI(KeyResult)
+  objectiveId   String?         // 연동 OKR(Objective)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// 팀 과제 공개 설정 (PUBLIC=전체공개, PRIVATE=해당 팀 구성원+대표/관리자만)
+model TeamTaskSetting {
+  orgUnitId  String   @id
+  visibility String   @default("PUBLIC") // PUBLIC | PRIVATE
+  updatedAt  DateTime @updatedAt
+}
+
 // 차량 교환 요청 (두 배차의 차량을 맞바꿈)
 model CarSwapRequest {
   id             String   @id @default(cuid())
