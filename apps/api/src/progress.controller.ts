@@ -116,9 +116,10 @@ export class ProgressController {
       if (isTeamKpi) {
         const sameTeam = !!user.orgUnitId && user.orgUnitId === ((kr as any)?.objective as any)?.orgUnitId;
         const isMgr = (user.role as any) === 'MANAGER';
-        // 팀 KPI는 팀 매니저 또는 해당 KR에 할당된(KeyResultAssignment) 구성원이 입력 가능
+        const isCeo = (user.role as any) === 'CEO';
+        // 팀 KPI는 대표(CEO), 팀 매니저, 또는 해당 KR에 할당된(KeyResultAssignment) 구성원이 입력 가능
         const assigned = await this.prisma.keyResultAssignment.findFirst({ where: { keyResultId: dto.subjectId, userId: user.id } });
-        if (!((isMgr && sameTeam) || assigned)) throw new ForbiddenException('only team manager or assigned member can update team KPI');
+        if (!(isCeo || (isMgr && sameTeam) || assigned)) throw new ForbiddenException('only team manager or assigned member can update team KPI');
         // Unify KPI progress input cadence to MONTHLY
         cadence = 'MONTHLY' as any;
       } else {
@@ -132,11 +133,12 @@ export class ProgressController {
       if (isTeamKpi) {
         const sameTeam = !!user.orgUnitId && user.orgUnitId === (((init as any)?.keyResult as any)?.objective as any)?.orgUnitId;
         const isMgr = (user.role as any) === 'MANAGER';
-        // 팀 KPI는 팀 매니저 또는 해당 KR에 할당된(KeyResultAssignment) 구성원이 입력 가능
+        const isCeo = (user.role as any) === 'CEO';
+        // 팀 KPI는 대표(CEO), 팀 매니저, 또는 해당 KR에 할당된(KeyResultAssignment) 구성원이 입력 가능
         const assigned = (init as any).keyResultId
           ? await this.prisma.keyResultAssignment.findFirst({ where: { keyResultId: (init as any).keyResultId, userId: user.id } })
           : null;
-        if (!((isMgr && sameTeam) || assigned)) throw new ForbiddenException('only team manager or assigned member can update team KPI');
+        if (!(isCeo || (isMgr && sameTeam) || assigned)) throw new ForbiddenException('only team manager or assigned member can update team KPI');
       } else {
         if (user.id !== (init as any).ownerId) throw new ForbiddenException('only initiative owner can update this OKR');
       }
