@@ -234,7 +234,7 @@ export function TeamKpiInput() {
         </div>
       </div>
 
-      {myRole !== 'INDIVIDUAL' && (
+      {!!orgUnitId && (
       <div className="card" style={{ padding: 12, display: 'grid', gap: 8 }}>
         <h3 style={{ margin: 0 }}>KPI 입력</h3>
         <div className="resp-2">
@@ -349,7 +349,7 @@ export function TeamKpiInput() {
                       {kr.cadence ? ` · ${kr.cadence}` : ''}
                       {typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}
                     </div>
-                    {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
+                    {(!!orgUnitId) && (
                       <button
                         className="btn btn-ghost"
                         onClick={async () => {
@@ -381,7 +381,7 @@ export function TeamKpiInput() {
                 <span style={{ background: '#E6EEF7', color: '#0F3D73', border: '1px solid #0F3D73', borderRadius: 999, padding: '1px 8px', fontSize: 12, fontWeight: 700 }}>목표</span>
                 <b>{o.title}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{o.pillar || '-'}</span>
-                {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
+                {(!!orgUnitId) && (
                   <button
                     className="btn btn-ghost"
                     onClick={async () => {
@@ -406,7 +406,7 @@ export function TeamKpiInput() {
                           <div style={{ fontWeight: 600 }}>{o.title} / KR: {kr.title}</div>
                           <div style={{ color: '#334155' }}>(25목표: {kr.year25Target != null ? kr.year25Target : '-'} / 25실적: {kr.baseline != null ? kr.baseline : '-'} / 26목표: {kr.target != null ? kr.target : '-'}{kr.unit ? ' ' + kr.unit : ''})</div>
                           <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{kr.pillar || '-'}{kr.cadence ? ` · ${kr.cadence}` : ''}{typeof kr.weight === 'number' ? ` · ${kr.weight}%` : ''}</div>
-                          {(myRole === 'CEO' || myRole === 'EXEC' || myRole === 'MANAGER') && (
+                          {(!!orgUnitId) && (
                             <button
                               className="btn btn-ghost"
                               onClick={async () => {

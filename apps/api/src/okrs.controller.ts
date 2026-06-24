@@ -195,9 +195,9 @@ export class OkrsController {
     if (context === 'team') {
       const org = await this.prisma.orgUnit.findUnique({ where: { id: orgUnitId } });
       const isCEO = (user.role as any) === 'CEO';
-      const isMgrSameTeam = (user.role as any) === 'MANAGER' && user.orgUnitId === orgUnitId;
+      const isSameTeam = !!user.orgUnitId && user.orgUnitId === orgUnitId; // 같은 팀 소속이면 허용
       const isExecParent = (user.role as any) === 'EXEC' && !!org?.parentId && user.orgUnitId === org.parentId;
-      if (!isCEO && !isMgrSameTeam && !isExecParent) {
+      if (!isCEO && !isSameTeam && !isExecParent) {
         throw new ForbiddenException('not allowed to create team KPI');
       }
     }
@@ -259,9 +259,9 @@ export class OkrsController {
     if (!user) throw new BadRequestException('user not found');
     if (context === 'team') {
       const isCEO = (user.role as any) === 'CEO';
-      const isMgrSameTeam = (user.role as any) === 'MANAGER' && user.orgUnitId === (obj as any).orgUnitId;
+      const isSameTeam = !!user.orgUnitId && user.orgUnitId === (obj as any).orgUnitId; // 같은 팀 소속이면 허용
       const isExecParent = (user.role as any) === 'EXEC' && !!(obj as any)?.orgUnit?.parentId && user.orgUnitId === (obj as any).orgUnit.parentId;
-      if (!isCEO && !isMgrSameTeam && !isExecParent) {
+      if (!isCEO && !isSameTeam && !isExecParent) {
         throw new ForbiddenException('not allowed to create team KPI');
       }
     }
@@ -308,8 +308,9 @@ export class OkrsController {
     if (!exists) throw new NotFoundException('objective not found');
     const actor = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!actor) throw new ForbiddenException('not allowed');
-    const allowed = (actor.role as any) === 'CEO' || exists.ownerId === userId;
-    if (!allowed) throw new ForbiddenException('본인이 작성한 목표만 수정할 수 있습니다');
+    const sameTeam = !!actor.orgUnitId && actor.orgUnitId === (exists as any).orgUnitId; // 같은 팀 소속이면 수정 허용
+    const allowed = (actor.role as any) === 'CEO' || exists.ownerId === userId || sameTeam;
+    if (!allowed) throw new ForbiddenException('소속 팀의 목표만 수정할 수 있습니다');
     const data: any = {
       title: dto.title,
       description: dto.description,
@@ -330,8 +331,9 @@ export class OkrsController {
     if (!kr) throw new NotFoundException('key result not found');
     const actor = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!actor) throw new ForbiddenException('not allowed');
-    const allowed = (actor.role as any) === 'CEO' || kr.ownerId === userId || (kr as any).objective?.ownerId === userId;
-    if (!allowed) throw new ForbiddenException('본인이 작성한 KR만 수정할 수 있습니다');
+    const sameTeam = !!actor.orgUnitId && actor.orgUnitId === (kr as any).objective?.orgUnitId; // 같은 팀 소속이면 수정 허용
+    const allowed = (actor.role as any) === 'CEO' || kr.ownerId === userId || (kr as any).objective?.ownerId === userId || sameTeam;
+    if (!allowed) throw new ForbiddenException('소속 팀의 KPI만 수정할 수 있습니다');
     const data: any = {
       title: dto.title,
       metric: dto.metric,
@@ -399,10 +401,9 @@ export class OkrsController {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new ForbiddenException('not allowed');
     const isCEO = (user.role as any) === 'CEO';
-    const isExecOrMgr = (user.role as any) === 'EXEC' || (user.role as any) === 'MANAGER';
     const sameTeam = !!user.orgUnitId && user.orgUnitId === (exists as any)?.orgUnitId;
-    // Allow CEO or the owner of the objective, or team exec/manager in team context
-    const allowed = isCEO || exists.ownerId === userId || (context === 'team' && isExecOrMgr && sameTeam);
+    // Allow CEO or the owner of the objective, or any same-team member in team context
+    const allowed = isCEO || exists.ownerId === userId || (context === 'team' && sameTeam);
     if (!allowed) throw new ForbiddenException('not allowed');
     console.log('[okrs] deleteObjective', { id, DATABASE_URL: process.env.DATABASE_URL });
     await this.prisma.$transaction(async (tx) => {
@@ -422,7 +423,6 @@ export class OkrsController {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new ForbiddenException('not allowed');
     const isCEO = (user.role as any) === 'CEO';
-    const isMgr = (user.role as any) === 'MANAGER';
     const isExec = (user.role as any) === 'EXEC';
     const sameTeam = !!user.orgUnitId && user.orgUnitId === (kr.objective as any)?.orgUnitId;
     const execIsParent = isExec && !!(kr.objective as any)?.orgUnit?.parentId && user.orgUnitId === (kr.objective as any).orgUnit.parentId;
@@ -432,9 +432,9 @@ export class OkrsController {
     if (!allowed && (!context || context !== 'team')) {
       allowed = kr.ownerId === userId || (kr as any).objective?.ownerId === userId;
     }
-    // Team KPI context: allow EXEC/MANAGER when same team
+    // Team KPI context: allow any same-team member (or parent EXEC)
     if (!allowed && context === 'team') {
-      allowed = (isMgr && sameTeam) || execIsParent;
+      allowed = sameTeam || execIsParent;
     }
     if (!allowed) throw new ForbiddenException('not allowed');
     console.log('[okrs] deleteKr', { id, DATABASE_URL: process.env.DATABASE_URL, context, role: user.role, sameTeam });
