@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
-import { uploadFiles } from '../lib/upload';
+import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 
 type Team = { id: string; name: string; visibility: 'PUBLIC' | 'PRIVATE' };
 type Attachment = { url?: string; name?: string };
@@ -21,7 +21,6 @@ export function TeamTasks() {
   const [orgUnitId, setOrgUnitId] = useState('');
   const [nodes, setNodes] = useState<Node[]>([]);
   const [links, setLinks] = useState<LinkOpt[]>([]);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<any | null>(null);
   const [aiQ, setAiQ] = useState('');
   const [aiAns, setAiAns] = useState('');
@@ -60,7 +59,6 @@ export function TeamTasks() {
     try {
       const r = await apiJson<{ items: Node[] }>(`/api/team-tasks?orgUnitId=${encodeURIComponent(orgUnitId)}&userId=${encodeURIComponent(userId)}`);
       setNodes(r.items || []);
-      setExpanded(new Set((r.items || []).map((n) => n.id)));
       // KPI/OKR 연동 옵션
       const ok = await apiJson<{ items: any[] }>(`/api/okrs/objectives?orgUnitId=${encodeURIComponent(orgUnitId)}`);
       const opts: LinkOpt[] = [];
@@ -78,6 +76,18 @@ export function TeamTasks() {
     for (const n of nodes) { const k = n.parentId || '__root'; (byParent[k] ||= []).push(n); }
     return byParent;
   }, [nodes]);
+
+  const [quickText, setQuickText] = useState<Record<string, string>>({});
+  const setQ = (pid: string, v: string) => setQuickText((m) => ({ ...m, [pid]: v }));
+  async function quickAdd(pid: string) {
+    const title = (quickText[pid] || '').trim();
+    if (!title || !orgUnitId) return;
+    try {
+      await apiJson(`/api/team-tasks`, { method: 'POST', body: JSON.stringify({ orgUnitId, parentId: pid === '__root' ? null : pid, actorId: userId, title }) });
+      setQ(pid, '');
+      await load();
+    } catch (e: any) { alert(e?.message || '추가 실패'); }
+  }
 
   function openCreate(parentId: string | null) {
     setEditing({ id: null, parentId, title: '', milestoneDate: '', status: '', prepNote: '', resultNote: '', attachments: [], link: '' });
@@ -107,11 +117,7 @@ export function TeamTasks() {
     if (!confirm(`'${n.title}'${(tree[n.id]?.length ? ' 및 하위 항목 전체를' : '를')} 삭제할까요?`)) return;
     try { await apiJson(`/api/team-tasks/${n.id}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' }); await load(); } catch (e: any) { alert(e?.message || '삭제 실패'); }
   }
-  async function uploadAtt(files: FileList | null) {
-    if (!files || !files.length || !editing) return;
-    try { const res = await uploadFiles(files); setEditing((p: any) => ({ ...p, attachments: [...(p.attachments || []), ...res.map((r) => ({ url: r.url, name: r.name }))] })); }
-    catch (e: any) { alert(e?.message || '업로드 실패'); }
-  }
+  const [showPicker, setShowPicker] = useState(false);
 
   async function askAi() {
     if (!aiQ.trim() || !orgUnitId) return;
@@ -127,40 +133,51 @@ export function TeamTasks() {
     return '';
   };
 
-  function renderNode(n: Node, depth: number): any {
-    const kids = tree[n.id] || [];
-    const isOpen = expanded.has(n.id);
-    const passed = todayPassed(n.milestoneDate);
+  function QuickAdd({ pid, placeholder }: { pid: string; placeholder: string }) {
     return (
-      <div key={n.id} style={{ marginLeft: depth ? 18 : 0, borderLeft: depth ? '2px solid #eef2f7' : 'none', paddingLeft: depth ? 10 : 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', flexWrap: 'wrap' }}>
-          {kids.length > 0 ? (
-            <button type="button" onClick={() => setExpanded((s) => { const x = new Set(s); x.has(n.id) ? x.delete(n.id) : x.add(n.id); return x; })} style={{ border: 'none', background: 'none', cursor: 'pointer', width: 16 }}>{isOpen ? '▾' : '▸'}</button>
-          ) : <span style={{ width: 16, display: 'inline-block' }} />}
-          <span style={{ fontWeight: depth === 0 ? 800 : 600 }}>{n.title}</span>
-          {n.milestoneDate && (
-            <span style={{ fontSize: 11, background: n.status === 'DONE' ? '#dcfce7' : passed ? '#fee2e2' : '#dbeafe', color: n.status === 'DONE' ? '#166534' : passed ? '#991b1b' : '#1e3a8a', borderRadius: 999, padding: '1px 8px' }}>
-              🚩 {String(n.milestoneDate).slice(0, 10)}{n.status === 'DONE' ? ' 완료' : passed ? ' 경과' : ''}
+      <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+        <input
+          value={quickText[pid] || ''}
+          onChange={(e) => setQ(pid, e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void quickAdd(pid); }}
+          placeholder={placeholder}
+          style={{ flex: 1, padding: '5px 8px', border: '1px dashed #cbd5e1', borderRadius: 6, fontSize: 12, background: 'transparent' }}
+        />
+        {(quickText[pid] || '').trim() && <button type="button" className="btn btn-sm" onClick={() => void quickAdd(pid)}>추가</button>}
+      </div>
+    );
+  }
+
+  // 카드형 노드(칸반 카드) — 마일스톤 상태색
+  function renderCard(n: Node, depth: number): any {
+    const kids = tree[n.id] || [];
+    const passed = todayPassed(n.milestoneDate);
+    const sc = n.status === 'DONE' ? { c: '#16a34a', label: '완료' } : passed ? { c: '#dc2626', label: '경과' } : n.milestoneDate ? { c: '#2563eb', label: '예정' } : { c: '#cbd5e1', label: '' };
+    return (
+      <div key={n.id} style={{ marginLeft: depth ? 8 : 0, marginTop: 6 }}>
+        <div style={{ borderLeft: `3px solid ${sc.c}`, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 9px', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>{n.title}</span>
+            {n.milestoneDate && (
+              <span style={{ fontSize: 10, background: sc.c, color: '#fff', borderRadius: 999, padding: '1px 7px' }}>🚩 {String(n.milestoneDate).slice(5, 10)} {sc.label}</span>
+            )}
+            {linkLabel(n) && <span style={{ fontSize: 10, background: '#eef2ff', color: '#3730a3', borderRadius: 999, padding: '1px 7px' }}>🔗</span>}
+            {(n.attachments?.length || 0) > 0 && <span style={{ fontSize: 11, color: '#64748b' }}>📎{n.attachments!.length}</span>}
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
+              <button type="button" className="btn btn-sm btn-ghost" style={{ padding: '0 6px' }} onClick={() => openEdit(n)}>수정</button>
+              <button type="button" className="btn btn-sm btn-ghost" style={{ padding: '0 6px', color: '#b91c1c' }} onClick={() => void removeNode(n)}>×</button>
             </span>
-          )}
-          {linkLabel(n) && <span style={{ fontSize: 11, background: '#eef2ff', color: '#3730a3', borderRadius: 999, padding: '1px 8px' }}>🔗 {linkLabel(n)}</span>}
-          {(n.attachments?.length || 0) > 0 && <span style={{ fontSize: 11, color: '#64748b' }}>📎 {n.attachments!.length}</span>}
-          <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => openCreate(n.id)}>＋하위</button>
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => openEdit(n)}>수정</button>
-            <button type="button" className="btn btn-sm btn-ghost" style={{ color: '#b91c1c' }} onClick={() => void removeNode(n)}>삭제</button>
-          </span>
-        </div>
-        {isOpen && (n.prepNote || n.resultNote || (n.attachments?.length || 0) > 0) && (
-          <div style={{ marginLeft: 22, marginBottom: 6, display: 'grid', gap: 4, fontSize: 13 }}>
-            {n.prepNote && <div style={{ background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 6, padding: '6px 8px' }}><b style={{ color: '#475569' }}>준비자료</b> <span style={{ whiteSpace: 'pre-wrap' }}>{n.prepNote}</span></div>}
-            {n.resultNote && <div style={{ background: '#f0fdf4', border: '1px solid #dcfce7', borderRadius: 6, padding: '6px 8px' }}><b style={{ color: '#166534' }}>결과보고</b> <span style={{ whiteSpace: 'pre-wrap' }}>{n.resultNote}</span></div>}
-            {(n.attachments || []).map((a, i) => (
-              <a key={i} href={resolveUrl(a.url)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#0f3d73' }}>📎 {a.name || '첨부'}</a>
-            ))}
           </div>
-        )}
-        {isOpen && kids.map((c) => renderNode(c, depth + 1))}
+          {(n.prepNote || n.resultNote || (n.attachments?.length || 0) > 0) && (
+            <div style={{ marginTop: 5, display: 'grid', gap: 3, fontSize: 12 }}>
+              {n.prepNote && <div><b style={{ color: '#64748b' }}>준비</b> <span style={{ whiteSpace: 'pre-wrap' }}>{n.prepNote}</span></div>}
+              {n.resultNote && <div><b style={{ color: '#166534' }}>결과</b> <span style={{ whiteSpace: 'pre-wrap' }}>{n.resultNote}</span></div>}
+              {(n.attachments || []).map((a, i) => <a key={i} href={resolveUrl(a.url)} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#0f3d73' }}>📎 {a.name || '첨부'}</a>)}
+            </div>
+          )}
+        </div>
+        {kids.map((c) => renderCard(c, depth + 1))}
+        <div style={{ marginLeft: 8 }}><QuickAdd pid={n.id} placeholder="＋ 하위 단계 입력 후 Enter" /></div>
       </div>
     );
   }
@@ -186,18 +203,39 @@ export function TeamTasks() {
           </select>
         </div>
       </div>
-      <div style={{ color: '#475569', fontSize: 13 }}>과제 → 항목 → 마일스톤 형태로 정리하고, 각 단계에 준비자료·결과보고·첨부파일을 입력합니다. KPI/OKR에 세부 태스크로 연동할 수 있습니다. (모든 구성원 입력·편집 가능)</div>
+      <div style={{ color: '#475569', fontSize: 13 }}>
+        <b>과제(컬럼)</b>를 만들고, 그 안에 <b>세부 단계</b>를 칸반 카드로 단계별 입력합니다. 카드의 “＋ 하위 단계”로 더 세부 단계를 이어 붙일 수 있고, <b>수정</b>에서 마일스톤 일자·준비자료·결과보고·첨부·KPI/OKR 연동을 넣습니다. (모든 구성원 입력·편집 가능)
+      </div>
 
       {orgUnitId && (
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <b>과제 목록</b>
-            <button type="button" className="btn btn-sm" onClick={() => openCreate(null)}>＋ 과제 추가</button>
+        loading ? <div>불러오는 중…</div> : (
+          <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, alignItems: 'flex-start' }}>
+            {(tree['__root'] || []).map((root) => {
+              const passed = todayPassed(root.milestoneDate);
+              const rc = root.status === 'DONE' ? '#16a34a' : passed ? '#dc2626' : '#0f3d73';
+              return (
+                <div key={root.id} style={{ minWidth: 300, maxWidth: 360, flex: '0 0 auto', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 12, padding: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderBottom: `2px solid ${rc}`, paddingBottom: 6, marginBottom: 4 }}>
+                    <b style={{ fontSize: 15 }}>{root.title}</b>
+                    {linkLabel(root) && <span style={{ fontSize: 10, background: '#eef2ff', color: '#3730a3', borderRadius: 999, padding: '1px 7px' }}>🔗</span>}
+                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
+                      <button type="button" className="btn btn-sm btn-ghost" style={{ padding: '0 6px' }} onClick={() => openEdit(root)}>수정</button>
+                      <button type="button" className="btn btn-sm btn-ghost" style={{ padding: '0 6px', color: '#b91c1c' }} onClick={() => void removeNode(root)}>×</button>
+                    </span>
+                  </div>
+                  {(tree[root.id] || []).map((c) => renderCard(c, 0))}
+                  <QuickAdd pid={root.id} placeholder="＋ 세부 단계 입력 후 Enter" />
+                </div>
+              );
+            })}
+            {/* 새 과제(컬럼) */}
+            <div style={{ minWidth: 240, flex: '0 0 auto', background: '#fff', border: '1px dashed #cbd5e1', borderRadius: 12, padding: 10 }}>
+              <div style={{ fontWeight: 700, color: '#475569', fontSize: 13, marginBottom: 4 }}>＋ 새 과제</div>
+              <QuickAdd pid="__root" placeholder="과제명 입력 후 Enter" />
+              <button type="button" className="btn btn-sm btn-ghost" style={{ marginTop: 6 }} onClick={() => openCreate(null)}>상세 입력으로 추가</button>
+            </div>
           </div>
-          {loading ? <div>불러오는 중…</div> : (tree['__root'] || []).length === 0 ? (
-            <div style={{ color: '#64748b', padding: 16, textAlign: 'center' }}>등록된 과제가 없습니다. “＋ 과제 추가”로 시작하세요.</div>
-          ) : (tree['__root'] || []).map((n) => renderNode(n, 0))}
-        </div>
+        )
       )}
 
       {orgUnitId && (
@@ -239,8 +277,8 @@ export function TeamTasks() {
                     <textarea style={fld} rows={2} value={f.prepNote} onChange={(e) => set('prepNote', e.target.value)} /></label>
                   <label style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>결과 보고 (마일스톤 경과 후)</span>
                     <textarea style={fld} rows={2} value={f.resultNote} onChange={(e) => set('resultNote', e.target.value)} /></label>
-                  <label style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>첨부파일</span>
-                    <input type="file" multiple onChange={(e) => void uploadAtt(e.target.files)} /></label>
+                  <div style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>첨부파일 (원드라이브)</span>
+                    <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={() => setShowPicker(true)}>📁 원드라이브에서 첨부</button></div>
                   {(f.attachments || []).length > 0 && (
                     <div style={{ display: 'grid', gap: 4 }}>
                       {(f.attachments || []).map((a: Attachment, i: number) => (
@@ -260,6 +298,18 @@ export function TeamTasks() {
             </div>
           </div>
         </div>
+      )}
+
+      {showPicker && editing && (
+        <OneDriveFilePicker
+          userId={userId}
+          multiple
+          onClose={() => setShowPicker(false)}
+          onSelect={(files) => {
+            setEditing((p: any) => ({ ...p, attachments: [...(p.attachments || []), ...files.map((f) => ({ url: f.url, name: f.name }))] }));
+            setShowPicker(false);
+          }}
+        />
       )}
     </div>
   );
