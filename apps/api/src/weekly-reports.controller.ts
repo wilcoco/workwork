@@ -144,7 +144,7 @@ export class WeeklyReportsController {
     // Prefer Claude Opus 4 (top-tier) for worklog analysis; fall back to OpenAI.
     if (anthropicKey) {
       try {
-        const model = process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-20250514';
+        const model = process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-8';
         const res = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -153,11 +153,11 @@ export class WeeklyReportsController {
             'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
+            // Claude Opus 4.8: temperature 미지원(400) → 생략
             model,
             max_tokens: 2000,
             system: systemPrompt,
             messages: [{ role: 'user', content: userPrompt }],
-            temperature: 0.3,
           }),
         });
         if (res.ok) {

@@ -1044,25 +1044,23 @@ export class CompanyDataController {
       if (!apiKey) throw new BadRequestException('ANTHROPIC_API_KEY가 설정되지 않았습니다.');
       const isOpusPremium = provider === 'claude-opus';
       const model = isOpusPremium
-        ? (process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-20250514')
-        : (process.env.CLAUDE_MODEL || 'claude-opus-4-20250514');
-      // Extended thinking for the premium Opus button — deeper reasoning.
-      // Extended thinking requires temperature=1 and max_tokens >= budget + output.
+        ? (process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-8')
+        : (process.env.CLAUDE_MODEL || 'claude-opus-4-8');
+      // Claude Opus 4.8: temperature 파라미터 제거됨(400). 프리미엄은 적응형 확장사고(adaptive) 사용.
+      // (이전 모델용 budget_tokens/temperature는 4.8에서 거부되므로 사용하지 않음)
       const body: any = isOpusPremium
         ? {
             model,
             max_tokens: Math.max(maxTokens, 16000),
             system,
             messages: [{ role: 'user', content: user }],
-            temperature: 1,
-            thinking: { type: 'enabled', budget_tokens: 8000 },
+            thinking: { type: 'adaptive' },
           }
         : {
             model,
             max_tokens: maxTokens,
             system,
             messages: [{ role: 'user', content: user }],
-            temperature: 0.3,
           };
       const resp = await f('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -1229,9 +1227,9 @@ export class CompanyDataController {
       if (!answer) throw new BadRequestException('AI가 빈 응답을 반환했습니다.');
       debug.model =
         provider === 'claude-opus'
-          ? `${process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-20250514'} (extended thinking)`
+          ? `${process.env.CLAUDE_OPUS_MODEL || 'claude-opus-4-8'} (extended thinking)`
           : provider === 'claude'
-          ? (process.env.CLAUDE_MODEL || 'claude-opus-4-20250514')
+          ? (process.env.CLAUDE_MODEL || 'claude-opus-4-8')
           : (process.env.OPENAI_MODEL || 'gpt-4.1');
 
       const chat = await this.prisma.companyDataChat.create({

@@ -96,16 +96,10 @@ async function callClaude(opts: CallAIOptions): Promise<CallAIResult> {
     messages: [{ role: 'user', content: opts.user }],
   };
 
-  // Extended Thinking
+  // Extended Thinking — Claude Opus 4.6+/4.8은 적응형(adaptive) 사용.
+  // (구형 budget_tokens 및 temperature 파라미터는 Opus 4.8에서 거부되어 400 발생 → 사용하지 않음)
   if (opts.thinking) {
-    body.thinking = {
-      type: 'enabled',
-      budget_tokens: opts.thinkingBudget || 8000,
-    };
-    // When thinking is enabled, temperature must be 1 for Claude
-    body.temperature = 1;
-  } else {
-    body.temperature = opts.temperature ?? 0.2;
+    body.thinking = { type: 'adaptive' };
   }
 
   // Tool Use for structured JSON output
