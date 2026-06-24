@@ -22,6 +22,7 @@ import { CompanyOkrInput } from './pages/CompanyOkrInput';
 import { TeamKpiInput } from './pages/TeamKpiInput';
 import { TeamKpiBoard } from './pages/TeamKpiBoard';
 import { KpiResultInput } from './pages/KpiResultInput';
+import { KpiReport } from './pages/KpiReport';
 import { WorklogStatsDaily } from './pages/WorklogStatsDaily';
 import { WorklogAi } from './pages/WorklogAi';
 import { TeamOkrInput } from './pages/TeamOkrInput';
@@ -366,6 +367,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/team" element={<TeamKpiInput />} />
           <Route path="/okr/team-board" element={<TeamKpiBoard />} />
           <Route path="/okr/kpi-result" element={<KpiResultInput />} />
+          <Route path="/okr/kpi-report" element={<KpiReport />} />
           <Route path="/okr/team-okr" element={<TeamOkrInput />} />
           <Route
             path="/admin/orgs"
@@ -517,6 +519,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/okr/team">정량 목표 (팀 KPI) 입력</Link>
           <Link to="/okr/kpi-result">KPI 실적 입력 (수동)</Link>
           <Link to="/okr/team-board">정량 목표 (팀 KPI) 조회</Link>
+          <Link to="/okr/kpi-report">팀 KPI 리포트</Link>
           <Link to="/key-initiatives">중점 추진 과제</Link>
         </NavDropdown>
         {SHOW_APPROVALS && (
@@ -756,6 +759,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/okr/team', label: '정량 목표 (팀 KPI) 입력' },
         { to: '/okr/kpi-result', label: 'KPI 실적 입력 (수동)' },
         { to: '/okr/team-board', label: '정량 목표 (팀 KPI) 조회' },
+        { to: '/okr/kpi-report', label: '팀 KPI 리포트' },
         { to: '/key-initiatives', label: '중점 추진 과제' },
       ];
       return canEvaluate ? [base[0], { to: '/goals/overview', label: '전사 목표 현황' }, ...base.slice(1)] : base;
