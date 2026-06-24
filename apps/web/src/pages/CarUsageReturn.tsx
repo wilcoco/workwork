@@ -6,6 +6,7 @@ type Photo = { url?: string; name?: string };
 
 type Dispatch = {
   id: string;
+  carId: string;
   carName: string;
   carPlateNo: string;
   startAt: string;
@@ -110,6 +111,7 @@ export function CarUsageReturn() {
   const [ocrMsg, setOcrMsg] = useState<{ before?: string; after?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [carLast, setCarLast] = useState<{ odometer: number | null; at: string | null } | null>(null);
 
   const selected = useMemo(() => list.find((d) => d.id === selectedId) || null, [list, selectedId]);
 
@@ -139,6 +141,16 @@ export function CarUsageReturn() {
     setOdoAfter(selected.odometerAfterOcr != null ? String(selected.odometerAfterOcr) : '');
     setUsageNote(selected.usageNote || '');
     setOcrMsg({});
+    // 이 차량의 직전(다른 배차) 최근 키로수 참고값 조회
+    setCarLast(null);
+    (async () => {
+      try {
+        const r = await apiJson<{ odometer: number | null; at: string | null }>(
+          `/api/car-dispatch/last-odometer?carId=${encodeURIComponent(selected.carId)}&excludeId=${encodeURIComponent(selected.id)}`,
+        );
+        setCarLast(r);
+      } catch { /* ignore */ }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
@@ -228,6 +240,13 @@ export function CarUsageReturn() {
           </select>
         </label>
       </div>
+
+      {selected && carLast?.odometer != null && (
+        <div style={{ fontSize: 13, color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '8px 12px' }}>
+          📌 이 차량 직전 등록 키로수: <b>{carLast.odometer.toLocaleString()}km</b>
+          {carLast.at ? ` (${fmt(carLast.at)})` : ''} — 사용 전 적산거리 입력 시 참고하세요.
+        </div>
+      )}
 
       {selected && (
         <>

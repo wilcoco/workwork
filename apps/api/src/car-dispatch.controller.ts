@@ -99,6 +99,36 @@ class OcrOdometerDto {
   url?: string;
 }
 
+class GuardCreateDto {
+  @IsString()
+  carId!: string;
+
+  @IsString()
+  actorId!: string; // 등록하는 경비원 user id
+
+  @IsOptional()
+  @IsString()
+  driverName?: string; // 운전자명(자유 입력)
+
+  @IsString()
+  destination!: string;
+
+  @IsString()
+  purpose!: string;
+
+  @IsOptional()
+  @IsString()
+  coRiders?: string;
+
+  @IsOptional()
+  @IsString()
+  startAt?: string; // ISO, 미지정 시 현재시각
+
+  @IsOptional()
+  @IsString()
+  endAt?: string; // ISO, 미지정 시 startAt + 1h
+}
+
 @Controller('car-dispatch')
 export class CarDispatchController {
   constructor(private prisma: PrismaService) {}
@@ -307,10 +337,81 @@ export class CarDispatchController {
       take: 300,
     });
 
+    // 차량별 최근 등록 키로수(참고용) — 현재 카드에 표시
+    const carIds = Array.from(new Set(items.map((r) => r.carId)));
+    const lastMap: Record<string, { km: number; at: Date | null }> = {};
+    await Promise.all(
+      carIds.map(async (carId) => {
+        const last = await this.lastOdometerForCar(carId);
+        if (last) lastMap[carId] = last;
+      }),
+    );
+
     return {
       date: ymd,
-      items: items.map((r) => this.toBoardItem(r)),
+      items: items.map((r) => ({
+        ...this.toBoardItem(r),
+        carLastOdometer: lastMap[r.carId]?.km ?? null,
+        carLastOdometerAt: lastMap[r.carId]?.at ?? null,
+      })),
     };
+  }
+
+  // 차량의 가장 최근 등록 키로수(주행거리 참고용)
+  @Get('last-odometer')
+  async lastOdometer(@Query('carId') carId?: string, @Query('excludeId') excludeId?: string) {
+    if (!carId) throw new BadRequestException('carId required');
+    const last = await this.lastOdometerForCar(carId, excludeId);
+    return { carId, odometer: last?.km ?? null, at: last?.at ?? null };
+  }
+
+  // 경비실 긴급(직접) 배차 등록 — 결재 절차 없이 즉시 등록
+  @Post('guard-create')
+  async guardCreate(@Body() dto: GuardCreateDto) {
+    const car = await this.prisma.car.findUnique({ where: { id: dto.carId } });
+    if (!car) throw new BadRequestException('차량을 찾을 수 없습니다');
+    const actor = await this.prisma.user.findUnique({ where: { id: dto.actorId } });
+    if (!actor) throw new BadRequestException('등록자(경비) 계정을 찾을 수 없습니다');
+
+    const startAt = parseAt(dto.startAt);
+    let endAt = dto.endAt ? new Date(dto.endAt) : new Date(startAt.getTime() + 60 * 60 * 1000);
+    if (isNaN(endAt.getTime()) || endAt <= startAt) endAt = new Date(startAt.getTime() + 60 * 60 * 1000);
+
+    const rec = await this.prisma.carDispatchRequest.create({
+      data: {
+        carId: dto.carId,
+        requesterId: dto.actorId, // 등록 주체(경비)
+        approverId: dto.actorId,
+        driverName: dto.driverName?.trim() || null,
+        guardCreated: true,
+        coRiders: dto.coRiders,
+        startAt,
+        endAt,
+        destination: dto.destination,
+        purpose: dto.purpose,
+        dispatchType: 'CORPORATE',
+        status: 'APPROVED' as any, // 긴급 등록은 즉시 승인 상태
+      },
+      include: { car: true, requester: true },
+    });
+    return this.toBoardItem(rec);
+  }
+
+  // 차량별 최근 키로수 조회 헬퍼 (가장 최근 기록된 odometerEnd 우선, 없으면 odometerStart)
+  private async lastOdometerForCar(carId: string, excludeId?: string): Promise<{ km: number; at: Date | null } | null> {
+    const last = await this.prisma.carDispatchRequest.findFirst({
+      where: {
+        carId,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        OR: [{ odometerEnd: { not: null } }, { odometerStart: { not: null } }],
+      },
+      orderBy: [{ checkinAt: 'desc' }, { checkoutAt: 'desc' }, { usageRegisteredAt: 'desc' }, { startAt: 'desc' }],
+    });
+    if (!last) return null;
+    const km = (last as any).odometerEnd ?? (last as any).odometerStart;
+    if (typeof km !== 'number') return null;
+    const at = (last as any).checkinAt ?? (last as any).checkoutAt ?? (last as any).usageRegisteredAt ?? (last as any).startAt ?? null;
+    return { km, at };
   }
 
   // 계기판 사진(업로드)에서 적산거리(km) OCR 추출
@@ -423,7 +524,8 @@ export class CarDispatchController {
       carName: r.car?.name ?? '',
       carPlateNo: r.car?.plateNo ?? '',
       requesterId: r.requesterId,
-      requesterName: r.requester?.name ?? '',
+      requesterName: r.driverName || r.requester?.name || '', // 긴급 등록은 운전자명 우선
+      guardCreated: !!r.guardCreated,
       coRiders: r.coRiders || '',
       startAt: r.startAt,
       endAt: r.endAt,

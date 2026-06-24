@@ -738,6 +738,8 @@ model CarDispatchRequest {
   endAt        DateTime
   destination  String
   purpose      String
+  driverName   String?        // 경비실 긴급 등록 시 운전자명(시스템 계정이 아닌 경우)
+  guardCreated Boolean        @default(false) // 경비실 직접(긴급) 등록 여부
   dispatchType String         @default("CORPORATE") // CORPORATE | LOGISTICS
   cargoDetails String?        // 화물 내용 (물류 전용)
   status       DispatchStatus @default(PENDING)

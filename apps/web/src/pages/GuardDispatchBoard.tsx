@@ -6,12 +6,15 @@ type BoardItem = {
   carName: string;
   carPlateNo: string;
   requesterName: string;
+  guardCreated: boolean;
   coRiders: string;
   startAt: string;
   endAt: string;
   destination: string;
   purpose: string;
   status: string;
+  carLastOdometer: number | null;
+  carLastOdometerAt: string | null;
   checkoutAt: string | null;
   checkinAt: string | null;
   odometerStart: number | null;
@@ -56,6 +59,12 @@ function fmtTime(iso: string | null): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+function fmtDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function phase(it: BoardItem): { label: string; color: string; bg: string } {
   if (it.checkinAt) return { label: '입차완료', color: '#166534', bg: '#dcfce7' };
   if (it.checkoutAt) return { label: '운행중', color: '#9a3412', bg: '#ffedd5' };
@@ -67,12 +76,16 @@ function parseKm(v: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+type Car = { id: string; name: string; type?: string | null; plateNo?: string | null };
+
 export function GuardDispatchBoard() {
   const [date, setDate] = useState<string>(kstToday());
   const [items, setItems] = useState<BoardItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [photo, setPhoto] = useState<{ url: string; title: string } | null>(null);
+  const [cars, setCars] = useState<Car[]>([]);
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,6 +101,14 @@ export function GuardDispatchBoard() {
   }, [date]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiJson<{ items: Car[] }>(`/api/cars`);
+        setCars(res.items || []);
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const resolveUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : apiUrl(u || ''));
 
@@ -96,6 +117,7 @@ export function GuardDispatchBoard() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <h2 style={{ margin: 0 }}>🚗 배차 입·출차 현황 (경비실)</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" onClick={() => setShowCreate(true)} className="btn btn-sm" style={{ background: '#b91c1c', color: '#fff' }}>＋ 긴급 출차 등록</button>
           <button type="button" onClick={() => setDate(kstToday())} className="btn btn-sm">오늘</button>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           <button type="button" onClick={() => void load()} className="btn btn-sm">새로고침</button>
@@ -103,7 +125,16 @@ export function GuardDispatchBoard() {
       </div>
       <div style={{ color: '#475569', fontSize: 13 }}>
         차량 출차·입차 시 <b>시각</b>과 <b>적산거리(km)</b>를 확인해 입력하세요. 입차 시 적산거리를 입력하면 주행거리가 자동 계산됩니다.
+        결재 전 긴급 출차는 <b>＋ 긴급 출차 등록</b>으로 즉시 등록할 수 있습니다.
       </div>
+
+      {showCreate && (
+        <EmergencyCreate
+          cars={cars}
+          onClose={() => setShowCreate(false)}
+          onCreated={async () => { setShowCreate(false); await load(); }}
+        />
+      )}
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {loading ? (
@@ -203,12 +234,22 @@ function DispatchCard({
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          {item.status === 'PENDING' && (
+          {item.guardCreated && (
+            <span style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 999, padding: '3px 10px', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}>긴급</span>
+          )}
+          {item.status === 'PENDING' && !item.guardCreated && (
             <span style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', borderRadius: 999, padding: '3px 10px', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}>결재 전</span>
           )}
           <span style={{ background: p.bg, color: p.color, borderRadius: 999, padding: '3px 12px', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{p.label}</span>
         </div>
       </div>
+
+      {item.carLastOdometer != null && (
+        <div style={{ fontSize: 12, color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '6px 10px' }}>
+          📌 이 차량 최근 등록 키로수: <b>{item.carLastOdometer.toLocaleString()}km</b>
+          {item.carLastOdometerAt ? ` (${fmtDate(item.carLastOdometerAt)})` : ''} — 새 운행거리 계산 시 참고하세요.
+        </div>
+      )}
 
       <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
         {/* 출차 입력 */}
@@ -326,6 +367,101 @@ function PhotoVerify({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function EmergencyCreate({
+  cars,
+  onClose,
+  onCreated,
+}: {
+  cars: Car[];
+  onClose: () => void;
+  onCreated: () => void | Promise<void>;
+}) {
+  const actorId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+  const [carId, setCarId] = useState('');
+  const [driverName, setDriverName] = useState('');
+  const [destination, setDestination] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [coRiders, setCoRiders] = useState('');
+  const [startAt, setStartAt] = useState(() => {
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    return kst.toISOString().slice(0, 16);
+  });
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!carId) { alert('차량을 선택하세요'); return; }
+    if (!driverName.trim()) { alert('운전자명을 입력하세요'); return; }
+    if (!destination.trim() || !purpose.trim()) { alert('목적지와 목적을 입력하세요'); return; }
+    setBusy(true);
+    try {
+      await apiJson(`/api/car-dispatch/guard-create`, {
+        method: 'POST',
+        body: JSON.stringify({
+          carId,
+          actorId,
+          driverName: driverName.trim(),
+          destination: destination.trim(),
+          purpose: purpose.trim(),
+          coRiders: coRiders.trim() || undefined,
+          startAt: startAt ? new Date(`${startAt}:00+09:00`).toISOString() : undefined,
+        }),
+      });
+      await onCreated();
+    } catch (e: any) {
+      alert(e?.message || '긴급 등록에 실패했습니다');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const field: React.CSSProperties = { padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: 6 };
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: 16 }}
+      onClick={onClose}
+    >
+      <div style={{ background: '#fff', borderRadius: 12, padding: 18, width: 420, maxWidth: '95%', display: 'grid', gap: 10 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 800, fontSize: 16, color: '#b91c1c' }}>긴급 출차 등록 (결재 없이 즉시)</div>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#475569' }}>차량</span>
+          <select value={carId} onChange={(e) => setCarId(e.target.value)} style={field}>
+            <option value="">선택</option>
+            {cars.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}{c.type ? ` (${c.type})` : ''}{c.plateNo ? ` · ${c.plateNo}` : ''}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#475569' }}>운전자명</span>
+          <input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="예: 홍길동" style={field} />
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#475569' }}>출차 시각</span>
+          <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} style={field} />
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#475569' }}>목적지</span>
+          <input value={destination} onChange={(e) => setDestination(e.target.value)} style={field} />
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#475569' }}>목적</span>
+          <input value={purpose} onChange={(e) => setPurpose(e.target.value)} style={field} />
+        </label>
+        <label style={{ display: 'grid', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#475569' }}>동승자 <span style={{ color: '#94a3b8' }}>(선택)</span></span>
+          <input value={coRiders} onChange={(e) => setCoRiders(e.target.value)} style={field} />
+        </label>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button type="button" className="btn btn-sm" onClick={onClose}>취소</button>
+          <button type="button" className="btn btn-sm" style={{ background: '#b91c1c', color: '#fff' }} disabled={busy} onClick={() => void submit()}>
+            {busy ? '등록 중…' : '등록'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
