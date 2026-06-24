@@ -337,9 +337,9 @@ export class CarDispatchController {
       take: 300,
     });
 
-    // 차량별 최근 등록 키로수(참고용) — 현재 카드에 표시
+    // 차량별 인증 기준 현재 누적거리(참고용) — 현재 카드에 표시
     const carIds = Array.from(new Set(items.map((r) => r.carId)));
-    const lastMap: Record<string, { km: number; at: Date | null }> = {};
+    const lastMap: Record<string, { km: number; at: Date | null; source: string }> = {};
     await Promise.all(
       carIds.map(async (carId) => {
         const last = await this.lastOdometerForCar(carId);
@@ -353,16 +353,38 @@ export class CarDispatchController {
         ...this.toBoardItem(r),
         carLastOdometer: lastMap[r.carId]?.km ?? null,
         carLastOdometerAt: lastMap[r.carId]?.at ?? null,
+        carLastOdometerSource: lastMap[r.carId]?.source ?? null,
       })),
     };
   }
 
-  // 차량의 가장 최근 등록 키로수(주행거리 참고용)
+  // 차량의 인증 기준 현재 누적거리(주행거리 참고용)
   @Get('last-odometer')
   async lastOdometer(@Query('carId') carId?: string, @Query('excludeId') excludeId?: string) {
     if (!carId) throw new BadRequestException('carId required');
     const last = await this.lastOdometerForCar(carId, excludeId);
-    return { carId, odometer: last?.km ?? null, at: last?.at ?? null };
+    return { carId, odometer: last?.km ?? null, at: last?.at ?? null, source: last?.source ?? null };
+  }
+
+  // 차량별 인증 기준 현재 누적거리 현황(전체 활성 차량)
+  @Get('car-odometers')
+  async carOdometers() {
+    const cars = await this.prisma.car.findMany({ where: { active: true }, orderBy: { name: 'asc' } });
+    const items = await Promise.all(
+      cars.map(async (c) => {
+        const v = await this.lastOdometerForCar(c.id);
+        return {
+          carId: c.id,
+          carName: c.name,
+          carType: c.type ?? '',
+          carPlateNo: c.plateNo ?? '',
+          odometer: v?.km ?? null,
+          at: v?.at ?? null,
+          source: v?.source ?? null,
+        };
+      }),
+    );
+    return { items };
   }
 
   // 경비실 긴급(직접) 배차 등록 — 결재 절차 없이 즉시 등록
@@ -397,21 +419,36 @@ export class CarDispatchController {
     return this.toBoardItem(rec);
   }
 
-  // 차량별 최근 키로수 조회 헬퍼 (가장 최근 기록된 odometerEnd 우선, 없으면 odometerStart)
-  private async lastOdometerForCar(carId: string, excludeId?: string): Promise<{ km: number; at: Date | null } | null> {
-    const last = await this.prisma.carDispatchRequest.findFirst({
-      where: {
-        carId,
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-        OR: [{ odometerEnd: { not: null } }, { odometerStart: { not: null } }],
-      },
-      orderBy: [{ checkinAt: 'desc' }, { checkoutAt: 'desc' }, { usageRegisteredAt: 'desc' }, { startAt: 'desc' }],
+  // 차량별 "인증된" 현재 누적거리 헬퍼.
+  // 인증 기준 = 경비 출/입차 확인(checkin/checkout + 적산거리) 또는 계기판 사진이 첨부된 운전자 등록(OCR).
+  // 적산거리는 단조 증가하므로 인증된 값 중 가장 큰 값을 현재 누적거리로 본다.
+  private async lastOdometerForCar(carId: string, excludeId?: string): Promise<{ km: number; at: Date | null; source: string } | null> {
+    const recs = await this.prisma.carDispatchRequest.findMany({
+      where: { carId, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      select: {
+        odometerEnd: true, odometerStart: true, odometerBeforeOcr: true, odometerAfterOcr: true,
+        checkinAt: true, checkoutAt: true, usageRegisteredAt: true,
+        odometerPhotosBefore: true, odometerPhotosAfter: true,
+      } as any,
+      orderBy: { updatedAt: 'desc' },
+      take: 200,
     });
-    if (!last) return null;
-    const km = (last as any).odometerEnd ?? (last as any).odometerStart;
-    if (typeof km !== 'number') return null;
-    const at = (last as any).checkinAt ?? (last as any).checkoutAt ?? (last as any).usageRegisteredAt ?? (last as any).startAt ?? null;
-    return { km, at };
+
+    type Cand = { km: number; at: Date | null; source: string };
+    const cands: Cand[] = [];
+    const arrLen = (v: any) => (Array.isArray(v) ? v.length : 0);
+    for (const r of recs as any[]) {
+      if (r.checkinAt && typeof r.odometerEnd === 'number') cands.push({ km: r.odometerEnd, at: r.checkinAt, source: '경비 입차확인' });
+      if (r.checkoutAt && typeof r.odometerStart === 'number') cands.push({ km: r.odometerStart, at: r.checkoutAt, source: '경비 출차확인' });
+      if (r.usageRegisteredAt && typeof r.odometerAfterOcr === 'number' && arrLen(r.odometerPhotosAfter) > 0)
+        cands.push({ km: r.odometerAfterOcr, at: r.usageRegisteredAt, source: '사진 인증(사용후)' });
+      if (r.usageRegisteredAt && typeof r.odometerBeforeOcr === 'number' && arrLen(r.odometerPhotosBefore) > 0)
+        cands.push({ km: r.odometerBeforeOcr, at: r.usageRegisteredAt, source: '사진 인증(사용전)' });
+    }
+    if (cands.length === 0) return null;
+    // 가장 큰 누적거리(=현재값), 동률이면 최신 시각
+    cands.sort((a, b) => (b.km - a.km) || ((b.at?.getTime() || 0) - (a.at?.getTime() || 0)));
+    return cands[0];
   }
 
   // 계기판 사진(업로드)에서 적산거리(km) OCR 추출

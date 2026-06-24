@@ -111,7 +111,7 @@ export function CarUsageReturn() {
   const [ocrMsg, setOcrMsg] = useState<{ before?: string; after?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
-  const [carLast, setCarLast] = useState<{ odometer: number | null; at: string | null } | null>(null);
+  const [carLast, setCarLast] = useState<{ odometer: number | null; at: string | null; source: string | null } | null>(null);
 
   const selected = useMemo(() => list.find((d) => d.id === selectedId) || null, [list, selectedId]);
 
@@ -145,7 +145,7 @@ export function CarUsageReturn() {
     setCarLast(null);
     (async () => {
       try {
-        const r = await apiJson<{ odometer: number | null; at: string | null }>(
+        const r = await apiJson<{ odometer: number | null; at: string | null; source: string | null }>(
           `/api/car-dispatch/last-odometer?carId=${encodeURIComponent(selected.carId)}&excludeId=${encodeURIComponent(selected.id)}`,
         );
         setCarLast(r);
@@ -243,8 +243,8 @@ export function CarUsageReturn() {
 
       {selected && carLast?.odometer != null && (
         <div style={{ fontSize: 13, color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '8px 12px' }}>
-          📌 이 차량 직전 등록 키로수: <b>{carLast.odometer.toLocaleString()}km</b>
-          {carLast.at ? ` (${fmt(carLast.at)})` : ''} — 사용 전 적산거리 입력 시 참고하세요.
+          📌 이 차량 현재 누적거리(인증 기준): <b>{carLast.odometer.toLocaleString()}km</b>
+          {carLast.at ? ` (${fmt(carLast.at)}${carLast.source ? `, ${carLast.source}` : ''})` : ''} — 사용 전 적산거리 입력 시 참고하세요.
         </div>
       )}
 

@@ -15,6 +15,7 @@ type BoardItem = {
   status: string;
   carLastOdometer: number | null;
   carLastOdometerAt: string | null;
+  carLastOdometerSource: string | null;
   checkoutAt: string | null;
   checkinAt: string | null;
   odometerStart: number | null;
@@ -31,6 +32,7 @@ type BoardItem = {
 };
 
 type Photo = { url?: string; name?: string };
+type CarOdometer = { carId: string; carName: string; carType: string; carPlateNo: string; odometer: number | null; at: string | null; source: string | null };
 
 function kstToday(): string {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -86,6 +88,14 @@ export function GuardDispatchBoard() {
   const [photo, setPhoto] = useState<{ url: string; title: string } | null>(null);
   const [cars, setCars] = useState<Car[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [carOdos, setCarOdos] = useState<CarOdometer[]>([]);
+
+  const loadCarOdos = useCallback(async () => {
+    try {
+      const res = await apiJson<{ items: CarOdometer[] }>(`/api/car-dispatch/car-odometers`);
+      setCarOdos(res.items || []);
+    } catch { /* ignore */ }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,7 +118,8 @@ export function GuardDispatchBoard() {
         setCars(res.items || []);
       } catch { /* ignore */ }
     })();
-  }, []);
+    void loadCarOdos();
+  }, [loadCarOdos]);
 
   const resolveUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : apiUrl(u || ''));
 
@@ -120,7 +131,7 @@ export function GuardDispatchBoard() {
           <button type="button" onClick={() => setShowCreate(true)} className="btn btn-sm" style={{ background: '#b91c1c', color: '#fff' }}>＋ 긴급 출차 등록</button>
           <button type="button" onClick={() => setDate(kstToday())} className="btn btn-sm">오늘</button>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <button type="button" onClick={() => void load()} className="btn btn-sm">새로고침</button>
+          <button type="button" onClick={() => { void load(); void loadCarOdos(); }} className="btn btn-sm">새로고침</button>
         </div>
       </div>
       <div style={{ color: '#475569', fontSize: 13 }}>
@@ -128,11 +139,42 @@ export function GuardDispatchBoard() {
         결재 전 긴급 출차는 <b>＋ 긴급 출차 등록</b>으로 즉시 등록할 수 있습니다.
       </div>
 
+      {carOdos.length > 0 && (
+        <details open style={{ border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff', padding: '8px 12px' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 800, color: '#0f172a' }}>🚙 차량별 현재 누적거리 (인증 기준)</summary>
+          <div style={{ overflowX: 'auto', marginTop: 8 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: '#64748b', textAlign: 'left' }}>
+                  <th style={{ padding: '4px 8px' }}>차량</th>
+                  <th style={{ padding: '4px 8px' }}>차량번호</th>
+                  <th style={{ padding: '4px 8px', textAlign: 'right' }}>현재 누적거리</th>
+                  <th style={{ padding: '4px 8px' }}>인증</th>
+                  <th style={{ padding: '4px 8px' }}>기준일</th>
+                </tr>
+              </thead>
+              <tbody>
+                {carOdos.map((c) => (
+                  <tr key={c.carId} style={{ borderTop: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '4px 8px', fontWeight: 600 }}>{c.carName}{c.carType ? ` (${c.carType})` : ''}</td>
+                    <td style={{ padding: '4px 8px', color: '#475569' }}>{c.carPlateNo || '-'}</td>
+                    <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 700 }}>{c.odometer != null ? `${c.odometer.toLocaleString()}km` : '미인증'}</td>
+                    <td style={{ padding: '4px 8px', color: '#0369a1' }}>{c.source || '-'}</td>
+                    <td style={{ padding: '4px 8px', color: '#475569' }}>{c.at ? fmtDate(c.at) : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>※ 경비 출/입차 확인 또는 계기판 사진이 첨부된 등록만 인증 값으로 집계합니다.</div>
+        </details>
+      )}
+
       {showCreate && (
         <EmergencyCreate
           cars={cars}
           onClose={() => setShowCreate(false)}
-          onCreated={async () => { setShowCreate(false); await load(); }}
+          onCreated={async () => { setShowCreate(false); await load(); await loadCarOdos(); }}
         />
       )}
 
@@ -146,7 +188,7 @@ export function GuardDispatchBoard() {
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
           {items.map((it) => (
-            <DispatchCard key={it.id} item={it} onSaved={load} onPhoto={(u, t) => setPhoto({ url: resolveUrl(u), title: t })} resolveUrl={resolveUrl} />
+            <DispatchCard key={it.id} item={it} onSaved={async () => { await load(); await loadCarOdos(); }} onPhoto={(u, t) => setPhoto({ url: resolveUrl(u), title: t })} resolveUrl={resolveUrl} />
           ))}
         </div>
       )}
@@ -246,8 +288,8 @@ function DispatchCard({
 
       {item.carLastOdometer != null && (
         <div style={{ fontSize: 12, color: '#0369a1', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '6px 10px' }}>
-          📌 이 차량 최근 등록 키로수: <b>{item.carLastOdometer.toLocaleString()}km</b>
-          {item.carLastOdometerAt ? ` (${fmtDate(item.carLastOdometerAt)})` : ''} — 새 운행거리 계산 시 참고하세요.
+          📌 이 차량 현재 누적거리(인증 기준): <b>{item.carLastOdometer.toLocaleString()}km</b>
+          {item.carLastOdometerAt ? ` (${fmtDate(item.carLastOdometerAt)}` : ''}{item.carLastOdometerSource ? `, ${item.carLastOdometerSource})` : item.carLastOdometerAt ? ')' : ''} — 새 운행거리 계산 시 참고하세요.
         </div>
       )}
 
