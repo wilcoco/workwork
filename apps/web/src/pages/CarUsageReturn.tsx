@@ -73,7 +73,16 @@ function PhotoUploader({
   }
   return (
     <div>
-      <input type="file" accept="image/*" capture="environment" multiple onChange={(e) => void pick(e.target.files)} />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <label className="btn btn-sm btn-ghost" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          📷 카메라 촬영
+          <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={(e) => void pick(e.target.files)} />
+        </label>
+        <label className="btn btn-sm btn-ghost" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          🖼 사진함에서 선택
+          <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => void pick(e.target.files)} />
+        </label>
+      </div>
       {uploading && <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>업로드 중…</div>}
       {photos.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
@@ -223,6 +232,9 @@ export function CarUsageReturn() {
       <h2 style={{ margin: 0 }}>법인차량 사용 전후 등록</h2>
       <div style={{ color: '#475569', fontSize: 13 }}>
         차량 사용 <b>전</b>과 <b>후</b> 각각 <b>차량 상태 사진</b>과 <b>계기판(적산거리) 사진</b>을 등록합니다. 계기판 사진을 올리면 적산거리(km)를 자동으로 읽어 드립니다.
+      </div>
+      <div style={{ fontSize: 11, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px' }}>
+        ⚠ 차량/계기판 사진만 올리세요. 민감·기밀 자료는 금지(사진은 외부 서버 저장). 내부 문서는 원드라이브를 이용하세요.
       </div>
 
       <div style={card}>

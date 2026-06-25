@@ -3,6 +3,7 @@ import { LoadingButton } from '../components/LoadingButton';
 import { useNavigate } from 'react-router-dom';
 import { apiJson, apiFetch, apiUrl } from '../lib/api';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
+import { MobilePhotoButton } from '../components/MobilePhotoButton';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import '../styles/editor.css';
@@ -1342,6 +1343,7 @@ export function WorklogQuickNew() {
               <button type="button" className="btn btn-sm" onClick={addPhoto}>
                 URL 직접 입력
               </button>
+              <MobilePhotoButton onUploaded={(files) => setPhotos((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name }))])} />
             </div>
             {photos.length > 0 && (
               <div className="attachments">
