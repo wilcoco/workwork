@@ -7,6 +7,7 @@ import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
 import '../styles/editor.css';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
+import { MobilePhotoButton } from '../components/MobilePhotoButton';
 import { BpmnMiniView } from '../components/BpmnMiniView';
 import { toSafeHtml } from '../lib/richText';
 import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
@@ -416,8 +417,9 @@ export function ApprovalsSubmit() {
             type="button"
             style={{ ...ghostBtn, background: '#0078d4', color: '#fff', border: 'none' }}
             onClick={() => setShowFilePicker(true)}
-          >OneDrive에서 파일 선택</button>
+          >📁 원드라이브에서 파일 선택 (내부 문서)</button>
         </div>
+        <MobilePhotoButton onUploaded={(files) => setAttachments((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name || f.url }))])} />
         {attachments.length > 0 && (
           <div className="attachments">
             {attachments.map((f, i) => (

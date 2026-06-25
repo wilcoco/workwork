@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, CSSProperties } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
+import { MobilePhotoButton } from '../components/MobilePhotoButton';
 import { MemberSearchPicker, SingleMemberPicker } from '../components/MemberSearchPicker';
 
 // ─── Types ───────────────────────────────────────────────────
@@ -842,8 +843,11 @@ export function MeetingMinutes() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>첨부파일</h3>
                 <button style={ghostBtn} onClick={() => setShowFilePicker(true)}>
-                  + OneDrive에서 추가
+                  📁 원드라이브에서 추가 (내부 문서)
                 </button>
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <MobilePhotoButton onUploaded={(files) => void handleAddOneDriveFiles(files.map((f) => ({ url: f.url, name: f.name || f.url })))} />
               </div>
               {active.attachments && (active.attachments as any[]).length > 0 ? (
                 <div style={{ display: 'grid', gap: 6 }}>
