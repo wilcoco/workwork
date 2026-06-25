@@ -192,6 +192,27 @@ export async function uploadFile(file: File): Promise<UploadResp> {
   return out;
 }
 
+// 사진을 Railway 볼륨(디스크)에 업로드 (/api/uploads/photo → '/uploads/<file>')
+export async function uploadPhotosDisk(list: FileList | File[]): Promise<UploadResp[]> {
+  const files: File[] = Array.from(list as any);
+  const out: UploadResp[] = [];
+  for (let f of files) {
+    try { if (f && f.type && f.type.startsWith('image/')) f = await compressImageToLimits(f); } catch { /* keep original */ }
+    const fd = new FormData();
+    fd.append('file', f);
+    if (f.name) fd.append('originalName', f.name);
+    const res = await apiFetch('/api/uploads/photo', { method: 'POST', body: fd });
+    const text = await res.text();
+    if (!(res.status >= 200 && res.status < 300)) throw new Error(text || `${res.status}`);
+    const data = text ? JSON.parse(text) : null;
+    const r = data as UploadResp;
+    if (f.name) r.name = f.name;
+    if (r && r.url && !/^https?:\/\//i.test(r.url)) r.url = new URL(r.url, API_BASE).toString();
+    out.push(r);
+  }
+  return out;
+}
+
 export async function uploadFiles(list: FileList | File[]): Promise<UploadResp[]> {
   const files: File[] = Array.from(list as any);
   const out: UploadResp[] = [];

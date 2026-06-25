@@ -1,16 +1,40 @@
 import { BadRequestException, Controller, Get, Param, Post, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
-import { extname } from 'path';
+import { diskStorage, memoryStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import type { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
 
+// 사진(모바일 촬영 등)은 Railway 볼륨(디스크)에 저장 → '/uploads/'로 정적 서빙.
+// DB(Postgres Bytes)와 분리해 DB 비대화/백업 부담 방지.
+const PHOTO_DIR = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
+
 @Public()
 @Controller()
 export class UploadsController {
   constructor(private prisma: PrismaService) {}
+
+  // 디스크(볼륨) 사진 업로드
+  @Post('uploads/photo')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => { try { if (!existsSync(PHOTO_DIR)) mkdirSync(PHOTO_DIR, { recursive: true }); } catch {} cb(null, PHOTO_DIR); },
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${extname(file.originalname || '') || '.jpg'}`),
+      }),
+      limits: { fileSize: 25 * 1024 * 1024 },
+    }),
+  )
+  async uploadPhoto(@UploadedFile() file: Express.Multer.File, @Req() req: Request) {
+    if (!file) throw new BadRequestException('file is required');
+    const bodyName = String((req.body as any)?.originalName || '').trim();
+    let origName = bodyName || file.originalname || '';
+    if (!bodyName && origName) { try { origName = Buffer.from(origName, 'latin1').toString('utf8'); } catch {} }
+    return { url: `/uploads/${file.filename}`, name: origName || file.filename, filename: file.filename, size: file.size, type: file.mimetype };
+  }
 
   @Post('uploads')
   @UseInterceptors(

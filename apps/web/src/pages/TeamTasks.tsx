@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
+import { MobilePhotoButton } from '../components/MobilePhotoButton';
 
 type Team = { id: string; name: string; visibility: 'PUBLIC' | 'PRIVATE' };
 type Attachment = { url?: string; name?: string };
@@ -277,8 +278,11 @@ export function TeamTasks() {
                     <textarea style={fld} rows={2} value={f.prepNote} onChange={(e) => set('prepNote', e.target.value)} /></label>
                   <label style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>결과 보고 (마일스톤 경과 후)</span>
                     <textarea style={fld} rows={2} value={f.resultNote} onChange={(e) => set('resultNote', e.target.value)} /></label>
-                  <div style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>첨부파일 (원드라이브)</span>
-                    <button type="button" className="btn btn-sm btn-ghost" style={{ justifySelf: 'start' }} onClick={() => setShowPicker(true)}>📁 원드라이브에서 첨부</button></div>
+                  <div style={{ display: 'grid', gap: 3 }}><span style={{ fontSize: 12, color: '#475569' }}>첨부 (문서=원드라이브 / 사진=모바일)</span>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowPicker(true)}>📁 원드라이브 문서</button>
+                      <MobilePhotoButton onUploaded={(files) => setEditing((p: any) => ({ ...p, attachments: [...(p.attachments || []), ...files] }))} />
+                    </div></div>
                   {(f.attachments || []).length > 0 && (
                     <div style={{ display: 'grid', gap: 4 }}>
                       {(f.attachments || []).map((a: Attachment, i: number) => (

@@ -1,5 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { IsArray, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { PrismaService } from './prisma.service';
 import { extractOdometerFromImage } from './llm/ai-client';
 
@@ -685,20 +687,28 @@ export class CarDispatchController {
   // 계기판 사진(업로드)에서 적산거리(km) OCR 추출
   @Post('ocr-odometer')
   async ocrOdometer(@Body() dto: OcrOdometerDto) {
-    let uploadId = String(dto.uploadId || '').trim();
-    if (!uploadId && dto.url) {
-      // '/api/files/<id>' 형태의 URL에서 id 추출
-      const m = String(dto.url).match(/files\/([^/?#]+)/);
-      if (m) uploadId = decodeURIComponent(m[1]);
+    let base64 = '';
+    let ct = '';
+    // 디스크(볼륨) 사진: '/uploads/<filename>'
+    const diskMatch = String(dto.url || '').match(/\/uploads\/([^/?#]+)/);
+    if (diskMatch) {
+      const fname = decodeURIComponent(diskMatch[1]);
+      const dir = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
+      const fp = join(dir, fname);
+      try { base64 = readFileSync(fp).toString('base64'); } catch { throw new BadRequestException('사진 파일을 찾을 수 없습니다'); }
+      const ext = (fname.split('.').pop() || '').toLowerCase();
+      ct = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    } else {
+      // DB 업로드: '/api/files/<id>'
+      let uploadId = String(dto.uploadId || '').trim();
+      if (!uploadId && dto.url) { const m = String(dto.url).match(/files\/([^/?#]+)/); if (m) uploadId = decodeURIComponent(m[1]); }
+      if (!uploadId) throw new BadRequestException('uploadId 또는 url이 필요합니다');
+      const up = await this.prisma.upload.findUnique({ where: { id: uploadId } });
+      if (!up) throw new BadRequestException('업로드 파일을 찾을 수 없습니다');
+      ct = String(up.contentType || '').toLowerCase();
+      if (!ct.startsWith('image/')) throw new BadRequestException('이미지 파일만 분석할 수 있습니다');
+      base64 = Buffer.from(up.data as any).toString('base64');
     }
-    if (!uploadId) throw new BadRequestException('uploadId 또는 url이 필요합니다');
-
-    const up = await this.prisma.upload.findUnique({ where: { id: uploadId } });
-    if (!up) throw new BadRequestException('업로드 파일을 찾을 수 없습니다');
-    const ct = String(up.contentType || '').toLowerCase();
-    if (!ct.startsWith('image/')) throw new BadRequestException('이미지 파일만 분석할 수 있습니다');
-
-    const base64 = Buffer.from(up.data as any).toString('base64');
     try {
       const result = await extractOdometerFromImage(base64, ct);
       return result;

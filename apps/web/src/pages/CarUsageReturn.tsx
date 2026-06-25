@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
-import { uploadFiles } from '../lib/upload';
+import { uploadPhotosDisk } from '../lib/upload';
 
 type Photo = { url?: string; name?: string };
 
@@ -61,7 +61,7 @@ function PhotoUploader({
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
-      const res = await uploadFiles(files);
+      const res = await uploadPhotosDisk(files);
       const added = res.map((r) => ({ url: r.url, name: r.name }));
       setPhotos((prev) => [...prev, ...added]);
       onAdded?.(added);
@@ -155,14 +155,14 @@ export function CarUsageReturn() {
   }, [selectedId]);
 
   async function runOcr(url: string, which: 'before' | 'after') {
-    const uploadId = uploadIdFromUrl(url);
-    if (!uploadId) return;
+    if (!url) return;
+    const uploadId = uploadIdFromUrl(url); // 구 DB 업로드 호환
     setOcrBusy(which);
     setOcrMsg((m) => ({ ...m, [which]: '계기판 사진에서 적산거리를 읽는 중…' }));
     try {
       const res = await apiJson<{ odometerKm: number | null; confidence: string }>(
         `/api/car-dispatch/ocr-odometer`,
-        { method: 'POST', body: JSON.stringify({ uploadId }) },
+        { method: 'POST', body: JSON.stringify({ url, uploadId: uploadId || undefined }) },
       );
       if (res.odometerKm != null) {
         if (which === 'before') setOdoBefore(String(res.odometerKm));
