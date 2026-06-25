@@ -148,7 +148,7 @@ export class OkrsController {
     if (roles.length === 0) return { items: [] };
 
     const items = await this.prisma.keyResult.findMany({
-      where: { objective: { owner: { role: { in: roles as any } } } },
+      where: { objective: { owner: { role: { in: roles as any } }, NOT: { title: { startsWith: 'Auto Objective' } } } },
       orderBy: { createdAt: 'desc' },
       include: { objective: { include: { owner: true, orgUnit: true } } },
     });
@@ -159,7 +159,7 @@ export class OkrsController {
   async myOkrs(@Query('userId') userId: string) {
     if (!userId) throw new BadRequestException('userId required');
     const items = await this.prisma.objective.findMany({
-      where: { ownerId: userId },
+      where: { ownerId: userId, NOT: { title: { startsWith: 'Auto Objective' } } },
       orderBy: { createdAt: 'desc' },
       include: ({ keyResults: true, alignsToKr: { include: { objective: true } }, orgUnit: true } as any),
     });
@@ -449,8 +449,9 @@ export class OkrsController {
 
   @Get('map')
   async okrMap(@Query('orgUnitId') orgUnitId?: string) {
-    // Load all objectives with their KRs and minimal owner/org info
+    // Load all objectives with their KRs and minimal owner/org info ('Auto Objective …' 숨김)
     const all = await this.prisma.objective.findMany({
+      where: { NOT: { title: { startsWith: 'Auto Objective' } } },
       orderBy: { createdAt: 'asc' },
       include: ({ keyResults: true, owner: { select: { id: true, name: true, role: true } }, orgUnit: true } as any),
     });
@@ -504,7 +505,9 @@ export class OkrsController {
 
   @Get('objectives')
   async listObjectives(@Query('orgUnitId') orgUnitId?: string) {
-    const where = orgUnitId ? { orgUnitId } : {};
+    // 업무일지 작성 시 자동 생성되는 'Auto Objective …' 컨테이너는 OKR 화면에서 숨김(삭제 아님)
+    const where: any = { NOT: { title: { startsWith: 'Auto Objective' } } };
+    if (orgUnitId) where.orgUnitId = orgUnitId;
     const items = await this.prisma.objective.findMany({
       where,
       orderBy: { createdAt: 'asc' },
