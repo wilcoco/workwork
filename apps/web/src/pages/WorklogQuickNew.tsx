@@ -1343,8 +1343,8 @@ export function WorklogQuickNew() {
               <button type="button" className="btn btn-sm" onClick={addPhoto}>
                 URL 직접 입력
               </button>
-              <MobilePhotoButton onUploaded={(files) => setPhotos((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name }))])} />
             </div>
+            <MobilePhotoButton onUploaded={(files) => setPhotos((prev) => [...prev, ...files.map((f) => ({ url: f.url, name: f.name }))])} />
             {photos.length > 0 && (
               <div className="attachments">
                 {photos.map((p, i) => (

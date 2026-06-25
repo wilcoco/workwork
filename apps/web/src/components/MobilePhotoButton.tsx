@@ -30,16 +30,16 @@ export function MobilePhotoButton({
 
   const btn: React.CSSProperties = { cursor: busy ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 };
 
+  // 모바일 사진 업로드 + 경고를 하나의 박스로 묶어 원드라이브와 분리
   return (
-    <div style={{ display: 'grid', gap: 5, ...style }}>
+    <div style={{ border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 8, padding: 8, display: 'grid', gap: 6, ...style }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: '#92400e' }}>📱 모바일 사진 (카메라 / 사진함)</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {/* 카메라 촬영 (모바일에서 카메라 바로 실행) */}
         <label className="btn btn-sm btn-ghost" style={btn}>
           📷 카메라 촬영
           <input type="file" accept="image/*" capture="environment" disabled={busy} style={{ display: 'none' }}
             onChange={(e) => void handle(e.target.files, e.target)} />
         </label>
-        {/* 사진함(갤러리) 선택 */}
         <label className="btn btn-sm btn-ghost" style={btn}>
           🖼 사진함에서 선택
           <input type="file" accept="image/*" multiple disabled={busy} style={{ display: 'none' }}
@@ -48,8 +48,8 @@ export function MobilePhotoButton({
         {busy && <span style={{ fontSize: 12, color: '#64748b', alignSelf: 'center' }}>업로드 중…</span>}
       </div>
       {warn && (
-        <div style={{ fontSize: 11, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px' }}>
-          ⚠ 민감·기밀 자료는 올리지 마세요. 내부 문서는 <b>원드라이브</b>를 이용하세요. (사진은 외부 서버에 저장됩니다)
+        <div style={{ fontSize: 11, color: '#b91c1c' }}>
+          ⚠ 민감·기밀 자료는 올리지 마세요. 내부 문서는 <b>원드라이브</b>를 이용하세요. (사진은 외부 서버에 저장)
         </div>
       )}
     </div>
