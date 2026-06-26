@@ -144,26 +144,33 @@ export class AttendanceController {
             date: { lte: rangeEnd },
             status: { notIn: ['REJECTED', 'CANCELLED', 'rejected', 'cancelled'] as any },
           },
-          select: { id: true, type: true, date: true, endDate: true },
+          select: { id: true, type: true, date: true, endDate: true, startAt: true, endAt: true },
         });
         const overlapping = overlapCandidates.filter((r: any) => {
           const rEnd: Date = r.endDate ?? r.date;
           return rEnd.getTime() >= baseDate.getTime();
         });
 
+        const DAY_OFF = DAY_OFF_TYPES as readonly string[];
         const typeKo = (t: string) => t === 'VACATION' ? '휴가' : t === 'PUBLIC_DUTY' ? '공가' : t === 'PARENTAL_LEAVE' ? '육아휴직' : '근태';
         if (isDayOff) {
-          // 휴가/공가/육아휴직은 같은 기간에 다른 어떤 근태와도 함께 신청할 수 없다.
-          if (overlapping.length > 0) {
+          // 종일 휴무(휴가/공가/육아휴직)는 다른 "종일 휴무"와만 충돌. 시간제 근태(OT 등)와는 공존 가능.
+          const dayOffHit = overlapping.find((r: any) => DAY_OFF.includes(r.type));
+          if (dayOffHit) {
             throw new BadRequestException(rangeEndDate
-              ? '신청 기간에 이미 다른 근태 신청이 있어 신청할 수 없습니다'
-              : `해당 일자에 이미 다른 근태 신청이 있어 ${typeKo(dto.type)}를 신청할 수 없습니다`);
+              ? '신청 기간에 이미 휴가·공가·육아휴직이 있어 신청할 수 없습니다'
+              : `해당 일자에 이미 휴가·공가·육아휴직이 있어 ${typeKo(dto.type)}를 신청할 수 없습니다`);
           }
         } else {
-          // 시간 기반 근태: 같은 날 종일 휴무(휴가/공가/육아휴직)가 있으면 불가.
-          const dayOffHit = overlapping.find((r: any) => (DAY_OFF_TYPES as readonly string[]).includes(r.type));
-          if (dayOffHit) {
-            throw new BadRequestException('해당 일자에 이미 휴가·공가·육아휴직이 신청되어 있어 다른 근태를 신청할 수 없습니다');
+          // 시간제 근태(OT/조기퇴근/유연근무/휴일근무): 시간이 겹치는 "시간제 근태"와만 충돌.
+          // 종일 휴무(휴가 등)와는 시간이 겹치지 않으므로 함께 신청 가능 (예: 휴가일 저녁 OT).
+          if (startAt && endAt) {
+            const timeHit = overlapping.find((r: any) =>
+              !DAY_OFF.includes(r.type) && r.startAt && r.endAt &&
+              new Date(r.startAt).getTime() < (endAt as Date).getTime() &&
+              (startAt as Date).getTime() < new Date(r.endAt).getTime(),
+            );
+            if (timeHit) throw new BadRequestException('같은 시간대에 이미 다른 근태 신청이 있어 신청할 수 없습니다');
           }
         }
 
