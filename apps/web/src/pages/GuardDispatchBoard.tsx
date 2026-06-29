@@ -4,6 +4,7 @@ import { apiJson, apiUrl } from '../lib/api';
 type BoardItem = {
   id: string;
   carName: string;
+  carType?: string;
   carPlateNo: string;
   requesterName: string;
   guardCreated: boolean;
@@ -260,7 +261,7 @@ function DispatchCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontWeight: 800, fontSize: 16 }}>
-            {item.carName} <span style={{ color: '#475569', fontWeight: 600 }}>{item.carPlateNo}</span>
+            {item.carName}{item.carType ? ` (${item.carType})` : ''} <span style={{ color: '#475569', fontWeight: 600 }}>{item.carPlateNo}</span>
           </div>
           <div style={{ fontSize: 13, color: '#334155', marginTop: 2 }}>
             신청자 <b>{item.requesterName}</b>{item.coRiders ? ` · 동승 ${item.coRiders}` : ''}

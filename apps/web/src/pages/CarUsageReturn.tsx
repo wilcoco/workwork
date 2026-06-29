@@ -8,6 +8,7 @@ type Dispatch = {
   id: string;
   carId: string;
   carName: string;
+  carType?: string;
   carPlateNo: string;
   startAt: string;
   endAt: string;
@@ -244,7 +245,7 @@ export function CarUsageReturn() {
             <option value="">{loading ? '불러오는 중…' : '선택하세요'}</option>
             {list.map((d) => (
               <option key={d.id} value={d.id}>
-                {fmt(d.startAt)} · {d.carName}{d.carPlateNo ? ` (${d.carPlateNo})` : ''} · {d.destination}
+                {fmt(d.startAt)} · {d.carName}{d.carType ? ` (${d.carType})` : ''}{d.carPlateNo ? ` ${d.carPlateNo}` : ''} · {d.destination}
                 {d.status === 'PENDING' ? ' · [결재전]' : ''}
                 {d.usageRegisteredAt ? ' · [등록됨]' : ''}
               </option>

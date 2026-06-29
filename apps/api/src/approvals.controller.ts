@@ -332,7 +332,7 @@ export class ApprovalsController {
         if ((st === 'WORKLOG' || st === 'WORKLOGS') && sid) {
           results[key] = await this.prisma.worklog.findUnique({ where: { id: sid }, include: { createdBy: { select: { id: true, name: true } } } });
         } else if (st === 'CAR_DISPATCH' && sid) {
-          results[key] = await this.prisma.carDispatchRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } }, car: { select: { name: true } } } });
+          results[key] = await this.prisma.carDispatchRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } }, car: { select: { name: true, type: true } } } });
         } else if (st === 'LOGISTICS_DISPATCH' && sid) {
           results[key] = await (this.prisma as any).logisticsDispatchRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } } } });
         } else if (st === 'ATTENDANCE' && sid) {

@@ -335,7 +335,8 @@ function describeSubject(it: any): { title: string; meta: string } {
     return { title, meta };
   }
   if (stNorm === 'CAR_DISPATCH') {
-    const title = `배차 신청${doc.carName ? ` - ${doc.carName}` : ''}`;
+    const carLabel = [doc.car?.name || doc.carName, doc.car?.type].filter(Boolean).join(' ');
+    const title = `배차 신청${carLabel ? ` - ${carLabel}` : ''}`;
     const timeRange = doc.startAt && doc.endAt
       ? `${new Date(doc.startAt).toLocaleString()} ~ ${new Date(doc.endAt).toLocaleString()}`
       : '';

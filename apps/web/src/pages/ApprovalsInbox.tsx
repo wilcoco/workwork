@@ -346,7 +346,8 @@ export function ApprovalsInbox() {
               let when = n.createdAt as string | undefined;
 
               if (stNorm === 'CAR_DISPATCH' && doc) {
-                title = `배차 신청 - ${doc.carName || ''}`.trim();
+                const carLabel = [doc.car?.name || doc.carName, doc.car?.type].filter(Boolean).join(' ');
+                title = `배차 신청${carLabel ? ` - ${carLabel}` : ''}`.trim();
                 const timeRange = doc.startAt && doc.endAt
                   ? `${new Date(doc.startAt).toLocaleString()} ~ ${new Date(doc.endAt).toLocaleString()}`
                   : '';
