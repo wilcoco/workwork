@@ -50,6 +50,89 @@ export class BusinessTripController {
     return { items };
   }
 
+  // 출장 현황 캘린더: 해당 월에 걸치는 출장 신청 + (출장 목적의) 배차를 통합해 반환
+  @Get('calendar')
+  async calendar(@Query('month') month?: string) {
+    const base = month ? new Date(month + '-01T00:00:00.000Z') : new Date();
+    if (isNaN(base.getTime())) throw new BadRequestException('유효하지 않은 month');
+    const year = base.getUTCFullYear();
+    const mon = base.getUTCMonth();
+    const start = new Date(Date.UTC(year, mon, 1, 0, 0, 0, 0));
+    const end = new Date(Date.UTC(year, mon + 1, 0, 23, 59, 59, 999));
+
+    // 1) 출장 신청 (해당 월에 일정이 걸쳐 있는 건)
+    const trips = await this.prisma.businessTripRequest.findMany({
+      where: { departureAt: { lte: end }, returnAt: { gte: start } },
+      orderBy: { departureAt: 'asc' },
+      include: { requester: { select: { id: true, name: true } } },
+    });
+
+    // 2) 출장 목적의 배차 (purpose에 '출장' 포함 — 출장 신청 시 자동 생성된 [출장] 건 포함)
+    const dispatches = await this.prisma.carDispatchRequest.findMany({
+      where: {
+        startAt: { lte: end },
+        endAt: { gte: start },
+        purpose: { contains: '출장' },
+      },
+      orderBy: { startAt: 'asc' },
+      include: {
+        car: { select: { name: true, type: true } },
+        requester: { select: { id: true, name: true } },
+      },
+    });
+
+    // 출장 신청 ↔ 자동 생성 배차를 (신청자 + 출발시각 + 목적지)로 매칭해 중복 제거
+    const dispatchByKey: Record<string, any> = {};
+    for (const d of dispatches) {
+      const key = `${(d as any).requesterId}|${new Date(d.startAt).toISOString()}|${d.destination ?? ''}`;
+      if (!dispatchByKey[key]) dispatchByKey[key] = d;
+    }
+    const consumed = new Set<string>();
+    const items: any[] = [];
+
+    for (const t of trips) {
+      const key = `${t.requesterId}|${new Date(t.departureAt).toISOString()}|${t.destination ?? ''}`;
+      const d = dispatchByKey[key];
+      if (d) consumed.add(d.id);
+      items.push({
+        id: t.id,
+        source: 'TRIP',
+        requesterId: t.requesterId,
+        requesterName: (t as any).requester?.name ?? '',
+        destination: t.destination,
+        purpose: t.purpose,
+        startAt: t.departureAt,
+        endAt: t.returnAt,
+        status: t.status,
+        transportation: (t as any).transportation ?? '',
+        carName: d?.car?.name ?? '',
+        carType: d?.car?.type ?? '',
+      });
+    }
+
+    // 출장 신청과 매칭되지 않은 '출장' 배차 (예: 법인차량 신청에서 목적에 출장이라 적은 건)
+    for (const d of dispatches) {
+      if (consumed.has(d.id)) continue;
+      items.push({
+        id: d.id,
+        source: 'DISPATCH',
+        requesterId: (d as any).requesterId,
+        requesterName: (d as any).requester?.name ?? '',
+        destination: d.destination,
+        purpose: d.purpose,
+        startAt: d.startAt,
+        endAt: d.endAt,
+        status: d.status,
+        transportation: '회사 차량',
+        carName: (d as any).car?.name ?? '',
+        carType: (d as any).car?.type ?? '',
+      });
+    }
+
+    items.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    return { items };
+  }
+
   @Get(':id')
   async get(@Param('id') id: string) {
     const item = await this.prisma.businessTripRequest.findUnique({

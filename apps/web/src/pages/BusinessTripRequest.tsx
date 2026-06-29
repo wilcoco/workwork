@@ -47,6 +47,155 @@ function fmtRange(dep: string, ret: string) {
   return `${fmt(d)} ~ ${fmt(r)}`;
 }
 
+type TripCalItem = {
+  id: string;
+  source: 'TRIP' | 'DISPATCH';
+  requesterId: string;
+  requesterName: string;
+  destination: string;
+  purpose: string;
+  startAt: string;
+  endAt: string;
+  status: string;
+  transportation?: string;
+  carName?: string;
+  carType?: string;
+};
+
+const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+function ymd(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// 전사 출장 현황 캘린더 (출장 신청 + 출장 목적의 배차 통합)
+function TripCalendar() {
+  const [month, setMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [items, setItems] = useState<TripCalItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<TripCalItem | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    apiJson<{ items: TripCalItem[] }>(`/api/business-trips/calendar?month=${encodeURIComponent(month)}`)
+      .then((res) => { if (alive) setItems(res.items || []); })
+      .catch(() => { if (alive) setItems([]); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [month]);
+
+  const [y, m] = month.split('-').map(Number);
+  const firstWeekday = new Date(y, m - 1, 1).getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  // 날짜별 항목 매핑 (시작~종료일에 걸치는 모든 날에 표시)
+  const byDay: Record<string, TripCalItem[]> = {};
+  for (const it of items) {
+    const s = new Date(it.startAt);
+    const e = new Date(it.endAt);
+    const cur = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+    const last = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+    while (cur <= last) {
+      if (cur.getFullYear() === y && cur.getMonth() === m - 1) {
+        const key = ymd(cur);
+        (byDay[key] ||= []).push(it);
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+
+  const shiftMonth = (delta: number) => {
+    const d = new Date(y, m - 1 + delta, 1);
+    setMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+
+  const statusBg = (s: string, source: string) => {
+    if (s === 'REJECTED') return { bg: '#fee2e2', fg: '#991b1b' };
+    if (s === 'PENDING') return { bg: '#fef9c3', fg: '#92400e' };
+    // APPROVED
+    return source === 'DISPATCH' ? { bg: '#e0f2fe', fg: '#075985' } : { bg: '#dcfce7', fg: '#166534' };
+  };
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #CBD5E1', borderRadius: 12, padding: 16, display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 15 }}>📅 출장 현황 (전사)</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" style={ghostBtn} onClick={() => shiftMonth(-1)}>◀</button>
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ ...input, width: 'auto' }} />
+          <button type="button" style={ghostBtn} onClick={() => shiftMonth(1)}>▶</button>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: 2, marginRight: 4 }} />출장(승인)</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 2, marginRight: 4 }} />대기중</span>
+        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#e0f2fe', border: '1px solid #bae6fd', borderRadius: 2, marginRight: 4 }} />🚗 배차(출장)</span>
+      </div>
+      {loading ? <div style={{ color: '#64748b' }}>불러오는 중…</div> : (
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(96px, 1fr))', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+            {WEEKDAYS.map((w, i) => (
+              <div key={w} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 12, fontWeight: 700, background: '#f8fafc', color: i === 0 ? '#dc2626' : i === 6 ? '#2563eb' : '#475569', borderBottom: '1px solid #e5e7eb' }}>{w}</div>
+            ))}
+            {cells.map((day, idx) => {
+              const key = day ? ymd(new Date(y, m - 1, day)) : '';
+              const dayItems = day ? (byDay[key] || []) : [];
+              return (
+                <div key={idx} style={{ minHeight: 84, borderRight: (idx % 7 !== 6) ? '1px solid #f1f5f9' : 'none', borderBottom: '1px solid #f1f5f9', padding: 4, background: day ? '#fff' : '#fafafa', display: 'grid', gridTemplateRows: 'auto 1fr', gap: 2 }}>
+                  {day && <div style={{ fontSize: 11, color: idx % 7 === 0 ? '#dc2626' : idx % 7 === 6 ? '#2563eb' : '#94a3b8', fontWeight: 600 }}>{day}</div>}
+                  <div style={{ display: 'grid', gap: 2, alignContent: 'start' }}>
+                    {dayItems.slice(0, 4).map((it, i) => {
+                      const c = statusBg(it.status, it.source);
+                      return (
+                        <div key={it.id + i} onClick={() => setSelected(it)}
+                          title={`${it.requesterName} · ${it.destination}${it.source === 'DISPATCH' || it.carName ? ` · 🚗${it.carName || '회사차량'}${it.carType ? `(${it.carType})` : ''}` : ''}`}
+                          style={{ background: c.bg, color: c.fg, borderRadius: 4, padding: '2px 4px', fontSize: 11, lineHeight: 1.25, cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                          {it.source === 'DISPATCH' || it.carName ? '🚗 ' : ''}{it.requesterName} · {it.destination}
+                        </div>
+                      );
+                    })}
+                    {dayItems.length > 4 && <div style={{ fontSize: 10, color: '#94a3b8' }}>+{dayItems.length - 4}건</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {!loading && items.length === 0 && <div style={{ color: '#94a3b8', fontSize: 13 }}>해당 월의 출장/배차 일정이 없습니다.</div>}
+
+      {selected && (
+        <div onClick={() => setSelected(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 20, maxWidth: 420, width: '100%', display: 'grid', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 16, fontWeight: 800 }}>{selected.destination}</span>
+              <span style={{ fontSize: 12, background: selected.source === 'DISPATCH' ? '#e0f2fe' : '#eef2ff', color: selected.source === 'DISPATCH' ? '#075985' : '#3730a3', borderRadius: 6, padding: '2px 8px', fontWeight: 700 }}>{selected.source === 'DISPATCH' ? '배차(출장)' : '출장'}</span>
+            </div>
+            <div style={{ fontSize: 13, color: '#334155', display: 'grid', gap: 4 }}>
+              <div><strong>신청자</strong> {selected.requesterName}</div>
+              <div><strong>일정</strong> {fmtRange(selected.startAt, selected.endAt)}</div>
+              <div><strong>목적</strong> {selected.purpose}</div>
+              {selected.transportation && <div><strong>교통편</strong> {selected.transportation}</div>}
+              {selected.carName && <div><strong>차량</strong> 🚗 {selected.carName}{selected.carType ? ` (${selected.carType})` : ''}</div>}
+              <div><strong>상태</strong> {selected.status === 'APPROVED' ? '승인' : selected.status === 'REJECTED' ? '반려' : '대기중'}</div>
+            </div>
+            <button style={ghostBtn} onClick={() => setSelected(null)}>닫기</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function BusinessTripRequest() {
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -175,6 +324,9 @@ export function BusinessTripRequest() {
           <button onClick={() => setError(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>✕</button>
         </div>
       )}
+
+      {/* 전사 출장 현황 캘린더 */}
+      <TripCalendar />
 
       {/* 신청 폼 */}
       <div style={{ background: '#fff', border: '1px solid #CBD5E1', borderRadius: 12, padding: 20, display: 'grid', gap: 14 }}>
