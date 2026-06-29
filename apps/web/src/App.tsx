@@ -792,7 +792,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/coops/status', label: '업무 요청 통계' },
       ];
     }
-    if (path.startsWith('/dispatch') || path.startsWith('/attendance') || path.startsWith('/guard')) {
+    if (path.startsWith('/dispatch') || path.startsWith('/attendance') || path.startsWith('/guard') || path.startsWith('/business-trip')) {
       return [
         { to: '/dispatch/corporate', label: '법인차량 신청' },
         { to: '/dispatch/return', label: '법인차량 사용 전후 등록' },
@@ -802,6 +802,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/attendance/report', label: '근태 리포트' },
         { to: '/attendance/ot-verification', label: 'OT 검증' },
         { to: '/attendance/access-report', label: '입출입 리포트' },
+        { to: '/business-trip/request', label: '출장 신청' },
       ];
     }
     if (path.startsWith('/admin')) {
