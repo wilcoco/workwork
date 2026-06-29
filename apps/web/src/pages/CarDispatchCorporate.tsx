@@ -18,6 +18,7 @@ type CalendarItem = {
   id: string;
   carId: string;
   carName: string;
+  carType?: string;
   startAt: string;
   endAt: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
@@ -345,13 +346,13 @@ export function CarDispatchCorporate() {
                                       whiteSpace: 'normal',
                                       cursor: 'pointer',
                                     }}
-                                    title={`${ev.carName} · ${ev.requesterName}`}
+                                    title={`${ev.carName}${ev.carType ? ` (${ev.carType})` : ''} · ${ev.requesterName}`}
                                     onClick={() => {
                                       const dateLabel = `${calendarMonth}-${String(cell.day).padStart(2, '0')}`;
                                       setSelectedEvent({ ev, dateLabel });
                                     }}
                                   >
-                                    {ev.carName}
+                                    {ev.carName}{ev.carType ? ` (${ev.carType})` : ''}
                                     <br />
                                     {ev.requesterName}
                                   </div>
@@ -431,7 +432,7 @@ export function CarDispatchCorporate() {
                 {coUseInbox.map((r) => (
                   <div key={r.id} style={{ border: '1px solid #fcd34d', borderRadius: 8, padding: 8, background: '#fff' }}>
                     <div style={{ fontSize: 13 }}>
-                      <b>{r.requesterName}</b>님 · {r.carName}{r.carPlateNo ? ` (${r.carPlateNo})` : ''}
+                      <b>{r.requesterName}</b>님 · {r.carName}{r.carType ? ` (${r.carType})` : ''}{r.carPlateNo ? ` ${r.carPlateNo}` : ''}
                     </div>
                     <div style={{ fontSize: 13, color: '#475569' }}>{formatDateTime(r.startAt)}~{formatTime(r.endAt)} · {r.destination} · {r.purpose}</div>
                     {r.negotiationNote && <div style={{ fontSize: 13, color: '#92400e', marginTop: 2 }}>“{r.negotiationNote}”</div>}
@@ -453,7 +454,7 @@ export function CarDispatchCorporate() {
                   return (
                     <div key={r.id} style={{ border: '1px solid #f1f5f9', borderRadius: 8, padding: 8 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                        <div style={{ fontSize: 13 }}>{r.carName} · {formatDateTime(r.startAt)}~{formatTime(r.endAt)}</div>
+                        <div style={{ fontSize: 13 }}>{r.carName}{r.carType ? ` (${r.carType})` : ''} · {formatDateTime(r.startAt)}~{formatTime(r.endAt)}</div>
                         <span style={{ background: st.b, color: st.c, borderRadius: 999, padding: '1px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{st.t}</span>
                       </div>
                       <div style={{ fontSize: 12, color: '#64748b' }}>{r.destination} · {r.purpose}{r.negotiationNote ? ` · “${r.negotiationNote}”` : ''}</div>
@@ -481,7 +482,7 @@ export function CarDispatchCorporate() {
                   <span style={{ fontSize: 12, color: '#475569' }}>내 배차 (교환할 내 차량)</span>
                   <select value={swapFromId} onChange={(e) => { setSwapFromId(e.target.value); setSwapToId(''); }} style={{ padding: '6px 8px' }}>
                     <option value="">선택 ({calendarMonth} 기준)</option>
-                    {mine.map((m) => <option key={m.id} value={m.id}>{m.carName} · {formatDateTime(m.startAt)}~{formatTime(m.endAt)} · {m.destination}</option>)}
+                    {mine.map((m) => <option key={m.id} value={m.id}>{m.carName}{m.carType ? ` (${m.carType})` : ''} · {formatDateTime(m.startAt)}~{formatTime(m.endAt)} · {m.destination}</option>)}
                   </select>
                 </label>
                 {from && (
@@ -489,7 +490,7 @@ export function CarDispatchCorporate() {
                     <span style={{ fontSize: 12, color: '#475569' }}>교환할 상대 배차 (같은 시간대 다른 차량)</span>
                     <select value={swapToId} onChange={(e) => setSwapToId(e.target.value)} style={{ padding: '6px 8px' }}>
                       <option value="">선택</option>
-                      {candidates.map((c) => <option key={c.id} value={c.id}>{c.requesterName} · {c.carName} · {formatDateTime(c.startAt)}~{formatTime(c.endAt)}</option>)}
+                      {candidates.map((c) => <option key={c.id} value={c.id}>{c.requesterName} · {c.carName}{c.carType ? ` (${c.carType})` : ''} · {formatDateTime(c.startAt)}~{formatTime(c.endAt)}</option>)}
                     </select>
                     {candidates.length === 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>겹치는 시간대의 다른 차량 배차가 없습니다.</span>}
                   </label>
@@ -509,7 +510,7 @@ export function CarDispatchCorporate() {
               <div style={{ display: 'grid', gap: 8 }}>
                 {swapInbox.map((r) => (
                   <div key={r.id} style={{ border: '1px solid #fcd34d', borderRadius: 8, padding: 8, background: '#fff', fontSize: 13 }}>
-                    <div><b>{r.from?.requesterName}</b>님이 교환 요청: <b>{r.from?.carName}</b> ↔ 내 <b>{r.to?.carName}</b></div>
+                    <div><b>{r.from?.requesterName}</b>님이 교환 요청: <b>{r.from?.carName}{r.from?.carType ? ` (${r.from.carType})` : ''}</b> ↔ 내 <b>{r.to?.carName}{r.to?.carType ? ` (${r.to.carType})` : ''}</b></div>
                     <div style={{ color: '#64748b' }}>{r.to ? `${formatDateTime(r.to.startAt)}~${formatTime(r.to.endAt)}` : ''}{r.note ? ` · “${r.note}”` : ''}</div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                       <button type="button" className="btn btn-sm" onClick={() => void respondSwap(r.id, 'agree')}>동의(차량 맞바꿈)</button>
@@ -527,7 +528,7 @@ export function CarDispatchCorporate() {
                 const st = r.status === 'AGREED' ? { t: '교환 완료', c: '#166534', b: '#dcfce7' } : r.status === 'DECLINED' ? { t: '거절됨', c: '#991b1b', b: '#fee2e2' } : { t: '대기중', c: '#854d0e', b: '#fef9c3' };
                 return (
                   <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, border: '1px solid #f1f5f9', borderRadius: 8, padding: 8 }}>
-                    <div>{r.from?.carName} ↔ {r.to?.carName} ({r.to?.requesterName})</div>
+                    <div>{r.from?.carName}{r.from?.carType ? ` (${r.from.carType})` : ''} ↔ {r.to?.carName}{r.to?.carType ? ` (${r.to.carType})` : ''} ({r.to?.requesterName})</div>
                     <span style={{ background: st.b, color: st.c, borderRadius: 999, padding: '1px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>{st.t}</span>
                   </div>
                 );
@@ -626,7 +627,7 @@ export function CarDispatchCorporate() {
               <>
                 <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>{dateLabel}</div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
-                  {ev.carName}
+                  {ev.carName}{ev.carType ? ` (${ev.carType})` : ''}
                 </div>
                 <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
                   <div><strong>신청자</strong> {ev.requesterName}</div>

@@ -281,6 +281,7 @@ export class CarDispatchController {
     return {
       id: r.id,
       carName: r.car?.name ?? '',
+      carType: r.car?.type ?? '',
       carPlateNo: r.car?.plateNo ?? '',
       requesterName: r.requester?.name ?? '',
       startAt: r.startAt, endAt: r.endAt,
@@ -422,6 +423,7 @@ export class CarDispatchController {
         id: r.id,
         carId: r.carId,
         carName: (r as any).car?.name ?? '',
+        carType: (r as any).car?.type ?? '',
         requesterId: r.requesterId,
         requesterName: (r as any).requester?.name ?? '',
         approverId: r.approverId,
@@ -461,6 +463,7 @@ export class CarDispatchController {
         id: r.id,
         carId: r.carId,
         carName: r.car?.name ?? '',
+        carType: r.car?.type ?? '',
         startAt: r.startAt,
         endAt: r.endAt,
         status: r.status,
@@ -543,7 +546,7 @@ export class CarDispatchController {
     const ds = await this.prisma.carDispatchRequest.findMany({ where: { id: { in: ids } }, include: { car: true, requester: true } });
     const map: Record<string, any> = {};
     for (const d of ds) map[d.id] = d;
-    const fmt = (d: any) => d ? { carName: d.car?.name ?? '', requesterName: d.requester?.name ?? '', startAt: d.startAt, endAt: d.endAt, destination: d.destination } : null;
+    const fmt = (d: any) => d ? { carName: d.car?.name ?? '', carType: d.car?.type ?? '', requesterName: d.requester?.name ?? '', startAt: d.startAt, endAt: d.endAt, destination: d.destination } : null;
     return reqs.map((r) => ({ id: r.id, status: r.status, note: r.note || '', from: fmt(map[r.fromDispatchId]), to: fmt(map[r.toDispatchId]) }));
   }
 
@@ -800,6 +803,7 @@ export class CarDispatchController {
       id: r.id,
       carId: r.carId,
       carName: r.car?.name ?? '',
+      carType: r.car?.type ?? '',
       carPlateNo: r.car?.plateNo ?? '',
       requesterId: r.requesterId,
       requesterName: r.driverName || r.requester?.name || '', // 긴급 등록은 운전자명 우선
@@ -838,6 +842,7 @@ export class CarDispatchController {
       id: rec.id,
       carId: rec.carId,
       carName: rec.car?.name ?? '',
+      carType: rec.car?.type ?? '',
       requesterId: rec.requesterId,
       requesterName: rec.requester?.name ?? '',
       approverId: rec.approverId,
