@@ -30,12 +30,12 @@ export function ApprovalsInbox() {
 
   useEffect(() => {
     if (userId) void load();
-  }, [userId, statusFilter, subjectTypeFilter, page]);
+  }, [userId, statusFilter, subjectTypeFilter, typeFilter, page]);
 
   // Reset page when filter changes
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, subjectTypeFilter]);
+  }, [statusFilter, subjectTypeFilter, typeFilter]);
 
   async function load() {
     if (!userId) return;
@@ -46,6 +46,7 @@ export function ApprovalsInbox() {
       params.set('approverId', userId);
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
       if (subjectTypeFilter !== 'ALL') params.set('subjectType', subjectTypeFilter);
+      else if (typeFilter !== 'ALL') params.set('subjectGroup', typeFilter); // 일반결재/신청 그룹 — 서버 필터(페이징 정확)
       // PENDING 필터일 때는 자신의 차례인 것만 보여줌
       if (statusFilter === 'PENDING') params.set('currentApproverOnly', '1');
       params.set('limit', String(PAGE_SIZE));
@@ -80,8 +81,20 @@ export function ApprovalsInbox() {
   }
 
   function markItem(requestId: string, status: 'APPROVED' | 'REJECTED') {
-    setItems((prev) => prev.map((a) => a.id === requestId ? { ...a, status } : a));
-    setActive((prev: any) => prev?.id === requestId ? { ...prev, status } : prev);
+    // PENDING(내 차례) 인박스에서는 처리한 건을 즉시 목록에서 제거하고 총건수 감소.
+    // (그대로 두면 이미 승인한 건이 남아 "리로드하면 또 있다"처럼 보이고 페이징이 어긋남)
+    if (statusFilter === 'PENDING') {
+      setItems((prev) => {
+        const next = prev.filter((a) => a.id !== requestId);
+        if (next.length === 0) setTimeout(() => { void load(); }, 0); // 페이지가 비면 다음 페이지 로드
+        return next;
+      });
+      setTotal((t) => Math.max(0, t - 1));
+      setActive((prev: any) => prev?.id === requestId ? null : prev);
+    } else {
+      setItems((prev) => prev.map((a) => a.id === requestId ? { ...a, status } : a));
+      setActive((prev: any) => prev?.id === requestId ? { ...prev, status } : prev);
+    }
   }
 
   async function approve(requestId: string, cmt?: string) {
@@ -162,13 +175,7 @@ export function ApprovalsInbox() {
         </div>
       </div>
       <div style={{ display: 'grid', gap: 8 }}>
-        {items.filter((a) => {
-          if (typeFilter === 'ALL') return true;
-          const st = String(a._stNorm || a.subjectType || '').toUpperCase();
-          const requestTypes = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
-          const isRequest = requestTypes.includes(st);
-          return typeFilter === 'REQUEST' ? isRequest : !isRequest;
-        }).map((a) => {
+        {items.map((a) => {
           const doc = (a as any)._doc as any | null;
           const stNorm = String((a as any)._stNorm || a.subjectType || '').toUpperCase();
           let title = '문서 정보 없음';
