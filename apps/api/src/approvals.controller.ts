@@ -91,6 +91,9 @@ class ListApprovalsQueryDto {
 
   @IsOptional() @IsString()
   subjectType?: string; // ATTENDANCE, BUSINESS_TRIP, CAR_DISPATCH, LOGISTICS_DISPATCH, etc.
+
+  @IsOptional() @IsString()
+  subjectGroup?: string; // 'REQUEST'(신청류) | 'APPROVAL'(일반결재) — 서버측 그룹 필터
 }
 
 @Controller('approvals')
@@ -101,7 +104,10 @@ export class ApprovalsController {
   async list(@Query() q: ListApprovalsQueryDto) {
     const where: any = {};
     if (q.status) where.status = q.status;
+    const REQUEST_TYPES = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
     if (q.subjectType) where.subjectType = q.subjectType.toUpperCase();
+    else if (q.subjectGroup === 'REQUEST') where.subjectType = { in: REQUEST_TYPES };
+    else if (q.subjectGroup === 'APPROVAL') where.subjectType = { notIn: REQUEST_TYPES };
     if (q.requestedById) where.requestedById = q.requestedById;
     // 결재자 범위와 검색어는 각각 별개의 OR 그룹이므로 AND 로 결합한다.
     // (둘 다 where.OR 에 직접 대입하면 뒤 조건이 앞 조건을 덮어써 결재자 범위가 사라짐)
