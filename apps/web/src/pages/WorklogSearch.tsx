@@ -148,6 +148,18 @@ export function WorklogSearch() {
   const location = useLocation();
   const [isCeo, setIsCeo] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isMobile, setIsMobile] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      if (typeof window === 'undefined') return;
+      setIsMobile(window.innerWidth < 768);
+    };
+    update();
+    if (typeof window !== 'undefined') window.addEventListener('resize', update);
+    return () => { if (typeof window !== 'undefined') window.removeEventListener('resize', update); };
+  }, []);
 
 
   async function search() {
@@ -374,7 +386,29 @@ export function WorklogSearch() {
 
   return (
     <div style={{ maxWidth: 960, margin: '24px auto', display: 'grid', gap: 12, background: '#F8FAFC', padding: '12px', borderRadius: 12 }}>
-      <div style={{ display: 'grid', gap: 8, background: '#FFFFFF', border: '1px solid #E5E7EB', padding: 14, borderRadius: 12, boxShadow: '0 2px 10px rgba(16,24,40,0.04)', position: 'sticky', top: 0, zIndex: 10 }}>
+      <div style={{ display: 'grid', gap: 8, background: '#FFFFFF', border: '1px solid #E5E7EB', padding: isMobile ? 10 : 14, borderRadius: 12, boxShadow: '0 2px 10px rgba(16,24,40,0.04)', position: 'sticky', top: 0, zIndex: 10 }}>
+        {isMobile && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setFiltersOpen((o) => !o)}
+              style={{ flex: '0 0 auto' }}
+            >
+              {filtersOpen ? '▲ 필터 닫기' : '▼ 필터'}
+            </button>
+            <input
+              placeholder="검색어"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { setMode('list'); search(); } }}
+              style={{ ...input, flex: 1, minWidth: 0, padding: '8px 10px' }}
+            />
+            <LoadingButton className="btn btn-primary" onClick={() => { setMode('list'); search(); }} loading={loading}>검색</LoadingButton>
+          </div>
+        )}
+        {(!isMobile || filtersOpen) && (
+        <>
         <div className="resp-3">
           <select
             value={teamId}
@@ -454,6 +488,8 @@ export function WorklogSearch() {
           ) : null}
           <LoadingButton className="btn btn-primary" onClick={() => { setMode('list'); search(); }} loading={loading}>검색</LoadingButton>
         </div>
+        </>
+        )}
       </div>
 
       {error && <div style={{ color: 'red' }}>{error}</div>}
