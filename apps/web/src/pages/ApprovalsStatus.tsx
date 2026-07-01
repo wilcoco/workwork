@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
 import { UserAvatar } from '../components/UserAvatar';
 import { ApprovalStepLadder, type ApprovalStep } from '../components/ApprovalSteps';
+import { MemberComboFilter } from '../components/MemberComboFilter';
 
 export function ApprovalsStatus() {
   const [filters, setFilters] = useState<{ requestedById?: string; approverId?: string; query?: string; from?: string; to?: string; status?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' }>({});
@@ -139,22 +140,22 @@ export function ApprovalsStatus() {
       </div>
 
       <div style={{ display: 'grid', gap: 8, gridTemplateColumns: isMobile ? '1fr' : 'repeat(6, minmax(0, 1fr))' }}>
-        <select value={filters.requestedById || ''} onChange={(e) => onChange('requestedById', e.target.value)} style={input}>
-          <option value="">요청자(전체)</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name}{u.orgName ? ` (${u.orgName})` : ''}
-            </option>
-          ))}
-        </select>
-        <select value={filters.approverId || ''} onChange={(e) => onChange('approverId', e.target.value)} style={input}>
-          <option value="">현재 결재자(전체)</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.name}{u.orgName ? ` (${u.orgName})` : ''}
-            </option>
-          ))}
-        </select>
+        <MemberComboFilter
+          id="approval-status-requester"
+          users={users}
+          value={filters.requestedById || ''}
+          onChange={(uid) => onChange('requestedById', uid)}
+          placeholder="요청자 검색/선택"
+          style={input}
+        />
+        <MemberComboFilter
+          id="approval-status-approver"
+          users={users}
+          value={filters.approverId || ''}
+          onChange={(uid) => onChange('approverId', uid)}
+          placeholder="현재 결재자 검색/선택"
+          style={input}
+        />
         <select value={filters.status || ''} onChange={(e) => onChange('status', e.target.value)} style={input}>
           <option value="">상태(전체)</option>
           <option value="PENDING">미결재</option>

@@ -24,10 +24,25 @@ export function ApprovalsInbox() {
   const [total, setTotal] = useState(0);
   const [nameInput, setNameInput] = useState('');   // 신청자 이름 입력(즉시)
   const [nameQuery, setNameQuery] = useState('');    // 신청자 이름(디바운스 적용)
+  const [memberNames, setMemberNames] = useState<string[]>([]); // 드롭다운용 구성원 이름 목록
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
     if (uid) setUserId(uid);
+  }, []);
+
+  // 구성원 이름 목록(드롭다운/자동완성용) 로드
+  useEffect(() => {
+    let alive = true;
+    apiJson<{ items: Array<{ name?: string }> }>('/api/users')
+      .then((res) => {
+        if (!alive) return;
+        const names = Array.from(new Set((res.items || []).map((u) => String(u.name || '').trim()).filter(Boolean)))
+          .sort((a, b) => a.localeCompare(b, 'ko'));
+        setMemberNames(names);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
   }, []);
 
   // 이름 입력 디바운스 (300ms)
@@ -177,9 +192,13 @@ export function ApprovalsInbox() {
           <input
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
-            placeholder="신청자 이름"
-            style={{ ...input, width: 120 }}
+            placeholder="신청자 검색/선택"
+            list="approval-member-names"
+            style={{ ...input, width: 140 }}
           />
+          <datalist id="approval-member-names">
+            {memberNames.map((n) => (<option key={n} value={n} />))}
+          </datalist>
           {nameInput && (
             <button
               type="button"
