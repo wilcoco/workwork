@@ -94,6 +94,9 @@ class ListApprovalsQueryDto {
 
   @IsOptional() @IsString()
   subjectGroup?: string; // 'REQUEST'(신청류) | 'APPROVAL'(일반결재) — 서버측 그룹 필터
+
+  @IsOptional() @IsString()
+  requesterName?: string; // 신청자(구성원) 이름으로 필터
 }
 
 @Controller('approvals')
@@ -127,6 +130,10 @@ export class ApprovalsController {
         { approver: { name: { contains: term, mode: 'insensitive' as any } } },
         { steps: { some: { comment: { contains: term, mode: 'insensitive' as any } } } },
       ] });
+    }
+    const rname = String(q.requesterName || '').trim();
+    if (rname) {
+      and.push({ requestedBy: { name: { contains: rname, mode: 'insensitive' as any } } });
     }
     if (and.length) where.AND = and;
     if (q.from || q.to) {
@@ -252,6 +259,10 @@ export class ApprovalsController {
         { approver: { name: { contains: term, mode: 'insensitive' as any } } },
         { steps: { some: { comment: { contains: term, mode: 'insensitive' as any } } } },
       ] });
+    }
+    const rname = String(q.requesterName || '').trim();
+    if (rname) {
+      and.push({ requestedBy: { name: { contains: rname, mode: 'insensitive' as any } } });
     }
     if (and.length) where.AND = and;
     if (q.from || q.to) {

@@ -22,20 +22,28 @@ export function ApprovalsInbox() {
   const [worklogPopup, setWorklogPopup] = useState<{ id: string; title: string; contentHtml: string; note: string; files?: any[]; createdAt: string; createdBy?: { name: string } } | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [nameInput, setNameInput] = useState('');   // 신청자 이름 입력(즉시)
+  const [nameQuery, setNameQuery] = useState('');    // 신청자 이름(디바운스 적용)
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
     if (uid) setUserId(uid);
   }, []);
 
+  // 이름 입력 디바운스 (300ms)
+  useEffect(() => {
+    const t = setTimeout(() => setNameQuery(nameInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [nameInput]);
+
   useEffect(() => {
     if (userId) void load();
-  }, [userId, statusFilter, subjectTypeFilter, typeFilter, page]);
+  }, [userId, statusFilter, subjectTypeFilter, typeFilter, nameQuery, page]);
 
   // Reset page when filter changes
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, subjectTypeFilter, typeFilter]);
+  }, [statusFilter, subjectTypeFilter, typeFilter, nameQuery]);
 
   async function load() {
     if (!userId) return;
@@ -49,6 +57,7 @@ export function ApprovalsInbox() {
       else if (typeFilter !== 'ALL') params.set('subjectGroup', typeFilter); // 일반결재/신청 그룹 — 서버 필터(페이징 정확)
       // PENDING 필터일 때는 자신의 차례인 것만 보여줌
       if (statusFilter === 'PENDING') params.set('currentApproverOnly', '1');
+      if (nameQuery) params.set('requesterName', nameQuery); // 신청자(구성원) 이름 필터
       params.set('limit', String(PAGE_SIZE));
       params.set('offset', String((page - 1) * PAGE_SIZE));
       params.set('withTotal', '1');
@@ -162,6 +171,23 @@ export function ApprovalsInbox() {
             <option value="APPROVAL">일반 결재</option>
             <option value="REQUEST">신청</option>
           </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>구성원</label>
+          <input
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            placeholder="신청자 이름"
+            style={{ ...input, width: 120 }}
+          />
+          {nameInput && (
+            <button
+              type="button"
+              onClick={() => setNameInput('')}
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: 14 }}
+              title="지우기"
+            >✕</button>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <label style={{ fontSize: 12, color: '#475569' }}>신청 종류</label>
