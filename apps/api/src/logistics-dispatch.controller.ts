@@ -7,7 +7,7 @@ class CreateLogisticsDispatchDto {
   requesterId!: string;
 
   @IsOptional()
-  approvalLine?: string[]; // ordered list of approver userIds; 홍규현 auto-prepended if not first
+  approvalLine?: string[]; // ordered list of approver userIds; 윤대룡(물류배차 담당) auto-prepended if not first
 
   @IsString()
   vehicleType!: string;
@@ -54,13 +54,13 @@ export class LogisticsDispatchController {
         throw new BadRequestException('유효하지 않은 일시입니다');
       }
 
-      // 1차는 항상 홍규현, 이후 프론트에서 넘긴 순서대로
-      const CAR_MANAGER_NAME = '홍규현';
+      // 1차는 항상 물류배차 담당(윤대룡), 이후 프론트에서 넘긴 순서대로
+      const CAR_MANAGER_NAME = '윤대룡';
       const carManager = await this.prisma.user.findFirst({ where: { name: CAR_MANAGER_NAME }, select: { id: true } });
       const carManagerId = carManager?.id;
       if (!carManagerId) throw new BadRequestException(`배차 담당자(${CAR_MANAGER_NAME})를 찾을 수 없습니다`);
 
-      // 결재라인 구성: 홍규현이 1번째 없으면 앞에 추가
+      // 결재라인 구성: 담당자가 1번째 없으면 앞에 추가
       const rawLine: string[] = (dto.approvalLine || []).filter(Boolean);
       const approvalLine = rawLine[0] === carManagerId ? rawLine : [carManagerId, ...rawLine];
       const firstApprover = approvalLine[0];

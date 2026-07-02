@@ -113,8 +113,8 @@ export function CarDispatchLogistics() {
       const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>('/api/users');
       const all = res.items || [];
       setMembers(all);
-      const hongGyuHyeon = all.find((m) => m.name === '홍규현');
-      if (hongGyuHyeon) setApproverIds([hongGyuHyeon.id]);
+      const dispatchManager = all.find((m) => m.name === '윤대룡');
+      if (dispatchManager) setApproverIds([dispatchManager.id]);
     } catch {}
   }
 
@@ -181,8 +181,8 @@ export function CarDispatchLogistics() {
       });
       setVehicleType(''); setLoadingPlace(''); setLoadingAt(''); setLoadingContact(''); setLoadingPhone('');
       setUnloadingPlace(''); setUnloadingAt(''); setUnloadingContact(''); setUnloadingPhone(''); setCargoDetails('');
-      const hongGyuHyeon = members.find((m) => m.name === '홍규현');
-      setApproverIds(hongGyuHyeon ? [hongGyuHyeon.id] : ['']);
+      const dispatchManager = members.find((m) => m.name === '윤대룡');
+      setApproverIds(dispatchManager ? [dispatchManager.id] : ['']);
       await loadCalendar();
       await loadList();
     } catch (err: any) {
