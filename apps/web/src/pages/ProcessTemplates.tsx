@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { BpmnEditor } from '../components/BpmnEditor';
 import { BpmnFormEditor } from '../components/BpmnFormEditor';
+import { friendlyEdgeLabel } from '../components/bpmnVisual';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
@@ -61,6 +62,30 @@ interface ProcessTemplateHistoryEntry {
   userId?: string | null;
   user?: { id: string; name: string } | null;
   attrs?: any;
+}
+
+function nodeKindLabel(type?: string, taskType?: string): string {
+  const t = String(type || 'task');
+  if (t === 'start') return '시작';
+  if (t === 'end') return '종료';
+  if (t === 'gateway_parallel') return '병렬 게이트(AND · 모든 경로 동시 진행)';
+  if (t === 'gateway_xor') return '분기 게이트(XOR · 조건에 따라 한 경로 선택)';
+  const tt = String(taskType || '').toUpperCase();
+  if (tt === 'WORKLOG') return '업무 · 업무일지';
+  if (tt === 'COOPERATION') return '업무 · 업무요청';
+  if (tt === 'APPROVAL') return '결재';
+  if (tt === 'TASK') return '업무 · 일반';
+  return '업무';
+}
+
+function taskTypeLabel(tt?: string): string {
+  switch (String(tt || '').toUpperCase()) {
+    case 'WORKLOG': return '업무일지';
+    case 'COOPERATION': return '업무요청';
+    case 'APPROVAL': return '결재';
+    case 'TASK': return '일반';
+    default: return tt || '업무';
+  }
 }
 
 export function ProcessTemplates() {
@@ -540,6 +565,137 @@ export function ProcessTemplates() {
     }
   }
 
+  // ── AI가 내용을 읽을 수 있는 포맷(.md)으로 템플릿 내보내기 ──────────────
+  const nameMapsRef = useRef<{ users: Record<string, string>; orgs: Record<string, string>; loaded: boolean }>({ users: {}, orgs: {}, loaded: false });
+
+  async function ensureNameMaps() {
+    if (nameMapsRef.current.loaded) return nameMapsRef.current;
+    const users: Record<string, string> = {};
+    const orgs: Record<string, string> = {};
+    try {
+      const [o, u] = await Promise.all([
+        apiJson<{ items: Array<{ id: string; name: string }> }>('/api/orgs').catch(() => ({ items: [] as Array<{ id: string; name: string }> })),
+        apiJson<{ items: Array<{ id: string; name: string; orgName?: string }> }>('/api/orgs/members/all').catch(() => ({ items: [] as Array<{ id: string; name: string; orgName?: string }> })),
+      ]);
+      (o.items || []).forEach((x) => { orgs[String(x.id)] = x.name; });
+      (u.items || []).forEach((x) => { users[String(x.id)] = x.orgName ? `${x.name} (${x.orgName})` : x.name; });
+    } catch {}
+    nameMapsRef.current = { users, orgs, loaded: true };
+    return nameMapsRef.current;
+  }
+
+  function buildTemplateMarkdown(t: ProcessTemplateDto, maps: { users: Record<string, string>; orgs: Record<string, string> }): string {
+    const L: string[] = [];
+    const p = (s = '') => L.push(s);
+    const uname = (id?: string) => (id ? (maps.users[String(id)] || `사용자#${id}`) : '');
+    const oname = (id?: string) => (id ? (maps.orgs[String(id)] || `조직#${id}`) : '');
+
+    p(`# 프로세스 템플릿: ${t.title || '(제목 없음)'}`);
+    p();
+    p('## 기본 정보');
+    p(`- 유형: ${t.type === 'RECURRING' ? '반복 업무' : '프로젝트'}`);
+    p(`- 상태: ${String(t.status || '').toUpperCase() === 'DRAFT' ? '초안' : (t.status || '-')}`);
+    p(`- 공식 템플릿: ${t.official ? '예' : '아니오'}`);
+    p(`- 공개 범위: ${t.visibility}`);
+    if (t.expectedDurationDays != null) p(`- 예상 소요: ${t.expectedDurationDays}일`);
+    const crit = stripHtml(t.expectedCompletionCriteria || '');
+    if (crit) p(`- 완료 기준: ${crit}`);
+    p();
+    const desc = stripHtml(t.description || '');
+    if (desc) { p('## 설명'); p(desc); p(); }
+
+    let bpmn: any = null;
+    try {
+      const raw: any = (t as any).bpmnJson;
+      bpmn = typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw || null);
+    } catch { bpmn = null; }
+    const nodes: any[] = (bpmn && Array.isArray(bpmn.nodes)) ? bpmn.nodes : [];
+    const edges: any[] = (bpmn && Array.isArray(bpmn.edges)) ? bpmn.edges : [];
+    const nodeName = (id: string) => {
+      const n = nodes.find((x) => String(x.id) === String(id));
+      if (!n) return String(id);
+      return (n.name && String(n.name)) || nodeKindLabel(n.type, n.taskType);
+    };
+
+    if (nodes.length) {
+      p('## 업무 흐름 (단계)');
+      p();
+      nodes.forEach((n, i) => {
+        const title = (n.name && String(n.name)) || nodeKindLabel(n.type, n.taskType);
+        p(`### ${i + 1}. ${title}`);
+        p(`- 종류: ${nodeKindLabel(n.type, n.taskType)}`);
+        if (n.assigneeType === 'USER' && n.assigneeUserId) p(`- 담당: ${uname(n.assigneeUserId)}`);
+        else if (n.assigneeType === 'ORG_UNIT' && n.assigneeOrgUnitId) p(`- 담당 조직: ${oname(n.assigneeOrgUnitId)} (해당 조직 팀장에게 배정)`);
+        else if (n.assigneeType === 'ROLE' && n.assigneeRoleCode) p(`- 담당 역할: ${n.assigneeRoleCode}`);
+        else if (n.type === 'task') p('- 담당: (미지정 — 실행 시 배정)');
+        if (n.assigneeHint) p(`- 담당자 힌트: ${n.assigneeHint}`);
+        const appr = String(n.approvalUserIds || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (appr.length) p(`- 결재선(순서대로): ${appr.map((id: string) => uname(id)).join(' → ')}`);
+        if (n.stageLabel) p(`- 스테이지: ${n.stageLabel}`);
+        const bits: string[] = [];
+        if (n.deadlineOffsetDays != null) bits.push(`마감 D+${n.deadlineOffsetDays}일`);
+        if (n.slaHours != null) bits.push(`SLA ${n.slaHours}시간`);
+        if (bits.length) p(`- 기한: ${bits.join(', ')}`);
+        const ndesc = stripHtml(n.description || '');
+        if (ndesc) p(`- 설명: ${ndesc}`);
+        p();
+      });
+
+      if (edges.length) {
+        p('## 흐름 연결');
+        p();
+        edges.forEach((e) => {
+          const label = friendlyEdgeLabel(e.condition, !!e.isLoopBack);
+          const cond = label ? ` — ${label}` : '';
+          const loop = e.isLoopBack ? ' [반려 루프백: 이전 단계로 되돌림]' : '';
+          p(`- ${nodeName(e.source)} → ${nodeName(e.target)}${cond}${loop}`);
+        });
+        p();
+      }
+    }
+
+    const tasks = t.tasks || [];
+    if (tasks.length) {
+      p('## 과제 목록 (순차)');
+      p();
+      tasks.slice().sort((a, b) => (a.orderHint ?? 0) - (b.orderHint ?? 0)).forEach((tk, i) => {
+        p(`${i + 1}. [${taskTypeLabel(tk.taskType)}] ${tk.name || '(이름 없음)'}${tk.stageLabel ? ` · ${tk.stageLabel}` : ''}`);
+        const d = stripHtml(tk.description || '');
+        if (d) p(`   - 설명: ${d}`);
+      });
+      p();
+    }
+
+    if (bpmn) {
+      p('---');
+      p('## 원본 BPMN JSON (정확한 구조 참조용)');
+      p('```json');
+      p(JSON.stringify(bpmn, null, 2));
+      p('```');
+    }
+
+    return L.join('\n');
+  }
+
+  async function downloadTemplateForAi(t: ProcessTemplateDto) {
+    try {
+      const maps = await ensureNameMaps();
+      const md = buildTemplateMarkdown(t, maps);
+      const safe = (t.title || 'template').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60).trim() || 'template';
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `프로세스템플릿_${safe}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      alert('다운로드 파일 생성에 실패했습니다.');
+    }
+  }
+
   function updateTask(idx: number, patch: Partial<ProcessTaskTemplateDto>) {
     if (!editing) return;
     const nextTasks = editing.tasks.map((t, i) => (i === idx ? { ...t, ...patch } : t));
@@ -761,6 +917,13 @@ export function ProcessTemplates() {
                 {it.official ? (
                   <span style={{ fontSize: 11, color: '#065f46', background: '#d1fae5', border: '1px solid #34d399', padding: '0px 6px', borderRadius: 6 }}>공식</span>
                 ) : null}
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 8px', height: 'auto', minHeight: 0 }}
+                  title="AI가 내용을 읽을 수 있는 형식(.md)으로 다운로드"
+                  onClick={(e) => { e.stopPropagation(); downloadTemplateForAi(it); }}
+                >⬇ AI용 다운로드</button>
               </div>
               <div style={{ fontSize: 12, color: '#6b7280' }}>{stripHtml(it.description || '').slice(0, 180)}</div>
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
