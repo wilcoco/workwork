@@ -1,8 +1,11 @@
 import { Controller, Get, Post, Body, Param, Query, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
-// OT 검증 페이지에서 승인/반려를 최종 확정할 수 있는 단 한 계정(홍정수 · 관리각자대표)
+// OT 검증 페이지에서 승인/반려를 최종 확정할 수 있는 단 한 계정.
+// 홍정수 대표의 Teams/M365 로그인 계정(User.email = M365 UPN). 시스템 전반의 관리자 식별 이메일과 동일.
+// (소문자로 저장 — 비교 시 양쪽 소문자로 맞춰 대소문자 차이 방지)
 const OT_OVERRIDE_EMAIL = 'json@cams2002.onmicrosoft.com';
+const isOtOverrideUser = (email?: string | null) => String(email || '').trim().toLowerCase() === OT_OVERRIDE_EMAIL;
 
 type AccessRecord = {
   id: number;
@@ -72,7 +75,7 @@ export class OtVerificationController {
         select: { role: true, email: true },
       });
       isExec = actor?.role === 'CEO' || actor?.role === 'EXEC';
-      canOverride = actor?.email === OT_OVERRIDE_EMAIL;
+      canOverride = isOtOverrideUser(actor?.email);
     }
 
     // OT 신청 조회 (HOLIDAY_WORK 제외, OT만)
@@ -255,7 +258,7 @@ export class OtVerificationController {
       where: { id: actorId },
       select: { email: true, name: true },
     });
-    if (!actor || actor.email !== OT_OVERRIDE_EMAIL) {
+    if (!actor || !isOtOverrideUser(actor.email)) {
       throw new ForbiddenException('OT 승인/반려를 최종 확정할 권한이 없습니다');
     }
 
