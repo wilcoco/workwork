@@ -340,29 +340,53 @@ export class ApprovalsController {
   async batchSubjects(@Body() body: { items: Array<{ subjectType: string; subjectId: string }> }) {
     const list = Array.isArray(body?.items) ? body.items.slice(0, 50) : [];
     const results: Record<string, any> = {};
+
+    // 타입별로 id를 모아 IN 벌크 조회 (건별 findUnique N회 → 타입당 1회, 병렬 실행)
+    const idsByType: Record<string, Set<string>> = {};
     for (const item of list) {
-      const key = `${item.subjectType}::${item.subjectId}`;
-      if (results[key] !== undefined) continue;
       const st = String(item.subjectType || '').toUpperCase();
       const sid = item.subjectId;
-      try {
-        if ((st === 'WORKLOG' || st === 'WORKLOGS') && sid) {
-          results[key] = await this.prisma.worklog.findUnique({ where: { id: sid }, include: { createdBy: { select: { id: true, name: true } } } });
-        } else if (st === 'CAR_DISPATCH' && sid) {
-          results[key] = await this.prisma.carDispatchRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } }, car: { select: { name: true, type: true } } } });
-        } else if (st === 'LOGISTICS_DISPATCH' && sid) {
-          results[key] = await (this.prisma as any).logisticsDispatchRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } } } });
-        } else if (st === 'ATTENDANCE' && sid) {
-          results[key] = await this.prisma.attendanceRequest.findUnique({ where: { id: sid }, include: { user: { select: { id: true, name: true } } } });
-        } else if (st === 'BUSINESS_TRIP' && sid) {
-          results[key] = await (this.prisma as any).businessTripRequest.findUnique({ where: { id: sid }, include: { requester: { select: { id: true, name: true } } } });
-        } else if (st === 'PROCESS' && sid) {
-          results[key] = await this.prisma.processInstance.findUnique({ where: { id: sid }, include: { startedBy: { select: { id: true, name: true } } } });
-        } else {
-          results[key] = null;
-        }
-      } catch {
-        results[key] = null;
+      if (!sid) continue;
+      if (!idsByType[st]) idsByType[st] = new Set();
+      idsByType[st].add(sid);
+    }
+    const ids = (st: string) => Array.from(idsByType[st] || []);
+    const toMap = (rows: any[]): Record<string, any> => {
+      const m: Record<string, any> = {};
+      for (const r of rows) if (r && r.id) m[r.id] = r;
+      return m;
+    };
+
+    try {
+      const worklogIds = [...ids('WORKLOG'), ...ids('WORKLOGS')];
+      const [worklogs, cars, logistics, attendance, trips, processes] = await Promise.all([
+        worklogIds.length ? this.prisma.worklog.findMany({ where: { id: { in: worklogIds } }, include: { createdBy: { select: { id: true, name: true } } } }) : Promise.resolve([]),
+        ids('CAR_DISPATCH').length ? this.prisma.carDispatchRequest.findMany({ where: { id: { in: ids('CAR_DISPATCH') } }, include: { requester: { select: { id: true, name: true } }, car: { select: { name: true, type: true } } } }) : Promise.resolve([]),
+        ids('LOGISTICS_DISPATCH').length ? (this.prisma as any).logisticsDispatchRequest.findMany({ where: { id: { in: ids('LOGISTICS_DISPATCH') } }, include: { requester: { select: { id: true, name: true } } } }) : Promise.resolve([]),
+        ids('ATTENDANCE').length ? this.prisma.attendanceRequest.findMany({ where: { id: { in: ids('ATTENDANCE') } }, include: { user: { select: { id: true, name: true } } } }) : Promise.resolve([]),
+        ids('BUSINESS_TRIP').length ? (this.prisma as any).businessTripRequest.findMany({ where: { id: { in: ids('BUSINESS_TRIP') } }, include: { requester: { select: { id: true, name: true } } } }) : Promise.resolve([]),
+        ids('PROCESS').length ? this.prisma.processInstance.findMany({ where: { id: { in: ids('PROCESS') } }, include: { startedBy: { select: { id: true, name: true } } } }) : Promise.resolve([]),
+      ]);
+      const wlMap = toMap(worklogs as any[]);
+      const maps: Record<string, Record<string, any>> = {
+        WORKLOG: wlMap,
+        WORKLOGS: wlMap,
+        CAR_DISPATCH: toMap(cars as any[]),
+        LOGISTICS_DISPATCH: toMap(logistics as any[]),
+        ATTENDANCE: toMap(attendance as any[]),
+        BUSINESS_TRIP: toMap(trips as any[]),
+        PROCESS: toMap(processes as any[]),
+      };
+      for (const item of list) {
+        const key = `${item.subjectType}::${item.subjectId}`;
+        if (results[key] !== undefined) continue;
+        const st = String(item.subjectType || '').toUpperCase();
+        results[key] = (maps[st] && maps[st][item.subjectId]) ?? null;
+      }
+    } catch {
+      for (const item of list) {
+        const key = `${item.subjectType}::${item.subjectId}`;
+        if (results[key] === undefined) results[key] = null;
       }
     }
     return { results };

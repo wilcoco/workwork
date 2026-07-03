@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LoadingButton } from '../components/LoadingButton';
 import { apiJson, apiUrl } from '../lib/api';
 import { WorklogDocument } from '../components/WorklogDocument';
@@ -25,6 +25,7 @@ export function ApprovalsInbox() {
   const [nameInput, setNameInput] = useState('');   // 신청자 이름 입력(즉시)
   const [nameQuery, setNameQuery] = useState('');    // 신청자 이름(디바운스 적용)
   const [memberNames, setMemberNames] = useState<string[]>([]); // 드롭다운용 구성원 이름 목록
+  const loadSeq = useRef(0); // 최신 로드만 반영(오래된 응답 무시)
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -62,6 +63,7 @@ export function ApprovalsInbox() {
 
   async function load() {
     if (!userId) return;
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
     try {
@@ -77,29 +79,36 @@ export function ApprovalsInbox() {
       params.set('offset', String((page - 1) * PAGE_SIZE));
       params.set('withTotal', '1');
       const res = await apiJson<{ items: any[]; total?: number }>(`/api/approvals?${params.toString()}`);
+      if (seq !== loadSeq.current) return; // 더 최신 로드가 진행 중이면 무시
       setTotal(res.total ?? res.items?.length ?? 0);
       const base = (res.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      // Batch fetch all subject docs in one call to avoid N+1
-      let docMap: Record<string, any> = {};
-      try {
-        const batchItems = base.map((a: any) => ({ subjectType: String(a.subjectType || ''), subjectId: String(a.subjectId || '') }));
-        const batchRes = await apiJson<{ results: Record<string, any> }>(`/api/approvals/batch-subjects`, {
-          method: 'POST',
-          body: JSON.stringify({ items: batchItems }),
-        });
-        docMap = batchRes.results || {};
-      } catch {}
-      const enriched = base.map((a: any) => {
-        const stNorm = String(a.subjectType || '').toUpperCase();
-        const key = `${a.subjectType}::${a.subjectId}`;
-        const doc = docMap[key] ?? null;
-        const finalDoc = stNorm === 'PROCESS' && doc ? { process: doc, summaryTasks: [], pendingTask: null } : doc;
-        return { ...a, _doc: finalDoc, _stNorm: stNorm };
-      });
-      setItems(enriched);
+      // 1) 목록을 먼저 즉시 표시(문서 상세 없이). 상세는 아래에서 백그라운드로 채운다.
+      setItems(base.map((a: any) => ({ ...a, _doc: null, _stNorm: String(a.subjectType || '').toUpperCase() })));
+      setLoading(false);
+      // 2) 문서 상세(신청 내용)는 배치 조회 후 병합 — 목록 렌더를 막지 않는다.
+      if (base.length) {
+        void (async () => {
+          try {
+            const batchItems = base.map((a: any) => ({ subjectType: String(a.subjectType || ''), subjectId: String(a.subjectId || '') }));
+            const batchRes = await apiJson<{ results: Record<string, any> }>(`/api/approvals/batch-subjects`, {
+              method: 'POST',
+              body: JSON.stringify({ items: batchItems }),
+            });
+            if (seq !== loadSeq.current) return; // stale
+            const docMap = batchRes.results || {};
+            setItems((prev) => prev.map((a: any) => {
+              const stNorm = String(a.subjectType || '').toUpperCase();
+              const key = `${a.subjectType}::${a.subjectId}`;
+              const doc = docMap[key] ?? null;
+              const finalDoc = stNorm === 'PROCESS' && doc ? { process: doc, summaryTasks: [], pendingTask: null } : doc;
+              return { ...a, _doc: finalDoc, _stNorm: stNorm };
+            }));
+          } catch {}
+        })();
+      }
     } catch (e: any) {
+      if (seq !== loadSeq.current) return;
       setError(e?.message || '로드 실패');
-    } finally {
       setLoading(false);
     }
   }

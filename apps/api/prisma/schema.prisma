@@ -526,6 +526,10 @@ model ApprovalRequest {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   steps          ApprovalStep[]
+
+  @@index([approverId, status])
+  @@index([requestedById, status])
+  @@index([status, createdAt])
 }
 
 model ApprovalStep {
@@ -538,6 +542,9 @@ model ApprovalStep {
   status     ApprovalStatus  @default(PENDING)
   comment    String?
   actedAt    DateTime?
+
+  @@index([approverId, status])
+  @@index([requestId])
 }
 
 model Share {
