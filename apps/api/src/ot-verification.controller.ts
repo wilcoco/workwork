@@ -485,15 +485,15 @@ export class OtVerificationController {
     if (sorted.length === 1) {
       // 기록이 1개뿐
       verificationStatus = 'WARN';
-      note = `입출입 기록 1건만 있음 (${firstTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})`;
+      note = `입출입 기록 1건만 있음 (${firstTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })})`;
     } else if (lastTime.getTime() < otEnd.getTime()) {
       // 마지막 기록이 OT 종료 전
       verificationStatus = 'WARN';
-      note = `퇴근(${lastTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})이 OT종료(${otEnd.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}) 전`;
+      note = `퇴근(${lastTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })})이 OT종료(${otEnd.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })}) 전`;
     } else {
       // 정상
       verificationStatus = 'OK';
-      note = `출근 ${firstTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} / 퇴근 ${lastTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+      note = `출근 ${firstTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })} / 퇴근 ${lastTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })}`;
     }
 
     const verified = verificationStatus === 'OK';
