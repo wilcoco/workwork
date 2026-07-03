@@ -139,6 +139,24 @@ export function OtVerification() {
     }
   }
 
+  // 위 일괄 기각 원복 (지정 계정만) — 자동 기각된 건을 '승인'으로 복원
+  async function undoHolidayDuplicates() {
+    if (!confirm(`${month} — 방금 자동 기각한 '휴일근무 중복 OT'를 모두 '승인'으로 원복합니다.\n계속할까요?`)) return;
+    setBulkRejecting(true);
+    try {
+      const res = await apiJson<{ restored: number }>(`/api/ot-verification/undo-holiday-duplicate-reject`, {
+        method: 'POST',
+        body: JSON.stringify({ actorId: userId, month }),
+      });
+      alert(`${res.restored}건을 '승인'으로 원복했습니다.`);
+      void loadData();
+    } catch (e: any) {
+      alert(e?.message || '원복에 실패했습니다');
+    } finally {
+      setBulkRejecting(false);
+    }
+  }
+
   // 승인/반려 최종 확정 (지정 계정만). 실제 결재 상태를 확정한다.
   async function decide(item: OtItem, decision: 'APPROVED' | 'REJECTED') {
     const label = decision === 'APPROVED' ? '승인' : '반려';
@@ -285,7 +303,17 @@ export function OtVerification() {
               title="휴일근무 신청일에 중복 신청된 OT를 일괄 기각합니다"
               style={{ padding: '4px 12px', background: '#b45309', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, opacity: bulkRejecting ? 0.6 : 1 }}
             >
-              {bulkRejecting ? '기각 중…' : '휴일근무 중복 OT 일괄 기각'}
+              {bulkRejecting ? '처리 중…' : '휴일근무 중복 OT 일괄 기각'}
+            </button>
+          )}
+          {canOverride && (
+            <button
+              onClick={() => void undoHolidayDuplicates()}
+              disabled={bulkRejecting}
+              title="방금 일괄 기각한 건을 '승인'으로 원복합니다"
+              style={{ padding: '4px 12px', background: '#fff', color: '#b45309', border: '1px solid #b45309', borderRadius: 6, cursor: 'pointer', fontSize: 13, opacity: bulkRejecting ? 0.6 : 1 }}
+            >
+              일괄 기각 원복
             </button>
           )}
         </div>

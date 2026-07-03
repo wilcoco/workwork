@@ -145,8 +145,8 @@ export function AttendanceReport() {
         const ot = it.otHours != null ? it.otHours : (it.hours != null ? Math.max(0, it.hours - 8) : 0);
         if (comp) entry.counts['HOLIDAY_WORK'] = (entry.counts['HOLIDAY_WORK'] || 0) + comp;
         if (ot) entry.counts['HOLIDAY_OT'] = (entry.counts['HOLIDAY_OT'] || 0) + ot;
-      } else if (isDupOt(it)) {
-        // 휴일근무일에 중복 신청된 OT는 집계 제외(자동 기각 대상)
+      } else if (it.type === 'OT' && String(it.status).toUpperCase() === 'REJECTED') {
+        // 반려된 OT는 집계 제외 (휴일근무 중복 등은 항목별 반려하면 자동 제외)
       } else {
         const key = it.type;
         const val = it.hours != null ? it.hours : (it.days != null ? it.days : 1);
@@ -297,10 +297,10 @@ export function AttendanceReport() {
                           {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}` : '—'}
                         </td>
                         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                          {isDupOt(it) ? (
+                          {it.type === 'OT' && String(it.status).toUpperCase() === 'REJECTED' ? (
                             <div>
                               <div style={{ textDecoration: 'line-through', color: '#94a3b8' }}>{it.hours != null ? `${it.hours.toFixed(1)}h` : '—'}</div>
-                              <div style={{ fontSize: 11, color: '#ef4444', whiteSpace: 'nowrap' }}>휴일근무 중복 · 제외</div>
+                              <div style={{ fontSize: 11, color: '#ef4444', whiteSpace: 'nowrap' }}>반려 · 제외</div>
                             </div>
                           ) : it.type === 'HOLIDAY_WORK' && it.hours != null ? (
                             <div>
@@ -309,7 +309,12 @@ export function AttendanceReport() {
                                 대체 {(it.compHours ?? Math.min(it.hours, 8)).toFixed(0)}h · <span style={{ color: '#7c3aed' }}>잔여OT {(it.otHours ?? Math.max(0, it.hours - 8)).toFixed(1)}h</span>
                               </div>
                             </div>
-                          ) : it.hours != null ? `${it.hours.toFixed(1)}h` : it.days != null ? `${it.days}일` : '—'}
+                          ) : it.hours != null ? (
+                            <div>
+                              {it.hours.toFixed(1)}h
+                              {isDupOt(it) && <div style={{ fontSize: 11, color: '#b45309', whiteSpace: 'nowrap' }}>휴일근무일 OT · 확인</div>}
+                            </div>
+                          ) : it.days != null ? `${it.days}일` : '—'}
                         </td>
                         <td style={td}>
                           <span style={{ color: STATUS_COLORS[it.status] || '#374151', fontWeight: 600, fontSize: 12 }}>
