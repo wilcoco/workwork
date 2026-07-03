@@ -125,6 +125,14 @@ export function AttendanceReport() {
     });
   }, [items, filterType, filterUser]);
 
+  // 휴일근무를 신청한 날(userId+날짜) — 이 날 별도 신청된 OT는 이중신청이라 집계/표시에서 제외
+  const holidayWorkDayKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const it of items) if (it.type === 'HOLIDAY_WORK') s.add(`${it.userId}:${(it.date || '').slice(0, 10)}`);
+    return s;
+  }, [items]);
+  const isDupOt = (it: RecordItem) => it.type === 'OT' && holidayWorkDayKeys.has(`${it.userId}:${(it.date || '').slice(0, 10)}`);
+
   // Summary: per-user totals
   const summary = useMemo(() => {
     const map = new Map<string, { userName: string; teamName: string; counts: Record<string, number> }>();
@@ -137,6 +145,8 @@ export function AttendanceReport() {
         const ot = it.otHours != null ? it.otHours : (it.hours != null ? Math.max(0, it.hours - 8) : 0);
         if (comp) entry.counts['HOLIDAY_WORK'] = (entry.counts['HOLIDAY_WORK'] || 0) + comp;
         if (ot) entry.counts['HOLIDAY_OT'] = (entry.counts['HOLIDAY_OT'] || 0) + ot;
+      } else if (isDupOt(it)) {
+        // 휴일근무일에 중복 신청된 OT는 집계 제외(자동 기각 대상)
       } else {
         const key = it.type;
         const val = it.hours != null ? it.hours : (it.days != null ? it.days : 1);
@@ -287,7 +297,12 @@ export function AttendanceReport() {
                           {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}` : '—'}
                         </td>
                         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                          {it.type === 'HOLIDAY_WORK' && it.hours != null ? (
+                          {isDupOt(it) ? (
+                            <div>
+                              <div style={{ textDecoration: 'line-through', color: '#94a3b8' }}>{it.hours != null ? `${it.hours.toFixed(1)}h` : '—'}</div>
+                              <div style={{ fontSize: 11, color: '#ef4444', whiteSpace: 'nowrap' }}>휴일근무 중복 · 제외</div>
+                            </div>
+                          ) : it.type === 'HOLIDAY_WORK' && it.hours != null ? (
                             <div>
                               <div>{it.hours.toFixed(1)}h</div>
                               <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>

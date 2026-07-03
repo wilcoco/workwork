@@ -485,6 +485,13 @@ export class AttendanceController {
       }
     }
 
+    // 휴일근무를 신청한 날(userId+날짜) 집합 — 이 날 별도 신청된 OT는 이중신청이므로 집계에서 제외
+    // (그날의 정당한 초과분은 HOLIDAY_WORK에서 '잔여 OT'로 자동 계산됨)
+    const holidayWorkDaySet = new Set<string>();
+    for (const it of records) {
+      if (it.type === 'HOLIDAY_WORK') holidayWorkDaySet.add(`${it.userId}:${new Date(it.date).toISOString().slice(0, 10)}`);
+    }
+
     for (const { it, day } of occs) {
       const weekKey = `${it.userId}::${getWeekKey(day)}`; // 개인별 주간 집계
       let agg = weekMap.get(weekKey);
@@ -493,7 +500,8 @@ export class AttendanceController {
         weekMap.set(weekKey, agg);
       }
       if (it.type === 'OT') {
-        if (it.startAt && it.endAt) {
+        const dayKey = `${it.userId}:${new Date(it.date).toISOString().slice(0, 10)}`;
+        if (!holidayWorkDaySet.has(dayKey) && it.startAt && it.endAt) {
           agg.otHours += hoursBetween(it.startAt as any as Date, it.endAt as any as Date);
         }
       } else if (it.type === 'HOLIDAY_WORK') {
@@ -620,6 +628,12 @@ export class AttendanceController {
       return diffMs / (1000 * 60 * 60);
     };
 
+    // 휴일근무를 신청한 날짜 집합 — 이 날 별도 신청된 OT는 이중신청이므로 집계에서 제외
+    const holidayWorkDaySet = new Set<string>();
+    for (const it of records as any[]) {
+      if (it.type === 'HOLIDAY_WORK') holidayWorkDaySet.add(new Date(it.date).toISOString().slice(0, 10));
+    }
+
     for (const it of records as any[]) {
       const d = new Date(it.date);
       const dow = d.getDay();
@@ -627,7 +641,7 @@ export class AttendanceController {
       const agg = getDayAgg(key);
 
       if (it.type === 'OT') {
-        if (it.startAt && it.endAt) {
+        if (it.startAt && it.endAt && !holidayWorkDaySet.has(key)) {
           const h = hoursBetween(it.startAt, it.endAt);
           otHours += h;
           agg.ot += h;

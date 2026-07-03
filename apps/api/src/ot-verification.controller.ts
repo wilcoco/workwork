@@ -307,6 +307,48 @@ export class OtVerificationController {
     return { ok: true, id, status: decision };
   }
 
+  // 휴일근무(대체근무) 신청일에 별도로 신청된 OT(=이중신청)를 일괄 자동 기각 (지정 계정만).
+  @Post('reject-holiday-duplicates')
+  async rejectHolidayDuplicates(@Body() body: { actorId?: string; month?: string }) {
+    const actorId = String(body?.actorId || '');
+    if (!actorId) throw new ForbiddenException('로그인 정보가 필요합니다');
+    const actor = await (this.prisma as any).user.findUnique({ where: { id: actorId }, select: { email: true, name: true } });
+    if (!actor || !isOtOverrideUser(actor.email)) throw new ForbiddenException('권한이 없습니다');
+
+    const now = new Date();
+    const targetMonth = body?.month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const [year, mon] = targetMonth.split('-').map(Number);
+    const lastDay = new Date(year, mon, 0).getDate();
+    const monthStart = new Date(`${year}-${String(mon).padStart(2, '0')}-01T00:00:00+09:00`);
+    const monthEnd = new Date(`${year}-${String(mon).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59+09:00`);
+
+    const [ots, hws] = await Promise.all([
+      (this.prisma as any).attendanceRequest.findMany({ where: { type: 'OT', date: { gte: monthStart, lte: monthEnd } }, select: { id: true, userId: true, date: true, status: true } }),
+      (this.prisma as any).attendanceRequest.findMany({ where: { type: 'HOLIDAY_WORK', date: { gte: monthStart, lte: monthEnd } }, select: { userId: true, date: true } }),
+    ]);
+    const hwSet = new Set<string>();
+    for (const h of hws) hwSet.add(`${h.userId}:${new Date(h.date).toISOString().slice(0, 10)}`);
+
+    const dupOts = ots.filter((o: any) => {
+      const st = String(o.status || '').toUpperCase();
+      return hwSet.has(`${o.userId}:${new Date(o.date).toISOString().slice(0, 10)}`) && st !== 'REJECTED' && st !== 'CANCELLED';
+    });
+
+    const comment = `휴일근무 중복 OT 자동 기각 (${actor.name || ''})`;
+    for (const ot of dupOts) {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        const approval = await tx.approvalRequest.findFirst({ where: { subjectType: 'ATTENDANCE', subjectId: ot.id }, include: { steps: true } });
+        if (approval) {
+          await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: 'REJECTED' } });
+          for (const s of approval.steps || []) await tx.approvalStep.update({ where: { id: s.id }, data: { status: 'REJECTED', actedAt: now, comment } });
+        }
+        await tx.attendanceRequest.update({ where: { id: ot.id }, data: { status: 'REJECTED' } });
+        await tx.event.create({ data: { subjectType: 'ATTENDANCE', subjectId: ot.id, activity: 'OtHolidayDuplicateAutoReject', userId: actorId, attrs: { by: actor.email, comment } } });
+      });
+    }
+    return { ok: true, month: targetMonth, scanned: ots.length, rejected: dupOts.length };
+  }
+
   @Get('access-records')
   async getAccessRecords(
     @Query('employeeId') employeeId?: string,

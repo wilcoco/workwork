@@ -82,6 +82,7 @@ export function OtVerification() {
   const [roleLoading, setRoleLoading] = useState(true);
   const [canOverride, setCanOverride] = useState(false); // 승인/반려 최종 확정 권한 (지정 계정만)
   const [deciding, setDeciding] = useState<string | null>(null); // 처리 중인 OT id
+  const [bulkRejecting, setBulkRejecting] = useState(false); // 휴일근무 중복 OT 일괄 기각 중
 
   useEffect(() => {
     if (!userId) {
@@ -117,6 +118,24 @@ export function OtVerification() {
       setError(e?.message || 'OT 검증 데이터를 불러오지 못했습니다');
     } finally {
       setLoading(false);
+    }
+  }
+
+  // 휴일근무(대체근무) 신청일에 중복 신청된 OT를 일괄 자동 기각 (지정 계정만)
+  async function rejectHolidayDuplicates() {
+    if (!confirm(`${month} — 휴일근무 신청일에 중복 신청된 OT를 모두 기각합니다.\n(그날의 정당한 초과분은 '휴일대체 잔여 OT'로 자동 계산됩니다)\n계속할까요?`)) return;
+    setBulkRejecting(true);
+    try {
+      const res = await apiJson<{ rejected: number; scanned: number }>(`/api/ot-verification/reject-holiday-duplicates`, {
+        method: 'POST',
+        body: JSON.stringify({ actorId: userId, month }),
+      });
+      alert(`중복 OT ${res.rejected}건을 기각했습니다. (검사 ${res.scanned}건)`);
+      void loadData();
+    } catch (e: any) {
+      alert(e?.message || '처리에 실패했습니다');
+    } finally {
+      setBulkRejecting(false);
     }
   }
 
@@ -259,6 +278,16 @@ export function OtVerification() {
           >
             조회
           </button>
+          {canOverride && (
+            <button
+              onClick={() => void rejectHolidayDuplicates()}
+              disabled={bulkRejecting}
+              title="휴일근무 신청일에 중복 신청된 OT를 일괄 기각합니다"
+              style={{ padding: '4px 12px', background: '#b45309', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, opacity: bulkRejecting ? 0.6 : 1 }}
+            >
+              {bulkRejecting ? '기각 중…' : '휴일근무 중복 OT 일괄 기각'}
+            </button>
+          )}
         </div>
       </div>
 
