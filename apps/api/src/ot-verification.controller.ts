@@ -177,10 +177,12 @@ export class OtVerificationController {
       }
 
       const userName = ot.user?.name || user?.name || '';
+      // OT가 자정을 넘기면 종료일이 다음 날이므로, 그 날짜까지 조회해 새벽 퇴근 태그를 포함시킨다
+      const otEndDateKst = otEndAt ? otEndAt.toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' }) : otDate;
       if (employeeNo || userName) {
         try {
-          // OT 날짜만 조회 (해당 날짜의 첫 기록=출근, 마지막 기록=퇴근)
-          accessRecords = await this.fetchAccessRecords(employeeNo || '', otDate, otDate, userName);
+          // OT 시작일 ~ 종료일(자정 넘김 반영) 조회. 첫 기록=출근, 'OT종료+여유' 이내 마지막=퇴근
+          accessRecords = await this.fetchAccessRecords(employeeNo || '', otDate, otEndDateKst, userName);
         } catch (e: any) {
           verificationNote = `입출입 기록 조회 실패: ${e.message}`;
         }
@@ -533,23 +535,30 @@ export class OtVerificationController {
       return { verified: false, verificationStatus: 'FAIL', beforeRecord: null, afterRecord: null, note: '입출입 기록 없음' };
     }
 
-    // 시간순 정렬
+    // 시간순 정렬 (전체)
     const sorted = [...records].sort(
       (a, b) => new Date(a.access_time).getTime() - new Date(b.access_time).getTime(),
     );
 
-    // 단순 로직: 첫 기록 = 출근, 마지막 기록 = 퇴근
-    const firstRecord = sorted[0];
-    const lastRecord = sorted[sorted.length - 1];
+    // 퇴근 후보 창: OT 종료시각 + 여유(4시간) 이내 기록만 사용.
+    // 자정을 넘긴 야근에서 '다음날 아침 출근' 태그가 퇴근으로 오인되는 것을 방지한다.
+    const EXIT_BUFFER_MS = 4 * 60 * 60 * 1000;
+    const windowEndMs = otEnd.getTime() + EXIT_BUFFER_MS;
+    const windowed = sorted.filter((r) => new Date(r.access_time).getTime() <= windowEndMs);
+    const use = windowed.length ? windowed : sorted;
+
+    // 첫 기록 = 출근, (창 이내) 마지막 기록 = 퇴근(= 실제 나간 시각)
+    const firstRecord = use[0];
+    const lastRecord = use[use.length - 1];
 
     const firstTime = new Date(firstRecord.access_time);
     const lastTime = new Date(lastRecord.access_time);
 
-    // 검증: 퇴근 시간이 OT 종료 시간 이후인지
+    // 검증: 실제 나간 시각(퇴근)이 OT 종료 예정시각 이후이면 OK
     let verificationStatus: VerificationStatus = 'OK';
     let note = '';
 
-    if (sorted.length === 1) {
+    if (use.length === 1) {
       // 기록이 1개뿐
       verificationStatus = 'WARN';
       note = `입출입 기록 1건만 있음 (${firstTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Seoul' })})`;

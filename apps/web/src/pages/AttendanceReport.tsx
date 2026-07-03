@@ -132,11 +132,11 @@ export function AttendanceReport() {
       if (!map.has(it.userId)) map.set(it.userId, { userName: it.userName, teamName: it.teamName, counts: {} });
       const entry = map.get(it.userId)!;
       if (it.type === 'HOLIDAY_WORK') {
-        // 휴일근무: 8h 맞교환분 → 휴일근무 열, 초과분 → OT 열로 분리 집계
+        // 휴일근무: 8h 맞교환분 → 휴일근무 열, 정규 8h 초과분 → '휴일대체 잔여 OT' 열로 분리
         const comp = it.compHours != null ? it.compHours : (it.hours != null ? Math.min(it.hours, 8) : 0);
         const ot = it.otHours != null ? it.otHours : (it.hours != null ? Math.max(0, it.hours - 8) : 0);
         if (comp) entry.counts['HOLIDAY_WORK'] = (entry.counts['HOLIDAY_WORK'] || 0) + comp;
-        if (ot) entry.counts['OT'] = (entry.counts['OT'] || 0) + ot;
+        if (ot) entry.counts['HOLIDAY_OT'] = (entry.counts['HOLIDAY_OT'] || 0) + ot;
       } else {
         const key = it.type;
         const val = it.hours != null ? it.hours : (it.days != null ? it.days : 1);
@@ -148,12 +148,11 @@ export function AttendanceReport() {
 
   const allTypes = useMemo(() => {
     const s = new Set(filtered.map((it) => it.type));
-    // 휴일근무 초과분은 OT 열에 반영되므로, 초과분이 있으면 OT 열도 노출
-    if (filtered.some((it) => it.type === 'HOLIDAY_WORK' && ((it.otHours ?? (it.hours != null ? Math.max(0, it.hours - 8) : 0)) > 0))) {
-      s.add('OT');
-    }
     return Object.keys(TYPE_LABELS).filter((t) => s.has(t));
   }, [filtered]);
+
+  // 휴일근무 정규 8h 초과분(= 휴일대체 잔여 OT)이 하나라도 있으면 별도 컬럼 노출
+  const hasHolidayOt = useMemo(() => summary.some((r) => (r.counts['HOLIDAY_OT'] || 0) > 0), [summary]);
 
   const fmt = (d: string | null) => d ? new Date(d).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) : '';
   const fmtTime = (d: string | null) => d ? new Date(d).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -218,6 +217,12 @@ export function AttendanceReport() {
                           </span>
                         </th>
                       ))}
+                      {hasHolidayOt && (
+                        <th style={{ ...th, textAlign: 'right', color: '#7c3aed' }}>
+                          휴일대체 잔여 OT
+                          <span style={{ fontWeight: 400, color: '#a78bfa', marginLeft: 2 }}>(시간)</span>
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -230,6 +235,11 @@ export function AttendanceReport() {
                             {row.counts[t] != null ? (DAY_BASED_TYPES.includes(t) ? `${row.counts[t]}일` : `${row.counts[t].toFixed(1)}h`) : '—'}
                           </td>
                         ))}
+                        {hasHolidayOt && (
+                          <td style={{ ...td, textAlign: 'right', color: '#7c3aed', fontWeight: 600 }}>
+                            {row.counts['HOLIDAY_OT'] ? `${row.counts['HOLIDAY_OT'].toFixed(1)}h` : '—'}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -279,7 +289,7 @@ export function AttendanceReport() {
                             <div>
                               <div>{it.hours.toFixed(1)}h</div>
                               <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
-                                대체 {(it.compHours ?? Math.min(it.hours, 8)).toFixed(0)}h · OT {(it.otHours ?? Math.max(0, it.hours - 8)).toFixed(1)}h
+                                대체 {(it.compHours ?? Math.min(it.hours, 8)).toFixed(0)}h · <span style={{ color: '#7c3aed' }}>잔여OT {(it.otHours ?? Math.max(0, it.hours - 8)).toFixed(1)}h</span>
                               </div>
                             </div>
                           ) : it.hours != null ? `${it.hours.toFixed(1)}h` : it.days != null ? `${it.days}일` : '—'}
