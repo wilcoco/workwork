@@ -47,6 +47,8 @@ type RecordItem = {
   startAt: string | null;
   endAt: string | null;
   hours: number | null;
+  otHours?: number | null;   // 휴일근무의 OT 초과분
+  compHours?: number | null; // 휴일근무의 대체휴무 맞교환분
   days: number | null;
   status: string;
   reason: string | null;
@@ -129,15 +131,27 @@ export function AttendanceReport() {
     for (const it of filtered) {
       if (!map.has(it.userId)) map.set(it.userId, { userName: it.userName, teamName: it.teamName, counts: {} });
       const entry = map.get(it.userId)!;
-      const key = it.type;
-      const val = it.hours != null ? it.hours : (it.days != null ? it.days : 1);
-      entry.counts[key] = (entry.counts[key] || 0) + val;
+      if (it.type === 'HOLIDAY_WORK') {
+        // 휴일근무: 8h 맞교환분 → 휴일근무 열, 초과분 → OT 열로 분리 집계
+        const comp = it.compHours != null ? it.compHours : (it.hours != null ? Math.min(it.hours, 8) : 0);
+        const ot = it.otHours != null ? it.otHours : (it.hours != null ? Math.max(0, it.hours - 8) : 0);
+        if (comp) entry.counts['HOLIDAY_WORK'] = (entry.counts['HOLIDAY_WORK'] || 0) + comp;
+        if (ot) entry.counts['OT'] = (entry.counts['OT'] || 0) + ot;
+      } else {
+        const key = it.type;
+        const val = it.hours != null ? it.hours : (it.days != null ? it.days : 1);
+        entry.counts[key] = (entry.counts[key] || 0) + val;
+      }
     }
     return Array.from(map.entries()).map(([uid, v]) => ({ userId: uid, ...v }));
   }, [filtered]);
 
   const allTypes = useMemo(() => {
     const s = new Set(filtered.map((it) => it.type));
+    // 휴일근무 초과분은 OT 열에 반영되므로, 초과분이 있으면 OT 열도 노출
+    if (filtered.some((it) => it.type === 'HOLIDAY_WORK' && ((it.otHours ?? (it.hours != null ? Math.max(0, it.hours - 8) : 0)) > 0))) {
+      s.add('OT');
+    }
     return Object.keys(TYPE_LABELS).filter((t) => s.has(t));
   }, [filtered]);
 
@@ -261,7 +275,14 @@ export function AttendanceReport() {
                           {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}` : '—'}
                         </td>
                         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                          {it.hours != null ? `${it.hours.toFixed(1)}h` : it.days != null ? `${it.days}일` : '—'}
+                          {it.type === 'HOLIDAY_WORK' && it.hours != null ? (
+                            <div>
+                              <div>{it.hours.toFixed(1)}h</div>
+                              <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                                대체 {(it.compHours ?? Math.min(it.hours, 8)).toFixed(0)}h · OT {(it.otHours ?? Math.max(0, it.hours - 8)).toFixed(1)}h
+                              </div>
+                            </div>
+                          ) : it.hours != null ? `${it.hours.toFixed(1)}h` : it.days != null ? `${it.days}일` : '—'}
                         </td>
                         <td style={td}>
                           <span style={{ color: STATUS_COLORS[it.status] || '#374151', fontWeight: 600, fontSize: 12 }}>

@@ -877,6 +877,13 @@ export class AttendanceController {
       if (DAY_OFF_TYPES.includes(it.type) || it.type === 'HOLIDAY_REST') {
         days = it.endDate ? weekdayCountInMonth(it.date as Date, it.endDate as Date) : 1;
       }
+      const workedHours = (it.type === 'OT' || it.type === 'EARLY_LEAVE' || it.type === 'FLEXIBLE' || it.type === 'HOLIDAY_WORK')
+        ? hoursBetween(it.startAt, it.endAt)
+        : null;
+      // 휴일근무: 8시간은 대체휴무와 맞교환(compHours), 초과분만 OT(otHours)
+      const isHolidayWork = it.type === 'HOLIDAY_WORK';
+      const otHours = isHolidayWork && workedHours != null ? Math.max(0, workedHours - 8) : null;
+      const compHours = isHolidayWork && workedHours != null ? Math.min(workedHours, 8) : null;
       return {
         id: it.id,
         userId: it.userId,
@@ -887,9 +894,9 @@ export class AttendanceController {
         endDate: it.endDate ?? null,
         startAt: it.startAt,
         endAt: it.endAt,
-        hours: (it.type === 'OT' || it.type === 'EARLY_LEAVE' || it.type === 'FLEXIBLE' || it.type === 'HOLIDAY_WORK')
-          ? hoursBetween(it.startAt, it.endAt)
-          : null,
+        hours: workedHours,
+        otHours,   // 휴일근무의 OT 초과분 (그 외 유형은 null)
+        compHours, // 휴일근무의 대체휴무 맞교환분 (그 외 유형은 null)
         days,
         status: it.status,
         reason: it.reason,
