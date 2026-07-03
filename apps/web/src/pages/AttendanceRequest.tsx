@@ -247,6 +247,17 @@ export function AttendanceRequest() {
         alert('대체 휴일(같은 주 평일)을 선택해 주세요');
         return;
       }
+      // 대체휴무는 하루치(8시간)와 맞바꾸는 제도 → 휴일근무가 8시간 이상이어야 함
+      if (startDatetime && endDatetime) {
+        const s = new Date(startDatetime);
+        let e = new Date(endDatetime);
+        if (e <= s) e = new Date(e.getTime() + 24 * 60 * 60 * 1000); // 자정 넘김
+        const h = (e.getTime() - s.getTime()) / (1000 * 60 * 60);
+        if (h < 8) {
+          alert('휴일근무는 8시간 이상만 대체휴무로 신청할 수 있습니다.\n8시간 미만은 OT로 신청하세요.');
+          return;
+        }
+      }
     }
     const cleanedApprovers = approverIds.map((id) => String(id || '').trim()).filter(Boolean);
     if (cleanedApprovers.length === 0) {

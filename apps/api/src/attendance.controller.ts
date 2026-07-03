@@ -189,6 +189,13 @@ export class AttendanceController {
             throw new BadRequestException('휴일 대체 신청의 근무일은 토/일/공휴일만 가능합니다');
           }
 
+          // 대체휴무는 하루치(8시간)와 맞바꾸는 제도이므로 휴일근무가 8시간 이상이어야 한다.
+          // 8시간 미만은 OT로 신청해야 한다.
+          const holidayWorkHours = (startAt && endAt) ? (endAt.getTime() - startAt.getTime()) / (1000 * 60 * 60) : 0;
+          if (holidayWorkHours < 8) {
+            throw new BadRequestException('휴일근무는 8시간 이상만 대체휴무로 신청할 수 있습니다. 8시간 미만은 OT로 신청하세요.');
+          }
+
           // 같은 주(토~금)인지 확인
           const getWeekKey = (d: Date): string => {
             const day = d.getUTCDay();
@@ -421,7 +428,7 @@ export class AttendanceController {
     });
     const holidaySet = new Set<string>(holidayRows.map((h: any) => (h.date as Date).toISOString().slice(0, 10)));
 
-    type WeekAgg = { otHours: number; vacationHours: number; earlyLeaveHours: number };
+    type WeekAgg = { otHours: number; vacationHours: number; earlyLeaveHours: number; holidayBaseHours: number };
     const weekMap = new Map<string, WeekAgg>();
 
     const getWeekKey = (d: Date): string => {
@@ -480,12 +487,18 @@ export class AttendanceController {
       const weekKey = `${it.userId}::${getWeekKey(day)}`; // 개인별 주간 집계
       let agg = weekMap.get(weekKey);
       if (!agg) {
-        agg = { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
+        agg = { otHours: 0, vacationHours: 0, earlyLeaveHours: 0, holidayBaseHours: 0 };
         weekMap.set(weekKey, agg);
       }
-      if (it.type === 'OT' || it.type === 'HOLIDAY_WORK') {
+      if (it.type === 'OT') {
         if (it.startAt && it.endAt) {
           agg.otHours += hoursBetween(it.startAt as any as Date, it.endAt as any as Date);
+        }
+      } else if (it.type === 'HOLIDAY_WORK') {
+        if (it.startAt && it.endAt) {
+          const h = hoursBetween(it.startAt as any as Date, it.endAt as any as Date);
+          agg.otHours += Math.max(0, h - 8);       // 8시간 초과분만 OT
+          agg.holidayBaseHours += Math.min(h, 8);  // 8시간은 대체휴무와 맞교환(근무시간 인정, OT 아님)
         }
       } else if (DAY_OFF_TYPES.includes(it.type) || it.type === 'HOLIDAY_REST') {
         agg.vacationHours += 8; // 1일 8시간
@@ -498,8 +511,8 @@ export class AttendanceController {
 
     const result = occs.map(({ it, day }) => {
       const weekKey = `${it.userId}::${getWeekKey(day)}`; // 개인별 주간 집계
-      const agg = weekMap.get(weekKey) || { otHours: 0, vacationHours: 0, earlyLeaveHours: 0 };
-      const totalHours = 40 + agg.otHours - agg.vacationHours - agg.earlyLeaveHours;
+      const agg = weekMap.get(weekKey) || { otHours: 0, vacationHours: 0, earlyLeaveHours: 0, holidayBaseHours: 0 };
+      const totalHours = 40 + agg.otHours + agg.holidayBaseHours - agg.vacationHours - agg.earlyLeaveHours;
       const overLimit = totalHours > 52;
       const recordStatus = it.status;
       const approvalStatus = statusMap.get(it.id);
@@ -584,15 +597,16 @@ export class AttendanceController {
     let otHours = 0;
     let vacationHours = 0;
     let earlyLeaveHours = 0;
+    let holidayBaseHours = 0; // 휴일근무 중 대체휴무와 맞교환된 부분(최대 8h): 근무시간 인정, OT 아님
     let flexibleAdjust = 0; // 유연근무는 기본 8시간으로 보고, 별도 조정은 사용하지 않는다 (향후 확장 대비 변수만 유지)
 
     // 일자별 세부 집계
-    type DayAgg = { base: number; ot: number; vacation: number; earlyLeave: number; flexibleAdj: number };
+    type DayAgg = { base: number; ot: number; vacation: number; earlyLeave: number; flexibleAdj: number; holidayBase: number };
     const dayAggMap = new Map<string, DayAgg>(); // key: YYYY-MM-DD
     const getDayAgg = (key: string): DayAgg => {
       let agg = dayAggMap.get(key);
       if (!agg) {
-        agg = { base: dayBaseMap.get(key) ?? 0, ot: 0, vacation: 0, earlyLeave: 0, flexibleAdj: 0 };
+        agg = { base: dayBaseMap.get(key) ?? 0, ot: 0, vacation: 0, earlyLeave: 0, flexibleAdj: 0, holidayBase: 0 };
         dayAggMap.set(key, agg);
       }
       return agg;
@@ -634,8 +648,12 @@ export class AttendanceController {
       } else if (it.type === 'HOLIDAY_WORK') {
         if (it.startAt && it.endAt) {
           const h = hoursBetween(it.startAt, it.endAt);
-          otHours += h;
-          agg.ot += h;
+          const otPortion = Math.max(0, h - 8);   // 8시간 초과분만 OT
+          const basePortion = Math.min(h, 8);     // 8시간은 대체휴무와 맞교환(근무시간 인정)
+          otHours += otPortion;
+          agg.ot += otPortion;
+          holidayBaseHours += basePortion;
+          agg.holidayBase += basePortion;
         }
       }
     }
@@ -646,7 +664,7 @@ export class AttendanceController {
       if (e <= s) return new Date(e.getTime() + 24 * 60 * 60 * 1000);
       return e;
     };
-    if (type === 'OT' || type === 'HOLIDAY_WORK') {
+    if (type === 'OT') {
       if (startTime && endTime) {
         const s = new Date(`${dateStr}T${startTime}:00+09:00`);
         let e = new Date(`${dateStr}T${endTime}:00+09:00`);
@@ -656,6 +674,21 @@ export class AttendanceController {
         const key = dateStr;
         const agg = getDayAgg(key);
         agg.ot += h;
+      }
+    } else if (type === 'HOLIDAY_WORK') {
+      if (startTime && endTime) {
+        const s = new Date(`${dateStr}T${startTime}:00+09:00`);
+        let e = new Date(`${dateStr}T${endTime}:00+09:00`);
+        e = adjustEndTime(s, e);
+        const h = hoursBetween(s, e);
+        const otPortion = Math.max(0, h - 8);   // 8시간 초과분만 OT
+        const basePortion = Math.min(h, 8);     // 8시간은 대체휴무와 맞교환
+        otHours += otPortion;
+        holidayBaseHours += basePortion;
+        const key = dateStr;
+        const agg = getDayAgg(key);
+        agg.ot += otPortion;
+        agg.holidayBase += basePortion;
       }
     } else if (type === 'VACATION') {
       const d = new Date(`${dateStr}T00:00:00+09:00`);
@@ -682,7 +715,7 @@ export class AttendanceController {
       // 주 52시간 계산에는 추가 가감하지 않는다.
     }
 
-    const weeklyHours = (baseHours + flexibleAdjust) + otHours - vacationHours - earlyLeaveHours;
+    const weeklyHours = (baseHours + flexibleAdjust) + otHours + holidayBaseHours - vacationHours - earlyLeaveHours;
 
     // 일자별 totalHours 계산 (UI에서 breakdown 용도)
     const days: { date: string; totalHours: number }[] = [];
@@ -690,7 +723,7 @@ export class AttendanceController {
       const d = new Date(Date.UTC(weekStartUtc.getUTCFullYear(), weekStartUtc.getUTCMonth(), weekStartUtc.getUTCDate() + i, 0, 0, 0, 0));
       const key = d.toISOString().slice(0, 10);
       const agg = getDayAgg(key);
-      const total = (agg.base + agg.flexibleAdj) + agg.ot - agg.vacation - agg.earlyLeave;
+      const total = (agg.base + agg.flexibleAdj) + agg.ot + agg.holidayBase - agg.vacation - agg.earlyLeave;
       days.push({ date: key, totalHours: total });
     }
 
@@ -702,6 +735,7 @@ export class AttendanceController {
       otHours,
       vacationHours,
       earlyLeaveHours,
+      holidayBaseHours,
       weeklyHours,
       days,
     };
