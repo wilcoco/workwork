@@ -80,6 +80,8 @@ export function OtVerification() {
 
   const [myRole, setMyRole] = useState('');
   const [roleLoading, setRoleLoading] = useState(true);
+  const [canOverride, setCanOverride] = useState(false); // 승인/반려 최종 확정 권한 (지정 계정만)
+  const [deciding, setDeciding] = useState<string | null>(null); // 처리 중인 OT id
 
   useEffect(() => {
     if (!userId) {
@@ -105,15 +107,37 @@ export function OtVerification() {
     try {
       const params = new URLSearchParams({ month });
       if (userId) params.set('actorId', userId);
-      const res = await apiJson<{ items: OtItem[]; summary: Summary }>(
+      const res = await apiJson<{ items: OtItem[]; summary: Summary; canOverride?: boolean }>(
         `/api/ot-verification?${params}`,
       );
       setItems(res.items || []);
       setSummary(res.summary || null);
+      setCanOverride(!!res.canOverride);
     } catch (e: any) {
       setError(e?.message || 'OT 검증 데이터를 불러오지 못했습니다');
     } finally {
       setLoading(false);
+    }
+  }
+
+  // 승인/반려 최종 확정 (지정 계정만). 실제 결재 상태를 확정한다.
+  async function decide(item: OtItem, decision: 'APPROVED' | 'REJECTED') {
+    const label = decision === 'APPROVED' ? '승인' : '반려';
+    if (!confirm(`${item.userName}님의 ${item.date} OT를 "${label}"으로 최종 확정할까요?\n실제 결재 상태가 변경됩니다.`)) return;
+    setDeciding(item.id);
+    try {
+      await apiJson(`/api/ot-verification/${encodeURIComponent(item.id)}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ actorId: userId, decision }),
+      });
+      // 로컬 상태 즉시 반영 후 재조회
+      setItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, status: decision } : x)));
+      setSelectedItem((prev) => (prev && prev.id === item.id ? { ...prev, status: decision } : prev));
+      void loadData();
+    } catch (e: any) {
+      alert(e?.message || '처리에 실패했습니다');
+    } finally {
+      setDeciding(null);
     }
   }
 
@@ -417,7 +441,32 @@ export function OtVerification() {
               <div><strong>날짜:</strong> {selectedItem.date}</div>
               <div><strong>OT 시간:</strong> {fmtTime(selectedItem.startAt)} ~ {fmtTime(selectedItem.endAt)} ({selectedItem.hours.toFixed(1)}h)</div>
               <div><strong>사유:</strong> {selectedItem.reason || '-'}</div>
-              <div><strong>결재상태:</strong> {STATUS_LABELS[selectedItem.status] || selectedItem.status}</div>
+              <div>
+                <strong>결재상태:</strong>{' '}
+                <span style={{ color: STATUS_COLORS[selectedItem.status] || '#374151', fontWeight: 600 }}>
+                  {STATUS_LABELS[selectedItem.status] || selectedItem.status}
+                </span>
+              </div>
+              {canOverride && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                  <strong style={{ fontSize: 12, color: '#475569' }}>최종 확정:</strong>
+                  <button
+                    onClick={() => decide(selectedItem, 'APPROVED')}
+                    disabled={deciding === selectedItem.id}
+                    style={{ padding: '4px 12px', background: '#22c55e', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: deciding === selectedItem.id ? 0.6 : 1 }}
+                  >
+                    승인
+                  </button>
+                  <button
+                    onClick={() => decide(selectedItem, 'REJECTED')}
+                    disabled={deciding === selectedItem.id}
+                    style={{ padding: '4px 12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: deciding === selectedItem.id ? 0.6 : 1 }}
+                  >
+                    반려
+                  </button>
+                  {deciding === selectedItem.id && <span style={{ fontSize: 12, color: '#94a3b8' }}>처리 중…</span>}
+                </div>
+              )}
               <div>
                 <strong>검증결과:</strong>{' '}
                 {selectedItem.verificationStatus === 'OK' ? (

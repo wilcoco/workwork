@@ -1,5 +1,8 @@
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+
+// OT 검증 페이지에서 승인/반려를 최종 확정할 수 있는 단 한 계정(홍정수 · 관리각자대표)
+const OT_OVERRIDE_EMAIL = 'json@cams2002.onmicrosoft.com';
 
 type AccessRecord = {
   id: number;
@@ -62,12 +65,14 @@ export class OtVerificationController {
 
     // 요청자 권한 확인
     let isExec = false;
+    let canOverride = false; // 승인/반려 최종 확정 권한 (지정 계정만)
     if (actorId) {
       const actor = await (this.prisma as any).user.findUnique({
         where: { id: actorId },
-        select: { role: true },
+        select: { role: true, email: true },
       });
       isExec = actor?.role === 'CEO' || actor?.role === 'EXEC';
+      canOverride = actor?.email === OT_OVERRIDE_EMAIL;
     }
 
     // OT 신청 조회 (HOLIDAY_WORK 제외, OT만)
@@ -235,7 +240,66 @@ export class OtVerificationController {
       verifiedHours: results.filter((r) => r.verificationStatus === 'OK').reduce((sum, r) => sum + r.hours, 0),
     };
 
-    return { month: targetMonth, items: results, summary };
+    return { month: targetMonth, items: results, summary, canOverride };
+  }
+
+  // OT 승인/반려 최종 확정 (지정 계정만). 실제 결재 상태 + 근태 상태를 확정하고 결재 단계도 맞춘다.
+  @Post(':id/decision')
+  async overrideDecision(
+    @Param('id') id: string,
+    @Body() body: { actorId?: string; decision?: string; comment?: string },
+  ) {
+    const actorId = String(body?.actorId || '');
+    if (!actorId) throw new ForbiddenException('로그인 정보가 필요합니다');
+    const actor = await (this.prisma as any).user.findUnique({
+      where: { id: actorId },
+      select: { email: true, name: true },
+    });
+    if (!actor || actor.email !== OT_OVERRIDE_EMAIL) {
+      throw new ForbiddenException('OT 승인/반려를 최종 확정할 권한이 없습니다');
+    }
+
+    const decision = String(body?.decision || '').toUpperCase();
+    if (decision !== 'APPROVED' && decision !== 'REJECTED') {
+      throw new BadRequestException("decision은 'APPROVED' 또는 'REJECTED'여야 합니다");
+    }
+
+    const ot = await (this.prisma as any).attendanceRequest.findUnique({
+      where: { id },
+      select: { id: true, type: true },
+    });
+    if (!ot) throw new BadRequestException('대상 OT 신청을 찾을 수 없습니다');
+
+    const now = new Date();
+    const comment = String(body?.comment || '').trim() || `OT검증 최종확정 (${actor.name || ''})`;
+
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      // 결재요청 + 단계 갱신 (승인이면 모든 단계 APPROVED, 반려면 모든 단계 REJECTED)
+      const approval = await tx.approvalRequest.findFirst({
+        where: { subjectType: 'ATTENDANCE', subjectId: id },
+        include: { steps: true },
+      });
+      if (approval) {
+        await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: decision } });
+        for (const s of approval.steps || []) {
+          await tx.approvalStep.update({ where: { id: s.id }, data: { status: decision, actedAt: now, comment } });
+        }
+      }
+      // 근태 상태 동기화
+      await tx.attendanceRequest.update({ where: { id }, data: { status: decision } });
+      // 감사 로그
+      await tx.event.create({
+        data: {
+          subjectType: 'ATTENDANCE',
+          subjectId: id,
+          activity: 'OtDecisionOverride',
+          userId: actorId,
+          attrs: { decision, by: actor.email, comment },
+        },
+      });
+    });
+
+    return { ok: true, id, status: decision };
   }
 
   @Get('access-records')
