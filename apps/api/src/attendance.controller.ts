@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
+import { parseKstDate } from './lib/kst';
 
 class CreateAttendanceDto {
   @IsString()
@@ -98,9 +99,10 @@ export class AttendanceController {
       if (dto.type === 'OT' || dto.type === 'EARLY_LEAVE' || dto.type === 'FLEXIBLE' || dto.type === 'HOLIDAY_WORK') {
         // 새 포맷: startAt/endAt (ISO datetime) 우선, 없으면 기존 date+startTime/endTime 사용
         if (dto.startAt && dto.endAt) {
-          const s = new Date(dto.startAt);
-          const e = new Date(dto.endAt);
-          if (isNaN(s.getTime()) || isNaN(e.getTime())) throw new BadRequestException('유효하지 않은 시작/종료 일시입니다');
+          // 오프셋이 있으면 그대로, 없으면 KST(+09:00)로 해석 (UTC 오해 방지)
+          const s = parseKstDate(dto.startAt);
+          const e = parseKstDate(dto.endAt);
+          if (!s || !e) throw new BadRequestException('유효하지 않은 시작/종료 일시입니다');
           startAt = s;
           endAt = e;
         } else if (dto.startTime && dto.endTime) {

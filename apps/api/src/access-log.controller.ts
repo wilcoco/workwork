@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { IsArray, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PrismaService } from './prisma.service';
+import { parseKstDate } from './lib/kst';
 
 // DTO for KT Access (TB_ACCESS - 케이티텔레캅 복지동/정문)
 class KtAccessItemDto {
@@ -84,11 +85,13 @@ export class AccessLogController {
 
     for (const item of dto.items) {
       try {
+        const eventAt = parseKstDate(item.eventAt);
+        if (!eventAt) { results.errors.push(`${item.sourceId}: 유효하지 않은 eventAt(${item.eventAt})`); continue; }
         await (this.prisma as any).ktAccessLog.upsert({
           where: { sourceId: item.sourceId },
           update: {},
           create: {
-            eventAt: new Date(item.eventAt),
+            eventAt,
             cardNo: item.cardNo,
             employeeNo: item.employeeNo,
             personName: item.personName,
@@ -146,11 +149,13 @@ export class AccessLogController {
 
     for (const item of dto.items) {
       try {
+        const eventAt = parseKstDate(item.eventAt);
+        if (!eventAt) { results.errors.push(`${item.sourceId}: 유효하지 않은 eventAt(${item.eventAt})`); continue; }
         await (this.prisma as any).secomAlarm.upsert({
           where: { sourceId: item.sourceId },
           update: {},
           create: {
-            eventAt: new Date(item.eventAt),
+            eventAt,
             cardNo: item.cardNo,
             employeeNo: item.employeeNo,
             personName: item.personName,
@@ -209,11 +214,13 @@ export class AccessLogController {
 
     for (const item of dto.items) {
       try {
+        const eventAt = parseKstDate(item.eventAt);
+        if (!eventAt) { results.errors.push(`${item.sourceId}: 유효하지 않은 eventAt(${item.eventAt})`); continue; }
         await (this.prisma as any).capsAlarm.upsert({
           where: { sourceId: item.sourceId },
           update: {},
           create: {
-            eventAt: new Date(item.eventAt),
+            eventAt,
             cardNo: item.cardNo,
             employeeNo: item.employeeNo,
             personName: item.personName,

@@ -1,6 +1,7 @@
 import { Body, Controller, Headers, Post, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
+import { parseKstDate } from './lib/kst';
 
 const SYNC_PUSH_KEY = process.env.SYNC_PUSH_KEY || '2002@cams';
 
@@ -54,8 +55,9 @@ export class SyncController {
 
     for (const rec of records) {
       try {
-        const eventAt = rec.access_time ? new Date(rec.access_time) : null;
-        if (!eventAt || isNaN(eventAt.getTime())) {
+        // 입출입 시각은 KST 벽시계(오프셋 없음)로 오므로 +09:00으로 해석 (UTC 오해 방지)
+        const eventAt = parseKstDate(rec.access_time);
+        if (!eventAt) {
           skipped++;
           continue;
         }
