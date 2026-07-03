@@ -82,10 +82,10 @@ export function AttendanceReport() {
   const isExec = myRole === 'CEO' || myRole === 'EXEC';
 
   useEffect(() => {
-    if (!isExec) return;
+    if (roleLoading || !userId) return;
     void loadReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, isExec]);
+  }, [month, roleLoading, userId]);
 
   async function loadReport() {
     setLoading(true);
@@ -165,10 +165,10 @@ export function AttendanceReport() {
     return <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>권한 확인 중…</div>;
   }
 
-  if (!isExec) {
+  if (!userId) {
     return (
-      <div style={{ padding: 32, textAlign: 'center', color: '#ef4444' }}>
-        임원 이상(임원/대표이사)만 근태 리포트를 조회할 수 있습니다.
+      <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>
+        로그인이 필요합니다.
       </div>
     );
   }
@@ -176,17 +176,19 @@ export function AttendanceReport() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-        <h2 style={{ margin: 0 }}>근태 월 리포트</h2>
+        <h2 style={{ margin: 0 }}>{isExec ? '근태 월 리포트' : '내 근태 (월)'}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <input type="month" value={month} onChange={(e) => { setMonth(e.target.value); }} style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }} />
           <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}>
             <option value="">전체 유형</option>
             {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}>
-            <option value="">전체 구성원</option>
-            {users.map(([uid, name]) => <option key={uid} value={uid}>{name}</option>)}
-          </select>
+          {isExec && (
+            <select value={filterUser} onChange={(e) => setFilterUser(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}>
+              <option value="">전체 구성원</option>
+              {users.map(([uid, name]) => <option key={uid} value={uid}>{name}</option>)}
+            </select>
+          )}
           <button onClick={() => void loadReport()} style={{ padding: '4px 12px', background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
             조회
           </button>
@@ -267,7 +269,7 @@ export function AttendanceReport() {
                       <th style={th}>상태</th>
                       <th style={th}>결재선</th>
                       <th style={th}>사유</th>
-                      <th style={th}>관리</th>
+                      {isExec && <th style={th}>관리</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -327,14 +329,16 @@ export function AttendanceReport() {
                         <td style={{ ...td, color: '#64748b', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {it.reason || '—'}
                         </td>
-                        <td style={td}>
-                          <button
-                            onClick={() => handleDelete(it.id, it.userName)}
-                            style={{ padding: '2px 8px', fontSize: 11, background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 4, cursor: 'pointer' }}
-                          >
-                            삭제
-                          </button>
-                        </td>
+                        {isExec && (
+                          <td style={td}>
+                            <button
+                              onClick={() => handleDelete(it.id, it.userName)}
+                              style={{ padding: '2px 8px', fontSize: 11, background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 4, cursor: 'pointer' }}
+                            >
+                              삭제
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

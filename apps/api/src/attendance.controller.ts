@@ -750,12 +750,12 @@ export class AttendanceController {
     @Query('type') typeFilter?: string,
     @Query('userId') userIdFilter?: string,
   ) {
-    // 임원(EXEC) 이상만 조회 가능
+    // 임원(CEO/EXEC)은 전체 조회, 그 외 구성원은 본인 근태만 조회 가능
     if (!actorId) throw new ForbiddenException('actorId required');
     const actor = await (this.prisma as any).user.findUnique({ where: { id: String(actorId) } });
     if (!actor) throw new ForbiddenException('invalid actorId');
     const role = String(actor.role || '').toUpperCase();
-    if (role !== 'CEO' && role !== 'EXEC') throw new ForbiddenException('임원 이상만 근태 리포트를 조회할 수 있습니다');
+    const isExec = role === 'CEO' || role === 'EXEC';
 
     const base = month ? new Date(month + '-01T00:00:00.000Z') : new Date();
     if (isNaN(base.getTime())) throw new BadRequestException('유효하지 않은 month');
@@ -774,7 +774,11 @@ export class AttendanceController {
       ],
     };
     if (typeFilter) where.type = typeFilter;
-    if (userIdFilter) where.userId = userIdFilter;
+    if (isExec) {
+      if (userIdFilter) where.userId = userIdFilter;
+    } else {
+      where.userId = String(actorId); // 일반 구성원은 본인 근태만
+    }
 
     const records = await (this.prisma as any).attendanceRequest.findMany({
       where,
@@ -907,7 +911,7 @@ export class AttendanceController {
       };
     });
 
-    return { month: month || `${year}-${String(mon + 1).padStart(2, '0')}`, items };
+    return { month: month || `${year}-${String(mon + 1).padStart(2, '0')}`, items, isExec };
   }
 
   @Patch(':id/cancel')
