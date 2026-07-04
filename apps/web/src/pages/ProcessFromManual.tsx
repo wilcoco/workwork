@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
 import { BpmnEditor } from '../components/BpmnEditor';
+import { BpmnChecklist } from '../components/BpmnChecklist';
+import { lintBpmn } from '../lib/bpmnLint';
 
 /**
  * 자연어 업무 매뉴얼 → AI 보완 질문 → BPMN 프로세스 템플릿 완성 → (선택) 수동 편집 → 발행
@@ -31,6 +33,7 @@ export function ProcessFromManual() {
   // step 3
   const [bpmnTitle, setBpmnTitle] = useState('');
   const [bpmnJsonText, setBpmnJsonText] = useState('');
+  const [lintDismissed, setLintDismissed] = useState<Set<string>>(new Set());
 
   // step 4
   const [templateId, setTemplateId] = useState('');
@@ -58,6 +61,12 @@ export function ProcessFromManual() {
       return (j.nodes || []).filter((n: any) => String(n?.type) === 'task').length;
     } catch { return 0; }
   }, [bpmnJsonText]);
+
+  // 완성도 점검(결정론적 린터): error가 남아 있으면 템플릿 완성을 막는다
+  const lintFindings = useMemo(() => {
+    try { return lintBpmn(JSON.parse(bpmnJsonText || '{}')); } catch { return []; }
+  }, [bpmnJsonText]);
+  const lintErrorCount = lintFindings.filter((f) => f.severity === 'error' && !lintDismissed.has(f.id)).length;
 
   async function ensureManual(): Promise<string> {
     const t = title.trim();
@@ -119,6 +128,7 @@ export function ProcessFromManual() {
       if (!r?.bpmnJson) throw new Error('AI BPMN 응답이 올바르지 않습니다.');
       setBpmnTitle(String(r.title || title).trim());
       setBpmnJsonText(JSON.stringify(r.bpmnJson, null, 2));
+      setLintDismissed(new Set()); // 새 초안이므로 이전 "무시" 선택 초기화
       setStep(3);
     } catch (e: any) {
       toast(e?.message || 'BPMN 생성 실패', 'error');
@@ -134,6 +144,9 @@ export function ProcessFromManual() {
       try { bpmnJson = JSON.parse(bpmnJsonText || '{}'); } catch { throw new Error('BPMN JSON이 올바르지 않습니다.'); }
       if (!Array.isArray(bpmnJson?.nodes) || !bpmnJson.nodes.some((n: any) => String(n?.type) === 'task')) {
         throw new Error('업무 단계(task)가 1개 이상 필요합니다.');
+      }
+      if (lintErrorCount > 0) {
+        throw new Error(`완성도 점검에서 해결이 필요한 항목이 ${lintErrorCount}개 남아 있습니다. 위 점검 패널에서 빨간 항목을 해결하세요.`);
       }
       // 결재 단계는 결재선(또는 담당)을 반드시 명시해야 실행 시 결재가 올바르게 돌아간다
       const missingLine = bpmnJson.nodes.filter((n: any) =>
@@ -177,6 +190,7 @@ export function ProcessFromManual() {
   function reset() {
     setStep(1); setTitle(''); setContent(''); setManualId('');
     setQuestions([]); setAnswers({}); setBpmnTitle(''); setBpmnJsonText(''); setTemplateId('');
+    setLintDismissed(new Set());
     setLoadedFromManual(false);
     if (initialManualId) nav('/process/from-manual', { replace: true });
   }
@@ -273,10 +287,16 @@ export function ProcessFromManual() {
       {step === 3 && (
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontSize: 13, color: '#64748b' }}>
-            AI가 만든 프로세스 초안입니다. 필요하면 노드를 눌러 이름·담당·기한을 수정하세요.
-            <b> 결재(마름모) 단계는 노드를 클릭해 결재선(결재자 순서)을 반드시 지정해야 완성할 수 있습니다.</b>{' '}
-            일반 단계의 담당이 비어 있으면 프로세스 시작 시 시작자에게 배정됩니다.
+            AI가 만든 프로세스 초안입니다. 아래 <b>완성도 점검</b>의 항목을 해결하면 정확한 템플릿이 됩니다.
+            그래프에서 노드를 눌러 직접 수정할 수도 있습니다.
           </div>
+          <BpmnChecklist
+            jsonText={bpmnJsonText}
+            onChangeJson={setBpmnJsonText}
+            findings={lintFindings}
+            dismissed={lintDismissed}
+            onDismiss={(id) => setLintDismissed((prev) => new Set(prev).add(id))}
+          />
           <label>프로세스 이름
             <input value={bpmnTitle} onChange={(e) => setBpmnTitle(e.target.value)} />
           </label>
@@ -316,8 +336,9 @@ export function ProcessFromManual() {
             <button className="btn" onClick={() => void generate()} disabled={!!loading}>
               {loading === 'generate' ? '재생성 중...' : 'AI 다시 생성'}
             </button>
-            <button className="btn btn-primary" onClick={createTemplate} disabled={!!loading}>
-              {loading === 'create' ? '완성 중...' : '템플릿 완성 (생성·발행)'}
+            <button className="btn btn-primary" onClick={createTemplate} disabled={!!loading || lintErrorCount > 0}
+              title={lintErrorCount > 0 ? `완성도 점검에서 해결 필요 항목 ${lintErrorCount}개를 먼저 해결하세요` : undefined}>
+              {loading === 'create' ? '완성 중...' : lintErrorCount > 0 ? `템플릿 완성 (해결 필요 ${lintErrorCount})` : '템플릿 완성 (생성·발행)'}
             </button>
           </div>
         </div>
