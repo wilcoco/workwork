@@ -5,6 +5,7 @@ import 'quill/dist/quill.snow.css';
 import { uploadFile } from '../lib/upload';
 import { apiJson } from '../lib/api';
 import { friendlyEdgeLabel, edgeStroke } from './bpmnVisual';
+import { ApprovalEntry, approvalEntriesToPatch, approvalEntryLabel, parseApprovalEntries } from '../lib/bpmnLint';
 import ReactFlow, {
   Background,
   Controls,
@@ -202,6 +203,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
         deadlineOffsetDays: (n.data && (n.data as any).deadlineOffsetDays) ?? undefined,
         slaHours: (n.data && (n.data as any).slaHours) ?? undefined,
         approvalUserIds: (n.data && (n.data as any).approvalUserIds) || undefined,
+        approvalRoleCodes: (n.data && (n.data as any).approvalRoleCodes) || undefined,
         position: { x: n.position?.x ?? 0, y: n.position?.y ?? 0 },
       })),
       edges: edges.map((e: Edge<any>) => ({ id: String(e.id), source: String(e.source), target: String(e.target), condition: (e as any).data?.condition, isLoopBack: (e as any).data?.isLoopBack || undefined })),
@@ -248,6 +250,7 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
             deadlineOffsetDays: n.deadlineOffsetDays ?? undefined,
             slaHours: n.slaHours ?? undefined,
             approvalUserIds: n.approvalUserIds || undefined,
+            approvalRoleCodes: n.approvalRoleCodes || undefined,
             label,
             kind: type,
           },
@@ -574,34 +577,61 @@ export function BpmnEditor({ jsonText, onChangeJson, height }: { jsonText: strin
                   <label>SLA(시간)<input type="number" min={0} value={(n.data as any)?.slaHours ?? ''} onChange={(e) => onNodeLabelChange(n.id, 'slaHours', e.target.value ? Number(e.target.value) : undefined)} placeholder="예: 48" /></label>
                 </div>
                 {String((n.data as any)?.taskType || '').toUpperCase() === 'APPROVAL' && (() => {
-                  const csv = String((n.data as any)?.approvalUserIds || '');
-                  const line = csv.split(',').map((s) => s.trim()).filter(Boolean);
+                  // 결재선 = 사람 + 역할(팀장/임원) 혼합 순서. 역할은 프로세스 시작 시 사람으로 확정된다.
+                  const entries = parseApprovalEntries(n.data);
                   const nameOf = (uid: string) => {
                     const u = userOptions.find((x) => x.id === uid);
                     return u ? `${u.name}${u.orgName ? ` (${u.orgName})` : ''}` : uid;
                   };
-                  const setLine = (next: string[]) => onNodeLabelChange(n.id, 'approvalUserIds', next.join(','));
+                  const orgNameOf = (oid: string) => orgOptions.find((o) => o.id === oid)?.name || '(조직)';
+                  const setEntries = (next: ApprovalEntry[]) => {
+                    const patch = approvalEntriesToPatch(next);
+                    onNodeLabelChange(n.id, 'approvalUserIds', patch.approvalUserIds);
+                    onNodeLabelChange(n.id, 'approvalRoleCodes', patch.approvalRoleCodes);
+                  };
+                  const addRoleCode = (code: string) => {
+                    if (!code) return;
+                    const e: ApprovalEntry = code === 'MGR:STARTER' ? { kind: 'MGR', orgUnitId: 'STARTER' }
+                      : code.startsWith('MGR:') ? { kind: 'MGR', orgUnitId: code.slice(4) }
+                      : code.startsWith('EXEC:') ? { kind: 'EXEC', orgUnitId: code.slice(5) }
+                      : { kind: 'EXEC' };
+                    setEntries([...entries, e]);
+                  };
                   return (
                     <div style={{ border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: 8, padding: 8, display: 'grid', gap: 6 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>결재선 (순서대로 결재)</div>
-                      {line.length === 0 && <div style={{ fontSize: 11, color: '#b45309' }}>결재자를 순서대로 추가하세요. 비워두면 시작할 때 직접 지정해야 합니다.</div>}
-                      {line.map((uid, idx) => (
-                        <div key={`${uid}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                          <span style={{ width: 18, height: 18, borderRadius: 999, background: '#d97706', color: '#fff', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{idx + 1}</span>
-                          <span style={{ flex: 1 }}>{nameOf(uid)}</span>
+                      {entries.length === 0 && <div style={{ fontSize: 11, color: '#b45309' }}>결재자(사람) 또는 역할(팀장/임원)을 순서대로 추가하세요. 역할은 프로세스 시작 시 사람으로 자동 확정됩니다.</div>}
+                      {entries.map((en, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                          <span style={{ width: 18, height: 18, borderRadius: 999, background: en.kind === 'USER' ? '#d97706' : '#7c3aed', color: '#fff', fontSize: 10, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{idx + 1}</span>
+                          <span style={{ flex: 1 }}>
+                            {approvalEntryLabel(en, orgNameOf, nameOf)}
+                            {en.kind !== 'USER' && <span style={{ marginLeft: 4, fontSize: 10, color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 4, padding: '0 4px' }}>역할</span>}
+                          </span>
                           <button type="button" className="btn btn-ghost" style={{ padding: '0 6px' }} disabled={idx === 0}
-                            onClick={() => { const nx = [...line]; [nx[idx - 1], nx[idx]] = [nx[idx], nx[idx - 1]]; setLine(nx); }}>↑</button>
+                            onClick={() => { const nx = [...entries]; [nx[idx - 1], nx[idx]] = [nx[idx], nx[idx - 1]]; setEntries(nx); }}>↑</button>
                           <button type="button" className="btn btn-ghost" style={{ padding: '0 6px' }}
-                            onClick={() => setLine(line.filter((_, i) => i !== idx))}>×</button>
+                            onClick={() => setEntries(entries.filter((_, i) => i !== idx))}>×</button>
                         </div>
                       ))}
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <input style={{ flex: 1 }} placeholder="이름 검색" value={userQuery} onChange={(e) => setUserQuery(e.target.value)} />
-                        <select value="" onChange={(e) => { const v = e.target.value; if (v && !line.includes(v)) setLine([...line, v]); }}>
-                          <option value="">결재자 추가...</option>
-                          {userOptions.filter((u) => !line.includes(u.id)).map((u) => (
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <input style={{ flex: 1, minWidth: 100 }} placeholder="이름 검색" value={userQuery} onChange={(e) => setUserQuery(e.target.value)} />
+                        <select value="" onChange={(e) => { const v = e.target.value; if (v) setEntries([...entries, { kind: 'USER', userId: v }]); }}>
+                          <option value="">결재자(사람) 추가...</option>
+                          {userOptions.filter((u) => !entries.some((en) => en.kind === 'USER' && en.userId === u.id)).map((u) => (
                             <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` (${u.orgName})` : ''}</option>
                           ))}
+                        </select>
+                        <select value="" onChange={(e) => addRoleCode(e.target.value)}>
+                          <option value="">역할 추가...</option>
+                          <option value="MGR:STARTER">시작자 팀 팀장</option>
+                          <option value="EXEC">임원 (시작 시 확정)</option>
+                          <optgroup label="특정 팀 팀장">
+                            {orgOptions.map((o) => <option key={`m-${o.id}`} value={`MGR:${o.id}`}>{o.name} 팀장</option>)}
+                          </optgroup>
+                          <optgroup label="특정 팀 임원">
+                            {orgOptions.map((o) => <option key={`e-${o.id}`} value={`EXEC:${o.id}`}>{o.name} 임원</option>)}
+                          </optgroup>
                         </select>
                       </div>
                     </div>

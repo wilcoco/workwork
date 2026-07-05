@@ -66,7 +66,7 @@ export function lintBpmn(json: any): LintFinding[] {
 
     if (tt === 'APPROVAL') {
       // 결재선 미지정 — 서버도 이 조건으로 템플릿 생성을 거부한다
-      const hasLine = String(n.approvalUserIds || '').trim() || n.assigneeUserId || n.assigneeOrgUnitId;
+      const hasLine = String(n.approvalUserIds || '').trim() || String(n.approvalRoleCodes || '').trim() || n.assigneeUserId || n.assigneeOrgUnitId;
       if (!hasLine) {
         findings.push({ id: `APPROVAL_LINE:${n.id}`, code: 'APPROVAL_LINE_MISSING', severity: 'error', nodeId: String(n.id), nodeName: nm, message: `결재 단계 「${nm}」 — 누가 결재하나요? 결재선을 순서대로 지정하세요.` });
       }
@@ -129,6 +129,57 @@ export function lintBpmn(json: any): LintFinding[] {
 
   // error 먼저, 같은 severity는 발견 순서 유지
   return findings.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1));
+}
+
+// ── 결재선 역할 인코딩 (approvalRoleCodes CSV) ─────────────────────────────
+// U:<userId>=고정 사람, MGR:<orgUnitId>=그 팀 팀장, MGR:STARTER=시작자 팀 팀장,
+// EXEC=임원(후보 1명이면 자동), EXEC:<orgUnitId>=그 팀 소속 임원.
+// 역할이 하나라도 있으면 approvalRoleCodes에 혼합 순서로 저장하고 approvalUserIds는 비운다.
+// 전부 사람이면 기존 호환을 위해 approvalUserIds CSV로 저장한다.
+
+export type ApprovalEntry =
+  | { kind: 'USER'; userId: string }
+  | { kind: 'MGR'; orgUnitId: string | 'STARTER' }
+  | { kind: 'EXEC'; orgUnitId?: string };
+
+export function parseApprovalEntries(node: any): ApprovalEntry[] {
+  const roleCsv = String(node?.approvalRoleCodes || '').trim();
+  if (roleCsv) {
+    return roleCsv.split(',').map((s) => s.trim()).filter(Boolean).map((en): ApprovalEntry => {
+      if (en.startsWith('U:')) return { kind: 'USER', userId: en.slice(2) };
+      if (en === 'MGR:STARTER') return { kind: 'MGR', orgUnitId: 'STARTER' };
+      if (en.startsWith('MGR:')) return { kind: 'MGR', orgUnitId: en.slice(4) };
+      if (en === 'EXEC') return { kind: 'EXEC' };
+      if (en.startsWith('EXEC:')) return { kind: 'EXEC', orgUnitId: en.slice(5) };
+      return { kind: 'USER', userId: en }; // 알 수 없는 코드는 사람 id로 간주
+    });
+  }
+  return String(node?.approvalUserIds || '').split(',').map((s) => s.trim()).filter(Boolean)
+    .map((uid): ApprovalEntry => ({ kind: 'USER', userId: uid }));
+}
+
+export function approvalEntriesToPatch(entries: ApprovalEntry[]): { approvalUserIds?: string; approvalRoleCodes?: string } {
+  if (!entries.length) return { approvalUserIds: undefined, approvalRoleCodes: undefined };
+  const hasRole = entries.some((e) => e.kind !== 'USER');
+  if (!hasRole) return { approvalUserIds: entries.map((e: any) => e.userId).join(','), approvalRoleCodes: undefined };
+  const codes = entries.map((e) => {
+    if (e.kind === 'USER') return `U:${e.userId}`;
+    if (e.kind === 'MGR') return e.orgUnitId === 'STARTER' ? 'MGR:STARTER' : `MGR:${e.orgUnitId}`;
+    return e.orgUnitId ? `EXEC:${e.orgUnitId}` : 'EXEC';
+  });
+  return { approvalUserIds: undefined, approvalRoleCodes: codes.join(',') };
+}
+
+export function approvalEntryLabel(e: ApprovalEntry, orgName: (id: string) => string, userName: (id: string) => string): string {
+  if (e.kind === 'USER') return userName(e.userId);
+  if (e.kind === 'MGR') return e.orgUnitId === 'STARTER' ? '시작자 팀 팀장' : `${orgName(e.orgUnitId)} 팀장`;
+  return e.orgUnitId ? `${orgName(e.orgUnitId)} 임원` : '임원';
+}
+
+/** 결재선(사람+역할 혼합) 지정 */
+export function fixApprovalEntries(json: any, nodeId: string, entries: ApprovalEntry[]) {
+  const patch = approvalEntriesToPatch(entries);
+  return { ...json, nodes: (json.nodes || []).map((n: any) => (String(n.id) === String(nodeId) ? { ...n, ...patch } : n)) };
 }
 
 // ── 빨간칸을 닫는 패치 함수들 (새 json 객체 반환) ──────────────────────────

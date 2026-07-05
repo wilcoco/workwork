@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 import {
+  ApprovalEntry,
   LintFinding,
+  approvalEntryLabel,
   fixAddStartEnd,
-  fixApprovalLine,
+  fixApprovalEntries,
   fixAssigneeOrg,
+  parseApprovalEntries,
   fixConnectToEnd,
   fixEdgeCondition,
   fixRejectLoopback,
@@ -91,29 +94,37 @@ export function BpmnChecklist({ jsonText, onChangeJson, findings, dismissed, onD
           </div>
         );
       case 'APPROVAL_LINE_MISSING': {
-        const line = String(nodeById(f.nodeId)?.approvalUserIds || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        // 사람 + 역할(팀장/임원) 혼합 결재선. 역할은 프로세스 시작 시 사람으로 확정된다.
+        const entries = parseApprovalEntries(nodeById(f.nodeId));
+        const orgNameOf = (oid: string) => orgs.find((o) => o.id === oid)?.name || '(조직)';
+        const setEntries = (next: ApprovalEntry[]) => apply(fixApprovalEntries(json, f.nodeId!, next));
         return (
           <div style={{ display: 'grid', gap: 6 }}>
-            {line.length > 0 && (
+            {entries.length > 0 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                {line.map((uid: string, i: number) => (
-                  <span key={`${uid}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 999, padding: '2px 8px' }}>
-                    <b style={{ color: '#b45309' }}>{i + 1}</b> {userName(uid)}
+                {entries.map((en, i) => (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, background: en.kind === 'USER' ? '#fffbeb' : '#f5f3ff', border: `1px solid ${en.kind === 'USER' ? '#fcd34d' : '#ddd6fe'}`, borderRadius: 999, padding: '2px 8px' }}>
+                    <b style={{ color: en.kind === 'USER' ? '#b45309' : '#7c3aed' }}>{i + 1}</b> {approvalEntryLabel(en, orgNameOf, userName)}
                     <button type="button" style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#b45309', padding: 0 }}
-                      onClick={() => apply(fixApprovalLine(json, f.nodeId!, line.filter((_: string, x: number) => x !== i)))}>×</button>
+                      onClick={() => setEntries(entries.filter((_, x) => x !== i))}>×</button>
                   </span>
                 ))}
               </div>
             )}
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="이름 검색" style={{ fontSize: 12, width: 120 }} />
+              <button type="button" style={btnPrimary} onClick={() => setEntries([...entries, { kind: 'MGR', orgUnitId: 'STARTER' }])}>+ 시작자 팀 팀장</button>
+              <select value="" onChange={(e) => { if (e.target.value) setEntries([...entries, { kind: 'MGR', orgUnitId: e.target.value }]); }} style={{ fontSize: 12, maxWidth: 160 }}>
+                <option value="">+ 특정 팀 팀장...</option>
+                {orgs.map((o) => <option key={o.id} value={o.id}>{o.name} 팀장</option>)}
+              </select>
+              <input value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="이름 검색" style={{ fontSize: 12, width: 100 }} />
               <select
                 value=""
-                onChange={(e) => { const v = e.target.value; if (v && !line.includes(v)) apply(fixApprovalLine(json, f.nodeId!, [...line, v])); }}
-                style={{ fontSize: 12, maxWidth: 220 }}
+                onChange={(e) => { const v = e.target.value; if (v) setEntries([...entries, { kind: 'USER', userId: v }]); }}
+                style={{ fontSize: 12, maxWidth: 200 }}
               >
-                <option value="">결재자 추가 (순서대로)...</option>
-                {userOptions.filter((u) => !line.includes(u.id)).map((u) => (
+                <option value="">+ 결재자(사람)...</option>
+                {userOptions.filter((u) => !entries.some((en) => en.kind === 'USER' && en.userId === u.id)).map((u) => (
                   <option key={u.id} value={u.id}>{u.name}{u.orgName ? ` (${u.orgName})` : ''}</option>
                 ))}
               </select>

@@ -873,6 +873,51 @@ export class ProcessesController {
           }
         }
 
+        // ── 결재선 역할(approvalRoleCodes) → 사람 해석 준비 ─────────────────
+        // 인코딩: U:<userId>=고정 사람, MGR:<orgUnitId>=그 팀 팀장, MGR:STARTER=시작자 팀 팀장,
+        //         EXEC=임원(후보 1명이면 자동 확정), EXEC:<orgUnitId>=그 팀 소속 임원
+        let roleStarterManagerId: string | undefined;
+        if (starter?.orgUnitId) {
+          const unit = await tx.orgUnit.findUnique({ where: { id: starter.orgUnitId } });
+          roleStarterManagerId = unit?.managerId || undefined;
+        }
+        const roleOrgIds = new Set<string>();
+        let needExecs = false;
+        for (const t of (tmpl.tasks || []) as any[]) {
+          for (const en of String(t.approvalRoleCodes || '').split(',').map((s: string) => s.trim()).filter(Boolean)) {
+            if (en.startsWith('MGR:') && en !== 'MGR:STARTER') roleOrgIds.add(en.slice(4));
+            if (en === 'EXEC') needExecs = true;
+            if (en.startsWith('EXEC:')) { needExecs = true; roleOrgIds.add(en.slice(5)); }
+          }
+        }
+        const roleOrgMgrMap = new Map<string, string | undefined>();
+        if (roleOrgIds.size) {
+          const ous = await tx.orgUnit.findMany({ where: { id: { in: Array.from(roleOrgIds) } } });
+          for (const ou of ous) roleOrgMgrMap.set(String(ou.id), ou.managerId || undefined);
+        }
+        const execUsers: Array<{ id: string; orgUnitId: string | null }> = needExecs
+          ? await tx.user.findMany({ where: { role: { in: ['EXEC', 'CEO'] as any }, status: 'ACTIVE' as any }, select: { id: true, orgUnitId: true } })
+          : [];
+        /** 역할 CSV → 사람 id 배열. 확정 불가 항목은 unresolved로 반환 (시작 화면 지정 필요). */
+        const resolveRoleChain = (csv: string): { ids: string[]; unresolved: string[] } => {
+          const ids: string[] = [];
+          const unresolved: string[] = [];
+          for (const en of csv.split(',').map((s) => s.trim()).filter(Boolean)) {
+            if (en.startsWith('U:')) { ids.push(en.slice(2)); continue; }
+            if (en === 'MGR:STARTER') { if (roleStarterManagerId) ids.push(roleStarterManagerId); else unresolved.push('시작자 팀 팀장'); continue; }
+            if (en.startsWith('MGR:')) { const m = roleOrgMgrMap.get(en.slice(4)); if (m) ids.push(m); else unresolved.push('팀장'); continue; }
+            if (en === 'EXEC' || en.startsWith('EXEC:')) {
+              const scope = en.startsWith('EXEC:') ? en.slice(5) : null;
+              const cands = execUsers.filter((u) => !scope || String(u.orgUnitId || '') === scope);
+              if (cands.length === 1) ids.push(String(cands[0].id));
+              else unresolved.push(scope ? '해당 팀 임원' : '임원');
+              continue;
+            }
+            unresolved.push(en); // 알 수 없는 코드
+          }
+          return { ids, unresolved };
+        };
+
         const taskCreates: any[] = [];
         for (const t of (tmpl.tasks || [])) {
           const preds = parsePreds(t.predecessorIds);
@@ -894,10 +939,23 @@ export class ProcessesController {
             }
           }
           const overrideList = assignListMap.get(String(t.id));
-          const defaultChain: string[] = String(t.approvalUserIds || '')
-            .split(',')
-            .map((s: string) => s.trim())
-            .filter(Boolean);
+          // 역할 결재선(approvalRoleCodes)이 있으면 역할→사람 해석이 우선. 없으면 기존 사람 고정(approvalUserIds).
+          const roleCsv = String((t as any).approvalRoleCodes || '').trim();
+          let defaultChain: string[];
+          if (roleCsv) {
+            const { ids, unresolved } = resolveRoleChain(roleCsv);
+            if (unresolved.length && !(overrideList && overrideList.length)) {
+              throw new BadRequestException(
+                `「${t.name}」 단계의 결재 역할(${unresolved.join(', ')})을 자동으로 확정할 수 없습니다. 시작 화면에서 이 단계의 담당/결재자를 직접 지정하세요.`,
+              );
+            }
+            defaultChain = ids;
+          } else {
+            defaultChain = String(t.approvalUserIds || '')
+              .split(',')
+              .map((s: string) => s.trim())
+              .filter(Boolean);
+          }
           const chain = (overrideList && overrideList.length ? overrideList : defaultChain).filter(Boolean);
           const plan = planMap.get(String(t.id)) || {};
           // F5: auto-calculate deadlineAt from template's deadlineOffsetDays if no explicit plan deadline
