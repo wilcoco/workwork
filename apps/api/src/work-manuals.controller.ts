@@ -80,6 +80,13 @@ class AiQuestionsDto {
   aiModel?: string; // 'claude' | 'openai'
 }
 
+class AiBpmnCoverageDto {
+  @IsString() @IsNotEmpty()
+  userId!: string;
+  aiModel?: string; // 'claude' | 'openai'
+  bpmnJson?: any; // 생성/수정된 BPMN (이 시점의 그래프 기준으로 커버리지 검사)
+}
+
 const LAYER_FIELDS: Record<string, string[]> = {
   skeleton: ['taskType', 'purpose', 'method'],
   roles: ['assigneeHint', 'approvalRouteType', 'approvalRoleCodes', 'cooperationTarget'],
@@ -548,6 +555,100 @@ export class WorkManualsController {
       .filter((q: any) => q.question)
       .slice(0, 6);
     return { questions, aiModel };
+  }
+
+  /**
+   * 커버리지 역질문: 매뉴얼의 어느 문단이 BPMN 어느 단계에도 반영되지 않았는지 찾는다.
+   * "없는 걸 모르는" 누락은 린터(빨간칸)로 못 잡으므로, 매뉴얼↔그래프 대조는 AI가 수행한다.
+   * 반환된 항목은 프론트에서 [무시] 또는 [단계로 추가] 객관식으로 처리한다.
+   */
+  @Post(':id/ai/bpmn-coverage')
+  async aiBpmnCoverage(@Param('id') id: string, @Body() dto: AiBpmnCoverageDto) {
+    const uid = String(dto.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+
+    const title = String(manual?.title || '').trim();
+    const content = String(manual?.content || '').trim();
+    if (!content) throw new BadRequestException('manual content required');
+    const clipped = content.length > 12000 ? content.slice(0, 12000) : content;
+
+    const nodes: any[] = Array.isArray(dto.bpmnJson?.nodes) ? dto.bpmnJson.nodes : [];
+    if (!nodes.length) throw new BadRequestException('bpmnJson.nodes required');
+    // AI에게는 노드 요약만 전달 (id/이름/유형) — 전체 JSON은 토큰 낭비
+    const nodeSummary = nodes
+      .map((n: any) => `- id=${n.id} | type=${n.type}${n.taskType ? `/${n.taskType}` : ''} | ${String(n.name || '').trim() || '(이름 없음)'}`)
+      .join('\n');
+
+    const sys = `당신은 업무 메뉴얼과 BPMN 프로세스 초안을 대조해, 메뉴얼에는 있는데 프로세스 단계에 반영되지 않은 내용(누락)을 찾는 검수자입니다.
+반드시 JSON만 출력하세요.
+
+판단 기준:
+- 메뉴얼의 "해야 할 일/단계/확인/승인/보고" 성격의 문장이 어느 노드에도 대응되지 않으면 누락입니다.
+- 배경 설명, 목적, 용어 정의, 참고 정보는 누락이 아닙니다 (프로세스 단계가 아니므로 무시).
+- 이미 노드의 이름이나 설명에 요약되어 들어간 내용은 누락이 아닙니다.
+- 확실한 누락만 보고하세요. 애매하면 보고하지 마세요. 최대 5개.
+
+각 누락 항목:
+- excerpt: 매뉴얼 원문에서 해당 문장/문단 발췌 (최대 200자, 원문 그대로)
+- missingWhat: 무엇이 빠졌는지 한 문장 설명
+- suggestedTaskName: 단계로 추가한다면 적절한 단계 이름 (간결한 명사형)
+- suggestedTaskType: WORKLOG | APPROVAL | COOPERATION 중 하나
+- insertAfterNodeId: 어느 노드 뒤에 들어가는 게 자연스러운지 (위 노드 목록의 id 중 하나, 모르면 null)
+
+출력 JSON: { "gaps": [{ "excerpt": string, "missingWhat": string, "suggestedTaskName": string, "suggestedTaskType": string, "insertAfterNodeId": string|null }] }
+누락이 없으면 { "gaps": [] }`;
+
+    const schema = {
+      type: 'object' as const,
+      properties: {
+        gaps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              excerpt: { type: 'string' },
+              missingWhat: { type: 'string' },
+              suggestedTaskName: { type: 'string' },
+              suggestedTaskType: { type: 'string' },
+              insertAfterNodeId: { type: ['string', 'null'] },
+            },
+            required: ['excerpt', 'missingWhat', 'suggestedTaskName'],
+          },
+        },
+      },
+      required: ['gaps'],
+    };
+
+    let parsed: any;
+    try {
+      const result = await callAI({
+        system: sys,
+        user: `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}\n\n[현재 BPMN 노드 목록]\n${nodeSummary}`,
+        model: aiModel,
+        temperature: 0.2,
+        maxTokens: 2000,
+        jsonSchema: aiModel === 'claude' ? { name: 'bpmn_coverage', schema } : undefined,
+      });
+      parsed = result.parsed;
+    } catch (e: any) {
+      throw new BadRequestException(e?.message || 'AI call failed');
+    }
+
+    const validIds = new Set(nodes.map((n: any) => String(n.id)));
+    const validTypes = new Set(['WORKLOG', 'APPROVAL', 'COOPERATION']);
+    const gaps = (Array.isArray(parsed?.gaps) ? parsed.gaps : [])
+      .map((g: any, i: number) => ({
+        id: i + 1,
+        excerpt: String(g?.excerpt || '').trim().slice(0, 300),
+        missingWhat: String(g?.missingWhat || '').trim(),
+        suggestedTaskName: String(g?.suggestedTaskName || '').trim(),
+        suggestedTaskType: validTypes.has(String(g?.suggestedTaskType || '').toUpperCase()) ? String(g.suggestedTaskType).toUpperCase() : 'WORKLOG',
+        insertAfterNodeId: g?.insertAfterNodeId && validIds.has(String(g.insertAfterNodeId)) ? String(g.insertAfterNodeId) : null,
+      }))
+      .filter((g: any) => g.excerpt && g.suggestedTaskName)
+      .slice(0, 5);
+    return { gaps, aiModel };
   }
 
   @Post(':id/ai/bpmn')

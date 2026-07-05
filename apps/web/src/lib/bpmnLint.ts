@@ -210,6 +210,28 @@ export function fixAddStartEnd(json: any, which: 'start' | 'end') {
   return { ...json, nodes: [...nodes, newNode], edges: newEdges };
 }
 
+/** 커버리지 누락분을 태스크로 추가. afterNodeId가 있으면 그 노드의 전진 엣지 사이에 끼워 넣는다. */
+export function fixInsertTask(json: any, opts: { name: string; taskType?: string; description?: string; afterNodeId?: string | null }) {
+  const id = nextId('n_cov');
+  const node: any = { id, type: 'task', name: opts.name, taskType: opts.taskType || 'WORKLOG' };
+  if (opts.description) node.description = opts.description;
+  const nodes = [...(json.nodes || []), node];
+  const edges = [...(json.edges || [])];
+  const after = opts.afterNodeId && nodes.some((n: any) => String(n.id) === String(opts.afterNodeId)) ? String(opts.afterNodeId) : null;
+  if (after) {
+    const outIdx = edges.findIndex((e) => String(e.source) === after && !e.isLoopBack);
+    if (outIdx >= 0) {
+      // after → X 를 after → new → X 로 스플라이스 (기존 조건은 after→new 구간에 유지)
+      const old = edges[outIdx];
+      edges[outIdx] = { ...old, target: id };
+      edges.push({ id: nextId('e_cov'), source: id, target: String(old.target) });
+    } else {
+      edges.push({ id: nextId('e_cov'), source: after, target: id });
+    }
+  }
+  return { ...json, nodes, edges };
+}
+
 /** 태스크를 종료 노드에 연결 (막다른 단계 해소) */
 export function fixConnectToEnd(json: any, nodeId: string) {
   const end = (json.nodes || []).find((n: any) => String(n.type) === 'end');

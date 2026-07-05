@@ -4,7 +4,7 @@ import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
 import { BpmnEditor } from '../components/BpmnEditor';
 import { BpmnChecklist } from '../components/BpmnChecklist';
-import { lintBpmn } from '../lib/bpmnLint';
+import { fixInsertTask, lintBpmn } from '../lib/bpmnLint';
 
 /**
  * 자연어 업무 매뉴얼 → AI 보완 질문 → BPMN 프로세스 템플릿 완성 → (선택) 수동 편집 → 발행
@@ -34,6 +34,26 @@ export function ProcessFromManual() {
   const [bpmnTitle, setBpmnTitle] = useState('');
   const [bpmnJsonText, setBpmnJsonText] = useState('');
   const [lintDismissed, setLintDismissed] = useState<Set<string>>(new Set());
+  // 커버리지 역질문: 매뉴얼의 어느 문단이 어느 단계에도 반영 안 됐는지 (AI 대조)
+  type CoverageGap = { id: number; excerpt: string; missingWhat: string; suggestedTaskName: string; suggestedTaskType: string; insertAfterNodeId: string | null };
+  const [coverageGaps, setCoverageGaps] = useState<CoverageGap[]>([]);
+  const [coverageDone, setCoverageDone] = useState<Set<number>>(new Set());
+  const [coverageLoading, setCoverageLoading] = useState(false);
+
+  async function checkCoverage(mid: string, jsonTextArg: string) {
+    if (!mid) return;
+    setCoverageLoading(true);
+    try {
+      const j = JSON.parse(jsonTextArg || '{}');
+      const r = await apiJson<{ gaps: CoverageGap[] }>(
+        `/api/work-manuals/${encodeURIComponent(mid)}/ai/bpmn-coverage`,
+        { method: 'POST', body: JSON.stringify({ userId, aiModel, bpmnJson: j }) },
+      );
+      setCoverageGaps(r.gaps || []);
+      setCoverageDone(new Set());
+    } catch { /* 부가 점검 — 실패해도 흐름을 막지 않는다 */ }
+    finally { setCoverageLoading(false); }
+  }
 
   // step 4
   const [templateId, setTemplateId] = useState('');
@@ -130,6 +150,8 @@ export function ProcessFromManual() {
       setBpmnJsonText(JSON.stringify(r.bpmnJson, null, 2));
       setLintDismissed(new Set()); // 새 초안이므로 이전 "무시" 선택 초기화
       setStep(3);
+      // 커버리지 역질문은 백그라운드로 — 초안 표시를 막지 않는다
+      void checkCoverage(id, JSON.stringify(r.bpmnJson));
     } catch (e: any) {
       toast(e?.message || 'BPMN 생성 실패', 'error');
     } finally {
@@ -191,6 +213,7 @@ export function ProcessFromManual() {
     setStep(1); setTitle(''); setContent(''); setManualId('');
     setQuestions([]); setAnswers({}); setBpmnTitle(''); setBpmnJsonText(''); setTemplateId('');
     setLintDismissed(new Set());
+    setCoverageGaps([]); setCoverageDone(new Set());
     setLoadedFromManual(false);
     if (initialManualId) nav('/process/from-manual', { replace: true });
   }
@@ -297,6 +320,52 @@ export function ProcessFromManual() {
             dismissed={lintDismissed}
             onDismiss={(id) => setLintDismissed((prev) => new Set(prev).add(id))}
           />
+          {/* 커버리지 역질문 — 매뉴얼에는 있는데 프로세스에 반영 안 된 내용 */}
+          {(coverageLoading || coverageGaps.some((g) => !coverageDone.has(g.id))) && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <b style={{ fontSize: 13 }}>매뉴얼 반영 점검</b>
+                {coverageLoading
+                  ? <span style={{ fontSize: 12, color: '#64748b' }}>AI가 매뉴얼과 프로세스를 대조하는 중...</span>
+                  : <span style={{ fontSize: 11, color: '#94a3b8' }}>매뉴얼에는 있는데 어느 단계에도 반영되지 않은 내용입니다. 단계로 추가하거나 무시하세요.</span>}
+                {!coverageLoading && (
+                  <button type="button" style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: 11, borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }}
+                    onClick={() => void checkCoverage(manualId, bpmnJsonText)}>다시 점검</button>
+                )}
+              </div>
+              {!coverageLoading && (
+                <div style={{ display: 'grid', gap: 8, padding: 10 }}>
+                  {coverageGaps.filter((g) => !coverageDone.has(g.id)).map((g) => (
+                    <div key={g.id} style={{ borderLeft: '3px solid #7c3aed', background: '#f5f3ff', borderRadius: 6, padding: '8px 10px', display: 'grid', gap: 6 }}>
+                      <div style={{ fontSize: 12, color: '#5b21b6', fontStyle: 'italic' }}>“{g.excerpt}”</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#4c1d95' }}>{g.missingWhat}</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button type="button"
+                          style={{ padding: '3px 10px', fontSize: 12, borderRadius: 6, border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer' }}
+                          onClick={() => {
+                            try {
+                              const j = JSON.parse(bpmnJsonText || '{}');
+                              const next = fixInsertTask(j, { name: g.suggestedTaskName, taskType: g.suggestedTaskType, description: g.excerpt, afterNodeId: g.insertAfterNodeId });
+                              setBpmnJsonText(JSON.stringify(next, null, 2));
+                              setCoverageDone((prev) => new Set(prev).add(g.id));
+                            } catch { toast('그래프 반영에 실패했습니다.', 'error'); }
+                          }}>
+                          「{g.suggestedTaskName}」 단계로 추가
+                        </button>
+                        <button type="button" style={{ padding: '3px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }}
+                          onClick={() => setCoverageDone((prev) => new Set(prev).add(g.id))}>프로세스 단계 아님 · 무시</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {!coverageLoading && coverageGaps.length > 0 && coverageGaps.every((g) => coverageDone.has(g.id)) && (
+            <div style={{ border: '1px solid #ddd6fe', background: '#f5f3ff', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#6d28d9' }}>
+              ✓ 매뉴얼 반영 점검 완료 — 누락 {coverageGaps.length}건 모두 처리했습니다.
+            </div>
+          )}
           <label>프로세스 이름
             <input value={bpmnTitle} onChange={(e) => setBpmnTitle(e.target.value)} />
           </label>

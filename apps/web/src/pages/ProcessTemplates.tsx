@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { BpmnEditor } from '../components/BpmnEditor';
 import { BpmnFormEditor } from '../components/BpmnFormEditor';
+import { BpmnChecklist } from '../components/BpmnChecklist';
+import { lintBpmn } from '../lib/bpmnLint';
 import { friendlyEdgeLabel } from '../components/bpmnVisual';
 import Quill from 'quill';
 import 'quill/dist/quill.snow.css';
@@ -123,6 +125,11 @@ export function ProcessTemplates() {
   const [carModelsMaster, setCarModelsMaster] = useState<Array<{ code: string; name: string }>>([]);
   const [bpmnJsonText, setBpmnJsonText] = useState('');
   const [bpmnMode, setBpmnMode] = useState<'graph' | 'form'>('graph');
+  // 완성도 점검(결정론적 린터) — 편집 화면에서는 저장을 막지 않고 안내만
+  const [lintDismissed, setLintDismissed] = useState<Set<string>>(new Set());
+  const lintFindings = useMemo(() => {
+    try { return lintBpmn(JSON.parse(bpmnJsonText || '{}')); } catch { return []; }
+  }, [bpmnJsonText]);
 
   const [historyRows, setHistoryRows] = useState<ProcessTemplateHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -541,6 +548,7 @@ export function ProcessTemplates() {
 
   function editTemplate(t: ProcessTemplateDto) {
     setSelectedId(t.id || null);
+    setLintDismissed(new Set()); // 다른 템플릿의 무시 선택은 초기화
     setEditing({
       ...t,
       tasks: (t.tasks || []).map((x, idx) => ({
@@ -1194,7 +1202,16 @@ export function ProcessTemplates() {
                   >순차 폼 편집</button>
                 </div>
                 {bpmnMode === 'graph' ? (
-                  <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} height={'85vh'} />
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <BpmnChecklist
+                      jsonText={bpmnJsonText}
+                      onChangeJson={setBpmnJsonText}
+                      findings={lintFindings}
+                      dismissed={lintDismissed}
+                      onDismiss={(id) => setLintDismissed((prev) => new Set(prev).add(id))}
+                    />
+                    <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} height={'85vh'} />
+                  </div>
                 ) : (
                   <BpmnFormEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} />
                 )}
