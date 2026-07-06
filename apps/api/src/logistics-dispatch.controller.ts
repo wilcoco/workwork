@@ -7,7 +7,10 @@ class CreateLogisticsDispatchDto {
   requesterId!: string;
 
   @IsOptional()
-  approvalLine?: string[]; // ordered list of approver userIds; 윤대룡(물류배차 담당) auto-prepended if not first
+  approvalLine?: string[]; // 앞단계 결재선(관련부서 임원 → 대표이사, 순차)
+
+  @IsOptional()
+  finalApprovers?: string[]; // 최종 담당자 any-of 그룹(기본 윤대룡·김부영, 요청자가 변경 가능)
 
   @IsString()
   vehicleType!: string;
@@ -55,14 +58,17 @@ export class LogisticsDispatchController {
       }
 
       // 결재선 순서: (앞) 관련부서 임원 → 대표이사 = 요청자가 지정한 결재선(순차)
-      //             (최종) 담당자 any-of 그룹(윤대룡·김부영) — 모든 결재가 난 후 통보/처리.
-      // 즉 담당자 그룹은 항상 '마지막 단계'.
-      const PRIMARY_NAMES = ['윤대룡', '김부영'];
-      const primaries = await this.prisma.user.findMany({ where: { name: { in: PRIMARY_NAMES }, status: 'ACTIVE' as any }, select: { id: true, name: true } });
-      const primaryIds = PRIMARY_NAMES.map((n) => primaries.find((p) => p.name === n)?.id).filter((x): x is string => !!x);
-      if (primaryIds.length === 0) throw new BadRequestException('물류배차 담당자(윤대룡/김부영)를 찾을 수 없습니다');
+      //             (최종) 담당자 any-of 그룹 — 모든 결재가 난 후 통보/처리. 담당자 그룹은 항상 '마지막 단계'.
+      // 최종 담당자는 기본 윤대룡·김부영이되, 요청자가 finalApprovers로 변경 가능.
+      const DEFAULT_FINAL_NAMES = ['윤대룡', '김부영'];
+      let primaryIds: string[] = (dto.finalApprovers || []).filter(Boolean);
+      if (primaryIds.length === 0) {
+        const defaults = await this.prisma.user.findMany({ where: { name: { in: DEFAULT_FINAL_NAMES }, status: 'ACTIVE' as any }, select: { id: true, name: true } });
+        primaryIds = DEFAULT_FINAL_NAMES.map((n) => defaults.find((p) => p.name === n)?.id).filter((x): x is string => !!x);
+      }
+      if (primaryIds.length === 0) throw new BadRequestException('물류배차 최종 담당자를 찾을 수 없습니다');
 
-      // 앞단계 결재선: 요청자가 지정한 임원·대표(담당자 그룹은 제외)
+      // 앞단계 결재선: 요청자가 지정한 임원·대표(최종 담당자 그룹은 제외)
       const rawLine: string[] = (dto.approvalLine || []).filter(Boolean).filter((id) => !primaryIds.includes(id));
       const firstApprover = rawLine.length ? rawLine[0] : primaryIds[0];
 

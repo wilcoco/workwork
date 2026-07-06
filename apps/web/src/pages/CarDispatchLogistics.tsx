@@ -91,6 +91,7 @@ export function CarDispatchLogistics() {
 
   const [members, setMembers] = useState<{ id: string; name: string; role?: string }[]>([]);
   const [approverIds, setApproverIds] = useState<string[]>(['']);
+  const [finalApproverIds, setFinalApproverIds] = useState<string[]>([]); // 최종 담당자 any-of(기본 윤대룡·김부영, 변경 가능)
 
   const [vehicleType, setVehicleType] = useState('');
   const [loadingPlace, setLoadingPlace] = useState('');
@@ -113,8 +114,10 @@ export function CarDispatchLogistics() {
       const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>('/api/users');
       const all = res.items || [];
       setMembers(all);
-      // 결재선은 요청자가 관련부서 임원 → 대표이사 순으로 지정.
-      // 담당자(윤대룡·김부영)는 서버가 최종 단계로 자동 추가하므로 미리 넣지 않는다.
+      // 결재선(앞단계)은 요청자가 관련부서 임원 → 대표이사 순으로 지정.
+      // 최종 담당자는 기본 윤대룡·김부영으로 자동 세팅(요청자가 변경 가능).
+      const defaults = ['윤대룡', '김부영'].map((n) => all.find((m) => m.name === n)?.id).filter((x): x is string => !!x);
+      if (defaults.length) setFinalApproverIds(defaults);
     } catch {}
   }
 
@@ -168,11 +171,13 @@ export function CarDispatchLogistics() {
     setSubmitting(true);
     try {
       const cleanedApprovers = approverIds.filter(Boolean);
+      const cleanedFinals = finalApproverIds.filter(Boolean);
       await apiJson('/api/logistics-dispatch', {
         method: 'POST',
         body: JSON.stringify({
           requesterId: userId,
           approvalLine: cleanedApprovers,
+          finalApprovers: cleanedFinals,
           vehicleType,
           loadingPlace, loadingAt: toIso(loadingAt), loadingContact, loadingPhone,
           unloadingPlace, unloadingAt: toIso(unloadingAt), unloadingContact, unloadingPhone,
@@ -182,6 +187,8 @@ export function CarDispatchLogistics() {
       setVehicleType(''); setLoadingPlace(''); setLoadingAt(''); setLoadingContact(''); setLoadingPhone('');
       setUnloadingPlace(''); setUnloadingAt(''); setUnloadingContact(''); setUnloadingPhone(''); setCargoDetails('');
       setApproverIds(['']);
+      const defaults = ['윤대룡', '김부영'].map((n) => members.find((m) => m.name === n)?.id).filter((x): x is string => !!x);
+      setFinalApproverIds(defaults);
       await loadCalendar();
       await loadList();
     } catch (err: any) {
@@ -271,10 +278,7 @@ export function CarDispatchLogistics() {
           </div>
           <div><label style={lbl}>화물 내용</label><input value={cargoDetails} onChange={(e) => setCargoDetails(e.target.value)} style={inp} placeholder="예: 금형 2개 약 200kg" /></div>
           <div style={{ display: 'grid', gap: 6 }}>
-            <span style={lbl}>결재선 * <span style={{ fontWeight: 400, color: '#64748b', fontSize: 12 }}>(관련부서 임원 → 대표이사 순으로 지정)</span></span>
-            <div style={{ fontSize: 12, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: '6px 10px' }}>
-              담당자(윤대룡·김부영)는 <b>모든 결재 후 최종 단계</b>로 자동 추가되어 통보·처리합니다. (여기엔 임원·대표이사만 지정)
-            </div>
+            <span style={lbl}>결재선 <span style={{ fontWeight: 400, color: '#64748b', fontSize: 12 }}>(관련부서 임원 → 대표이사 순으로 지정)</span></span>
             <div style={{ display: 'grid', gap: 6 }}>
               {approverIds.map((aid, idx) => (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -293,6 +297,33 @@ export function CarDispatchLogistics() {
               <button type="button" onClick={() => setApproverIds((prev) => [...prev, ''])}
                 style={{ justifySelf: 'start', padding: '4px 10px', fontSize: 12, border: '1px dashed #94a3b8', borderRadius: 6, background: '#f8fafc', cursor: 'pointer', color: '#475569' }}
               >+ 결재자 추가</button>
+            </div>
+
+            {/* 최종 담당자 (자동, 변경 가능) */}
+            <div style={{ marginTop: 4 }}>
+              <span style={{ ...lbl, display: 'block' }}>최종 담당자 <span style={{ fontWeight: 400, color: '#64748b', fontSize: 12 }}>(모든 결재 후 통보·처리 · 둘 중 한 명만 처리하면 완료)</span></span>
+              <div style={{ fontSize: 12, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: '6px 10px', margin: '4px 0 6px' }}>
+                기본으로 <b>윤대룡 · 김부영</b>에게 자동으로 갑니다. 필요하면 아래에서 변경할 수 있어요.
+              </div>
+              <div style={{ display: 'grid', gap: 6 }}>
+                {finalApproverIds.map((aid, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ minWidth: 52, fontSize: 12, color: '#475569', fontWeight: 700 }}>담당 {idx + 1}</span>
+                    <ApproverIdPicker
+                      value={aid}
+                      onChange={(id) => setFinalApproverIds((prev) => prev.map((p, i) => i === idx ? id : p))}
+                      members={members}
+                      placeholder="이름 검색"
+                    />
+                    <button type="button" onClick={() => setFinalApproverIds((prev) => prev.filter((_, i) => i !== idx))} disabled={finalApproverIds.length <= 1}
+                      style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #CBD5E1', borderRadius: 6, background: '#fff', cursor: finalApproverIds.length <= 1 ? 'not-allowed' : 'pointer', color: finalApproverIds.length <= 1 ? '#cbd5e1' : '#475569' }}
+                    >−</button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setFinalApproverIds((prev) => [...prev, ''])}
+                  style={{ justifySelf: 'start', padding: '4px 10px', fontSize: 12, border: '1px dashed #94a3b8', borderRadius: 6, background: '#f8fafc', cursor: 'pointer', color: '#475569' }}
+                >+ 담당자 추가</button>
+              </div>
             </div>
           </div>
           <button type="submit" disabled={submitting} style={{ background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 8, padding: 10, fontSize: 14, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.7 : 1 }}>
