@@ -113,8 +113,8 @@ export function CarDispatchLogistics() {
       const res = await apiJson<{ items: { id: string; name: string; role: string }[] }>('/api/users');
       const all = res.items || [];
       setMembers(all);
-      const dispatchManager = all.find((m) => m.name === '윤대룡');
-      if (dispatchManager) setApproverIds([dispatchManager.id]);
+      // 결재선은 요청자가 관련부서 임원 → 대표이사 순으로 지정.
+      // 담당자(윤대룡·김부영)는 서버가 최종 단계로 자동 추가하므로 미리 넣지 않는다.
     } catch {}
   }
 
@@ -181,8 +181,7 @@ export function CarDispatchLogistics() {
       });
       setVehicleType(''); setLoadingPlace(''); setLoadingAt(''); setLoadingContact(''); setLoadingPhone('');
       setUnloadingPlace(''); setUnloadingAt(''); setUnloadingContact(''); setUnloadingPhone(''); setCargoDetails('');
-      const dispatchManager = members.find((m) => m.name === '윤대룡');
-      setApproverIds(dispatchManager ? [dispatchManager.id] : ['']);
+      setApproverIds(['']);
       await loadCalendar();
       await loadList();
     } catch (err: any) {
@@ -272,11 +271,14 @@ export function CarDispatchLogistics() {
           </div>
           <div><label style={lbl}>화물 내용</label><input value={cargoDetails} onChange={(e) => setCargoDetails(e.target.value)} style={inp} placeholder="예: 금형 2개 약 200kg" /></div>
           <div style={{ display: 'grid', gap: 6 }}>
-            <span style={lbl}>결재선 *</span>
+            <span style={lbl}>결재선 * <span style={{ fontWeight: 400, color: '#64748b', fontSize: 12 }}>(관련부서 임원 → 대표이사 순으로 지정)</span></span>
+            <div style={{ fontSize: 12, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: '6px 10px' }}>
+              담당자(윤대룡·김부영)는 <b>모든 결재 후 최종 단계</b>로 자동 추가되어 통보·처리합니다. (여기엔 임원·대표이사만 지정)
+            </div>
             <div style={{ display: 'grid', gap: 6 }}>
               {approverIds.map((aid, idx) => (
                 <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ minWidth: 52, fontSize: 12, color: '#475569', fontWeight: 700 }}>{idx + 1}단계{idx === 0 ? ' 🔒' : ''}</span>
+                  <span style={{ minWidth: 52, fontSize: 12, color: '#475569', fontWeight: 700 }}>{idx + 1}단계</span>
                   <ApproverIdPicker
                     value={aid}
                     onChange={(id) => setApproverIds((prev) => prev.map((p, i) => i === idx ? id : p))}
