@@ -116,6 +116,20 @@ export function TeamKpiInput() {
       .catch(() => {});
   }, [userId]);
 
+  // 조직도상 상위 조직 소속이면 하위 조직의 지표를 관리할 수 있다 — 내 조직이 조상인지 판정
+  const isUnderMyOrg = useMemo(() => {
+    const byId = new Map(orgs.map((x) => [x.id, x]));
+    return (o: OrgUnit): boolean => {
+      if (!myOrgUnitId) return false;
+      let cur: OrgUnit | undefined = o;
+      for (let hop = 0; cur?.parentId && hop < 10; hop += 1) {
+        if (cur.parentId === myOrgUnitId) return true;
+        cur = byId.get(cur.parentId);
+      }
+      return false;
+    };
+  }, [orgs, myOrgUnitId]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -281,10 +295,10 @@ export function TeamKpiInput() {
               .filter((o) => o.type === 'TEAM')
               .filter((o) => {
                 if (myRole === 'CEO') return true;
-                if (managedIds.has(o.id)) return true; // 내가 책임자인 상위 조직(실/본부)의 산하 팀
-                if (myRole === 'MANAGER') return o.id === myOrgUnitId;
-                if (myRole === 'EXEC') return o.id === myOrgUnitId || (o.parentId || '') === (myOrgUnitId || '');
-                return o.id === myOrgUnitId;
+                if (o.id === myOrgUnitId) return true; // 내 팀
+                if (managedIds.has(o.id)) return true; // 내가 책임자로 등록된 조직의 산하 팀
+                if (isUnderMyOrg(o)) return true; // 조직도상 내 소속 조직의 하위 팀
+                return false;
               })
               .map((o) => (
               <option key={o.id} value={o.id}>{o.name} ({o.type === 'TEAM' ? '팀' : o.type === 'DIVISION' ? '실' : o.type === 'COMPANY' ? '회사' : o.type})</option>
