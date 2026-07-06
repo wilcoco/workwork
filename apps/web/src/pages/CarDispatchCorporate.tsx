@@ -43,8 +43,8 @@ export function CarDispatchCorporate() {
   const [members, setMembers] = useState<Approver[]>([]);
   const [approverId, setApproverId] = useState('');
   const [date, setDate] = useState('');
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('18:00');
+  const [startTime, setStartTime] = useState('08:00'); // 기본 근무시간대(08~17시)로 초기화
+  const [endTime, setEndTime] = useState('17:00');
   const [coRiders, setCoRiders] = useState('');
   const [destination, setDestination] = useState('');
   const [purpose, setPurpose] = useState('');

@@ -70,6 +70,18 @@ export function ApprovalsMine() {
     }
   }
 
+  // 인쇄/PDF 저장: 인쇄 CSS(.approval-print-area)로 모달 내용만 출력 — 브라우저 "PDF로 저장" 지원
+  function printActive() {
+    document.body.classList.add('printing-approval');
+    const cleanup = () => {
+      document.body.classList.remove('printing-approval');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+    window.setTimeout(cleanup, 3000); // afterprint 미지원 브라우저 대비
+  }
+
   const filteredItems = items.filter((a) => {
     if (typeFilter === 'ALL') return true;
     const st = String(a.subjectType || '').toUpperCase();
@@ -159,7 +171,7 @@ export function ApprovalsMine() {
       </div>
       {active && (
         <div style={modalOverlay} onClick={() => setActive(null)}>
-          <div style={modalBody} onClick={(e) => e.stopPropagation()}>
+          <div style={modalBody} className="approval-print-area" onClick={(e) => e.stopPropagation()}>
             {(() => {
               const it = active;
               const wl = it._doc as any | null;
@@ -168,6 +180,10 @@ export function ApprovalsMine() {
               const requestedByName = String(it.requestedBy?.name || '-');
               const requestedById = String(it.requestedBy?.id || '');
               const teamName = String(wl?.teamName || '');
+              const steps: any[] = Array.isArray(it.steps) ? it.steps : [];
+              const fmtDT = (d?: string | null) => (d ? new Date(d).toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '');
+              const stepColor = (s: string) => (s === 'APPROVED' ? '#16a34a' : s === 'REJECTED' ? '#dc2626' : '#d97706');
+              const stepLabel = (s: string) => (s === 'APPROVED' ? '승인' : s === 'REJECTED' ? '반려' : s === 'EXPIRED' ? '만료' : '대기');
               const meta = (
                 <span>
                   작성자: {requestedByName} <UserAvatar userId={requestedById} name={requestedByName} size={14} style={{ marginLeft: 4 }} />
@@ -182,17 +198,46 @@ export function ApprovalsMine() {
                     <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>{when ? new Date(when).toLocaleString() : ''}</span>
                   </div>
                   <div style={{ fontSize: 12, color: '#334155' }}>{meta}</div>
+                  {/* 결재선 · 진행 현황 (처리 시각 포함) — 인쇄물에도 포함된다 */}
+                  {steps.length > 0 && (
+                    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 10px' }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>결재선 · 진행 현황</div>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            {['단계', '결재자', '상태', '처리 일시', '의견'].map((h) => (
+                              <th key={h} style={{ textAlign: 'left', padding: '4px 8px', borderBottom: '1px solid #e2e8f0', color: '#475569', whiteSpace: 'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {steps.map((s: any) => (
+                            <tr key={s.id || s.stepNo}>
+                              <td style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9' }}>{s.stepNo}</td>
+                              <td style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9', fontWeight: 600 }}>{s.approver?.name || '-'}</td>
+                              <td style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9', color: stepColor(String(s.status)), fontWeight: 700 }}>{stepLabel(String(s.status))}</td>
+                              <td style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>{fmtDT(s.actedAt) || '—'}</td>
+                              <td style={{ padding: '4px 8px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{s.comment || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                   {it.subjectType === 'Worklog' && wl && (
-                    <div style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
+                    <div className="print-expand" style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
                       <WorklogDocument worklog={wl} variant="full" />
                     </div>
                   )}
                   {it.subjectType === 'PROCESS' && it._doc ? (
-                    <div style={{ marginTop: 8, maxHeight: 520, overflow: 'auto' }}>
+                    <div className="print-expand" style={{ marginTop: 8, maxHeight: 520, overflow: 'auto' }}>
                       <ProcessDocument processDoc={it._doc} variant="full" />
                     </div>
                   ) : null}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+                  <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                    <button type="button" style={{ ...primaryBtn, background: '#fff', color: '#0F3D73', border: '1px solid #0F3D73' }} onClick={printActive}>
+                      🖨 인쇄 / PDF 저장
+                    </button>
                     <button type="button" style={primaryBtn} onClick={() => setActive(null)}>닫기</button>
                   </div>
                 </div>
