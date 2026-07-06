@@ -3,6 +3,7 @@ import { IsArray, IsDateString, IsNotEmpty, IsOptional, IsString, ValidateNested
 import { Type } from 'class-transformer';
 import { PrismaService } from './prisma.service';
 import { ProcessesController } from './processes.controller';
+import { ExecInstructionsController } from './exec-instructions/exec-instructions.controller';
 
 class CreateApprovalDto {
   @IsString()
@@ -459,6 +460,10 @@ export class ApprovalsController {
         }
         const engine = new ProcessesController(this.prisma);
         await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+        if (updated.subjectType === 'INSTRUCTION_MILESTONE') {
+          const exec = new ExecInstructionsController(this.prisma);
+          await exec.finalizeMilestoneApproval(tx as any, id, 'APPROVED', dto.actorId, dto.comment);
+        }
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id, comment: dto.comment } } });
         await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
         return updated;
@@ -551,6 +556,10 @@ export class ApprovalsController {
         }
         const engine = new ProcessesController(this.prisma);
         await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+        if (updated.subjectType === 'INSTRUCTION_MILESTONE') {
+          const exec = new ExecInstructionsController(this.prisma);
+          await exec.finalizeMilestoneApproval(tx as any, id, 'REJECTED', dto.actorId, dto.comment);
+        }
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, reason: dto.comment } } });
         await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
         return updated;

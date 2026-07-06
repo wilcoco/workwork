@@ -5,19 +5,19 @@ generator client {
 }
 
 model UserGoal {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
   title       String
   description String?
-  kind        GoalKind @default(QUALITATIVE)
+  kind        GoalKind     @default(QUALITATIVE)
   metric      String?
   target      Float?
   unit        String?
   startAt     DateTime?
   endAt       DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   initiatives Initiative[]
 }
 
@@ -88,211 +88,217 @@ enum Pillar {
 }
 
 model OrgUnit {
-  id        String    @id @default(cuid())
-  name      String
-  type      String
-  parentId  String?
-  parent    OrgUnit?  @relation("OrgHierarchy", fields: [parentId], references: [id])
-  children  OrgUnit[] @relation("OrgHierarchy")
-  managerId String?
-  manager   User?     @relation("OrgManager", fields: [managerId], references: [id])
-  users     User[]
-  objectives Objective[]
-  processTemplates ProcessTemplate[]
+  id                    String                 @id @default(cuid())
+  name                  String
+  type                  String
+  parentId              String?
+  parent                OrgUnit?               @relation("OrgHierarchy", fields: [parentId], references: [id])
+  children              OrgUnit[]              @relation("OrgHierarchy")
+  managerId             String?
+  manager               User?                  @relation("OrgManager", fields: [managerId], references: [id])
+  users                 User[]
+  objectives            Objective[]
+  processTemplates      ProcessTemplate[]
   worklogTeamDailyEvals WorklogTeamDailyEval[]
-  weeklyReports WeeklyReport[] @relation("WeeklyReportOrg")
-  keyInitiatives KeyInitiative[]
+  weeklyReports         WeeklyReport[]         @relation("WeeklyReportOrg")
+  keyInitiatives        KeyInitiative[]
 }
 
 model User {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  teamsUpn   String?  @unique
-  entraTenantId String?
-  entraOid    String?  @unique
-  name       String
-  employeeNo String?  // 사번 (CAMS 입출입 기록 매칭용)
-  role       Role
-  status     UserStatus @default(ACTIVE)
-  activatedAt DateTime?
-  orgUnitId  String?
-  orgUnit    OrgUnit? @relation(fields: [orgUnitId], references: [id])
-  objectives Objective[] @relation("ObjectiveOwner")
-  initiatives Initiative[] @relation("InitiativeOwner")
-  managedUnits OrgUnit[] @relation("OrgManager")
-  keyResultsOwned KeyResult[] @relation("KeyResultOwner")
-  worklogsCreated Worklog[] @relation("WorklogCreator")
-  approvalRequestsRequested ApprovalRequest[] @relation("ApprovalRequestedBy")
-  approvalRequestsToApprove ApprovalRequest[] @relation("ApprovalApprover")
-  approvalStepsToApprove ApprovalStep[] @relation("ApprovalStepApprover")
-  shares Share[]
-  feedbacksAuthored Feedback[]
-  worklogTeamDailyEvals WorklogTeamDailyEval[]
-  helpTicketsRequested HelpTicket[] @relation("HelpRequester")
-  helpTicketsAssigned HelpTicket[] @relation("HelpAssignee")
-  delegationsMade Delegation[] @relation("Delegator")
-  delegationsReceived Delegation[] @relation("Delegatee")
-  notifications Notification[]
-  passwordHash String?
-  checklistTicks ChecklistTick[]
-  userGoals UserGoal[]
-  progressEntries ProgressEntry[]
-  keyResultAssignments KeyResultAssignment[]
-  carDispatchRequestsRequested CarDispatchRequest[] @relation("CarDispatchRequester")
-  carDispatchRequestsToApprove CarDispatchRequest[] @relation("CarDispatchApprover")
-  logisticsRequestsMade        LogisticsDispatchRequest[] @relation("LogisticsRequester")
-  logisticsRequestsToApprove   LogisticsDispatchRequest[] @relation("LogisticsApprover")
-  attendanceRequests AttendanceRequest[]
-  businessTripRequestsMade BusinessTripRequest[] @relation("TripRequester")
-  businessTripRequestsToApprove BusinessTripRequest[] @relation("TripApprover")
-  processTemplatesOwned ProcessTemplate[] @relation("ProcessTemplateOwner")
-  processTemplatesCreated ProcessTemplate[] @relation("ProcessTemplateCreatedBy")
-  processTemplatesUpdated ProcessTemplate[] @relation("ProcessTemplateUpdatedBy")
-  processInstancesStarted ProcessInstance[] @relation("ProcessInstanceStartedBy")
-  processInstancesModified ProcessInstance[] @relation("ProcessInstanceModifiedBy")
-  processStopEvents ProcessStopEvent[] @relation("ProcessStop_on_User")
+  id                            String                     @id @default(cuid())
+  email                         String                     @unique
+  teamsUpn                      String?                    @unique
+  entraTenantId                 String?
+  entraOid                      String?                    @unique
+  name                          String
+  employeeNo                    String? // 사번 (CAMS 입출입 기록 매칭용)
+  role                          Role
+  status                        UserStatus                 @default(ACTIVE)
+  activatedAt                   DateTime?
+  orgUnitId                     String?
+  orgUnit                       OrgUnit?                   @relation(fields: [orgUnitId], references: [id])
+  objectives                    Objective[]                @relation("ObjectiveOwner")
+  initiatives                   Initiative[]               @relation("InitiativeOwner")
+  managedUnits                  OrgUnit[]                  @relation("OrgManager")
+  keyResultsOwned               KeyResult[]                @relation("KeyResultOwner")
+  worklogsCreated               Worklog[]                  @relation("WorklogCreator")
+  approvalRequestsRequested     ApprovalRequest[]          @relation("ApprovalRequestedBy")
+  approvalRequestsToApprove     ApprovalRequest[]          @relation("ApprovalApprover")
+  approvalStepsToApprove        ApprovalStep[]             @relation("ApprovalStepApprover")
+  shares                        Share[]
+  feedbacksAuthored             Feedback[]
+  worklogTeamDailyEvals         WorklogTeamDailyEval[]
+  helpTicketsRequested          HelpTicket[]               @relation("HelpRequester")
+  helpTicketsAssigned           HelpTicket[]               @relation("HelpAssignee")
+  delegationsMade               Delegation[]               @relation("Delegator")
+  delegationsReceived           Delegation[]               @relation("Delegatee")
+  notifications                 Notification[]
+  passwordHash                  String?
+  checklistTicks                ChecklistTick[]
+  userGoals                     UserGoal[]
+  progressEntries               ProgressEntry[]
+  keyResultAssignments          KeyResultAssignment[]
+  carDispatchRequestsRequested  CarDispatchRequest[]       @relation("CarDispatchRequester")
+  carDispatchRequestsToApprove  CarDispatchRequest[]       @relation("CarDispatchApprover")
+  logisticsRequestsMade         LogisticsDispatchRequest[] @relation("LogisticsRequester")
+  logisticsRequestsToApprove    LogisticsDispatchRequest[] @relation("LogisticsApprover")
+  attendanceRequests            AttendanceRequest[]
+  businessTripRequestsMade      BusinessTripRequest[]      @relation("TripRequester")
+  businessTripRequestsToApprove BusinessTripRequest[]      @relation("TripApprover")
+  processTemplatesOwned         ProcessTemplate[]          @relation("ProcessTemplateOwner")
+  processTemplatesCreated       ProcessTemplate[]          @relation("ProcessTemplateCreatedBy")
+  processTemplatesUpdated       ProcessTemplate[]          @relation("ProcessTemplateUpdatedBy")
+  processInstancesStarted       ProcessInstance[]          @relation("ProcessInstanceStartedBy")
+  processInstancesModified      ProcessInstance[]          @relation("ProcessInstanceModifiedBy")
+  processStopEvents             ProcessStopEvent[]         @relation("ProcessStop_on_User")
 
-  workManuals WorkManual[]
-  manualReviews WorkManual[] @relation("ManualReviewer")
-  weeklyReports WeeklyReport[] @relation("WeeklyReportAuthor")
-  knowledgeBases KnowledgeBase[]
-  schedules Schedule[]
-  periodicAlarms PeriodicAlarm[]
-  workSkillFiles WorkSkillFile[]
-  meetingMinutes MeetingMinutes[] @relation("MeetingMinutesCreatedBy")
-  meetingSummaryEdits MeetingSummaryEdit[] @relation("MeetingSummaryEditor")
-  plannerTaskCache PlannerTaskCache[]
-  companyDataUploads CompanyData[] @relation("CompanyDataUploader")
-  companyDataChats CompanyDataChat[] @relation("CompanyDataChatUser")
-  likes Like[]
+  workManuals          WorkManual[]
+  manualReviews        WorkManual[]         @relation("ManualReviewer")
+  weeklyReports        WeeklyReport[]       @relation("WeeklyReportAuthor")
+  knowledgeBases       KnowledgeBase[]
+  schedules            Schedule[]
+  periodicAlarms       PeriodicAlarm[]
+  workSkillFiles       WorkSkillFile[]
+  meetingMinutes       MeetingMinutes[]     @relation("MeetingMinutesCreatedBy")
+  meetingSummaryEdits  MeetingSummaryEdit[] @relation("MeetingSummaryEditor")
+  plannerTaskCache     PlannerTaskCache[]
+  companyDataUploads   CompanyData[]        @relation("CompanyDataUploader")
+  companyDataChats     CompanyDataChat[]    @relation("CompanyDataChatUser")
+  likes                Like[]
   instructionsAssigned WorklogInstruction[] @relation("InstructionAssignee")
   instructionsGiven    WorklogInstruction[] @relation("InstructionAssigner")
   worklogSupplements   WorklogSupplement[]  @relation("WorklogSupplementAuthor")
 
-  keyInitiativesAssigned KeyInitiative[] @relation("KeyInitiativeAssignee")
-  keyInitiativesCreated  KeyInitiative[] @relation("KeyInitiativeCreator")
+  // 경영지시 팔로우업(지시→꼭지→검수) 모듈
+  execInstructionsAuthored Instruction[]       @relation("ExecInstructionAuthor")
+  milestonesOwned          Milestone[]         @relation("MilestoneOwner")
+  strategySyntheses        StrategySynthesis[] @relation("StrategySynthAuthor")
+  notifyPrefs              Json                @default("{}") // 알림 설정(카테고리×채널)
+
+  keyInitiativesAssigned KeyInitiative[]         @relation("KeyInitiativeAssignee")
+  keyInitiativesCreated  KeyInitiative[]         @relation("KeyInitiativeCreator")
   keyInitiativeProgress  KeyInitiativeProgress[]
   documentViewLogs       DocumentViewLog[]
 
-  teamsPhotoBytes Bytes?
+  teamsPhotoBytes       Bytes?
   teamsPhotoContentType String?
-  teamsPhotoUpdatedAt DateTime?
+  teamsPhotoUpdatedAt   DateTime?
 
-  graphAccessToken  String?  @db.Text
-  graphRefreshToken String?  @db.Text
+  graphAccessToken  String?   @db.Text
+  graphRefreshToken String?   @db.Text
   graphTokenExpiry  DateTime?
 }
 
 model Objective {
-  id          String    @id @default(cuid())
-  title       String
-  description String?
-  orgUnitId   String
-  orgUnit     OrgUnit   @relation(fields: [orgUnitId], references: [id])
-  ownerId     String
-  owner       User      @relation("ObjectiveOwner", fields: [ownerId], references: [id])
-  parentId    String?
-  parent      Objective? @relation("ObjectiveTree", fields: [parentId], references: [id])
-  children    Objective[] @relation("ObjectiveTree")
-  status      ObjectiveStatus @default(DRAFT)
-  periodStart DateTime
-  periodEnd   DateTime
-  alignsToKrId String?
-  alignsToKr   KeyResult? @relation("ObjectiveAlignedToKR", fields: [alignsToKrId], references: [id])
-  keyResults  KeyResult[]
-  pillar      Pillar?
+  id             String          @id @default(cuid())
+  title          String
+  description    String?
+  orgUnitId      String
+  orgUnit        OrgUnit         @relation(fields: [orgUnitId], references: [id])
+  ownerId        String
+  owner          User            @relation("ObjectiveOwner", fields: [ownerId], references: [id])
+  parentId       String?
+  parent         Objective?      @relation("ObjectiveTree", fields: [parentId], references: [id])
+  children       Objective[]     @relation("ObjectiveTree")
+  status         ObjectiveStatus @default(DRAFT)
+  periodStart    DateTime
+  periodEnd      DateTime
+  alignsToKrId   String?
+  alignsToKr     KeyResult?      @relation("ObjectiveAlignedToKR", fields: [alignsToKrId], references: [id])
+  keyResults     KeyResult[]
+  pillar         Pillar?
   keyInitiatives KeyInitiative[] @relation("KeyInitiativeAlignment")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 }
 
 model KeyResult {
-  id           String    @id @default(cuid())
-  objectiveId  String
-  objective    Objective @relation(fields: [objectiveId], references: [id])
-  title        String
-  metric       String
-  target       Float
-  unit         String
-  weight       Float     @default(1)
-  ownerId      String
-  owner        User      @relation("KeyResultOwner", fields: [ownerId], references: [id])
-  initiatives  Initiative[]
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  type         KeyResultType @default(PROJECT)
-  alignedObjectives Objective[] @relation("ObjectiveAlignedToKR")
-  pillar       Pillar?
-  baseline     Float?
-  year25Target Float?
-  cadence      Cadence?
-  progressEntries ProgressEntry[]
-  direction    ThresholdDirection?
-  assignments  KeyResultAssignment[]
-  analysis25   String?
+  id                String                @id @default(cuid())
+  objectiveId       String
+  objective         Objective             @relation(fields: [objectiveId], references: [id])
+  title             String
+  metric            String
+  target            Float
+  unit              String
+  weight            Float                 @default(1)
+  ownerId           String
+  owner             User                  @relation("KeyResultOwner", fields: [ownerId], references: [id])
+  initiatives       Initiative[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  type              KeyResultType         @default(PROJECT)
+  alignedObjectives Objective[]           @relation("ObjectiveAlignedToKR")
+  pillar            Pillar?
+  baseline          Float?
+  year25Target      Float?
+  cadence           Cadence?
+  progressEntries   ProgressEntry[]
+  direction         ThresholdDirection?
+  assignments       KeyResultAssignment[]
+  analysis25        String?
 }
 
 model KeyResultAssignment {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   keyResultId String
   keyResult   KeyResult @relation(fields: [keyResultId], references: [id])
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
   role        String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 }
 
 model Initiative {
-  id            String   @id @default(cuid())
-  keyResultId   String
-  keyResult     KeyResult @relation(fields: [keyResultId], references: [id])
-  title         String
-  description   String?
-  state         InitiativeState @default(PLANNED)
-  type          InitiativeType  @default(PROJECT)
-  ownerId       String
-  owner         User     @relation("InitiativeOwner", fields: [ownerId], references: [id])
-  priority      Int      @default(3)
-  slaMinutes    Int?
-  dueAt         DateTime?
-  startAt       DateTime?
-  endAt         DateTime?
-  cadence       Cadence?
-  cadenceAnchor String?
-  worklogs      Worklog[]
-  checklistItems ChecklistItem[]
-  userGoalId    String?
-  userGoal      UserGoal? @relation(fields: [userGoalId], references: [id])
-  parentId      String?
-  parent        Initiative? @relation("InitiativeTree", fields: [parentId], references: [id])
-  children      Initiative[] @relation("InitiativeTree")
-  delegationsAsChild Delegation[] @relation("DelegationChildInitiative")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  progressEntries ProgressEntry[]
-  processInstances ProcessInstance[]
+  id                   String                @id @default(cuid())
+  keyResultId          String
+  keyResult            KeyResult             @relation(fields: [keyResultId], references: [id])
+  title                String
+  description          String?
+  state                InitiativeState       @default(PLANNED)
+  type                 InitiativeType        @default(PROJECT)
+  ownerId              String
+  owner                User                  @relation("InitiativeOwner", fields: [ownerId], references: [id])
+  priority             Int                   @default(3)
+  slaMinutes           Int?
+  dueAt                DateTime?
+  startAt              DateTime?
+  endAt                DateTime?
+  cadence              Cadence?
+  cadenceAnchor        String?
+  worklogs             Worklog[]
+  checklistItems       ChecklistItem[]
+  userGoalId           String?
+  userGoal             UserGoal?             @relation(fields: [userGoalId], references: [id])
+  parentId             String?
+  parent               Initiative?           @relation("InitiativeTree", fields: [parentId], references: [id])
+  children             Initiative[]          @relation("InitiativeTree")
+  delegationsAsChild   Delegation[]          @relation("DelegationChildInitiative")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  progressEntries      ProgressEntry[]
+  processInstances     ProcessInstance[]
   processTaskInstances ProcessTaskInstance[]
 }
 
 model Worklog {
-  id                    String   @id @default(cuid())
+  id                    String               @id @default(cuid())
   initiativeId          String
-  initiative            Initiative @relation(fields: [initiativeId], references: [id])
-  date                  DateTime  @default(now())
-  progressPct           Int       @default(0)
-  timeSpentMinutes      Int       @default(0)
+  initiative            Initiative           @relation(fields: [initiativeId], references: [id])
+  date                  DateTime             @default(now())
+  progressPct           Int                  @default(0)
+  timeSpentMinutes      Int                  @default(0)
   blockerCode           String?
   note                  String?
   structuredData        Json?
   createdById           String
-  createdBy             User      @relation("WorklogCreator", fields: [createdById], references: [id])
+  createdBy             User                 @relation("WorklogCreator", fields: [createdById], references: [id])
   attachments           Json?
   tags                  Json?
-  createdAt             DateTime  @default(now())
-  urgent                Boolean   @default(false)
+  createdAt             DateTime             @default(now())
+  urgent                Boolean              @default(false)
   keywords              String?
   progressEntries       ProgressEntry[]
-  visibility            WorklogVisibility @default(ALL)
+  visibility            WorklogVisibility    @default(ALL)
   processTaskInstanceId String?
   processTaskInstance   ProcessTaskInstance? @relation("TaskWorklogs", fields: [processTaskInstanceId], references: [id])
   supplements           WorklogSupplement[]
@@ -323,16 +329,16 @@ enum WeeklyReportStatus {
 }
 
 model WeeklyReport {
-  id          String              @id @default(cuid())
-  userId      String
-  user        User                @relation("WeeklyReportAuthor", fields: [userId], references: [id])
-  orgUnitId   String?
-  orgUnit     OrgUnit?            @relation("WeeklyReportOrg", fields: [orgUnitId], references: [id])
-  weekStart   DateTime
-  sections    Json?
-  status      WeeklyReportStatus  @default(DRAFT)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation("WeeklyReportAuthor", fields: [userId], references: [id])
+  orgUnitId String?
+  orgUnit   OrgUnit?           @relation("WeeklyReportOrg", fields: [orgUnitId], references: [id])
+  weekStart DateTime
+  sections  Json?
+  status    WeeklyReportStatus @default(DRAFT)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
   @@unique([userId, weekStart])
   @@index([orgUnitId, weekStart])
@@ -347,28 +353,33 @@ enum ManualStatus {
 }
 
 model WorkManual {
-  id              String       @id @default(cuid())
-  userId          String
-  user            User         @relation(fields: [userId], references: [id])
-  title           String
-  content         String?
-  authorName      String       @default("")
-  authorTeamName  String       @default("")
-  department      String       @default("")
-  baseType        String       @default("")
-  options         Json?
-  phaseData       Json?
-  currentPhase    Int          @default(1)
-  version         Int          @default(1)
-  versionUpAt     DateTime     @default(now())
-  status          ManualStatus @default(DRAFT)
-  reviewerId      String?
-  reviewer        User?        @relation("ManualReviewer", fields: [reviewerId], references: [id])
-  reviewedAt      DateTime?
-  reviewComment   String?
-  qualityScore    Int          @default(0)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  title          String
+  content        String?
+  authorName     String       @default("")
+  authorTeamName String       @default("")
+  department     String       @default("")
+  baseType       String       @default("")
+  options        Json?
+  phaseData      Json?
+  currentPhase   Int          @default(1)
+  version        Int          @default(1)
+  versionUpAt    DateTime     @default(now())
+  status         ManualStatus @default(DRAFT)
+  reviewerId     String?
+  reviewer       User?        @relation("ManualReviewer", fields: [reviewerId], references: [id])
+  reviewedAt     DateTime?
+  reviewComment  String?
+  qualityScore   Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  knowledgeBases KnowledgeBase[]
+  schedules      Schedule[]
+  periodicAlarms PeriodicAlarm[]
+  workSkillFiles WorkSkillFile[]
 
   @@index([userId])
   @@index([updatedAt])
@@ -376,11 +387,6 @@ model WorkManual {
   @@index([status])
   @@index([reviewerId])
   @@index([baseType])
-
-  knowledgeBases KnowledgeBase[]
-  schedules Schedule[]
-  periodicAlarms PeriodicAlarm[]
-  workSkillFiles WorkSkillFile[]
 }
 
 model Event {
@@ -396,10 +402,10 @@ model Event {
 }
 
 model Asset {
-  id     String @id @default(cuid())
-  name   String
-  type   String
-  code   String  @unique
+  id   String @id @default(cuid())
+  name String
+  type String
+  code String @unique
 }
 
 enum ApprovalStatus {
@@ -513,19 +519,19 @@ enum ApprovalRouteType {
 }
 
 model ApprovalRequest {
-  id             String          @id @default(cuid())
-  subjectType    String
-  subjectId      String
-  status         ApprovalStatus  @default(PENDING)
-  requestedById  String
-  requestedBy    User            @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
-  approverId     String
-  approver       User            @relation("ApprovalApprover", fields: [approverId], references: [id])
-  dueAt          DateTime?
-  tags           Json?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  steps          ApprovalStep[]
+  id            String         @id @default(cuid())
+  subjectType   String
+  subjectId     String
+  status        ApprovalStatus @default(PENDING)
+  requestedById String
+  requestedBy   User           @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  approverId    String
+  approver      User           @relation("ApprovalApprover", fields: [approverId], references: [id])
+  dueAt         DateTime?
+  tags          Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  steps         ApprovalStep[]
 
   @@index([approverId, status])
   @@index([requestedById, status])
@@ -558,16 +564,16 @@ model Share {
 }
 
 model Feedback {
-  id          String        @id @default(cuid())
-  subjectType String
-  subjectId   String
-  authorId    String
-  author      User          @relation(fields: [authorId], references: [id])
-  type        FeedbackType  @default(GENERAL)
-  content     String
-  rating      Int?
-  actionRequired Boolean    @default(false)
-  createdAt   DateTime      @default(now())
+  id             String       @id @default(cuid())
+  subjectType    String
+  subjectId      String
+  authorId       String
+  author         User         @relation(fields: [authorId], references: [id])
+  type           FeedbackType @default(GENERAL)
+  content        String
+  rating         Int?
+  actionRequired Boolean      @default(false)
+  createdAt      DateTime     @default(now())
 }
 
 // A lightweight task created from a worklog comment of type INSTRUCTION.
@@ -607,16 +613,16 @@ model Like {
 }
 
 model WorklogTeamDailyEval {
-  id          String           @id @default(cuid())
+  id          String            @id @default(cuid())
   ymd         String
   orgUnitId   String
-  orgUnit     OrgUnit          @relation(fields: [orgUnitId], references: [id])
+  orgUnit     OrgUnit           @relation(fields: [orgUnitId], references: [id])
   evaluatorId String
-  evaluator   User             @relation(fields: [evaluatorId], references: [id])
+  evaluator   User              @relation(fields: [evaluatorId], references: [id])
   status      WorklogEvalStatus
   comment     String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@unique([ymd, orgUnitId, evaluatorId])
   @@index([ymd])
@@ -625,50 +631,50 @@ model WorklogTeamDailyEval {
 }
 
 model HelpTicket {
-  id           String      @id @default(cuid())
-  category     String
-  queue        String?
-  requesterId  String
-  requester    User        @relation("HelpRequester", fields: [requesterId], references: [id])
-  assigneeId   String?
-  assignee     User?       @relation("HelpAssignee", fields: [assigneeId], references: [id])
-  status       HelpStatus  @default(OPEN)
-  dueAt        DateTime?
-  slaMinutes   Int?
-  tags         Json?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  resolvedAt   DateTime?
+  id          String     @id @default(cuid())
+  category    String
+  queue       String?
+  requesterId String
+  requester   User       @relation("HelpRequester", fields: [requesterId], references: [id])
+  assigneeId  String?
+  assignee    User?      @relation("HelpAssignee", fields: [assigneeId], references: [id])
+  status      HelpStatus @default(OPEN)
+  dueAt       DateTime?
+  slaMinutes  Int?
+  tags        Json?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  resolvedAt  DateTime?
 }
 
 model Delegation {
-  id                 String            @id @default(cuid())
-  parentType         String
-  parentId           String
-  childInitiativeId  String
-  childInitiative    Initiative        @relation("DelegationChildInitiative", fields: [childInitiativeId], references: [id])
-  delegatorId        String
-  delegator          User              @relation("Delegator", fields: [delegatorId], references: [id])
-  delegateeId        String
-  delegatee          User              @relation("Delegatee", fields: [delegateeId], references: [id])
-  status             DelegationStatus  @default(PENDING)
-  dueAt              DateTime?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  acceptedAt         DateTime?
-  rejectedAt         DateTime?
+  id                String           @id @default(cuid())
+  parentType        String
+  parentId          String
+  childInitiativeId String
+  childInitiative   Initiative       @relation("DelegationChildInitiative", fields: [childInitiativeId], references: [id])
+  delegatorId       String
+  delegator         User             @relation("Delegator", fields: [delegatorId], references: [id])
+  delegateeId       String
+  delegatee         User             @relation("Delegatee", fields: [delegateeId], references: [id])
+  status            DelegationStatus @default(PENDING)
+  dueAt             DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  acceptedAt        DateTime?
+  rejectedAt        DateTime?
 }
 
 model Notification {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
   type        String
   subjectType String
   subjectId   String
   payload     Json?
   readAt      DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 }
 
 model Upload {
@@ -682,131 +688,131 @@ model Upload {
 }
 
 model ChecklistItem {
-  id            String   @id @default(cuid())
-  initiativeId  String
-  initiative    Initiative @relation(fields: [initiativeId], references: [id])
-  title         String
-  order         Int      @default(0)
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  ticks         ChecklistTick[]
+  id           String          @id @default(cuid())
+  initiativeId String
+  initiative   Initiative      @relation(fields: [initiativeId], references: [id])
+  title        String
+  order        Int             @default(0)
+  active       Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  ticks        ChecklistTick[]
 }
 
 model ChecklistTick {
-  id              String   @id @default(cuid())
+  id              String        @id @default(cuid())
   checklistItemId String
   checklistItem   ChecklistItem @relation(fields: [checklistItemId], references: [id])
   periodStart     DateTime
   periodEnd       DateTime
-  checkedAt       DateTime @default(now())
+  checkedAt       DateTime      @default(now())
   actorId         String
-  actor           User     @relation(fields: [actorId], references: [id])
+  actor           User          @relation(fields: [actorId], references: [id])
 }
 
 model ProgressEntry {
-  id            String    @id @default(cuid())
-  worklogId     String?
-  worklog       Worklog?  @relation(fields: [worklogId], references: [id])
-  actorId       String
-  actor         User      @relation(fields: [actorId], references: [id])
-  keyResultId   String?
-  keyResult     KeyResult? @relation(fields: [keyResultId], references: [id])
-  initiativeId  String?
-  initiative    Initiative? @relation(fields: [initiativeId], references: [id])
-  periodStart   DateTime
-  periodEnd     DateTime
-  krValue       Float?
+  id             String      @id @default(cuid())
+  worklogId      String?
+  worklog        Worklog?    @relation(fields: [worklogId], references: [id])
+  actorId        String
+  actor          User        @relation(fields: [actorId], references: [id])
+  keyResultId    String?
+  keyResult      KeyResult?  @relation(fields: [keyResultId], references: [id])
+  initiativeId   String?
+  initiative     Initiative? @relation(fields: [initiativeId], references: [id])
+  periodStart    DateTime
+  periodEnd      DateTime
+  krValue        Float?
   initiativeDone Boolean?
-  note          String?
-  createdAt     DateTime @default(now())
+  note           String?
+  createdAt      DateTime    @default(now())
 }
 
 model Car {
-  id        String   @id @default(cuid())
-  name      String
-  type      String?
-  plateNo   String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String               @id @default(cuid())
+  name             String
+  type             String?
+  plateNo          String?
+  active           Boolean              @default(true)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
   dispatchRequests CarDispatchRequest[]
 }
 
 model CarDispatchRequest {
-  id           String         @id @default(cuid())
+  id           String   @id @default(cuid())
   carId        String
-  car          Car            @relation(fields: [carId], references: [id])
+  car          Car      @relation(fields: [carId], references: [id])
   requesterId  String
-  requester    User           @relation("CarDispatchRequester", fields: [requesterId], references: [id])
+  requester    User     @relation("CarDispatchRequester", fields: [requesterId], references: [id])
   approverId   String
-  approver     User           @relation("CarDispatchApprover", fields: [approverId], references: [id])
+  approver     User     @relation("CarDispatchApprover", fields: [approverId], references: [id])
   coRiders     String?
   startAt      DateTime
   endAt        DateTime
   destination  String
   purpose      String
-  driverName   String?        // 경비실 긴급 등록 시 운전자명(시스템 계정이 아닌 경우)
-  guardCreated Boolean        @default(false) // 경비실 직접(긴급) 등록 여부
+  driverName   String? // 경비실 긴급 등록 시 운전자명(시스템 계정이 아닌 경우)
+  guardCreated Boolean  @default(false) // 경비실 직접(긴급) 등록 여부
 
   // 선점자와 협의한 추가/교환 배차
-  coUse              Boolean   @default(false) // 협의(추가/교환) 배차 여부
-  negotiatedWithId   String?   // 선점자(협의 상대) user id
-  negotiationStatus  String?   // REQUESTED | AGREED | DECLINED
-  negotiationNote    String?   // 협의 메모 (예: 남는 시간 사용 / 차량 교환)
-  conflictDispatchId String?   // 협의 대상이 된 선점 배차 id
+  coUse              Boolean @default(false) // 협의(추가/교환) 배차 여부
+  negotiatedWithId   String? // 선점자(협의 상대) user id
+  negotiationStatus  String? // REQUESTED | AGREED | DECLINED
+  negotiationNote    String? // 협의 메모 (예: 남는 시간 사용 / 차량 교환)
+  conflictDispatchId String? // 협의 대상이 된 선점 배차 id
 
   dispatchType String         @default("CORPORATE") // CORPORATE | LOGISTICS
-  cargoDetails String?        // 화물 내용 (물류 전용)
+  cargoDetails String? // 화물 내용 (물류 전용)
   status       DispatchStatus @default(PENDING)
 
   // 경비실 입·출차 관리
-  checkoutAt   DateTime?      // 출차 확인 시각 (경비)
-  checkinAt    DateTime?      // 입차 확인 시각 (경비)
-  checkedOutById String?      // 출차 확인한 사용자(경비) id
-  checkedInById  String?      // 입차 확인한 사용자(경비) id
+  checkoutAt     DateTime? // 출차 확인 시각 (경비)
+  checkinAt      DateTime? // 입차 확인 시각 (경비)
+  checkedOutById String? // 출차 확인한 사용자(경비) id
+  checkedInById  String? // 입차 확인한 사용자(경비) id
 
   // 주행거리 (경비실 입력 = 공식 확인값)
-  odometerStart Int?          // 출발 적산거리(km) - 경비 확인
-  odometerEnd   Int?          // 복귀 적산거리(km) - 경비 확인
-  distanceKm    Int?          // 주행거리(km) = end - start
+  odometerStart Int? // 출발 적산거리(km) - 경비 확인
+  odometerEnd   Int? // 복귀 적산거리(km) - 경비 확인
+  distanceKm    Int? // 주행거리(km) = end - start
 
   // 차량 사용 전후 등록 (운전자)
-  statusPhotos  Json?         // (구) 차량 상태 사진 URL 배열 — 하위호환
-  odometerPhotos Json?        // (구) 계기판 사진 URL 배열 — 하위호환
-  statusPhotosBefore   Json?  // 차량 상태 사진(사용 전)
-  statusPhotosAfter    Json?  // 차량 상태 사진(사용 후)
-  odometerPhotosBefore Json?  // 계기판 사진(사용 전)
-  odometerPhotosAfter  Json?  // 계기판 사진(사용 후)
-  odometerBeforeOcr Int?      // 사용 전 인식 적산거리(km, 운전자 사진 OCR)
-  odometerAfterOcr  Int?      // 사용 후 인식 적산거리(km, 운전자 사진 OCR)
-  usageNote     String?       // 특이사항
-  usageRegisteredAt DateTime? // 사용 전후 등록 시각
-  usageRegisteredById String? // 등록한 운전자 id
+  statusPhotos         Json? // (구) 차량 상태 사진 URL 배열 — 하위호환
+  odometerPhotos       Json? // (구) 계기판 사진 URL 배열 — 하위호환
+  statusPhotosBefore   Json? // 차량 상태 사진(사용 전)
+  statusPhotosAfter    Json? // 차량 상태 사진(사용 후)
+  odometerPhotosBefore Json? // 계기판 사진(사용 전)
+  odometerPhotosAfter  Json? // 계기판 사진(사용 후)
+  odometerBeforeOcr    Int? // 사용 전 인식 적산거리(km, 운전자 사진 OCR)
+  odometerAfterOcr     Int? // 사용 후 인식 적산거리(km, 운전자 사진 OCR)
+  usageNote            String? // 특이사항
+  usageRegisteredAt    DateTime? // 사용 전후 등록 시각
+  usageRegisteredById  String? // 등록한 운전자 id
 
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // 팀 과제 관리 (과제 → 항목 → 마일스톤 재귀 트리)
 // 각 노드: 준비자료/결과보고/첨부, KPI·OKR 세부태스크 연동
 model TeamTaskNode {
-  id            String   @id @default(cuid())
+  id            String         @id @default(cuid())
   orgUnitId     String
   parentId      String?
   parent        TeamTaskNode?  @relation("TeamTaskTree", fields: [parentId], references: [id], onDelete: Cascade)
   children      TeamTaskNode[] @relation("TeamTaskTree")
   title         String
-  order         Int      @default(0)
-  milestoneDate DateTime?       // 마일스톤 일자
-  status        String?         // OPEN | DONE
-  prepNote      String?         // 준비 자료(내용)
-  resultNote    String?         // 결과 보고(내용)
-  attachments   Json?           // [{ url, name, uploadId }]
-  keyResultId   String?         // 연동 KPI(KeyResult)
-  objectiveId   String?         // 연동 OKR(Objective)
+  order         Int            @default(0)
+  milestoneDate DateTime? // 마일스톤 일자
+  status        String? // OPEN | DONE
+  prepNote      String? // 준비 자료(내용)
+  resultNote    String? // 결과 보고(내용)
+  attachments   Json? // [{ url, name, uploadId }]
+  keyResultId   String? // 연동 KPI(KeyResult)
+  objectiveId   String? // 연동 OKR(Objective)
   createdById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 // 팀 과제 공개 설정 (PUBLIC=전체공개, PRIVATE=해당 팀 구성원+대표/관리자만)
@@ -819,8 +825,8 @@ model TeamTaskSetting {
 // 차량 교환 요청 (두 배차의 차량을 맞바꿈)
 model CarSwapRequest {
   id             String   @id @default(cuid())
-  fromDispatchId String   // 요청자 본인 배차
-  toDispatchId   String   // 상대(선점자) 배차
+  fromDispatchId String // 요청자 본인 배차
+  toDispatchId   String // 상대(선점자) 배차
   requestedById  String
   targetUserId   String
   status         String   @default("REQUESTED") // REQUESTED | AGREED | DECLINED
@@ -851,22 +857,22 @@ model LogisticsDispatchRequest {
 }
 
 model BusinessTripRequest {
-  id            String   @id @default(cuid())
-  requesterId   String
-  requester     User     @relation("TripRequester", fields: [requesterId], references: [id])
-  approverId    String
-  approver      User     @relation("TripApprover", fields: [approverId], references: [id])
-  approvalLine  Json?    // ordered array of approver userIds
-  destination   String
-  purpose       String
-  departureAt   DateTime
-  returnAt      DateTime
-  transportation String?  // 자가용/대중교통/항공/회사차량/기타
-  accommodation Boolean  @default(false)
-  notes         String?
-  status        String   @default("PENDING") // PENDING/APPROVED/REJECTED
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(cuid())
+  requesterId    String
+  requester      User     @relation("TripRequester", fields: [requesterId], references: [id])
+  approverId     String
+  approver       User     @relation("TripApprover", fields: [approverId], references: [id])
+  approvalLine   Json? // ordered array of approver userIds
+  destination    String
+  purpose        String
+  departureAt    DateTime
+  returnAt       DateTime
+  transportation String? // 자가용/대중교통/항공/회사차량/기타
+  accommodation  Boolean  @default(false)
+  notes          String?
+  status         String   @default("PENDING") // PENDING/APPROVED/REJECTED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model AttendanceRequest {
@@ -881,125 +887,125 @@ model AttendanceRequest {
   startAt     DateTime?
   endAt       DateTime?
   reason      String?
-  attachments Json?          // Array of { url, name, size?, contentType? }
+  attachments Json? // Array of { url, name, size?, contentType? }
   status      String         @default("PENDING")
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 }
 
 model ProcessTemplate {
-  id                         String             @id @default(cuid())
+  id                         String                @id @default(cuid())
   title                      String
   description                String?
-  type                       ProcessType        @default(PROJECT)
+  type                       ProcessType           @default(PROJECT)
   ownerId                    String
-  owner                      User               @relation("ProcessTemplateOwner", fields: [ownerId], references: [id])
+  owner                      User                  @relation("ProcessTemplateOwner", fields: [ownerId], references: [id])
   createdById                String
-  createdBy                  User               @relation("ProcessTemplateCreatedBy", fields: [createdById], references: [id])
+  createdBy                  User                  @relation("ProcessTemplateCreatedBy", fields: [createdById], references: [id])
   updatedById                String
-  updatedBy                  User               @relation("ProcessTemplateUpdatedBy", fields: [updatedById], references: [id])
-  visibility                 ProcessVisibility  @default(PUBLIC)
+  updatedBy                  User                  @relation("ProcessTemplateUpdatedBy", fields: [updatedById], references: [id])
+  visibility                 ProcessVisibility     @default(PUBLIC)
   orgUnitId                  String?
-  orgUnit                    OrgUnit?           @relation(fields: [orgUnitId], references: [id])
+  orgUnit                    OrgUnit?              @relation(fields: [orgUnitId], references: [id])
   recurrenceType             String?
   recurrenceDetail           String?
   sourceManualId             String? // 이 템플릿을 생성한 업무 매뉴얼 (WorkManual.id, 느슨한 연결)
-  scheduleEnabled            Boolean            @default(false)
+  scheduleEnabled            Boolean               @default(false)
   scheduleNextRunAt          DateTime?
   scheduleLastRunAt          DateTime?
   bpmnJson                   Json?
-  resultInputRequired        Boolean            @default(false)
+  resultInputRequired        Boolean               @default(false)
   expectedDurationDays       Int?
   expectedCompletionCriteria String?
-  allowExtendDeadline        Boolean            @default(true)
-  status                     String             @default("ACTIVE")
-  official                   Boolean            @default(false)
-  createdAt                  DateTime           @default(now())
-  updatedAt                  DateTime           @updatedAt
+  allowExtendDeadline        Boolean               @default(true)
+  status                     String                @default("ACTIVE")
+  official                   Boolean               @default(false)
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
   tasks                      ProcessTaskTemplate[]
   instances                  ProcessInstance[]
 }
 
 model ProcessTaskTemplate {
-  id                     String            @id @default(cuid())
-  processTemplateId      String
-  processTemplate        ProcessTemplate   @relation(fields: [processTemplateId], references: [id])
-  name                   String
-  description            String?
-  assigneeHint           String?
-  taskType               TaskType          @default(TASK)
-  orderHint              Int               @default(0)
-  stageLabel             String?
-  predecessorIds         String?           // comma-separated template IDs
-  predecessorMode        String?           // 'ALL'(default) or 'ANY' (for XOR joins)
-  xorGroupKey            String?
-  xorCondition           String?
-  assigneeType           AssigneeType?
-  assigneeUserId         String?
-  assigneeOrgUnitId      String?
-  assigneeRoleCode       String?
-  cooperationTargetType  AssigneeType?
-  cooperationTargetUserId String?
+  id                         String                @id @default(cuid())
+  processTemplateId          String
+  processTemplate            ProcessTemplate       @relation(fields: [processTemplateId], references: [id])
+  name                       String
+  description                String?
+  assigneeHint               String?
+  taskType                   TaskType              @default(TASK)
+  orderHint                  Int                   @default(0)
+  stageLabel                 String?
+  predecessorIds             String? // comma-separated template IDs
+  predecessorMode            String? // 'ALL'(default) or 'ANY' (for XOR joins)
+  xorGroupKey                String?
+  xorCondition               String?
+  assigneeType               AssigneeType?
+  assigneeUserId             String?
+  assigneeOrgUnitId          String?
+  assigneeRoleCode           String?
+  cooperationTargetType      AssigneeType?
+  cooperationTargetUserId    String?
   cooperationTargetOrgUnitId String?
-  cooperationTargetRoleCode String?
-  expectedOutput         String?
-  emailToTemplate        String?
-  emailCcTemplate        String?
-  emailSubjectTemplate   String?
-  emailBodyTemplate      String?
-  worklogTemplateHint    String?
-  linkToKpiType          String?
-  approvalRouteType      ApprovalRouteType?
-  approvalRoleCodes      String?           // comma-separated role codes
-  approvalUserIds        String?           // comma-separated user IDs
-  isFinalApproval        Boolean           @default(false)
-  deadlineOffsetDays     Int?
-  slaHours               Int?
-  allowDelayReasonRequired Boolean        @default(false)
-  loopBackTargetId       String?           // 반려 시 돌아갈 태스크 템플릿 ID (루프백)
-  loopBackCondition      String?           // 루프백 조건 (예: last.approval.status == 'REJECTED')
-  maxLoopCount           Int?              // 최대 루프 횟수 (기본 3, 무한루프 방지)
-  taskInstances          ProcessTaskInstance[]
+  cooperationTargetRoleCode  String?
+  expectedOutput             String?
+  emailToTemplate            String?
+  emailCcTemplate            String?
+  emailSubjectTemplate       String?
+  emailBodyTemplate          String?
+  worklogTemplateHint        String?
+  linkToKpiType              String?
+  approvalRouteType          ApprovalRouteType?
+  approvalRoleCodes          String? // comma-separated role codes
+  approvalUserIds            String? // comma-separated user IDs
+  isFinalApproval            Boolean               @default(false)
+  deadlineOffsetDays         Int?
+  slaHours                   Int?
+  allowDelayReasonRequired   Boolean               @default(false)
+  loopBackTargetId           String? // 반려 시 돌아갈 태스크 템플릿 ID (루프백)
+  loopBackCondition          String? // 루프백 조건 (예: last.approval.status == 'REJECTED')
+  maxLoopCount               Int? // 최대 루프 횟수 (기본 3, 무한루프 방지)
+  taskInstances              ProcessTaskInstance[]
 }
 
 model ProcessInstance {
-  id              String            @id @default(cuid())
-  templateId      String
-  template        ProcessTemplate   @relation(fields: [templateId], references: [id])
-  title           String
-  startedById     String
-  startedBy       User             @relation("ProcessInstanceStartedBy", fields: [startedById], references: [id])
-  status          String           @default("ACTIVE")
-  version         Int              @default(1)
-  startAt         DateTime         @default(now())
-  endAt           DateTime?
-  expectedEndAt   DateTime?
-  itemCode        String?          // 품번 등 기준 정보 코드
-  moldCode        String?          // 금형 번호
-  carModelCode    String?          // 차종 코드
-  supplierCode    String?          // 협력사 코드
-  initiativeId    String?
-  initiative      Initiative?      @relation(fields: [initiativeId], references: [id])
-  modifiedById    String?
-  modifiedBy      User?            @relation("ProcessInstanceModifiedBy", fields: [modifiedById], references: [id])
-  modifiedAt      DateTime?
+  id                 String                @id @default(cuid())
+  templateId         String
+  template           ProcessTemplate       @relation(fields: [templateId], references: [id])
+  title              String
+  startedById        String
+  startedBy          User                  @relation("ProcessInstanceStartedBy", fields: [startedById], references: [id])
+  status             String                @default("ACTIVE")
+  version            Int                   @default(1)
+  startAt            DateTime              @default(now())
+  endAt              DateTime?
+  expectedEndAt      DateTime?
+  itemCode           String? // 품번 등 기준 정보 코드
+  moldCode           String? // 금형 번호
+  carModelCode       String? // 차종 코드
+  supplierCode       String? // 협력사 코드
+  initiativeId       String?
+  initiative         Initiative?           @relation(fields: [initiativeId], references: [id])
+  modifiedById       String?
+  modifiedBy         User?                 @relation("ProcessInstanceModifiedBy", fields: [modifiedById], references: [id])
+  modifiedAt         DateTime?
   modificationReason String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  tasks           ProcessTaskInstance[]
-  stopEvents      ProcessStopEvent[] @relation("ProcessStop_on_Instance")
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  tasks              ProcessTaskInstance[]
+  stopEvents         ProcessStopEvent[]    @relation("ProcessStop_on_Instance")
 }
 
 model ProcessTaskInstance {
-  id                String              @id @default(cuid())
+  id                String                 @id @default(cuid())
   instanceId        String
-  instance          ProcessInstance     @relation(fields: [instanceId], references: [id])
+  instance          ProcessInstance        @relation(fields: [instanceId], references: [id])
   taskTemplateId    String
-  taskTemplate      ProcessTaskTemplate @relation(fields: [taskTemplateId], references: [id])
+  taskTemplate      ProcessTaskTemplate    @relation(fields: [taskTemplateId], references: [id])
   name              String
   stageLabel        String?
   taskType          TaskType
-  status            String             @default("NOT_STARTED")
+  status            String                 @default("NOT_STARTED")
   plannedStartAt    DateTime?
   plannedEndAt      DateTime?
   actualStartAt     DateTime?
@@ -1015,13 +1021,13 @@ model ProcessTaskInstance {
   assigneeId        String?
   decidedById       String?
   decisionReason    String?
-  loopCount         Int                @default(0)
+  loopCount         Int                    @default(0)
   initiativeId      String?
-  initiative        Initiative?        @relation(fields: [initiativeId], references: [id])
-  worklogs          Worklog[]          @relation("TaskWorklogs")
+  initiative        Initiative?            @relation(fields: [initiativeId], references: [id])
+  worklogs          Worklog[]              @relation("TaskWorklogs")
   deadlineAlerts    ProcessDeadlineAlert[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 }
 
 enum StopType {
@@ -1030,26 +1036,26 @@ enum StopType {
 }
 
 model ProcessStopEvent {
-  id               String         @id @default(cuid())
+  id                String          @id @default(cuid())
   processInstanceId String
-  processInstance  ProcessInstance @relation("ProcessStop_on_Instance", fields: [processInstanceId], references: [id])
-  stoppedById      String
-  stoppedBy        User           @relation("ProcessStop_on_User", fields: [stoppedById], references: [id])
-  stopType         StopType
-  reason           String
-  stoppedAt        DateTime       @default(now())
+  processInstance   ProcessInstance @relation("ProcessStop_on_Instance", fields: [processInstanceId], references: [id])
+  stoppedById       String
+  stoppedBy         User            @relation("ProcessStop_on_User", fields: [stoppedById], references: [id])
+  stopType          StopType
+  reason            String
+  stoppedAt         DateTime        @default(now())
 }
 
 model ProcessDeadlineAlert {
-  id              String              @id @default(cuid())
-  taskInstanceId  String
-  taskInstance    ProcessTaskInstance @relation(fields: [taskInstanceId], references: [id])
-  alertType       String              // APPROACHING | OVERDUE | ESCALATION
-  alertLevel      Int                 @default(0) // 0=담당자, 1=팀장, 2=임원
-  scheduledAt     DateTime
-  sentAt          DateTime?
-  recipientId     String
-  createdAt       DateTime            @default(now())
+  id             String              @id @default(cuid())
+  taskInstanceId String
+  taskInstance   ProcessTaskInstance @relation(fields: [taskInstanceId], references: [id])
+  alertType      String // APPROACHING | OVERDUE | ESCALATION
+  alertLevel     Int                 @default(0) // 0=담당자, 1=팀장, 2=임원
+  scheduledAt    DateTime
+  sentAt         DateTime?
+  recipientId    String
+  createdAt      DateTime            @default(now())
 
   @@index([taskInstanceId])
   @@index([scheduledAt])
@@ -1102,20 +1108,20 @@ model Equipment {
 
 // ── 지식베이스 (system_operation / calculation 기본형 연동) ──
 model KnowledgeBase {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  manualId      String?
-  manual        WorkManual? @relation(fields: [manualId], references: [id])
-  category      String   @default("general")
-  title         String
-  content       String
-  tags          String   @default("")
-  systemName    String?
-  version       Int      @default(1)
-  viewCount     Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id])
+  manualId   String?
+  manual     WorkManual? @relation(fields: [manualId], references: [id])
+  category   String      @default("general")
+  title      String
+  content    String
+  tags       String      @default("")
+  systemName String?
+  version    Int         @default(1)
+  viewCount  Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
   @@index([userId])
   @@index([manualId])
@@ -1125,19 +1131,19 @@ model KnowledgeBase {
 
 // ── 일정관리 (dev_project 기본형 연동) ──
 model Schedule {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  manualId      String?
-  manual        WorkManual? @relation(fields: [manualId], references: [id])
-  title         String
-  description   String?
-  startDate     DateTime
-  endDate       DateTime
-  milestones    Json?
-  status        String   @default("planned")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  manualId    String?
+  manual      WorkManual? @relation(fields: [manualId], references: [id])
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  milestones  Json?
+  status      String      @default("planned")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   @@index([userId])
   @@index([manualId])
@@ -1146,21 +1152,21 @@ model Schedule {
 
 // ── 주기알람 (inspection_mgmt 기본형 연동) ──
 model PeriodicAlarm {
-  id            String    @id @default(cuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id])
-  manualId      String?
-  manual        WorkManual? @relation(fields: [manualId], references: [id])
-  title         String
-  description   String?
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+  manualId       String?
+  manual         WorkManual? @relation(fields: [manualId], references: [id])
+  title          String
+  description    String?
   cronExpression String?
-  intervalDays  Int       @default(0)
-  nextRunAt     DateTime?
-  lastRunAt     DateTime?
-  isActive      Boolean   @default(true)
-  checkItems    Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  intervalDays   Int         @default(0)
+  nextRunAt      DateTime?
+  lastRunAt      DateTime?
+  isActive       Boolean     @default(true)
+  checkItems     Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([userId])
   @@index([manualId])
@@ -1170,18 +1176,18 @@ model PeriodicAlarm {
 
 // ── 업무 스킬 파일 (Claude Skills 기반 업무 지식 구조화) ──
 model WorkSkillFile {
-  id            String       @id @default(cuid())
-  userId        String
-  user          User         @relation(fields: [userId], references: [id])
-  manualId      String?
-  manual        WorkManual?  @relation(fields: [manualId], references: [id])
-  title         String
-  version       Int          @default(1)
-  skillData     Json         // WorkSkillFileData JSON (overview, actors, steps, decisions, exceptions, etc.)
-  status        String       @default("draft") // draft | active | archived
-  qaHistory     Json?        // Array of Q&A conversations
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  manualId  String?
+  manual    WorkManual? @relation(fields: [manualId], references: [id])
+  title     String
+  version   Int         @default(1)
+  skillData Json // WorkSkillFileData JSON (overview, actors, steps, decisions, exceptions, etc.)
+  status    String      @default("draft") // draft | active | archived
+  qaHistory Json? // Array of Q&A conversations
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   @@index([userId])
   @@index([manualId])
@@ -1193,37 +1199,37 @@ model WorkSkillFile {
 /// summarise prompt as few-shot references so the model gradually learns
 /// the team's preferred style and corrections.
 model MeetingSummaryEdit {
-  id           String   @id @default(cuid())
-  meetingId    String
-  meeting      MeetingMinutes @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  original     String   @db.Text
-  edited       String   @db.Text
-  editedById   String?
-  editedBy     User?    @relation("MeetingSummaryEditor", fields: [editedById], references: [id])
-  createdAt    DateTime @default(now())
+  id         String         @id @default(cuid())
+  meetingId  String
+  meeting    MeetingMinutes @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  original   String         @db.Text
+  edited     String         @db.Text
+  editedById String?
+  editedBy   User?          @relation("MeetingSummaryEditor", fields: [editedById], references: [id])
+  createdAt  DateTime       @default(now())
 
   @@index([meetingId])
   @@index([createdAt])
 }
 
 model MeetingMinutes {
-  id            String   @id @default(cuid())
+  id            String               @id @default(cuid())
   title         String
-  date          DateTime @default(now())
-  participants  Json?    // string[] of participant names/ids
-  audioUploadId String?  // reference to Upload.id for the audio file
-  audioChunks   Json?    // Array of { uploadId, order, duration } for chunked audio
-  transcript    String?  @db.Text
-  summary       String?  @db.Text
-  actionItems   Json?    // Array of { text, assignee?, dueDate? }
-  attachments   Json?    // Array of { url, name, size?, contentType? }
-  status        String   @default("draft") // draft | recording | transcribing | summarized | finalized
-  duration      Int?     // total duration in seconds
+  date          DateTime             @default(now())
+  participants  Json? // string[] of participant names/ids
+  audioUploadId String? // reference to Upload.id for the audio file
+  audioChunks   Json? // Array of { uploadId, order, duration } for chunked audio
+  transcript    String?              @db.Text
+  summary       String?              @db.Text
+  actionItems   Json? // Array of { text, assignee?, dueDate? }
+  attachments   Json? // Array of { url, name, size?, contentType? }
+  status        String               @default("draft") // draft | recording | transcribing | summarized | finalized
+  duration      Int? // total duration in seconds
   createdById   String
-  createdBy     User     @relation("MeetingMinutesCreatedBy", fields: [createdById], references: [id])
+  createdBy     User                 @relation("MeetingMinutesCreatedBy", fields: [createdById], references: [id])
   summaryEdits  MeetingSummaryEdit[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   @@index([createdById])
   @@index([date])
@@ -1231,17 +1237,17 @@ model MeetingMinutes {
 }
 
 model PlannerTaskCache {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   graphTaskId     String
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
   title           String
   dueDateTime     DateTime?
-  percentComplete Int      @default(0)
-  priority        Int      @default(5)
+  percentComplete Int       @default(0)
+  priority        Int       @default(5)
   planName        String?
   groupName       String?
-  syncedAt        DateTime @default(now())
+  syncedAt        DateTime  @default(now())
 
   @@unique([graphTaskId, userId])
   @@index([userId])
@@ -1250,17 +1256,17 @@ model PlannerTaskCache {
 }
 
 model CompanyData {
-  id            String   @id @default(cuid())
-  title         String
-  description   String?
-  fileUrl       String
-  fileName      String
-  content       String?  @db.Text
-  openaiFileId  String?
-  uploadedById  String
-  uploadedBy    User     @relation("CompanyDataUploader", fields: [uploadedById], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(cuid())
+  title        String
+  description  String?
+  fileUrl      String
+  fileName     String
+  content      String?  @db.Text
+  openaiFileId String?
+  uploadedById String
+  uploadedBy   User     @relation("CompanyDataUploader", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([uploadedById])
 }
@@ -1288,19 +1294,19 @@ model CompanyDataChat {
 
 /// 케이티텔레캅 - 복지동, 정문 입출입 (TB_ACCESS)
 model KtAccessLog {
-  id            String   @id @default(cuid())
-  eventAt       DateTime // 이벤트 발생 시각
-  cardNo        String?  // 카드/사원증 번호
-  employeeNo    String?  // 사번
-  personName    String?  // 이름
-  direction     String?  // IN/OUT
-  gateName      String?  // 출입구 이름 (정문, 복지동 등)
-  gateId        String?  // 출입구 ID
-  deviceId      String?  // 단말기 ID
-  resultCode    String?  // 인증 결과 코드
-  rawData       Json?    // 원본 데이터 전체
-  sourceId      String?  // 원본 테이블 PK (중복 방지용)
-  syncedAt      DateTime @default(now())
+  id         String   @id @default(cuid())
+  eventAt    DateTime // 이벤트 발생 시각
+  cardNo     String? // 카드/사원증 번호
+  employeeNo String? // 사번
+  personName String? // 이름
+  direction  String? // IN/OUT
+  gateName   String? // 출입구 이름 (정문, 복지동 등)
+  gateId     String? // 출입구 ID
+  deviceId   String? // 단말기 ID
+  resultCode String? // 인증 결과 코드
+  rawData    Json? // 원본 데이터 전체
+  sourceId   String? // 원본 테이블 PK (중복 방지용)
+  syncedAt   DateTime @default(now())
 
   @@unique([sourceId])
   @@index([eventAt])
@@ -1311,20 +1317,20 @@ model KtAccessLog {
 
 /// 에스원 - 함평공장 입출입 (T_SECOM_ALARM)
 model SecomAlarm {
-  id            String   @id @default(cuid())
-  eventAt       DateTime // 이벤트 발생 시각
-  cardNo        String?  // 카드 번호
-  employeeNo    String?  // 사번
-  personName    String?  // 이름
-  direction     String?  // IN/OUT
-  zoneName      String?  // 구역명
-  zoneId        String?  // 구역 ID
-  deviceId      String?  // 단말기 ID
-  alarmType     String?  // 알람 유형
-  resultCode    String?  // 인증 결과
-  rawData       Json?    // 원본 데이터 전체
-  sourceId      String?  // 원본 테이블 PK
-  syncedAt      DateTime @default(now())
+  id         String   @id @default(cuid())
+  eventAt    DateTime // 이벤트 발생 시각
+  cardNo     String? // 카드 번호
+  employeeNo String? // 사번
+  personName String? // 이름
+  direction  String? // IN/OUT
+  zoneName   String? // 구역명
+  zoneId     String? // 구역 ID
+  deviceId   String? // 단말기 ID
+  alarmType  String? // 알람 유형
+  resultCode String? // 인증 결과
+  rawData    Json? // 원본 데이터 전체
+  sourceId   String? // 원본 테이블 PK
+  syncedAt   DateTime @default(now())
 
   @@unique([sourceId])
   @@index([eventAt])
@@ -1335,20 +1341,20 @@ model SecomAlarm {
 
 /// 캡스 - 사무실 입출입 (T_CAPS_ALARM)
 model CapsAlarm {
-  id            String   @id @default(cuid())
-  eventAt       DateTime // 이벤트 발생 시각
-  cardNo        String?  // 카드 번호
-  employeeNo    String?  // 사번
-  personName    String?  // 이름
-  direction     String?  // IN/OUT
-  doorName      String?  // 출입문 이름
-  doorId        String?  // 출입문 ID
-  deviceId      String?  // 단말기 ID
-  alarmType     String?  // 알람 유형
-  resultCode    String?  // 인증 결과
-  rawData       Json?    // 원본 데이터 전체
-  sourceId      String?  // 원본 테이블 PK
-  syncedAt      DateTime @default(now())
+  id         String   @id @default(cuid())
+  eventAt    DateTime // 이벤트 발생 시각
+  cardNo     String? // 카드 번호
+  employeeNo String? // 사번
+  personName String? // 이름
+  direction  String? // IN/OUT
+  doorName   String? // 출입문 이름
+  doorId     String? // 출입문 ID
+  deviceId   String? // 단말기 ID
+  alarmType  String? // 알람 유형
+  resultCode String? // 인증 결과
+  rawData    Json? // 원본 데이터 전체
+  sourceId   String? // 원본 테이블 PK
+  syncedAt   DateTime @default(now())
 
   @@unique([sourceId])
   @@index([eventAt])
@@ -1364,16 +1370,16 @@ model CapsAlarm {
 model CamsProposal {
   id          String   @id @default(cuid())
   slpNo       String   @unique // 품의번호 (예: 202605180001)
-  title       String?  // 제목
-  purpose     String?  // 목적
-  drafter     String?  // 기안자
-  draftDate   String?  // 기안일자 (YYYYMMDD)
-  dueDate     String?  // 완료예정일 (YYYYMMDD)
-  amount      String?  // 소요금액
-  paymentTerm String?  // 지급조건
-  vendor      String?  // 관련업체
+  title       String? // 제목
+  purpose     String? // 목적
+  drafter     String? // 기안자
+  draftDate   String? // 기안일자 (YYYYMMDD)
+  dueDate     String? // 완료예정일 (YYYYMMDD)
+  amount      String? // 소요금액
+  paymentTerm String? // 지급조건
+  vendor      String? // 관련업체
   content     String?  @db.Text // 내용 (긴 텍스트)
-  rawData     Json?    // 원본 데이터 전체
+  rawData     Json? // 원본 데이터 전체
   syncedAt    DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -1384,31 +1390,31 @@ model CamsProposal {
 }
 
 model CamsProposalAttachment {
-  id         String   @id @default(cuid())
-  proposalId String
-  proposal   CamsProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  seq        Int      // 순번 (1, 2, 3...)
-  filename   String   // 파일명
-  downloadUrl String  // CAMS 다운로드 URL (내부망용)
-  createdAt  DateTime @default(now())
+  id          String       @id @default(cuid())
+  proposalId  String
+  proposal    CamsProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  seq         Int // 순번 (1, 2, 3...)
+  filename    String // 파일명
+  downloadUrl String // CAMS 다운로드 URL (내부망용)
+  createdAt   DateTime     @default(now())
 
   @@unique([proposalId, seq])
   @@index([proposalId])
 }
 
 model CamsVoucher {
-  id          String   @id @default(cuid())
-  slpNo       String   @unique // 전표번호
-  title       String?  // 제목/적요
-  drafter     String?  // 기안자
-  draftDate   String?  // 기표일자
-  amount      String?  // 금액
-  status      String?  // 결재여부
-  txType      String?  // 거래형태
-  content     String?  @db.Text // 내용
-  rawData     Json?    // 원본 데이터 전체
-  syncedAt    DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  slpNo     String   @unique // 전표번호
+  title     String? // 제목/적요
+  drafter   String? // 기안자
+  draftDate String? // 기표일자
+  amount    String? // 금액
+  status    String? // 결재여부
+  txType    String? // 거래형태
+  content   String?  @db.Text // 내용
+  rawData   Json? // 원본 데이터 전체
+  syncedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   attachments CamsVoucherAttachment[]
 
@@ -1417,13 +1423,13 @@ model CamsVoucher {
 }
 
 model CamsVoucherAttachment {
-  id         String   @id @default(cuid())
-  voucherId  String
-  voucher    CamsVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
-  seq        Int      // 순번
-  filename   String   // 파일명
-  downloadUrl String  // CAMS 다운로드 URL (내부망용)
-  createdAt  DateTime @default(now())
+  id          String      @id @default(cuid())
+  voucherId   String
+  voucher     CamsVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  seq         Int // 순번
+  filename    String // 파일명
+  downloadUrl String // CAMS 다운로드 URL (내부망용)
+  createdAt   DateTime    @default(now())
 
   @@unique([voucherId, seq])
   @@index([voucherId])
@@ -1434,35 +1440,35 @@ model CamsVoucherAttachment {
 // ============================================================
 
 enum KeyInitiativeStatus {
-  NOT_STARTED  // 미착수
-  IN_PROGRESS  // 진행중
-  DELAYED      // 지연
-  COMPLETED    // 완료
-  CANCELLED    // 취소
+  NOT_STARTED // 미착수
+  IN_PROGRESS // 진행중
+  DELAYED // 지연
+  COMPLETED // 완료
+  CANCELLED // 취소
 }
 
 model KeyInitiative {
-  id           String              @id @default(cuid())
-  title        String              // 과제명
-  goal         String?             @db.Text // 과제 목표
-  description  String?             @db.Text // 상세 설명
-  status       KeyInitiativeStatus @default(NOT_STARTED)
-  priority     Int                 @default(0) // 우선순위 (높을수록 상위)
-  startDate    DateTime?           // 시작일
-  dueDate      DateTime?           // 기한
-  completedAt  DateTime?           // 완료일
-  assigneeId   String?             // 담당자
-  assignee     User?               @relation("KeyInitiativeAssignee", fields: [assigneeId], references: [id])
-  createdById  String              // 등록자
-  createdBy    User                @relation("KeyInitiativeCreator", fields: [createdById], references: [id])
-  orgUnitId    String?             // 담당 부서
-  orgUnit      OrgUnit?            @relation(fields: [orgUnitId], references: [id])
-  alignsToObjectiveId String?      // 정렬된 OKR Objective (프로젝트성/돌발성 과제도 OKR 축에 연결)
-  alignsToObjective   Objective?   @relation("KeyInitiativeAlignment", fields: [alignsToObjectiveId], references: [id])
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  id                  String              @id @default(cuid())
+  title               String // 과제명
+  goal                String?             @db.Text // 과제 목표
+  description         String?             @db.Text // 상세 설명
+  status              KeyInitiativeStatus @default(NOT_STARTED)
+  priority            Int                 @default(0) // 우선순위 (높을수록 상위)
+  startDate           DateTime? // 시작일
+  dueDate             DateTime? // 기한
+  completedAt         DateTime? // 완료일
+  assigneeId          String? // 담당자
+  assignee            User?               @relation("KeyInitiativeAssignee", fields: [assigneeId], references: [id])
+  createdById         String // 등록자
+  createdBy           User                @relation("KeyInitiativeCreator", fields: [createdById], references: [id])
+  orgUnitId           String? // 담당 부서
+  orgUnit             OrgUnit?            @relation(fields: [orgUnitId], references: [id])
+  alignsToObjectiveId String? // 정렬된 OKR Objective (프로젝트성/돌발성 과제도 OKR 축에 연결)
+  alignsToObjective   Objective?          @relation("KeyInitiativeAlignment", fields: [alignsToObjectiveId], references: [id])
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
-  progress     KeyInitiativeProgress[]
+  progress KeyInitiativeProgress[]
 
   @@index([status])
   @@index([assigneeId])
@@ -1477,8 +1483,8 @@ model KeyInitiativeProgress {
   initiativeId String
   initiative   KeyInitiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
   content      String        @db.Text // 진행 내용
-  progressPct  Int?          // 진행률 (0-100)
-  createdById  String        // 작성자
+  progressPct  Int? // 진행률 (0-100)
+  createdById  String // 작성자
   createdBy    User          @relation(fields: [createdById], references: [id])
   createdAt    DateTime      @default(now())
 
@@ -1487,17 +1493,95 @@ model KeyInitiativeProgress {
   @@index([createdAt])
 }
 
-
 // 품의서/전표 조회 로그 (사용자별 읽음 표시)
 model DocumentViewLog {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id])
-  docType      String   // "proposal" | "voucher"
-  docId        String   // slpNo (품의번호/전표번호)
-  viewedAt     DateTime @default(now())
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  docType  String // "proposal" | "voucher"
+  docId    String // slpNo (품의번호/전표번호)
+  viewedAt DateTime @default(now())
 
   @@unique([userId, docType, docId])
   @@index([userId])
   @@index([docType, docId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// 경영지시 팔로우업 모듈: 지시 → 꼭지(milestone) → 검수
+//  - 꼭지는 BPM이 아니라 굵직한 매듭(순서+결과)만 관리
+//  - 검수 관문은 기존 결재(ApprovalRequest)로 처리 (Milestone.approvalRequestId)
+//  - 꼭지 실행은 업무일지 테스크(KeyInitiative)로 양방향 연동 (Milestone.keyInitiativeId)
+// ─────────────────────────────────────────────────────────────
+enum InstructionSource {
+  TEXT
+  VOICE
+}
+
+enum InstructionStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum MilestoneStatus {
+  PENDING // 대기 (앞 꼭지 완료 전)
+  ACTIVE // 진행 (현재 순서)
+  BLOCKED // 막힘
+  REVIEW // 검수(완료 주장 → 지시자 확정 대기)
+  DONE // 완료 확정
+}
+
+model Instruction {
+  id                 String            @id @default(cuid())
+  authorId           String // 지시자
+  author             User              @relation("ExecInstructionAuthor", fields: [authorId], references: [id])
+  rawText            String            @db.Text // 원문 지시
+  summary            String?           @db.Text
+  source             InstructionSource @default(TEXT)
+  status             InstructionStatus @default(ACTIVE)
+  objectiveId        String? // 호스트 목표체계(OKR) 연결(선택)
+  promotedTemplateId String? // ProcessTemplate 승격 시 그 템플릿 id
+  milestones         Milestone[]
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([status, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model Milestone {
+  id                String          @id @default(cuid())
+  instructionId     String
+  instruction       Instruction     @relation(fields: [instructionId], references: [id], onDelete: Cascade)
+  order             Int             @default(0)
+  title             String
+  expectedResult    String?         @db.Text // 기대 결과
+  ownerId           String? // 담당자
+  owner             User?           @relation("MilestoneOwner", fields: [ownerId], references: [id])
+  status            MilestoneStatus @default(PENDING)
+  proof             Json            @default("[]") // [{type:'link'|'note', value, by, at}]
+  dueAt             DateTime?
+  activatedAt       DateTime?
+  doneAt            DateTime?
+  submittedAt       DateTime? // 검수 제출 시각
+  returnNote        String?         @db.Text // 반려 사유(확정 시 NULL)
+  lastNudgeAt       DateTime? // 넛지 중복 방지
+  keyInitiativeId   String? // ② 업무일지 테스크(중점과제) 연동
+  approvalRequestId String? // ① 검수 = 결재 재사용
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([ownerId, status])
+  @@index([instructionId])
+  @@index([status, dueAt])
+}
+
+model StrategySynthesis {
+  id          String   @id @default(cuid())
+  createdById String
+  createdBy   User     @relation("StrategySynthAuthor", fields: [createdById], references: [id])
+  result      Json     @default("{}") // {groups, contradictions, orphans, goalMap}
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
 }

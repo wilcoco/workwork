@@ -24,6 +24,10 @@ import { TeamKpiBoard } from './pages/TeamKpiBoard';
 import { KpiResultInput } from './pages/KpiResultInput';
 import { KpiReport } from './pages/KpiReport';
 import { TeamTasks } from './pages/TeamTasks';
+import { ExecInstructions } from './pages/ExecInstructions';
+import { ExecInstructionCapture } from './pages/ExecInstructionCapture';
+import { ExecInstructionDetail } from './pages/ExecInstructionDetail';
+import { ExecStrategy } from './pages/ExecStrategy';
 import { WorklogStatsDaily } from './pages/WorklogStatsDaily';
 import { WorklogAi } from './pages/WorklogAi';
 import { TeamOkrInput } from './pages/TeamOkrInput';
@@ -370,6 +374,10 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/kpi-result" element={<KpiResultInput />} />
           <Route path="/okr/kpi-report" element={<KpiReport />} />
           <Route path="/team-tasks" element={<TeamTasks />} />
+          <Route path="/exec-instructions" element={<ExecInstructions />} />
+          <Route path="/exec-instructions/new" element={<ExecInstructionCapture />} />
+          <Route path="/exec-instructions/strategy" element={<ExecStrategy />} />
+          <Route path="/exec-instructions/:id" element={<ExecInstructionDetail />} />
           <Route path="/okr/team-okr" element={<TeamOkrInput />} />
           <Route
             path="/admin/orgs"
@@ -551,6 +559,11 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/attendance/ot-verification">OT 검증</Link>
           <Link to="/attendance/access-report">입출입 리포트</Link>
           <Link to="/business-trip/request">출장 신청</Link>
+        </NavDropdown>
+        <NavDropdown label="경영지시" active={location.pathname.startsWith('/exec-instructions')}>
+          <Link to="/exec-instructions/new">지시 등록</Link>
+          <Link to="/exec-instructions">지시 목록</Link>
+          <Link to="/exec-instructions/strategy">전략 통일성</Link>
         </NavDropdown>
         <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process') || location.pathname.startsWith('/manuals')}>
           <Link to={`/process/start?return=${encodeURIComponent(location.pathname + location.search)}`}>새 프로세스 시작</Link>
@@ -825,6 +838,13 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
         { to: '/process/templates', label: '프로세스 템플릿' },
         { to: '/manuals', label: '업무 메뉴얼' },
         { to: '/process/from-manual', label: '매뉴얼로 프로세스 만들기 (AI)' },
+      ];
+    }
+    if (path.startsWith('/exec-instructions')) {
+      return [
+        { to: '/exec-instructions/new', label: '지시 등록' },
+        { to: '/exec-instructions', label: '지시 목록' },
+        { to: '/exec-instructions/strategy', label: '전략 통일성' },
       ];
     }
     if (path.startsWith('/meetings')) {
