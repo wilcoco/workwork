@@ -321,7 +321,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
       {!isEmbed && <HeaderBar SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} isExec={!!isExec} canEvaluate={!!canEvaluate} />}
       {!isEmbed && (
         <div className="container">
-          <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} canEvaluate={!!canEvaluate} />
+          <SubNav SHOW_APPROVALS={SHOW_APPROVALS} SHOW_COOPS={SHOW_COOPS} isCeo={isCeo} isExec={!!isExec} canEvaluate={!!canEvaluate} />
         </div>
       )}
       {!isEmbed && guide && (
@@ -584,7 +584,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           </>
         )}
         <NavDropdown label="데이터 AI" active={location.pathname.startsWith('/company-data') || location.pathname.startsWith('/worklog-analysis')}>
-          <Link to="/company-data">주요 수치 자료 분석</Link>
+          {isExec && <Link to="/company-data">주요 수치 자료 분석</Link>}
           <Link to="/worklog-analysis">업무 자료 분석</Link>
         </NavDropdown>
 
@@ -747,7 +747,7 @@ function NavDropdown({ label, children, active }: { label: string; children: any
   );
 }
 
-function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean; canEvaluate: boolean }) {
+function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean; isExec?: boolean; canEvaluate: boolean }) {
   const location = useLocation();
   const path = location.pathname || '/';
   if (path === '/') return null;
@@ -854,7 +854,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, canEvaluate }: { SHOW_APPRO
     }
     if (path.startsWith('/company-data') || path.startsWith('/worklog-analysis')) {
       return [
-        { to: '/company-data', label: '주요 수치 자료 분석' },
+        ...(isExec ? [{ to: '/company-data', label: '주요 수치 자료 분석' }] : []),
         { to: '/worklog-analysis', label: '업무 자료 분석' },
       ];
     }

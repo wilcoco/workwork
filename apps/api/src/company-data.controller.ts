@@ -371,10 +371,27 @@ export class CompanyDataController {
     } catch { /* ignore */ }
   }
 
+  // ─── 권한: 주요 수치자료 분석은 임원(CEO/EXEC) 이상 + 지정 관리자만 ─────
+  private async assertExecOnly(userId?: string) {
+    const uid = String(userId || '').trim();
+    if (!uid) throw new ForbiddenException('주요 수치자료 분석은 임원 이상만 이용할 수 있습니다.');
+    const u = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true, email: true, teamsUpn: true } });
+    const role = String(u?.role || '').toUpperCase();
+    if (role === 'CEO' || role === 'EXEC') return;
+    const admins = new Set(
+      ['json@cams2002.onmicrosoft.com', ...String(process.env.ADMIN_EMAILS || '').split(',')]
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    if (admins.has(String(u?.email || '').toLowerCase()) || admins.has(String(u?.teamsUpn || '').toLowerCase())) return;
+    throw new ForbiddenException('주요 수치자료 분석은 임원 이상만 이용할 수 있습니다.');
+  }
+
   // ─── CRUD ──────────────────────────────────────────────
 
   @Get()
-  async list() {
+  async list(@Query('userId') userId?: string) {
+    await this.assertExecOnly(userId);
     return this.prisma.companyData.findMany({
       orderBy: { createdAt: 'desc' },
       include: { uploadedBy: { select: { id: true, name: true } } },
@@ -393,6 +410,7 @@ export class CompanyDataController {
     if (!body.title || !body.uploadedById) {
       throw new BadRequestException('title, uploadedById required');
     }
+    await this.assertExecOnly(body.uploadedById);
 
     let openaiFileId: string | null = null;
     const textContent = (body.content || '').trim();
@@ -438,6 +456,7 @@ export class CompanyDataController {
   ) {
     if (!file) throw new BadRequestException('file is required');
     if (!body.uploadedById) throw new BadRequestException('uploadedById required');
+    await this.assertExecOnly(body.uploadedById);
     const title = (body.title || file.originalname || '').trim();
     if (!title) throw new BadRequestException('title required');
 
@@ -465,6 +484,30 @@ export class CompanyDataController {
       console.log(`[company-data] Converted to CSV: ${csvFileName} (${csv.length} bytes)`);
     }
 
+    // 가벼운 텍스트로 변환해 DB에도 저장 — AI가 질문마다 원본 대신 이 텍스트를 바로 읽고,
+    // 목록에서 내용을 즉시 확인·수정할 수 있다. (엑셀은 이미 CSV로 변환된 버퍼를 그대로 사용)
+    let extractedText: string | null = null;
+    try {
+      const TEXT_EXTS = ['csv', 'txt', 'md', 'json', 'xml', 'html', 'htm', 'rtf'];
+      if (['xlsx', 'xls', 'xlsm'].includes(ext) || TEXT_EXTS.includes(ext)) {
+        extractedText = uploadBuffer.toString('utf-8');
+      } else if (ext === 'docx') {
+        const r = await mammoth.extractRawText({ buffer: uploadBuffer });
+        extractedText = r?.value || null;
+      } else if (ext === 'pdf') {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const pdfParse = require('pdf-parse/lib/pdf-parse.js');
+        const r = await pdfParse(uploadBuffer);
+        extractedText = r?.text || null;
+      } else if (ext === 'pptx') {
+        extractedText = await this.extractPptxText(uploadBuffer);
+      }
+    } catch (e: any) {
+      console.error(`[company-data] text extraction failed for ${fileName}:`, e?.message);
+    }
+    const MAX_CONTENT_CHARS = 200_000; // DB/프롬프트 보호용 상한
+    if (extractedText) extractedText = extractedText.trim().slice(0, MAX_CONTENT_CHARS) || null;
+
     const openaiFileId = await this.uploadBinaryToOpenAI(uploadFileName, uploadMimeType, uploadBuffer);
     await this.addFileToVectorStore(vsId, openaiFileId);
 
@@ -486,7 +529,7 @@ export class CompanyDataController {
         description: body.description || null,
         fileUrl: '',
         fileName,
-        content: null, // binary — content kept in OpenAI vector store
+        content: extractedText, // 추출 텍스트(엑셀→CSV 등) — AI 질의·목록 파악용 경량 사본
         openaiFileId,
         uploadedById: body.uploadedById,
       },
@@ -495,6 +538,7 @@ export class CompanyDataController {
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() body: any) {
+    await this.assertExecOnly(body?.actorId || body?.userId);
     const existing = await this.prisma.companyData.findUnique({ where: { id } });
     if (!existing) throw new BadRequestException('not found');
 
@@ -533,7 +577,8 @@ export class CompanyDataController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Query('userId') userId?: string) {
+    await this.assertExecOnly(userId);
     const existing = await this.prisma.companyData.findUnique({ where: { id } });
     if (existing?.openaiFileId) {
       await this.removeFileFromOpenAI(existing.openaiFileId);
@@ -1120,6 +1165,9 @@ export class CompanyDataController {
   async ask(@Body() body: { question: string; userId: string; provider?: 'openai' | 'claude' | 'claude-opus'; mode?: 'summary' | 'deep'; source?: string }) {
     if (!body.question?.trim()) throw new BadRequestException('question required');
     if (!body.userId) throw new BadRequestException('userId required');
+    // 주요 수치자료 분석(데이터 AI 화면)은 임원 이상만. 업무일지 분석 등 다른 source는 기존대로.
+    const askSource = String(body.source || 'company-data');
+    if (askSource === 'company-data') await this.assertExecOnly(body.userId);
 
     let provider: 'openai' | 'claude' | 'claude-opus' =
       body.provider === 'claude-opus' ? 'claude-opus' : body.provider === 'claude' ? 'claude' : 'openai';
@@ -1304,6 +1352,8 @@ export class CompanyDataController {
   ) {
     const isShared = String(shared || '') === '1' || String(shared || '').toLowerCase() === 'true';
     if (!isShared && !userId) throw new BadRequestException('userId required');
+    // 데이터 AI(company-data) 히스토리는 임원 이상만. 업무일지 분석 등 다른 source는 기존대로.
+    if (!source || source === 'company-data') await this.assertExecOnly(userId);
     const where: any = {};
     if (!isShared) where.userId = userId;
     if (source) {

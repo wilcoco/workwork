@@ -54,12 +54,26 @@ export function CompanyDataAI() {
   // Tab
   const [tab, setTab] = useState<'data' | 'chat'>('chat');
 
-  useEffect(() => { loadData(); loadChats(); }, []);
+  // 임원(CEO/EXEC) 이상만 접근 — 서버도 동일하게 차단하며, 화면은 안내만 담당
+  const [myRole, setMyRole] = useState<string | null>(null);
+  useEffect(() => {
+    if (!userId) { setMyRole(''); return; }
+    apiJson<{ role?: string }>(`/api/users/me?userId=${encodeURIComponent(userId)}`)
+      .then((me) => setMyRole(String(me?.role || '').toUpperCase()))
+      .catch(() => setMyRole(''));
+  }, [userId]);
+  const isExec = myRole === 'CEO' || myRole === 'EXEC';
+
+  useEffect(() => {
+    if (!isExec) return;
+    loadData(); loadChats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExec]);
 
   async function loadData() {
     setLoading(true);
     try {
-      const res = await apiJson<DataSource[]>('/api/company-data');
+      const res = await apiJson<DataSource[]>(`/api/company-data?userId=${encodeURIComponent(userId)}`);
       setDataSources(res || []);
     } catch (e: any) {
       setError(e?.message || '데이터 로드 실패');
@@ -146,7 +160,7 @@ export function CompanyDataAI() {
   async function handleDelete(id: string) {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
     try {
-      await apiJson(`/api/company-data/${id}`, { method: 'DELETE' });
+      await apiJson(`/api/company-data/${id}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
       await loadData();
     } catch (e: any) {
       setError(e?.message || '삭제 실패');
@@ -159,7 +173,7 @@ export function CompanyDataAI() {
     try {
       await apiJson(`/api/company-data/${id}`, {
         method: 'PUT',
-        body: JSON.stringify({ content: editContent }),
+        body: JSON.stringify({ content: editContent, actorId: userId }),
       });
       setEditingId(null);
       await loadData();
@@ -198,6 +212,17 @@ export function CompanyDataAI() {
   const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14, outline: 'none' };
   const btnPrimary: React.CSSProperties = { background: '#0F3D73', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 14 };
   const btnGhost: React.CSSProperties = { background: 'transparent', color: '#0F3D73', border: '1px solid #CBD5E1', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 };
+
+  if (myRole === null) {
+    return <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8' }}>권한 확인 중…</div>;
+  }
+  if (!isExec) {
+    return (
+      <div style={{ padding: 32, textAlign: 'center', color: '#ef4444' }}>
+        주요 수치자료 분석은 임원 이상(임원/대표이사)만 이용할 수 있습니다.
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: 16 }}>
