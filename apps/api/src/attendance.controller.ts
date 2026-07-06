@@ -75,7 +75,7 @@ export class AttendanceController {
       if (!dto.userId) throw new BadRequestException('userId가 필요합니다');
       if (!dto.date) throw new BadRequestException('date가 필요합니다');
 
-      let baseDate = new Date(`${dto.date}T00:00:00.000Z`);
+      const baseDate = new Date(`${dto.date}T00:00:00.000Z`);
       if (isNaN(baseDate.getTime())) throw new BadRequestException('유효하지 않은 날짜입니다');
 
       // 기간 신청(휴가/육아휴직): endDate 가 오면 date~endDate 를 한 건으로 처리.
@@ -118,18 +118,6 @@ export class AttendanceController {
           endAt = e;
         } else {
           throw new BadRequestException('시작/종료 일시를 입력해 주세요');
-        }
-      }
-
-      // 야간 연속근무 보정: OT 시작시각이 익일 새벽(KST 0~5시)이면 '전날 근무의 연속'으로 보고
-      // 기준일을 전날로 자동 기록한다(담당자가 새벽 날짜로 올려도 시스템이 전날 OT로 귀속). 참조 표기.
-      let overnightPrevDay = false;
-      if (dto.type === 'OT' && startAt) {
-        const kst = new Date(startAt.getTime() + 9 * 60 * 60 * 1000);
-        if (kst.getUTCHours() < 6) {
-          const prev = new Date(kst.getTime() - 24 * 60 * 60 * 1000);
-          baseDate = new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth(), prev.getUTCDate(), 0, 0, 0, 0));
-          overnightPrevDay = true;
         }
       }
 
@@ -330,7 +318,7 @@ export class AttendanceController {
               endDate: rangeEndDate,
               startAt,
               endAt,
-              reason: overnightPrevDay ? `${dto.reason ? dto.reason + ' ' : ''}[익일 새벽 OT·전날 근무 연속(기준일 자동조정)]` : dto.reason,
+              reason: dto.reason,
               attachments: dto.attachments ? dto.attachments : undefined,
             },
           });
@@ -906,13 +894,17 @@ export class AttendanceController {
       const isHolidayWork = it.type === 'HOLIDAY_WORK';
       const otHours = isHolidayWork && workedHours != null ? Math.max(0, workedHours - 8) : null;
       const compHours = isHolidayWork && workedHours != null ? Math.min(workedHours, 8) : null;
-      // 익일 새벽 OT(전날 기준): 기준일(date, KST)과 OT 시작(startAt, KST)의 날짜가 다르면 표기
-      let overnightPrevDay = false;
+      // 기준일: 기본은 신청일(date)과 동일. OT 시작이 자정 이후 새벽(KST 0~5시)이면
+      // 전날 근무의 연속으로 보고 기준일을 전날로 계산(신청일 자체는 변경하지 않음).
+      let baseDate: Date = it.date;
       if (it.type === 'OT' && it.startAt) {
-        const dks = new Date((it.date as Date).getTime() + 9 * 3600000);
         const sks = new Date(new Date(it.startAt).getTime() + 9 * 3600000);
-        overnightPrevDay = dks.getUTCFullYear() !== sks.getUTCFullYear() || dks.getUTCMonth() !== sks.getUTCMonth() || dks.getUTCDate() !== sks.getUTCDate();
+        if (sks.getUTCHours() < 6) {
+          const prev = new Date(sks.getTime() - 24 * 3600000);
+          baseDate = new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth(), prev.getUTCDate(), 0, 0, 0, 0));
+        }
       }
+      const baseDateDiffers = baseDate.getTime() !== (it.date as Date).getTime();
       return {
         id: it.id,
         userId: it.userId,
@@ -929,7 +921,8 @@ export class AttendanceController {
         days,
         status: it.status,
         reason: it.reason,
-        overnightPrevDay, // 익일 새벽 OT — 기준일은 전날(출근일)
+        baseDate,                 // 기준일 (신청일과 다르면 전날)
+        baseDateDiffers,          // 자정 이후 OT라 기준일=전날인 경우 true
         currentApproverName,
         approvalSteps,
       };

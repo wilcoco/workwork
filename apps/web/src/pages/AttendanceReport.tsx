@@ -52,7 +52,8 @@ type RecordItem = {
   days: number | null;
   status: string;
   reason: string | null;
-  overnightPrevDay?: boolean; // 익일 새벽 OT — 기준일은 전날(출근일)
+  baseDate?: string;          // 기준일 (신청일과 다르면 전날)
+  baseDateDiffers?: boolean;  // 자정 이후 OT라 기준일=전날
   currentApproverName?: string;
   approvalSteps?: ApprovalStep[];
 };
@@ -274,7 +275,8 @@ export function AttendanceReport() {
                       <th style={th}>구성원</th>
                       <th style={th}>팀</th>
                       <th style={th}>유형</th>
-                      <th style={th}>날짜</th>
+                      <th style={th}>신청일</th>
+                      <th style={th}>기준일</th>
                       <th style={th}>시간</th>
                       <th style={{ ...th, textAlign: 'right' }}>시간/일수</th>
                       <th style={th}>상태</th>
@@ -295,12 +297,19 @@ export function AttendanceReport() {
                         </td>
                         <td style={td}>
                           {it.endDate ? `${fmt(it.date)} ~ ${fmt(it.endDate)}` : fmt(it.date)}
-                          {it.overnightPrevDay && (
-                            <span title="OT는 익일 새벽에 발생했으나 전날 근무의 연속이라 기준일(출근일)로 기록됨" style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#f3e8ff', borderRadius: 8, padding: '1px 6px', whiteSpace: 'nowrap' }}>익일 새벽</span>
+                        </td>
+                        <td style={td}>
+                          {it.baseDateDiffers ? (
+                            <span title="OT 시간이 자정 이후(새벽)라 전날 근무의 연속으로 보고 기준일을 전날로 표시" style={{ fontWeight: 700, color: '#7c3aed' }}>
+                              {fmt(it.baseDate || it.date)}
+                              <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#f3e8ff', borderRadius: 8, padding: '1px 5px', whiteSpace: 'nowrap' }}>전날</span>
+                            </span>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>{fmt(it.baseDate || it.date)}</span>
                           )}
                         </td>
                         <td style={{ ...td, color: '#64748b' }}>
-                          {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}${it.overnightPrevDay ? ' (익일)' : ''}` : '—'}
+                          {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}${it.baseDateDiffers ? ' (익일)' : ''}` : '—'}
                         </td>
                         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                           {it.type === 'OT' && String(it.status).toUpperCase() === 'REJECTED' ? (
