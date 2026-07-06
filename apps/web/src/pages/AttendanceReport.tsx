@@ -52,6 +52,7 @@ type RecordItem = {
   days: number | null;
   status: string;
   reason: string | null;
+  overnightPrevDay?: boolean; // 익일 새벽 OT — 기준일은 전날(출근일)
   currentApproverName?: string;
   approvalSteps?: ApprovalStep[];
 };
@@ -292,9 +293,14 @@ export function AttendanceReport() {
                             {TYPE_LABELS[it.type] || it.type}
                           </span>
                         </td>
-                        <td style={td}>{it.endDate ? `${fmt(it.date)} ~ ${fmt(it.endDate)}` : fmt(it.date)}</td>
+                        <td style={td}>
+                          {it.endDate ? `${fmt(it.date)} ~ ${fmt(it.endDate)}` : fmt(it.date)}
+                          {it.overnightPrevDay && (
+                            <span title="OT는 익일 새벽에 발생했으나 전날 근무의 연속이라 기준일(출근일)로 기록됨" style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#f3e8ff', borderRadius: 8, padding: '1px 6px', whiteSpace: 'nowrap' }}>익일 새벽</span>
+                          )}
+                        </td>
                         <td style={{ ...td, color: '#64748b' }}>
-                          {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}` : '—'}
+                          {it.startAt && it.endAt ? `${fmtTime(it.startAt)} ~ ${fmtTime(it.endAt)}${it.overnightPrevDay ? ' (익일)' : ''}` : '—'}
                         </td>
                         <td style={{ ...td, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                           {it.type === 'OT' && String(it.status).toUpperCase() === 'REJECTED' ? (
