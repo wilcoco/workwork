@@ -160,9 +160,12 @@ export class ApprovalsController {
       if (a.status !== 'PENDING') return false;
       const steps = a.steps || [];
       if (steps.length > 0) {
-        // Multi-step: 가장 앞선(stepNo asc) PENDING 단계가 현재 차례
-        const pendingStep = steps.find((s: any) => s.status === 'PENDING');
-        return !!pendingStep && pendingStep.approverId === q.approverId;
+        // Multi-step: PENDING 스텝 중 가장 낮은 stepNo가 현재 스테이지.
+        // 같은 stepNo에 여러 결재자가 있으면 any-of(그 중 누구든 현재 차례).
+        const pendingSteps = steps.filter((s: any) => s.status === 'PENDING');
+        if (!pendingSteps.length) return false;
+        const stageNo = Math.min(...pendingSteps.map((s: any) => s.stepNo));
+        return pendingSteps.some((s: any) => s.stepNo === stageNo && s.approverId === q.approverId);
       }
       // Single-step: 지정된 결재자
       return a.approverId === q.approverId;
@@ -509,25 +512,40 @@ export class ApprovalsController {
       }
       return req;
     }
-    if (pending.approverId !== dto.actorId) throw new BadRequestException('not current approver');
+    // 현재 스테이지 = PENDING 스텝 중 가장 낮은 stepNo. 같은 stepNo = any-of 병렬 그룹(하나만 승인하면 통과).
+    const currentStageNo = Math.min(...req.steps.filter((s: any) => s.status === 'PENDING').map((s: any) => s.stepNo));
+    const stageSteps = req.steps.filter((s: any) => s.stepNo === currentStageNo && s.status === 'PENDING');
+    const myStep = stageSteps.find((s: any) => s.approverId === dto.actorId);
+    if (!myStep) throw new BadRequestException('not current approver');
+    const siblingIds = stageSteps.filter((s: any) => s.id !== myStep.id).map((s: any) => s.id);
+    const nextStepNos = req.steps.filter((s: any) => s.stepNo > currentStageNo).map((s: any) => s.stepNo);
+    const nextStageNo = nextStepNos.length ? Math.min(...nextStepNos) : null;
 
-    // find next step
-    const next = req.steps.find((s: any) => s.stepNo === pending.stepNo + 1);
-    if (next) {
+    // 스테이지 내 내 스텝 승인 + 형제(any-of) 자동 처리 공통 로직
+    const approveStage = async (tx: any) => {
+      await tx.approvalStep.update({ where: { id: myStep.id }, data: { status: 'APPROVED' as any, comment: dto.comment, actedAt: new Date() } });
+      if (siblingIds.length) {
+        await tx.approvalStep.updateMany({ where: { id: { in: siblingIds } }, data: { status: 'APPROVED' as any, comment: '그룹 내 타 결재자 승인으로 자동 처리', actedAt: new Date() } });
+      }
+      await tx.event.create({ data: { subjectType: 'ApprovalStep', subjectId: myStep.id, activity: 'ApprovalStepApproved', userId: dto.actorId, attrs: { requestId: id, stepNo: currentStageNo, anyOf: stageSteps.length > 1 } } });
+    };
+
+    if (nextStageNo != null) {
       await this.prisma.$transaction(async (tx) => {
-        await (tx as any).approvalStep.update({ where: { id: pending.id }, data: { status: 'APPROVED' as any, comment: dto.comment, actedAt: new Date() } });
-        await (tx as any).event.create({ data: { subjectType: 'ApprovalStep', subjectId: pending.id, activity: 'ApprovalStepApproved', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo } } });
-        await (tx as any).approvalRequest.update({ where: { id }, data: { approverId: next.approverId } });
-        await (tx as any).notification.create({ data: { userId: next.approverId, type: 'ApprovalRequested', subjectType: req.subjectType, subjectId: req.subjectId, payload: { requestId: id, requestedById: req.requestedById } } });
-        await (tx as any).event.create({ data: { subjectType: req.subjectType, subjectId: req.subjectId, activity: 'ApprovalRequested', userId: dto.actorId, attrs: { requestId: id, nextStepNo: next.stepNo } } });
+        await approveStage(tx);
+        const nextApprovers = req.steps.filter((s: any) => s.stepNo === nextStageNo);
+        await (tx as any).approvalRequest.update({ where: { id }, data: { approverId: nextApprovers[0].approverId } });
+        for (const na of nextApprovers) {
+          await (tx as any).notification.create({ data: { userId: na.approverId, type: 'ApprovalRequested', subjectType: req.subjectType, subjectId: req.subjectId, payload: { requestId: id, requestedById: req.requestedById } } });
+        }
+        await (tx as any).event.create({ data: { subjectType: req.subjectType, subjectId: req.subjectId, activity: 'ApprovalRequested', userId: dto.actorId, attrs: { requestId: id, nextStepNo: nextStageNo } } });
       });
       return await this.prisma.approvalRequest.findUnique({ where: { id }, include: { steps: true } });
     }
 
-    // last step approved -> finalize
+    // 마지막 스테이지 승인 -> 최종 확정
     return this.prisma.$transaction(async (tx) => {
-      await (tx as any).approvalStep.update({ where: { id: pending.id }, data: { status: 'APPROVED' as any, comment: dto.comment, actedAt: new Date() } });
-      await (tx as any).event.create({ data: { subjectType: 'ApprovalStep', subjectId: pending.id, activity: 'ApprovalStepApproved', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo } } });
+      await approveStage(tx);
       const updated = await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'APPROVED' } });
       if (updated.subjectType === 'CAR_DISPATCH') {
         await (tx as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
@@ -543,6 +561,10 @@ export class ApprovalsController {
       }
       const engine = new ProcessesController(this.prisma);
       await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+      if (updated.subjectType === 'INSTRUCTION_MILESTONE') {
+        const exec = new ExecInstructionsController(this.prisma);
+        await exec.finalizeMilestoneApproval(tx as any, id, 'APPROVED', dto.actorId, dto.comment);
+      }
       await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id } } });
       await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
       return updated;
@@ -604,10 +626,13 @@ export class ApprovalsController {
       }
       return req;
     }
-    if (pending.approverId !== dto.actorId) throw new BadRequestException('not current approver');
+    // 현재 스테이지(가장 낮은 PENDING stepNo)의 결재자 중 한 명이라도 반려하면 전체 반려
+    const rejectStageNo = Math.min(...req.steps.filter((s: any) => s.status === 'PENDING').map((s: any) => s.stepNo));
+    const myRejectStep = req.steps.find((s: any) => s.stepNo === rejectStageNo && s.status === 'PENDING' && s.approverId === dto.actorId);
+    if (!myRejectStep) throw new BadRequestException('not current approver');
 
     return this.prisma.$transaction(async (tx) => {
-      await (tx as any).approvalStep.update({ where: { id: pending.id }, data: { status: 'REJECTED' as any, comment: dto.comment, actedAt: new Date() } });
+      await (tx as any).approvalStep.update({ where: { id: myRejectStep.id }, data: { status: 'REJECTED' as any, comment: dto.comment, actedAt: new Date() } });
       const updated = await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'REJECTED' } });
       if (updated.subjectType === 'CAR_DISPATCH') {
         await (tx as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });

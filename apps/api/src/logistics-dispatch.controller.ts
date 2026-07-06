@@ -54,16 +54,17 @@ export class LogisticsDispatchController {
         throw new BadRequestException('유효하지 않은 일시입니다');
       }
 
-      // 1차는 항상 물류배차 담당(윤대룡), 이후 프론트에서 넘긴 순서대로
-      const CAR_MANAGER_NAME = '윤대룡';
-      const carManager = await this.prisma.user.findFirst({ where: { name: CAR_MANAGER_NAME }, select: { id: true } });
-      const carManagerId = carManager?.id;
-      if (!carManagerId) throw new BadRequestException(`배차 담당자(${CAR_MANAGER_NAME})를 찾을 수 없습니다`);
+      // 1차는 물류배차 담당 any-of 그룹(윤대룡·김부영 둘 다 결재자, 둘 중 하나만 승인하면 진행).
+      // 이후 프론트에서 넘긴 추가 결재자는 순차 단계로.
+      const PRIMARY_NAMES = ['윤대룡', '김부영'];
+      const primaries = await this.prisma.user.findMany({ where: { name: { in: PRIMARY_NAMES }, status: 'ACTIVE' as any }, select: { id: true, name: true } });
+      const primaryIds = PRIMARY_NAMES.map((n) => primaries.find((p) => p.name === n)?.id).filter((x): x is string => !!x);
+      if (primaryIds.length === 0) throw new BadRequestException('물류배차 담당자(윤대룡/김부영)를 찾을 수 없습니다');
+      const carManagerId = primaryIds[0];
 
-      // 결재라인 구성: 담당자가 1번째 없으면 앞에 추가
-      const rawLine: string[] = (dto.approvalLine || []).filter(Boolean);
-      const approvalLine = rawLine[0] === carManagerId ? rawLine : [carManagerId, ...rawLine];
-      const firstApprover = approvalLine[0];
+      // 추가 결재자: 1차 그룹에 없는 사람만 stepNo 2 이후로
+      const rawLine: string[] = (dto.approvalLine || []).filter(Boolean).filter((id) => !primaryIds.includes(id));
+      const firstApprover = carManagerId;
 
       const rec = await this.prisma.$transaction(async (tx) => {
         const dispatch = await (tx as any).logisticsDispatchRequest.create({
@@ -92,10 +93,12 @@ export class LogisticsDispatchController {
           },
         });
 
-        for (let i = 0; i < approvalLine.length; i++) {
-          await tx.approvalStep.create({
-            data: { requestId: approval.id, stepNo: i + 1, approverId: approvalLine[i], status: 'PENDING' as any },
-          });
+        // 1차 그룹: 모두 stepNo 1 (any-of). 추가 결재자: stepNo 2 이후 순차.
+        for (const pid of primaryIds) {
+          await tx.approvalStep.create({ data: { requestId: approval.id, stepNo: 1, approverId: pid, status: 'PENDING' as any } });
+        }
+        for (let j = 0; j < rawLine.length; j++) {
+          await tx.approvalStep.create({ data: { requestId: approval.id, stepNo: 2 + j, approverId: rawLine[j], status: 'PENDING' as any } });
         }
 
         await tx.event.create({
@@ -104,19 +107,16 @@ export class LogisticsDispatchController {
             subjectId: dispatch.id,
             activity: 'ApprovalRequested',
             userId: dto.requesterId,
-            attrs: { approverId: firstApprover, requestId: approval.id, steps: approvalLine.length, line: approvalLine },
+            attrs: { approverId: firstApprover, requestId: approval.id, anyOfStage1: primaryIds, line: [...primaryIds, ...rawLine] },
           },
         });
 
-        await tx.notification.create({
-          data: {
-            userId: firstApprover,
-            type: 'ApprovalRequested',
-            subjectType: 'LOGISTICS_DISPATCH',
-            subjectId: dispatch.id,
-            payload: { requestId: approval.id, requestedById: dto.requesterId },
-          },
-        });
+        // 1차 그룹 전원에게 결재 요청 알림 (둘 중 하나가 처리하면 됨)
+        for (const pid of primaryIds) {
+          await tx.notification.create({
+            data: { userId: pid, type: 'ApprovalRequested', subjectType: 'LOGISTICS_DISPATCH', subjectId: dispatch.id, payload: { requestId: approval.id, requestedById: dto.requesterId } },
+          });
+        }
 
         return dispatch;
       });
