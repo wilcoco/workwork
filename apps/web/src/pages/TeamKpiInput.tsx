@@ -107,6 +107,15 @@ export function TeamKpiInput() {
     loadOrg();
   }, []);
 
+  // 내가 책임자인 조직(실/본부 등)과 그 하위 조직 전체 — 상위 조직 책임자는 산하 팀 KPI를 관리할 수 있다
+  const [managedIds, setManagedIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!userId) return;
+    apiJson<{ items: Array<{ id: string }> }>(`/api/orgs/managed?userId=${encodeURIComponent(userId)}`)
+      .then((r) => setManagedIds(new Set((r.items || []).map((x) => x.id))))
+      .catch(() => {});
+  }, [userId]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -272,8 +281,9 @@ export function TeamKpiInput() {
               .filter((o) => o.type === 'TEAM')
               .filter((o) => {
                 if (myRole === 'CEO') return true;
+                if (managedIds.has(o.id)) return true; // 내가 책임자인 상위 조직(실/본부)의 산하 팀
                 if (myRole === 'MANAGER') return o.id === myOrgUnitId;
-                if (myRole === 'EXEC') return (o.parentId || '') === (myOrgUnitId || '');
+                if (myRole === 'EXEC') return o.id === myOrgUnitId || (o.parentId || '') === (myOrgUnitId || '');
                 return o.id === myOrgUnitId;
               })
               .map((o) => (
