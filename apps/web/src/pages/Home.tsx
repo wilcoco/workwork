@@ -167,24 +167,27 @@ export function Home() {
         if (ignore) return;
         setWorklogs(wl.items || []);
         if (typeof wl.total === 'number') setWorklogTotal(wl.total);
-        // Batch-fetch like summary for the visible page.
-        try {
-          const ids = (wl.items || []).map((x: any) => x.id).filter(Boolean);
-          if (ids.length) {
-            const res = await apiJson<{ items: Record<string, { count: number; liked: boolean }> }>(
-              '/api/likes/by-subjects',
-              {
-                method: 'POST',
-                body: JSON.stringify({ subjectType: 'Worklog', ids, viewerId }),
-              },
-            );
-            if (!ignore) setLikeMap(res.items || {});
-          } else if (!ignore) {
-            setLikeMap({});
+        setLoading(false); // 목록이 오면 즉시 렌더 — 좋아요는 백그라운드로 채운다
+        // Batch-fetch like summary for the visible page (non-blocking).
+        void (async () => {
+          try {
+            const ids = (wl.items || []).map((x: any) => x.id).filter(Boolean);
+            if (ids.length) {
+              const res = await apiJson<{ items: Record<string, { count: number; liked: boolean }> }>(
+                '/api/likes/by-subjects',
+                {
+                  method: 'POST',
+                  body: JSON.stringify({ subjectType: 'Worklog', ids, viewerId }),
+                },
+              );
+              if (!ignore) setLikeMap(res.items || {});
+            } else if (!ignore) {
+              setLikeMap({});
+            }
+          } catch {
+            if (!ignore) setLikeMap({});
           }
-        } catch {
-          if (!ignore) setLikeMap({});
-        }
+        })();
       } catch (e: any) {
         if (!ignore) setError('업무일지 로드 실패');
       } finally {
@@ -195,43 +198,53 @@ export function Home() {
   }, [worklogPage, filterDept, filterTeam, filterName]);
 
   // Urgent worklogs and facet sample (for filter dropdowns): fetched once.
+  // 첫 화면(최근 업무일지)이 뜬 뒤에 병렬로 — 핵심 요청과 서버/DB를 다투지 않게 지연한다.
   useEffect(() => {
-    (async () => {
-      try {
-        const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
-        const uwQs = viewerId ? `limit=20&urgent=true&viewerId=${encodeURIComponent(viewerId)}` : 'limit=20&urgent=true';
-        const uw = await apiJson<{ items: WL[] }>(`/api/worklogs/search?${uwQs}`);
-        setUrgentWls(uw.items || []);
-      } catch {}
-      try {
-        const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
-        const fs = await apiJson<{ items: WL[] }>(
-          `/api/worklogs/search?limit=200${viewerId ? `&viewerId=${encodeURIComponent(viewerId)}` : ''}`,
-        );
-        setFacetSample(fs.items || []);
-      } catch {}
+    const t = window.setTimeout(() => {
+      const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+      void (async () => {
+        try {
+          const uwQs = viewerId ? `limit=20&urgent=true&viewerId=${encodeURIComponent(viewerId)}` : 'limit=20&urgent=true';
+          const uw = await apiJson<{ items: WL[] }>(`/api/worklogs/search?${uwQs}`);
+          setUrgentWls(uw.items || []);
+        } catch {}
+      })();
+      void (async () => {
+        try {
+          const fs = await apiJson<{ items: WL[] }>(
+            `/api/worklogs/search?limit=200${viewerId ? `&viewerId=${encodeURIComponent(viewerId)}` : ''}`,
+          );
+          setFacetSample(fs.items || []);
+        } catch {}
+      })();
       // Fetch all org units (teams) so the team filter shows ALL teams, not just those with worklogs
-      try {
-        const orgs = await apiJson<{ items: Array<{ id: string; name: string }> }>('/api/orgs');
-        const names = (orgs.items || []).map((o) => o.name).filter(Boolean);
-        setAllTeams(names);
-      } catch {}
+      void (async () => {
+        try {
+          const orgs = await apiJson<{ items: Array<{ id: string; name: string }> }>('/api/orgs');
+          const names = (orgs.items || []).map((o) => o.name).filter(Boolean);
+          setAllTeams(names);
+        } catch {}
+      })();
       // 전체 사용자 목록 가져오기 (조직도 기반)
-      try {
-        const usersRes = await apiJson<{ items: Array<{ name: string; orgUnit?: { name: string } }> }>('/api/users');
-        const userList = (usersRes.items || []).map((u: any) => ({
-          name: u.name || '',
-          teamName: u.orgUnit?.name || u.orgName || '',
-        })).filter((u: any) => u.name);
-        setAllUsers(userList);
-      } catch {}
-    })();
+      void (async () => {
+        try {
+          const usersRes = await apiJson<{ items: Array<{ name: string; orgUnit?: { name: string } }> }>('/api/users');
+          const userList = (usersRes.items || []).map((u: any) => ({
+            name: u.name || '',
+            teamName: u.orgUnit?.name || u.orgName || '',
+          })).filter((u: any) => u.name);
+          setAllUsers(userList);
+        } catch {}
+      })();
+    }, 1000);
+    return () => window.clearTimeout(t);
   }, []);
 
   // Sync user's Planner tasks to DB cache on first load, then fetch overdue from cache
   const [tasksSynced, setTasksSynced] = useState(false);
   useEffect(() => {
-    (async () => {
+    // Planner 동기화는 MS Graph 왕복이 있어 무겁다 — 첫 화면 이후로 지연
+    const timer = window.setTimeout(() => void (async () => {
       const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
       if (!viewerId) return;
       // Sync own tasks to cache (once per page load)
@@ -254,35 +267,40 @@ export function Home() {
       } finally {
         setOverdueLoading(false);
       }
-    })();
+    })(), 1500);
+    return () => window.clearTimeout(timer);
   }, [overdueScope, tasksSynced]);
 
   useEffect(() => {
-    (async () => {
+    const t = window.setTimeout(async () => {
       try {
         const fb = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&limit=60`);
         setComments((fb.items || []).map((x: any) => ({ id: x.id, subjectId: x.subjectId, authorId: x.authorId, authorName: x.authorName, authorTeam: x.authorTeam ?? null, content: x.content, createdAt: x.createdAt })));
       } catch {
         // ignore
       }
-    })();
+    }, 1000);
+    return () => window.clearTimeout(t);
   }, []);
 
   // Total pending approvals count (for banner display)
   const [pendingApprovalsTotal, setPendingApprovalsTotal] = useState<number>(0);
 
-  // 팀별 업무일지 작성 통계 (어제/오늘)
+  // 팀별 업무일지 작성 통계 (어제/오늘) — 무거운 집계라 첫 화면 이후로 지연
   useEffect(() => {
-    apiJson<any>('/api/worklogs/team-daily-stats')
-      .then((res) => setTeamStats(res))
-      .catch(() => setTeamStats(null));
+    const t = window.setTimeout(() => {
+      apiJson<any>('/api/worklogs/team-daily-stats')
+        .then((res) => setTeamStats(res))
+        .catch(() => setTeamStats(null));
+    }, 1000);
+    return () => window.clearTimeout(t);
   }, []);
 
-  // 알림 배너: 대기 중인 결재, 업무 지시, 내 업무일지 댓글 조회
+  // 알림 배너: 대기 중인 결재, 업무 지시, 내 업무일지 댓글 조회 (첫 화면 이후 지연)
   useEffect(() => {
     const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
     if (!viewerId) return;
-    (async () => {
+    const timer = window.setTimeout(() => void (async () => {
       // 내가 결재해야 할 건 (현재 내 차례인 것만, 최대 3건 표시 + 총 건수)
       try {
         const res = await apiJson<{ items: any[]; total?: number }>(`/api/approvals?approverId=${encodeURIComponent(viewerId)}&status=PENDING&currentApproverOnly=true&withTotal=1&limit=3`);
@@ -306,7 +324,8 @@ export function Home() {
       } catch {
         setPendingComments([]);
       }
-    })();
+    })(), 800);
+    return () => window.clearTimeout(timer);
   }, []);
 
   if (loading && !worklogs.length) {

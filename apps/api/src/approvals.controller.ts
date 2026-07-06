@@ -173,8 +173,23 @@ export class ApprovalsController {
     let nextCursor: string | undefined;
 
     if (currentApproverOnly && q.approverId) {
+      // "내 차례"의 필요조건을 DB WHERE로 먼저 좁힌다: PENDING 이면서
+      // (다단계: 내 PENDING 단계가 존재) 또는 (단일: 내가 지정 결재자이고 단계 없음).
+      // 정확한 "가장 앞선 PENDING 단계가 나" 판정은 아래 isMyTurn이 하되,
+      // 후보군이 수백 건 전체에서 수십 건으로 줄어 풀 로드를 피한다.
+      const narrowedWhere: any = {
+        ...where,
+        status: 'PENDING',
+        AND: [
+          ...(Array.isArray(where.AND) ? where.AND : []),
+          { OR: [
+            { steps: { some: { approverId: q.approverId, status: 'PENDING' as any } } },
+            { AND: [{ approverId: q.approverId }, { steps: { none: {} } }] },
+          ] },
+        ],
+      };
       const allMatching = await this.prisma.approvalRequest.findMany({
-        where,
+        where: narrowedWhere,
         orderBy: { createdAt: 'desc' },
         include: {
           requestedBy: true,
