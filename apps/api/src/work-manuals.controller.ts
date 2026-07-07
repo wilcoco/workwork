@@ -78,6 +78,7 @@ class AiQuestionsDto {
   userId!: string;
   layer?: string; // skeleton | roles | io | decisions | exceptions | timing
   aiModel?: string; // 'claude' | 'openai'
+  bpmnJson?: any; // 2차 보완: 현재 BPMN 초안을 주면 초안 기준으로 남은 애매/누락만 질문
 }
 
 class AiBpmnCoverageDto {
@@ -308,6 +309,72 @@ export class WorkManualsController {
     };
   }
 
+  /**
+   * 전사 매뉴얼 입력·프로세스화 현황 리포트 (팀장 이상).
+   * 구성원별: 매뉴얼 수, 프로세스화 수(ProcessTemplate.sourceManualId 연결 기준),
+   * 진척율, 정체(7일 넘게 프로세스화 안 된 매뉴얼) 수, 평균 품질점수.
+   */
+  @Get('report/coverage')
+  async coverageReport(@Query('actorId') actorId?: string) {
+    const uid = String(actorId || '').trim();
+    if (!uid) throw new BadRequestException('actorId required');
+    const actor = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
+    const role = String(actor?.role || '').toUpperCase();
+    if (!['CEO', 'EXEC', 'MANAGER'].includes(role)) {
+      throw new BadRequestException('팀장 이상만 조회할 수 있습니다');
+    }
+
+    const [users, manuals, templates] = await Promise.all([
+      (this.prisma as any).user.findMany({
+        where: { status: 'ACTIVE', role: { notIn: ['EXTERNAL', 'GUARD'] as any } },
+        select: { id: true, name: true, role: true, orgUnit: { select: { name: true } } },
+        orderBy: { name: 'asc' },
+      }),
+      (this.prisma as any).workManual.findMany({
+        select: { id: true, userId: true, title: true, status: true, qualityScore: true, createdAt: true, updatedAt: true },
+      }),
+      (this.prisma as any).processTemplate.findMany({
+        where: { sourceManualId: { not: null } },
+        select: { sourceManualId: true },
+      }),
+    ]);
+    const processedManualIds = new Set(templates.map((t: any) => String(t.sourceManualId)));
+    const byUser = new Map<string, any[]>();
+    for (const m of manuals) {
+      const arr = byUser.get(String(m.userId)) || [];
+      arr.push(m);
+      byUser.set(String(m.userId), arr);
+    }
+    const STALE_MS = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const items = users.map((u: any) => {
+      const list = byUser.get(String(u.id)) || [];
+      const processed = list.filter((m) => processedManualIds.has(String(m.id)));
+      const unprocessed = list.filter((m) => !processedManualIds.has(String(m.id)));
+      const stale = unprocessed.filter((m) => now - new Date(m.createdAt).getTime() > STALE_MS);
+      const quality = list.length ? Math.round(list.reduce((s, m) => s + (m.qualityScore || 0), 0) / list.length) : null;
+      return {
+        userId: u.id,
+        name: u.name,
+        role: u.role,
+        teamName: u.orgUnit?.name || '',
+        manualCount: list.length,
+        processedCount: processed.length,
+        rate: list.length ? Math.round((processed.length / list.length) * 100) : null,
+        staleCount: stale.length,
+        avgQuality: quality,
+        staleTitles: stale.slice(0, 3).map((m) => m.title),
+      };
+    });
+    const totals = {
+      users: items.length,
+      usersWithManual: items.filter((x: any) => x.manualCount > 0).length,
+      manuals: manuals.length,
+      processed: manuals.filter((m: any) => processedManualIds.has(String(m.id))).length,
+    };
+    return { items, totals };
+  }
+
   @Get('review-queue')
   async reviewQueue(@Query('userId') userId?: string) {
     const uid = String(userId || '').trim();
@@ -535,11 +602,21 @@ export class WorkManualsController {
       required: ['questions'],
     };
 
+    // 2차 보완: 초안이 오면 "초안에 이미 반영된 것"은 제외하고 남은 애매/누락만 묻는다
+    const draftNodes: any[] = Array.isArray((dto as any).bpmnJson?.nodes) ? (dto as any).bpmnJson.nodes : [];
+    const draftSummary = draftNodes.length
+      ? draftNodes.map((n: any) => `- ${n.type}${n.taskType ? `/${n.taskType}` : ''}: ${String(n.name || '').trim()}`).join('\n')
+      : '';
+    const sysFinal = draftSummary
+      ? sys + '\n\n추가 규칙(2차 보완): 아래 [현재 프로세스 초안]에 이미 단계로 반영된 내용은 묻지 마세요. 초안과 매뉴얼을 대조해 아직 애매하거나 빠진 것만 물으세요.'
+      : sys;
+    const userMsg = `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}${draftSummary ? `\n\n[현재 프로세스 초안]\n${draftSummary}` : ''}`;
+
     let parsed: any;
     try {
       const result = await callAI({
-        system: sys,
-        user: `업무명: ${title}\n\n[업무 메뉴얼]\n${clipped}`,
+        system: sysFinal,
+        user: userMsg,
         model: aiModel,
         temperature: 0.3,
         maxTokens: 2000,

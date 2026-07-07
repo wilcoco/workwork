@@ -40,6 +40,38 @@ export function ProcessFromManual() {
   const [coverageDone, setCoverageDone] = useState<Set<number>>(new Set());
   const [coverageLoading, setCoverageLoading] = useState(false);
 
+  // 2차 자연어 보완: 초안을 기준으로 남은 애매/누락을 추가 질문 → 답변 반영해 재생성
+  const [r2Questions, setR2Questions] = useState<Array<{ id: number; question: string }>>([]);
+  const [r2Answers, setR2Answers] = useState<Record<number, string>>({});
+  const [r2Loading, setR2Loading] = useState(false);
+
+  async function askRound2() {
+    if (!manualId) return;
+    setR2Loading(true);
+    try {
+      const j = JSON.parse(bpmnJsonText || '{}');
+      const r = await apiJson<{ questions: Array<{ id: number; question: string }> }>(
+        `/api/work-manuals/${encodeURIComponent(manualId)}/ai/bpmn-questions`,
+        { method: 'POST', body: JSON.stringify({ userId, aiModel, bpmnJson: j }) },
+      );
+      const qs = r.questions || [];
+      if (!qs.length) { toast('추가로 보완할 항목이 없습니다.', 'success'); return; }
+      setR2Questions(qs);
+      setR2Answers({});
+    } catch (e: any) {
+      toast(e?.message || '추가 질문 생성 실패', 'error');
+    } finally { setR2Loading(false); }
+  }
+
+  async function regenerateWithRound2() {
+    // 1차 답변 + 2차 답변을 합쳐 재생성
+    const prev = questions.map((q) => ({ question: q.question, answer: (answers[q.id] || '').trim() })).filter((a) => a.answer);
+    const extra = r2Questions.map((q) => ({ question: q.question, answer: (r2Answers[q.id] || '').trim() })).filter((a) => a.answer);
+    if (!extra.length) { toast('답변을 하나 이상 입력하세요.', 'error'); return; }
+    setR2Questions([]);
+    await generate(manualId, [...prev, ...extra]);
+  }
+
   async function checkCoverage(mid: string, jsonTextArg: string) {
     if (!mid) return;
     setCoverageLoading(true);
@@ -428,8 +460,30 @@ export function ProcessFromManual() {
             );
           })()}
           <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} height={560} />
+          {/* 2차 자연어 보완 — 초안 기준으로 남은 애매/누락을 추가 문답 후 재생성 */}
+          {r2Questions.length > 0 && (
+            <div style={{ border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 8, padding: 10, display: 'grid', gap: 8 }}>
+              <b style={{ fontSize: 13, color: '#1d4ed8' }}>AI 추가 보완 질문 — 아는 것만 답해도 됩니다</b>
+              {r2Questions.map((q) => (
+                <div key={q.id} style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Q. {q.question}</div>
+                  <textarea rows={2} value={r2Answers[q.id] || ''} placeholder="답변 입력 (모르면 비워두세요)"
+                    onChange={(e) => setR2Answers((prev) => ({ ...prev, [q.id]: e.target.value }))} />
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary" onClick={() => void regenerateWithRound2()} disabled={!!loading}>
+                  {loading === 'generate' ? '재생성 중...' : '답변 반영해 다시 생성'}
+                </button>
+                <button className="btn" onClick={() => setR2Questions([])}>닫기</button>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn" onClick={() => setStep(questions.length ? 2 : 1)} disabled={!!loading}>← 이전</button>
+            <button className="btn" onClick={() => void askRound2()} disabled={!!loading || r2Loading}>
+              {r2Loading ? '질문 생성 중...' : '💬 AI 추가 보완 질문'}
+            </button>
             <button className="btn" onClick={() => void generate()} disabled={!!loading}>
               {loading === 'generate' ? '재생성 중...' : 'AI 다시 생성'}
             </button>

@@ -71,6 +71,8 @@ import { AuthTeamsPopupComplete } from './pages/AuthTeamsPopupComplete';
 import { AuthPending } from './pages/AuthPending';
 import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 import { WorkManuals } from './pages/WorkManuals';
+import { MyManuals } from './pages/MyManuals';
+import { ManualCoverageReport } from './pages/ManualCoverageReport';
 import { WorkManualExt } from './pages/WorkManualExt';
 import { ProcessFromManual } from './pages/ProcessFromManual';
 import { WeeklyReport } from './pages/WeeklyReport';
@@ -352,6 +354,8 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/worklogs/new" element={<WorklogNew />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
           <Route path="/manuals" element={<WorkManuals />} />
+          <Route path="/manuals/mine" element={<MyManuals />} />
+          <Route path="/manuals/coverage" element={<ManualCoverageReport />} />
           <Route path="/manuals/ext" element={<WorkManualExt />} />
           <Route path="/process/from-manual" element={<ProcessFromManual />} />
           <Route path="/worklogs/weekly" element={<WeeklyReport />} />
@@ -572,7 +576,9 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
           <Link to="/manuals">업무 메뉴얼</Link>
+          <Link to="/manuals/mine">내 매뉴얼 입력</Link>
           <Link to="/process/from-manual">매뉴얼로 프로세스 만들기 (AI)</Link>
+          {canEvaluate && <Link to="/manuals/coverage">매뉴얼 입력 현황 (전사)</Link>}
         </NavDropdown>
         <NavDropdown label="회의록" active={location.pathname.startsWith('/meetings')}>
           <Link to="/meetings">회의록</Link>
@@ -837,7 +843,9 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         { to: '/process/templates', label: '프로세스 템플릿' },
         { to: '/manuals', label: '업무 메뉴얼' },
+        { to: '/manuals/mine', label: '내 매뉴얼 입력' },
         { to: '/process/from-manual', label: '매뉴얼로 프로세스 만들기 (AI)' },
+        ...(canEvaluate ? [{ to: '/manuals/coverage', label: '매뉴얼 입력 현황 (전사)' }] : []),
       ];
     }
     if (path.startsWith('/exec-instructions')) {
