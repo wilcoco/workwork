@@ -33,14 +33,18 @@ export class ExecInstructionsController {
   private async ensureKeyInitiative(tx: any, milestone: any, instruction: any, actorId: string): Promise<string | null> {
     if (milestone.keyInitiativeId) return milestone.keyInitiativeId;
     if (!milestone.ownerId) return null;
+    // 요청자 = 지시를 내린 경영층 (재분해를 관리자가 돌려도 요청자는 지시자로 기록)
+    const author = instruction.authorId
+      ? await tx.user.findUnique({ where: { id: instruction.authorId }, select: { name: true } })
+      : null;
     const ki = await tx.keyInitiative.create({
       data: {
         title: milestone.title,
         goal: milestone.expectedResult || null,
-        description: `경영지시 팔로우업 꼭지에서 생성 (지시 #${instruction.id})`,
+        description: `경영지시 팔로우업 꼭지에서 생성 (지시자: ${author?.name || '-'} · 지시 #${instruction.id})`,
         status: 'IN_PROGRESS',
         assigneeId: milestone.ownerId,
-        createdById: actorId || instruction.authorId,
+        createdById: instruction.authorId || actorId,
         alignsToObjectiveId: instruction.objectiveId || null,
         dueDate: milestone.dueAt || null,
       },
@@ -102,6 +106,7 @@ export class ExecInstructionsController {
     if (!dto.authorId || !String(dto.rawText || '').trim()) throw new BadRequestException('authorId, rawText 필요');
     const gen = await generateMilestones(dto.rawText, await this.activeMemberNames());
     const owners = await this.resolveMilestoneOwners(gen);
+    const authorUser = await (this.prisma as any).user.findUnique({ where: { id: dto.authorId }, select: { name: true } });
     const summary = String(dto.rawText).trim().replace(/\s+/g, ' ').slice(0, 120);
     const created = await this.prisma.$transaction(async (tx) => {
       const inst = await (tx as any).instruction.create({
@@ -126,7 +131,9 @@ export class ExecInstructionsController {
           },
         });
         if (owners[i] && i === 0) {
-          await this.notify(tx, owners[i]!, 'MilestoneAssigned', ms.id, { instructionId: inst.id, title: gen[i].title });
+          // 수동 배정과 동일하게: 활성 꼭지에 담당이 붙으면 중점 추진 과제 생성 + 배정 알림
+          await this.ensureKeyInitiative(tx, ms, inst, dto.authorId);
+          await this.notify(tx, owners[i]!, 'MilestoneAssigned', ms.id, { instructionId: inst.id, title: gen[i].title, requestedByName: authorUser?.name || null });
         }
       }
       return inst;
@@ -185,6 +192,7 @@ export class ExecInstructionsController {
     if (progressed) throw new BadRequestException('이미 진행/검수된 꼭지가 있어 재분해할 수 없습니다');
     const gen = await generateMilestones(inst.rawText, await this.activeMemberNames());
     const owners = await this.resolveMilestoneOwners(gen);
+    const authorUser = await (this.prisma as any).user.findUnique({ where: { id: inst.authorId }, select: { name: true } });
     await this.prisma.$transaction(async (tx) => {
       await (tx as any).milestone.deleteMany({ where: { instructionId: id } });
       for (let i = 0; i < gen.length; i++) {
@@ -192,7 +200,9 @@ export class ExecInstructionsController {
           data: { instructionId: id, order: i, title: gen[i].title, expectedResult: gen[i].expectedResult || null, ownerId: owners[i] || null, status: i === 0 ? 'ACTIVE' : 'PENDING', activatedAt: i === 0 ? new Date() : null },
         });
         if (owners[i] && i === 0) {
-          await this.notify(tx, owners[i]!, 'MilestoneAssigned', ms.id, { instructionId: id, title: gen[i].title });
+          // 수동 배정과 동일하게: 활성 꼭지에 담당이 붙으면 중점 추진 과제 생성 + 배정 알림
+          await this.ensureKeyInitiative(tx, ms, inst, dto.actorId);
+          await this.notify(tx, owners[i]!, 'MilestoneAssigned', ms.id, { instructionId: id, title: gen[i].title, requestedByName: authorUser?.name || null });
         }
       }
     });
