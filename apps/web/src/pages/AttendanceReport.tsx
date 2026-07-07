@@ -276,7 +276,7 @@ export function AttendanceReport() {
                       <th style={th}>팀</th>
                       <th style={th}>유형</th>
                       <th style={th}>신청일</th>
-                      <th style={th}>기준일</th>
+                      <th style={th}>적용일</th>
                       <th style={th}>시간</th>
                       <th style={{ ...th, textAlign: 'right' }}>시간/일수</th>
                       <th style={th}>상태</th>
@@ -300,7 +300,7 @@ export function AttendanceReport() {
                         </td>
                         <td style={td}>
                           {it.baseDateDiffers ? (
-                            <span title="OT 시간이 자정 이후(새벽)라 전날 근무의 연속으로 보고 기준일을 전날로 표시" style={{ fontWeight: 700, color: '#7c3aed' }}>
+                            <span title="OT 시간이 자정 이후(새벽)라 전날 근무의 연속으로 보고 적용일을 전날로 표시" style={{ fontWeight: 700, color: '#7c3aed' }}>
                               {fmt(it.baseDate || it.date)}
                               <span style={{ marginLeft: 4, fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#f3e8ff', borderRadius: 8, padding: '1px 5px', whiteSpace: 'nowrap' }}>전날</span>
                             </span>
