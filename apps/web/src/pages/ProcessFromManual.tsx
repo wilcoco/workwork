@@ -276,6 +276,34 @@ export function ProcessFromManual() {
               style={loadedFromManual ? { background: '#f8fafc', color: '#475569' } : undefined}
               placeholder={'예: 자재가 필요하면 자재관리팀 담당자가 발주 요청서를 작성한다.\n경영관리팀장이 발주를 승인하고, 반려되면 요청서를 다시 작성한다.\n승인되면 발주서를 발송하고 48시간 내 입고를 확인한다.'} />
           </label>
+          {!loadedFromManual && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-sm btn-outline"
+                onClick={() => {
+                  const tpl = [
+                    '### STEP S1 | (단계 이름)',
+                    '- taskType: WORKLOG   ← WORKLOG(업무일지) | APPROVAL(결재) | COOPERATION(타팀 요청)',
+                    '- 담당: (팀 또는 담당자)',
+                    '- 방법: (무엇을 어떻게 하는지)',
+                    '- 완료조건: (무엇이 되어 있어야 완료인지)',
+                    '- 기한: 시작 후 N일 이내',
+                    '',
+                    '### STEP S2 | (결재 단계라면)',
+                    '- taskType: APPROVAL',
+                    '- 결재선: (예: 팀장 → 공장장)',
+                    '- 반려 시: (예: S1로 돌아가 다시 작성)',
+                    '',
+                    '### STEP S3 | ...',
+                  ].join('\n');
+                  setContent((prev) => (prev.trim() ? prev + '\n\n' + tpl : tpl));
+                }}>
+                📋 표준 양식 넣기
+              </button>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                자유롭게 써도 되지만, <b>단계·담당·결재선·분기(반려 시)·기한</b>이 들어 있을수록 프로세스가 정확하게 만들어집니다. 표준 양식(STEP)을 쓰면 AI가 구조를 그대로 읽습니다.
+              </span>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-primary" onClick={askQuestions} disabled={!!loading}>
               {loading === 'questions' ? 'AI 분석 중...' : loading === 'generate' ? '프로세스 생성 중...' : '다음 — AI 보완 질문 받기'}

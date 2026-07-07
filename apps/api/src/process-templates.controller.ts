@@ -338,6 +338,93 @@ export class ProcessTemplatesController {
     });
   }
 
+  /**
+   * 시작 전 결재선 역할 해석 미리보기 — 템플릿의 approvalRoleCodes를 시작자 기준으로
+   * 사람/후보 목록으로 풀어준다. 시작 화면이 이 결과로 "역할 확정" 빨간칸을 그린다.
+   * (템플릿 시점에 '역할로 미룬' 빨간칸이 구동 시점으로 이월되는 지점)
+   */
+  @Get(':id/approval-roles')
+  async approvalRolePreview(@Param('id') id: string, @Query('starterId') starterId?: string) {
+    const tpl = await (this.prisma as any).processTemplate.findUnique({ where: { id }, include: { tasks: { orderBy: { orderHint: 'asc' } } } });
+    if (!tpl) throw new BadRequestException('template not found');
+
+    // 시작자 팀 팀장
+    let starterMgrId: string | null = null;
+    if (starterId) {
+      const starter = await (this.prisma as any).user.findUnique({ where: { id: String(starterId) }, select: { orgUnitId: true } });
+      if (starter?.orgUnitId) {
+        const unit = await (this.prisma as any).orgUnit.findUnique({ where: { id: starter.orgUnitId }, select: { managerId: true } });
+        starterMgrId = unit?.managerId || null;
+      }
+    }
+
+    // 역할 코드가 참조하는 조직·임원 프리페치
+    const orgIds = new Set<string>();
+    let needExecs = false;
+    for (const t of tpl.tasks || []) {
+      for (const en of String((t as any).approvalRoleCodes || '').split(',').map((s: string) => s.trim()).filter(Boolean)) {
+        if (en.startsWith('MGR:') && en !== 'MGR:STARTER') orgIds.add(en.slice(4));
+        if (en === 'EXEC') needExecs = true;
+        if (en.startsWith('EXEC:')) { needExecs = true; orgIds.add(en.slice(5)); }
+      }
+    }
+    const orgs = orgIds.size
+      ? await (this.prisma as any).orgUnit.findMany({ where: { id: { in: Array.from(orgIds) } }, select: { id: true, name: true, managerId: true } })
+      : [];
+    const orgMap = new Map(orgs.map((o: any) => [String(o.id), o]));
+    const execs: any[] = needExecs
+      ? await (this.prisma as any).user.findMany({ where: { role: { in: ['EXEC', 'CEO'] as any }, status: 'ACTIVE' as any }, select: { id: true, name: true, orgUnitId: true, orgUnit: { select: { name: true } } } })
+      : [];
+    // 이름 해석 대상 사용자 수집 (고정 사람 + 팀장들)
+    const userIds = new Set<string>();
+    if (starterMgrId) userIds.add(starterMgrId);
+    for (const o of orgs) if (o.managerId) userIds.add(String(o.managerId));
+    for (const t of tpl.tasks || []) {
+      for (const en of String((t as any).approvalRoleCodes || '').split(',').map((s: string) => s.trim()).filter(Boolean)) {
+        if (en.startsWith('U:')) userIds.add(en.slice(2));
+      }
+    }
+    const usersById = new Map(
+      (userIds.size
+        ? await (this.prisma as any).user.findMany({ where: { id: { in: Array.from(userIds) } }, select: { id: true, name: true } })
+        : []
+      ).map((u: any) => [String(u.id), u.name]),
+    );
+
+    const tasks = (tpl.tasks || [])
+      .map((t: any) => {
+        const codes = String(t.approvalRoleCodes || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (!codes.length) return null;
+        const entries = codes.map((en: string) => {
+          if (en.startsWith('U:')) {
+            const uid = en.slice(2);
+            return { code: en, label: usersById.get(uid) || '(사용자)', resolvedUserId: uid, resolvedName: usersById.get(uid) || null };
+          }
+          if (en === 'MGR:STARTER') {
+            return { code: en, label: '시작자 팀 팀장', resolvedUserId: starterMgrId, resolvedName: starterMgrId ? usersById.get(starterMgrId) || null : null };
+          }
+          if (en.startsWith('MGR:')) {
+            const org: any = orgMap.get(en.slice(4));
+            const mid = org?.managerId || null;
+            return { code: en, label: `${org?.name || '(조직)'} 팀장`, resolvedUserId: mid, resolvedName: mid ? usersById.get(mid) || null : null };
+          }
+          if (en === 'EXEC' || en.startsWith('EXEC:')) {
+            const scope = en.startsWith('EXEC:') ? en.slice(5) : null;
+            const cands = execs.filter((u) => !scope || String(u.orgUnitId || '') === scope)
+              .map((u) => ({ id: u.id, name: u.name, orgName: u.orgUnit?.name || '' }));
+            const scopeName: any = scope ? (orgMap.get(scope) as any)?.name : null;
+            const one = cands.length === 1 ? cands[0] : null;
+            return { code: en, label: scope ? `${scopeName || '(조직)'} 임원` : '임원', resolvedUserId: one?.id || null, resolvedName: one?.name || null, candidates: cands };
+          }
+          return { code: en, label: en, resolvedUserId: null, resolvedName: null };
+        });
+        return { taskTemplateId: t.id, name: t.name, entries };
+      })
+      .filter(Boolean);
+
+    return { tasks };
+  }
+
   @Get(':id')
   async getOne(@Param('id') id: string, @Query('actorId') actorId?: string) {
     const include: any = {

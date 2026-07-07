@@ -100,6 +100,10 @@ export function ProcessStart() {
     return out;
   };
   const [assignees, setAssignees] = useState<Record<string, string[]>>({});
+  // 결재선 역할(팀장/임원) 확정: 템플릿에서 역할로 미룬 결재선을 시작 시 사람으로 확정한다
+  type RoleEntry = { code: string; label: string; resolvedUserId: string | null; resolvedName: string | null; candidates?: Array<{ id: string; name: string; orgName?: string }> };
+  const [roleTasks, setRoleTasks] = useState<Array<{ taskTemplateId: string; name: string; entries: RoleEntry[] }>>([]);
+  const [roleChoices, setRoleChoices] = useState<Record<string, Record<number, string>>>({}); // taskId → entryIdx → userId
   const [plans, setPlans] = useState<Record<string, { plannedStartAt?: string; plannedEndAt?: string; deadlineAt?: string }>>({});
   const [taskEmails, setTaskEmails] = useState<Record<string, { emailTo?: string; emailCc?: string; emailSubject?: string; emailBody?: string }>>({});
   const [initiativeId, setInitiativeId] = useState('');
@@ -275,6 +279,16 @@ export function ProcessStart() {
       } catch {
         setSelectedFull(null);
       }
+      // 결재선 역할 해석 미리보기 (역할 결재선이 없으면 빈 배열)
+      try {
+        const rp = await apiJson<{ tasks: Array<{ taskTemplateId: string; name: string; entries: RoleEntry[] }> }>(
+          `/api/process-templates/${encodeURIComponent(tplId)}/approval-roles${userId ? `?starterId=${encodeURIComponent(userId)}` : ''}`,
+        );
+        setRoleTasks(rp.tasks || []);
+        setRoleChoices({});
+      } catch {
+        setRoleTasks([]);
+      }
     })();
   }, [tplId, userId]);
 
@@ -362,6 +376,23 @@ export function ProcessStart() {
       .filter((x) => x.emailTo || x.emailCc || x.emailSubject || x.emailBody);
     const taskAssignees = Object.entries(assignees)
       .flatMap(([k, arr]) => (arr || []).filter(Boolean).map((v) => ({ taskTemplateId: k, assigneeId: v })));
+    // 결재선 역할 확정: 수동 지정(assignees)이 없는 결재 태스크는 역할 해석+선택 결과를 결재선으로 전달
+    for (const rt of roleTasks) {
+      if ((assignees[rt.taskTemplateId] || []).filter(Boolean).length) continue; // 수동 지정이 우선
+      const chosen = roleChoices[rt.taskTemplateId] || {};
+      const line: string[] = [];
+      let missing: string | null = null;
+      rt.entries.forEach((en, idx) => {
+        const uid = en.resolvedUserId || chosen[idx] || '';
+        if (uid) line.push(uid);
+        else if (!missing) missing = en.label;
+      });
+      if (missing) {
+        toast(`「${rt.name}」 단계의 결재 역할(${missing})을 아래 '결재선 확정'에서 선택해 주세요.`, 'error');
+        return;
+      }
+      for (const uid of line) taskAssignees.push({ taskTemplateId: rt.taskTemplateId, assigneeId: uid });
+    }
     const taskPlans = Object.entries(plans)
       .map(([k, v]) => ({
         taskTemplateId: k,
@@ -843,6 +874,53 @@ export function ProcessStart() {
                   {!taskPreview.length && <div style={{ fontSize: 12, color: '#9ca3af' }}>과제가 없습니다.</div>}
                 </div>
               </div>
+              {/* 결재선 확정 — 템플릿에서 역할로 정의된 결재선을 시작 시 사람으로 확정 (이월된 빨간칸) */}
+              {roleTasks.length > 0 && (
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <b style={{ fontSize: 13 }}>결재선 확정</b>
+                    <span style={{ fontSize: 11, color: '#94a3b8' }}>역할로 정의된 결재선입니다. 자동 확정된 사람을 확인하고, 미확정 역할은 후보 중에서 선택하세요.</span>
+                  </div>
+                  <div style={{ display: 'grid', gap: 8, padding: 10 }}>
+                    {roleTasks.map((rt) => {
+                      const manual = (assignees[rt.taskTemplateId] || []).filter(Boolean).length > 0;
+                      return (
+                        <div key={rt.taskTemplateId} style={{ display: 'grid', gap: 6 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>
+                            결재 단계 「{rt.name}」
+                            {manual && <span style={{ marginLeft: 6, fontSize: 11, color: '#64748b', fontWeight: 400 }}>(담당자 수동 지정이 있어 그 지정이 우선 적용됩니다)</span>}
+                          </div>
+                          {!manual && (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                              {rt.entries.map((en, idx) => {
+                                const chosen = roleChoices[rt.taskTemplateId]?.[idx] || '';
+                                const ok = !!en.resolvedUserId || !!chosen;
+                                return (
+                                  <span key={idx} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, background: ok ? '#f0fdf4' : '#fef2f2', border: `1px solid ${ok ? '#86efac' : '#fca5a5'}`, borderRadius: 8, padding: '4px 8px' }}>
+                                    <b style={{ color: ok ? '#15803d' : '#b91c1c' }}>{idx + 1}</b>
+                                    <span style={{ color: '#475569' }}>{en.label}:</span>
+                                    {en.resolvedUserId ? (
+                                      <b style={{ color: '#15803d' }}>{en.resolvedName || '확정'}</b>
+                                    ) : (en.candidates && en.candidates.length) ? (
+                                      <select value={chosen} style={{ fontSize: 12 }}
+                                        onChange={(e) => setRoleChoices((prev) => ({ ...prev, [rt.taskTemplateId]: { ...(prev[rt.taskTemplateId] || {}), [idx]: e.target.value } }))}>
+                                        <option value="">선택...</option>
+                                        {en.candidates.map((c) => <option key={c.id} value={c.id}>{c.name}{c.orgName ? ` (${c.orgName})` : ''}</option>)}
+                                      </select>
+                                    ) : (
+                                      <span style={{ color: '#b91c1c' }}>후보 없음 — 아래 담당자 지정에서 직접 선택</span>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn btn-primary" onClick={start} disabled={starting}>
                   {starting ? '시작 중...' : '시작'}
