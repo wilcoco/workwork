@@ -58,6 +58,26 @@ export class ExecInstructionsController {
     await tx.notification.create({ data: { userId, type, subjectType: SUBJECT, subjectId, payload } });
   }
 
+  // 꼭지 배정을 업무지시(홈 '나에게 온 업무 지시' 배너)로도 전달 — 벨 알림보다 놓치기 어렵다.
+  // WorklogInstruction의 source 필드는 FK 없는 문자열이라 합성 키(execms:/execinst:)로 출처를 표시한다.
+  private async createWorklogInstruction(tx: any, milestone: any, instruction: any, authorName?: string | null) {
+    if (!milestone?.ownerId) return;
+    try {
+      await tx.worklogInstruction.create({
+        data: {
+          sourceFeedbackId: `execms:${milestone.id}`,
+          sourceWorklogId: `execinst:${instruction.id}`,
+          assignerId: instruction.authorId,
+          assigneeId: milestone.ownerId,
+          title: `[경영지시] ${milestone.title}`.slice(0, 200),
+          description: `${authorName || '경영층'} 지시 — ${String(instruction.rawText || '').trim().slice(0, 500)}${milestone.expectedResult ? `\n\n기대 결과: ${milestone.expectedResult}` : ''}`,
+          dueDate: milestone.dueAt || null,
+          status: 'OPEN',
+        },
+      });
+    } catch { /* 중복 등으로 실패해도 배정 흐름은 계속 */ }
+  }
+
   // 완료 확정 후 다음 PENDING 꼭지 자동 ACTIVE (+ 담당자 있으면 과제 생성/알림)
   private async activateNext(tx: any, instruction: any, doneMilestoneId: string, actorId: string) {
     const siblings = await tx.milestone.findMany({ where: { instructionId: instruction.id } });
@@ -67,7 +87,9 @@ export class ExecInstructionsController {
     const fresh = await tx.milestone.findUnique({ where: { id: next.id } });
     if (fresh?.ownerId) {
       await this.ensureKeyInitiative(tx, fresh, instruction, actorId);
-      await this.notify(tx, fresh.ownerId, 'MilestoneActivated', next.id, { instructionId: instruction.id, title: fresh.title });
+      const author = await tx.user.findUnique({ where: { id: instruction.authorId }, select: { name: true } });
+      await this.createWorklogInstruction(tx, fresh, instruction, author?.name);
+      await this.notify(tx, fresh.ownerId, 'MilestoneActivated', next.id, { instructionId: instruction.id, title: fresh.title, requestedByName: author?.name || null });
     }
   }
 
@@ -133,6 +155,7 @@ export class ExecInstructionsController {
         if (owners[i] && i === 0) {
           // 수동 배정과 동일하게: 활성 꼭지에 담당이 붙으면 중점 추진 과제 생성 + 배정 알림
           await this.ensureKeyInitiative(tx, ms, inst, dto.authorId);
+          await this.createWorklogInstruction(tx, ms, inst, authorUser?.name);
           await this.notify(tx, owners[i]!, 'MilestoneAssigned', ms.id, { instructionId: inst.id, title: gen[i].title, requestedByName: authorUser?.name || null });
         }
       }
@@ -194,6 +217,8 @@ export class ExecInstructionsController {
     const owners = await this.resolveMilestoneOwners(gen);
     const authorUser = await (this.prisma as any).user.findUnique({ where: { id: inst.authorId }, select: { name: true } });
     await this.prisma.$transaction(async (tx) => {
+      // 재분해로 꼭지가 새로 만들어지므로, 이전 자동 생성 업무지시(미완료)는 정리
+      await (tx as any).worklogInstruction.deleteMany({ where: { sourceWorklogId: `execinst:${id}`, status: 'OPEN' } });
       await (tx as any).milestone.deleteMany({ where: { instructionId: id } });
       for (let i = 0; i < gen.length; i++) {
         const ms = await (tx as any).milestone.create({
@@ -202,6 +227,7 @@ export class ExecInstructionsController {
         if (owners[i] && i === 0) {
           // 수동 배정과 동일하게: 활성 꼭지에 담당이 붙으면 중점 추진 과제 생성 + 배정 알림
           await this.ensureKeyInitiative(tx, ms, inst, dto.actorId);
+          await this.createWorklogInstruction(tx, ms, inst, authorUser?.name);
           await this.notify(tx, owners[i]!, 'MilestoneAssigned', ms.id, { instructionId: id, title: gen[i].title, requestedByName: authorUser?.name || null });
         }
       }
@@ -230,10 +256,12 @@ export class ExecInstructionsController {
     await this.prisma.$transaction(async (tx) => {
       await (tx as any).milestone.update({ where: { id: mid }, data: { ownerId: dto.ownerId || null, dueAt: dto.dueAt ? new Date(dto.dueAt) : m.dueAt } });
       const fresh = await (tx as any).milestone.findUnique({ where: { id: mid } });
-      // ACTIVE 이고 담당자가 있으면 즉시 과제 생성/알림
+      // ACTIVE 이고 담당자가 있으면 즉시 과제 생성/업무지시/알림
       if (fresh.ownerId && (fresh.status === 'ACTIVE' || fresh.status === 'BLOCKED')) {
         await this.ensureKeyInitiative(tx, fresh, m.instruction, dto.actorId);
-        await this.notify(tx, fresh.ownerId, 'MilestoneAssigned', mid, { instructionId: m.instructionId, title: fresh.title });
+        const author = await (tx as any).user.findUnique({ where: { id: m.instruction.authorId }, select: { name: true } });
+        await this.createWorklogInstruction(tx, fresh, m.instruction, author?.name);
+        await this.notify(tx, fresh.ownerId, 'MilestoneAssigned', mid, { instructionId: m.instructionId, title: fresh.title, requestedByName: author?.name || null });
       }
     });
     return this.detail(m.instructionId);
