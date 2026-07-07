@@ -324,10 +324,11 @@ export class WorkManualsController {
       throw new BadRequestException('팀장 이상만 조회할 수 있습니다');
     }
 
-    const [users, manuals, templates] = await Promise.all([
+    const [usersRaw, manuals, templates] = await Promise.all([
       (this.prisma as any).user.findMany({
-        where: { status: 'ACTIVE', role: { notIn: ['EXTERNAL', 'GUARD'] as any } },
-        select: { id: true, name: true, role: true, orgUnit: { select: { name: true } } },
+        // 팀에 소속된 실무 인원만: 대표이사(CEO)·외부·경비 제외, 팀(TEAM) 미소속 제외
+        where: { status: 'ACTIVE', role: { notIn: ['CEO', 'EXTERNAL', 'GUARD'] as any }, orgUnitId: { not: null } },
+        select: { id: true, name: true, role: true, orgUnit: { select: { name: true, type: true } } },
         orderBy: { name: 'asc' },
       }),
       (this.prisma as any).workManual.findMany({
@@ -338,6 +339,12 @@ export class WorkManualsController {
         select: { sourceManualId: true },
       }),
     ]);
+    // 이름 기반 제외(대표 지시): 김선구·김정중·로봇 계정 등 리스트 비대상
+    const EXCLUDE_NAMES = ['김선구', '김정중'];
+    const users = usersRaw.filter((u: any) =>
+      String(u.orgUnit?.type || '').toUpperCase() === 'TEAM'
+      && !EXCLUDE_NAMES.includes(String(u.name || '').trim())
+      && !/로봇|robot|bot|claude/i.test(String(u.name || '')));
     const processedManualIds = new Set(templates.map((t: any) => String(t.sourceManualId)));
     const byUser = new Map<string, any[]>();
     for (const m of manuals) {
@@ -364,6 +371,11 @@ export class WorkManualsController {
         staleCount: stale.length,
         avgQuality: quality,
         staleTitles: stale.slice(0, 3).map((m) => m.title),
+        manuals: list
+          .slice()
+          .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+          .slice(0, 50)
+          .map((m: any) => ({ id: m.id, title: m.title, processed: processedManualIds.has(String(m.id)), updatedAt: m.updatedAt })),
       };
     });
     const totals = {
@@ -373,6 +385,23 @@ export class WorkManualsController {
       processed: manuals.filter((m: any) => processedManualIds.has(String(m.id))).length,
     };
     return { items, totals };
+  }
+
+  /** 현황 리포트에서 타인 매뉴얼 열람 (팀장 이상) — 소유자 검증 대신 역할 게이트 */
+  @Get('report/manual/:manualId')
+  async reportManualView(@Param('manualId') manualId: string, @Query('actorId') actorId?: string) {
+    const uid = String(actorId || '').trim();
+    if (!uid) throw new BadRequestException('actorId required');
+    const actor = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
+    if (!['CEO', 'EXEC', 'MANAGER'].includes(String(actor?.role || '').toUpperCase())) {
+      throw new BadRequestException('팀장 이상만 조회할 수 있습니다');
+    }
+    const m = await (this.prisma as any).workManual.findUnique({
+      where: { id: manualId },
+      select: { id: true, title: true, content: true, status: true, qualityScore: true, updatedAt: true, user: { select: { name: true } } },
+    });
+    if (!m) throw new BadRequestException('manual not found');
+    return { id: m.id, title: m.title, content: m.content || '', status: m.status, qualityScore: m.qualityScore ?? 0, updatedAt: m.updatedAt, authorName: m.user?.name || '' };
   }
 
   @Get('review-queue')

@@ -569,16 +569,18 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/exec-instructions">지시 목록</Link>
           <Link to="/exec-instructions/strategy">전략 통일성</Link>
         </NavDropdown>
-        <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process') || location.pathname.startsWith('/manuals')}>
+        <NavDropdown label="매뉴얼" active={location.pathname.startsWith('/manuals')}>
+          <Link to="/manuals/mine">내 매뉴얼 입력</Link>
+          <Link to="/manuals">업무 메뉴얼 조회</Link>
+          {canEvaluate && <Link to="/manuals/coverage">매뉴얼 입력 현황 (전사)</Link>}
+        </NavDropdown>
+        <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
           <Link to={`/process/start?return=${encodeURIComponent(location.pathname + location.search)}`}>새 프로세스 시작</Link>
           <Link to="/process/inbox">내 할 일</Link>
           <Link to="/process/my">참여 프로세스</Link>
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           <Link to="/process/templates">프로세스 템플릿</Link>
-          <Link to="/manuals">업무 메뉴얼</Link>
-          <Link to="/manuals/mine">내 매뉴얼 입력</Link>
           <Link to="/process/from-manual">매뉴얼로 프로세스 만들기 (AI)</Link>
-          {canEvaluate && <Link to="/manuals/coverage">매뉴얼 입력 현황 (전사)</Link>}
         </NavDropdown>
         <NavDropdown label="회의록" active={location.pathname.startsWith('/meetings')}>
           <Link to="/meetings">회의록</Link>
@@ -835,17 +837,21 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/admin/tools', label: '시스템 도구' },
       ];
     }
-    if (path.startsWith('/process') || path.startsWith('/manuals')) {
+    if (path.startsWith('/manuals')) {
+      return [
+        { to: '/manuals/mine', label: '내 매뉴얼 입력' },
+        { to: '/manuals', label: '업무 메뉴얼 조회' },
+        ...(canEvaluate ? [{ to: '/manuals/coverage', label: '매뉴얼 입력 현황 (전사)' }] : []),
+      ];
+    }
+    if (path.startsWith('/process')) {
       return [
         { to: '/process/start', label: '새 프로세스 시작' },
         { to: '/process/inbox', label: '내 할 일' },
         { to: '/process/my', label: '참여 프로세스' },
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         { to: '/process/templates', label: '프로세스 템플릿' },
-        { to: '/manuals', label: '업무 메뉴얼' },
-        { to: '/manuals/mine', label: '내 매뉴얼 입력' },
         { to: '/process/from-manual', label: '매뉴얼로 프로세스 만들기 (AI)' },
-        ...(canEvaluate ? [{ to: '/manuals/coverage', label: '매뉴얼 입력 현황 (전사)' }] : []),
       ];
     }
     if (path.startsWith('/exec-instructions')) {

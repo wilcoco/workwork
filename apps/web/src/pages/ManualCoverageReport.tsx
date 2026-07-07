@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 
 /** 전사 매뉴얼 입력·프로세스화 현황 (팀장 이상) */
+type ManualChip = { id: string; title: string; processed: boolean; updatedAt: string };
 type Row = {
   userId: string; name: string; role: string; teamName: string;
   manualCount: number; processedCount: number; rate: number | null;
   staleCount: number; avgQuality: number | null; staleTitles: string[];
+  manuals: ManualChip[];
 };
 
 export function ManualCoverageReport() {
@@ -14,6 +16,15 @@ export function ManualCoverageReport() {
   const [totals, setTotals] = useState<{ users: number; usersWithManual: number; manuals: number; processed: number } | null>(null);
   const [error, setError] = useState('');
   const [teamFilter, setTeamFilter] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [viewer, setViewer] = useState<{ title: string; content: string; authorName: string; updatedAt: string } | null>(null);
+
+  async function openManual(id: string) {
+    try {
+      const m = await apiJson<any>(`/api/work-manuals/report/manual/${encodeURIComponent(id)}?actorId=${encodeURIComponent(userId)}`);
+      setViewer({ title: m.title, content: m.content || '', authorName: m.authorName || '', updatedAt: m.updatedAt });
+    } catch (e: any) { alert(e?.message || '매뉴얼을 열 수 없습니다'); }
+  }
 
   useEffect(() => {
     if (!userId) return;
@@ -72,9 +83,10 @@ export function ManualCoverageReport() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((r) => (
-              <tr key={r.userId} style={r.manualCount === 0 ? { background: '#fef2f2' } : r.staleCount > 0 ? { background: '#fffbeb' } : undefined}>
-                <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
+            {sorted.map((r) => ([
+              <tr key={r.userId} onClick={() => r.manualCount > 0 && setExpanded((prev) => { const n = new Set(prev); n.has(r.userId) ? n.delete(r.userId) : n.add(r.userId); return n; })}
+                style={{ cursor: r.manualCount > 0 ? 'pointer' : undefined, ...(r.manualCount === 0 ? { background: '#fef2f2' } : r.staleCount > 0 ? { background: '#fffbeb' } : {}) }}>
+                <td style={{ ...td, fontWeight: 600 }}>{r.manualCount > 0 ? (expanded.has(r.userId) ? '▾ ' : '▸ ') : ''}{r.name}</td>
                 <td style={{ ...td, color: '#64748b' }}>{r.teamName || '—'}</td>
                 <td style={{ ...td, textAlign: 'right' }}>{r.manualCount || <span style={{ color: '#dc2626', fontWeight: 700 }}>0</span>}</td>
                 <td style={{ ...td, textAlign: 'right' }}>{r.processedCount}</td>
@@ -86,14 +98,46 @@ export function ManualCoverageReport() {
                 <td style={{ ...td, fontSize: 11, color: '#94a3b8', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {r.manualCount === 0 ? '매뉴얼 미입력' : r.staleCount > 0 ? `프로세스화 정체: ${r.staleTitles.join(', ')}` : ''}
                 </td>
-              </tr>
-            ))}
+              </tr>,
+              expanded.has(r.userId) && r.manuals?.length ? (
+                <tr key={`${r.userId}-x`}>
+                  <td colSpan={8} style={{ ...td, background: '#f8fafc' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {r.manuals.map((m) => (
+                        <button key={m.id} type="button" onClick={(e) => { e.stopPropagation(); void openManual(m.id); }}
+                          title={`${new Date(m.updatedAt).toLocaleDateString()} · 클릭하면 내용을 봅니다`}
+                          style={{ fontSize: 12, padding: '3px 10px', borderRadius: 999, cursor: 'pointer',
+                            border: `1px solid ${m.processed ? '#86efac' : '#fcd34d'}`,
+                            background: m.processed ? '#f0fdf4' : '#fffbeb',
+                            color: m.processed ? '#15803d' : '#92400e' }}>
+                          {m.processed ? '✓' : '○'} {m.title}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ) : null,
+            ]))}
           </tbody>
         </table>
       </div>
       <div style={{ fontSize: 11, color: '#94a3b8' }}>
-        빨간 행 = 매뉴얼 미입력 · 노란 행 = 입력했지만 7일 넘게 프로세스화가 안 된 매뉴얼 있음(내용이 부족해 진전이 안 되는 후보). 품질점수는 매뉴얼 검토 시스템의 평가값입니다.
+        빨간 행 = 매뉴얼 미입력 · 노란 행 = 입력했지만 7일 넘게 프로세스화가 안 된 매뉴얼 있음(내용이 부족해 진전이 안 되는 후보).
+        행을 클릭하면 작성한 매뉴얼이 펼쳐지고, 매뉴얼을 클릭하면 내용을 볼 수 있습니다. (✓=프로세스화 완료, ○=전)
       </div>
+
+      {viewer && (
+        <div onClick={() => setViewer(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, maxWidth: 760, width: '100%', maxHeight: '80vh', overflow: 'auto', padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <b style={{ fontSize: 16, flex: 1 }}>{viewer.title}</b>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{viewer.authorName} · {new Date(viewer.updatedAt).toLocaleDateString()}</span>
+              <button className="btn btn-sm" onClick={() => setViewer(null)}>닫기</button>
+            </div>
+            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: '#334155' }}>{viewer.content || '(내용 없음)'}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
