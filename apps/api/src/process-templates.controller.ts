@@ -343,6 +343,25 @@ export class ProcessTemplatesController {
    * 사람/후보 목록으로 풀어준다. 시작 화면이 이 결과로 "역할 확정" 빨간칸을 그린다.
    * (템플릿 시점에 '역할로 미룬' 빨간칸이 구동 시점으로 이월되는 지점)
    */
+  /** 운영 중 접수된 구조 불일치 신고 목록 (템플릿 편집 화면 배지용) */
+  @Get(':id/structure-gaps')
+  async structureGaps(@Param('id') id: string) {
+    const rows = await (this.prisma as any).event.findMany({
+      where: { subjectType: 'ProcessTemplate', subjectId: id, activity: 'StructureGapReported' },
+      orderBy: { ts: 'desc' },
+      take: 50,
+    });
+    return {
+      items: rows.map((e: any) => ({
+        id: e.id, ts: e.ts,
+        note: e.attrs?.note || '',
+        reporterName: e.attrs?.reporterName || null,
+        instanceId: e.attrs?.instanceId || null,
+        instanceTitle: e.attrs?.instanceTitle || null,
+      })),
+    };
+  }
+
   @Get(':id/approval-roles')
   async approvalRolePreview(@Param('id') id: string, @Query('starterId') starterId?: string) {
     const tpl = await (this.prisma as any).processTemplate.findUnique({ where: { id }, include: { tasks: { orderBy: { orderHint: 'asc' } } } });

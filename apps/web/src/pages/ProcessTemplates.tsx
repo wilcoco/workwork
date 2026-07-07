@@ -546,9 +546,18 @@ export function ProcessTemplates() {
     }
   }
 
+  // 운영 중 접수된 구조 불일치 신고 (재설계 승급 루프)
+  const [structureGaps, setStructureGaps] = useState<Array<{ id: string; ts: string; note: string; reporterName?: string | null; instanceId?: string | null; instanceTitle?: string | null }>>([]);
+
   function editTemplate(t: ProcessTemplateDto) {
     setSelectedId(t.id || null);
     setLintDismissed(new Set()); // 다른 템플릿의 무시 선택은 초기화
+    setStructureGaps([]);
+    if (t.id) {
+      apiJson<{ items: any[] }>(`/api/process-templates/${encodeURIComponent(t.id)}/structure-gaps`)
+        .then((r) => setStructureGaps(r.items || []))
+        .catch(() => {});
+    }
     setEditing({
       ...t,
       tasks: (t.tasks || []).map((x, idx) => ({
@@ -1203,6 +1212,17 @@ export function ProcessTemplates() {
                 </div>
                 {bpmnMode === 'graph' ? (
                   <div style={{ display: 'grid', gap: 8 }}>
+                    {structureGaps.length > 0 && (
+                      <div style={{ border: '1px solid #fca5a5', background: '#fef2f2', borderRadius: 8, padding: '8px 12px', display: 'grid', gap: 6 }}>
+                        <b style={{ fontSize: 13, color: '#991b1b' }}>⚠ 운영 중 구조 불일치 신고 {structureGaps.length}건 — 실제 업무와 다르다는 현장 보고입니다. 검토 후 템플릿을 수정하세요.</b>
+                        {structureGaps.slice(0, 5).map((g) => (
+                          <div key={g.id} style={{ fontSize: 12, color: '#7f1d1d' }}>
+                            · {g.note} <span style={{ color: '#b91c1c' }}>— {g.reporterName || '익명'}{g.instanceTitle ? ` · 「${g.instanceTitle}」` : ''} · {new Date(g.ts).toLocaleDateString()}</span>
+                          </div>
+                        ))}
+                        {structureGaps.length > 5 && <div style={{ fontSize: 11, color: '#b91c1c' }}>외 {structureGaps.length - 5}건</div>}
+                      </div>
+                    )}
                     <BpmnChecklist
                       jsonText={bpmnJsonText}
                       onChangeJson={setBpmnJsonText}

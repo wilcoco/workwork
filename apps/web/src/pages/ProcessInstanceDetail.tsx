@@ -493,6 +493,23 @@ export function ProcessInstanceDetail() {
             {canExec() && (
               <button className="btn" onClick={onOpenModify}>구조 수정</button>
             )}
+            <button className="btn btn-ghost" title="이 프로세스 구조가 실제 업무와 다르면 템플릿 관리자에게 개선을 요청합니다 (진행은 계속됩니다)"
+              onClick={() => setReasonModal({
+                action: 'structure-gap',
+                label: '실제 업무와 다른 점 (템플릿 개선 요청)',
+                required: true,
+                onSubmit: async (reason: string) => {
+                  try {
+                    await apiJson(`/api/processes/${encodeURIComponent(String(id))}/report-structure-gap`, {
+                      method: 'POST',
+                      body: JSON.stringify({ actorId: userId, note: reason }),
+                    });
+                    alert('개선 요청이 접수되었습니다. 템플릿 관리자에게 전달됩니다.');
+                  } catch (e: any) { alert(e?.message || '접수 실패'); }
+                },
+              })}>
+              ⚠ 구조 불일치 신고
+            </button>
           </div>
         </div>
         <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>

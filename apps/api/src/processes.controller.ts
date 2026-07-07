@@ -1196,6 +1196,33 @@ export class ProcessesController {
     });
   }
 
+  /** 운영 중 구조 불일치 신고 — 인스턴스는 계속 진행, 템플릿에 개선 요청 기록 + 소유자 알림 (재설계 승급 루프) */
+  @Post(':id/report-structure-gap')
+  async reportStructureGap(@Param('id') id: string, @Body() body: { actorId?: string; note?: string }) {
+    const actorId = String(body?.actorId || '').trim();
+    const note = String(body?.note || '').trim();
+    if (!actorId || !note) throw new BadRequestException('actorId와 신고 내용(note)이 필요합니다');
+    const inst = await (this.prisma as any).processInstance.findUnique({ where: { id }, select: { id: true, title: true, templateId: true } });
+    if (!inst?.templateId) throw new BadRequestException('instance not found');
+    const tpl = await (this.prisma as any).processTemplate.findUnique({ where: { id: inst.templateId }, select: { id: true, title: true, ownerId: true } });
+    const actor = await (this.prisma as any).user.findUnique({ where: { id: actorId }, select: { name: true } });
+    await (this.prisma as any).event.create({
+      data: {
+        subjectType: 'ProcessTemplate', subjectId: inst.templateId, activity: 'StructureGapReported', userId: actorId,
+        attrs: { instanceId: id, instanceTitle: inst.title, note, reporterName: actor?.name || null },
+      },
+    });
+    if (tpl?.ownerId && tpl.ownerId !== actorId) {
+      await (this.prisma as any).notification.create({
+        data: {
+          userId: tpl.ownerId, type: 'StructureGapReported', subjectType: 'ProcessTemplate', subjectId: tpl.id,
+          payload: { instanceId: id, note, reporterName: actor?.name || null, templateTitle: tpl.title },
+        },
+      });
+    }
+    return { ok: true };
+  }
+
   @Post(':id/modify')
   async modify(@Param('id') id: string, @Body() body: any) {
     const { actorId, reason, reassign, skipTaskIds, update } = body || {};
