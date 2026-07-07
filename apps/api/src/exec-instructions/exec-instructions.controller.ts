@@ -67,11 +67,41 @@ export class ExecInstructionsController {
     }
   }
 
+  // AI 분해에 줄 구성원 이름 목록 (지시문에 거론된 담당자 자동 지정용)
+  private async activeMemberNames(): Promise<string[]> {
+    const users = await (this.prisma as any).user.findMany({
+      where: { status: 'ACTIVE', role: { notIn: ['EXTERNAL', 'GUARD'] as any } },
+      select: { name: true },
+    });
+    return Array.from(new Set(users.map((u: any) => String(u.name || '').trim()).filter(Boolean))) as string[];
+  }
+
+  // AI가 채운 assigneeName → userId 매핑. 정확 일치 & 후보 1명일 때만 지정(동명이인·미존재는 건너뜀).
+  private async resolveMilestoneOwners(gen: Array<{ assigneeName?: string }>): Promise<Array<string | null>> {
+    const names = Array.from(new Set(gen.map((g) => String(g.assigneeName || '').trim()).filter(Boolean)));
+    if (!names.length) return gen.map(() => null);
+    const users = await (this.prisma as any).user.findMany({
+      where: { name: { in: names }, status: 'ACTIVE' },
+      select: { id: true, name: true },
+    });
+    const byName = new Map<string, string[]>();
+    for (const u of users) {
+      const arr = byName.get(u.name) || [];
+      arr.push(u.id);
+      byName.set(u.name, arr);
+    }
+    return gen.map((g) => {
+      const ids = byName.get(String(g.assigneeName || '').trim()) || [];
+      return ids.length === 1 ? ids[0] : null;
+    });
+  }
+
   // ── 지시 캡처 ───────────────────────────────────────────────
   @Post()
   async create(@Body() dto: CreateInstructionDto) {
     if (!dto.authorId || !String(dto.rawText || '').trim()) throw new BadRequestException('authorId, rawText 필요');
-    const gen = await generateMilestones(dto.rawText);
+    const gen = await generateMilestones(dto.rawText, await this.activeMemberNames());
+    const owners = await this.resolveMilestoneOwners(gen);
     const summary = String(dto.rawText).trim().replace(/\s+/g, ' ').slice(0, 120);
     const created = await this.prisma.$transaction(async (tx) => {
       const inst = await (tx as any).instruction.create({
@@ -84,16 +114,20 @@ export class ExecInstructionsController {
         },
       });
       for (let i = 0; i < gen.length; i++) {
-        await (tx as any).milestone.create({
+        const ms = await (tx as any).milestone.create({
           data: {
             instructionId: inst.id,
             order: i,
             title: gen[i].title,
             expectedResult: gen[i].expectedResult || null,
+            ownerId: owners[i] || null, // 지시문에 거론된 담당자 자동 지정
             status: i === 0 ? 'ACTIVE' : 'PENDING',
             activatedAt: i === 0 ? new Date() : null,
           },
         });
+        if (owners[i] && i === 0) {
+          await this.notify(tx, owners[i]!, 'MilestoneAssigned', ms.id, { instructionId: inst.id, title: gen[i].title });
+        }
       }
       return inst;
     });
@@ -149,13 +183,17 @@ export class ExecInstructionsController {
     if (!(dto.actorId === inst.authorId || (await this.isAdmin(dto.actorId)))) throw new ForbiddenException('지시자 또는 관리자만 재분해할 수 있습니다');
     const progressed = inst.milestones.some((m: any) => m.status === 'DONE' || m.status === 'REVIEW');
     if (progressed) throw new BadRequestException('이미 진행/검수된 꼭지가 있어 재분해할 수 없습니다');
-    const gen = await generateMilestones(inst.rawText);
+    const gen = await generateMilestones(inst.rawText, await this.activeMemberNames());
+    const owners = await this.resolveMilestoneOwners(gen);
     await this.prisma.$transaction(async (tx) => {
       await (tx as any).milestone.deleteMany({ where: { instructionId: id } });
       for (let i = 0; i < gen.length; i++) {
-        await (tx as any).milestone.create({
-          data: { instructionId: id, order: i, title: gen[i].title, expectedResult: gen[i].expectedResult || null, status: i === 0 ? 'ACTIVE' : 'PENDING', activatedAt: i === 0 ? new Date() : null },
+        const ms = await (tx as any).milestone.create({
+          data: { instructionId: id, order: i, title: gen[i].title, expectedResult: gen[i].expectedResult || null, ownerId: owners[i] || null, status: i === 0 ? 'ACTIVE' : 'PENDING', activatedAt: i === 0 ? new Date() : null },
         });
+        if (owners[i] && i === 0) {
+          await this.notify(tx, owners[i]!, 'MilestoneAssigned', ms.id, { instructionId: id, title: gen[i].title });
+        }
       }
     });
     return this.detail(id);

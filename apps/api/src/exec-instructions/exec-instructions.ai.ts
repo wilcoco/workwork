@@ -5,6 +5,8 @@ import { callAI } from '../llm/ai-client';
 export interface GeneratedMilestone {
   title: string;
   expectedResult?: string;
+  /** 지시문에 담당자로 명시 거론된 구성원 이름 (구성원 목록과 정확 일치할 때만) */
+  assigneeName?: string;
 }
 
 const AI_TIMEOUT_MS = 45_000;
@@ -54,6 +56,7 @@ const MILESTONE_SCHEMA = {
           properties: {
             title: { type: 'string', description: '꼭지 제목(굵직한 실행 매듭, 20자 내외)' },
             expectedResult: { type: 'string', description: '이 꼭지의 기대 결과(무엇이 되어 있어야 완료인가)' },
+            assigneeName: { type: 'string', description: '지시문에 이 꼭지의 담당자로 명시적으로 거론된 사람 이름 ([구성원 목록]에 있는 이름 그대로). 거론이 없으면 생략.' },
           },
           required: ['title'],
         },
@@ -63,9 +66,11 @@ const MILESTONE_SCHEMA = {
   },
 };
 
-export async function generateMilestones(rawText: string): Promise<GeneratedMilestone[]> {
+export async function generateMilestones(rawText: string, memberNames?: string[]): Promise<GeneratedMilestone[]> {
   const text = String(rawText || '').trim();
   if (!text) return heuristicMilestones(text);
+  const names = (memberNames || []).map((n) => String(n || '').trim()).filter(Boolean).slice(0, 300);
+  const nameSet = new Set(names);
   try {
     const res = await withTimeout(
       callAI({
@@ -73,7 +78,11 @@ export async function generateMilestones(rawText: string): Promise<GeneratedMile
         system:
           '너는 경영진의 지시를 실행 가능한 "꼭지(굵직한 매듭)"로 분해하는 비서다. ' +
           'BPM 세부절차가 아니라 순서가 있는 3~6개의 큰 매듭만 만든다. 각 꼭지는 제목과 기대결과(완료 판정 기준)를 가진다. ' +
-          '지시에 없는 내용을 지어내지 말고, 실제 실행 순서대로 배열하라. 한국어로 작성.',
+          '지시에 없는 내용을 지어내지 말고, 실제 실행 순서대로 배열하라. 한국어로 작성.' +
+          (names.length
+            ? ' 지시문에 특정 구성원이 어떤 일의 담당자로 명시 거론되어 있고 그 이름이 아래 [구성원 목록]에 있으면, 해당 꼭지의 assigneeName에 목록의 이름 그대로 넣어라. 거론되지 않았거나 목록에 없으면 절대 채우지 마라(추측 금지).' +
+              `\n[구성원 목록] ${names.join(', ')}`
+            : ''),
         user: `다음 지시를 꼭지로 분해하라:\n\n${text}`,
         jsonSchema: MILESTONE_SCHEMA,
         maxTokens: 1500,
@@ -85,7 +94,14 @@ export async function generateMilestones(rawText: string): Promise<GeneratedMile
       return arr
         .filter((m: any) => m && typeof m.title === 'string' && m.title.trim())
         .slice(0, 6)
-        .map((m: any) => ({ title: String(m.title).trim(), expectedResult: m.expectedResult ? String(m.expectedResult).trim() : undefined }));
+        .map((m: any) => {
+          const an = String(m.assigneeName || '').trim();
+          return {
+            title: String(m.title).trim(),
+            expectedResult: m.expectedResult ? String(m.expectedResult).trim() : undefined,
+            assigneeName: an && nameSet.has(an) ? an : undefined, // 목록에 있는 이름만 인정 (AI 작문 방지)
+          };
+        });
     }
   } catch {
     // fall through to heuristic
