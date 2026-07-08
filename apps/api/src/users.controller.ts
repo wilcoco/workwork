@@ -272,7 +272,11 @@ export class UsersController {
     }
 
     if (!wantsExternal) {
-      where.role = { not: 'EXTERNAL' } as any;
+      // 일반 목록: 외부/경비 계정 제외 + 조직도(팀) 미배정 사용자 제외
+      // (김정중·김선구 등 조직도에 없는 계정이 필터/드롭다운/자동완성에 노출되지 않게)
+      // 관리자 화면(구성원 관리)은 includePending/includeExternal 로 호출하므로 이 필터를 타지 않는다.
+      where.role = { notIn: ['EXTERNAL', 'GUARD'] } as any;
+      if (!wantsPending) where.NOT = { orgUnitId: null };
     } else {
       if (!userId) throw new BadRequestException('userId required');
       const actor = await this.prisma.user.findUnique({ where: { id: userId } });
