@@ -8,6 +8,7 @@ function getNotificationUrl(n: any): string {
   const st = String(n?.subjectType || '').toUpperCase();
   const sid = String(n?.subjectId || '');
   if (t === 'ApprovalRequested' || t === 'ApprovalGranted' || t === 'ApprovalRejected') return '/approvals/inbox';
+  if (st === 'CAR_SWAP' || t === 'CarSwapRequested' || t === 'CarSwapAgreed' || t === 'CarSwapDeclined') return '/dispatch/corporate';
   if (t === 'HelpRequested') return '/coops/inbox';
   if (t === 'Delegated') return '/me/goals';
   if (t === 'ProcessStarted' || t === 'ProcessTaskReady') return sid ? `/process/instances/${encodeURIComponent(sid)}` : '/process/my';
@@ -27,6 +28,9 @@ function typeLabel(n: any): string {
   if (t === 'ApprovalGranted') return '결재 승인';
   if (t === 'ApprovalRejected') return '결재 반려';
   if (t === 'HelpRequested') return '업무 요청';
+  if (t === 'CarSwapRequested') return '차량 교환 요청';
+  if (t === 'CarSwapAgreed') return '차량 교환 동의';
+  if (t === 'CarSwapDeclined') return '차량 교환 거절';
   if (st === 'LOGISTICS_DISPATCH') return '물류 배차';
   if (st === 'CAR_DISPATCH') return '법인차 배차';
   if (st === 'ATTENDANCE') return '근태 신청';

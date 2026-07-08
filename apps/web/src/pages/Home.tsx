@@ -55,6 +55,7 @@ export function Home() {
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
   const [pendingInstructions, setPendingInstructions] = useState<any[]>([]);
   const [pendingComments, setPendingComments] = useState<any[]>([]); // 내 업무일지에 달린 답변 필요한 댓글
+  const [pendingSwaps, setPendingSwaps] = useState<any[]>([]); // 내게 온 차량 교환 요청 (대기중)
   const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
   const [overdueYear, setOverdueYear] = useState<'2026' | 'before' | 'all'>('2026');
   const [overdueLoading, setOverdueLoading] = useState(false);
@@ -324,6 +325,13 @@ export function Home() {
       } catch {
         setPendingComments([]);
       }
+      // 나에게 온 차량 교환 요청 (대기중)
+      try {
+        const res = await apiJson<{ items: any[] }>(`/api/car-dispatch/swap-inbox?userId=${encodeURIComponent(viewerId)}`);
+        setPendingSwaps(res.items || []);
+      } catch {
+        setPendingSwaps([]);
+      }
     })(), 800);
     return () => window.clearTimeout(timer);
   }, []);
@@ -403,7 +411,7 @@ export function Home() {
         </div>
       )}
       {/* 알림 배너 */}
-      {(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0) && (
+      {(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
@@ -436,6 +444,31 @@ export function Home() {
                 style={{ marginTop: 8, background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
               >
                 결재하기 →
+              </button>
+            </div>
+          )}
+          {pendingSwaps.length > 0 && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, color: '#166534', marginBottom: 6, fontSize: 13 }}>🔄 차량 교환 요청 ({pendingSwaps.length}건) - 동의/거절 응답 필요</div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {pendingSwaps.slice(0, 3).map((r: any) => (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                    <span style={{ color: '#14532d' }}>• {r.from?.requesterName || '요청자'}</span>
+                    <span style={{ color: '#166534', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.from?.carName || '차량'} ↔ 내 {r.to?.carName || '차량'}{r.note ? ` · “${r.note}”` : ''}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#15803d' }}>{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ''}</span>
+                  </div>
+                ))}
+                {pendingSwaps.length > 3 && (
+                  <div style={{ fontSize: 12, color: '#15803d' }}>외 {pendingSwaps.length - 3}건 더...</div>
+                )}
+              </div>
+              <button
+                onClick={() => nav('/dispatch/corporate')}
+                style={{ marginTop: 8, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}
+              >
+                응답하기 →
               </button>
             </div>
           )}
