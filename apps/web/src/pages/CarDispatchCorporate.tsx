@@ -68,6 +68,32 @@ export function CarDispatchCorporate() {
   const [swapFromId, setSwapFromId] = useState('');
   const [swapToId, setSwapToId] = useState('');
   const [swapNote, setSwapNote] = useState('');
+  // 교환 절차: ① 날짜 선택 → ② 그 날짜 상대 배차(차량) 선택 → ③ 내 배차 선택 → 요청
+  const [swapDate, setSwapDate] = useState<string>(() => {
+    const n = new Date(Date.now() + 9 * 3600000);
+    return n.toISOString().slice(0, 10);
+  });
+  const [swapDayItems, setSwapDayItems] = useState<CalendarItem[]>([]);
+
+  // 선택한 날짜의 배차 목록 로드 (해당 월 캘린더에서 그 날짜와 겹치는 배차만)
+  useEffect(() => {
+    if (!swapDate) { setSwapDayItems([]); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const m = swapDate.slice(0, 7);
+        const res = await apiJson<{ items: CalendarItem[] }>(`/api/car-dispatch/calendar?month=${encodeURIComponent(m)}`);
+        if (!alive) return;
+        const dayStart = new Date(`${swapDate}T00:00:00+09:00`).getTime();
+        const dayEnd = dayStart + 24 * 3600000;
+        setSwapDayItems((res.items || []).filter((i) =>
+          new Date(i.startAt).getTime() < dayEnd && new Date(i.endAt).getTime() > dayStart &&
+          (i.status === 'PENDING' || i.status === 'APPROVED')
+        ));
+      } catch { if (alive) setSwapDayItems([]); }
+    })();
+    return () => { alive = false; };
+  }, [swapDate]);
 
   async function loadCoUse() {
     if (!userId) return;
@@ -472,28 +498,47 @@ export function CarDispatchCorporate() {
         <summary style={{ cursor: 'pointer', fontWeight: 800, color: '#0f172a' }}>🔄 차량 교환 요청 (같은 시간 선점한 다른 차량과 맞바꾸기)</summary>
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
           {(() => {
-            const mine = items.filter((i) => i.requesterId === userId && (i.status === 'PENDING' || i.status === 'APPROVED'));
-            const from = items.find((i) => i.id === swapFromId);
-            const overlap = (a: CalendarItem, b: CalendarItem) => new Date(a.startAt) < new Date(b.endAt) && new Date(b.startAt) < new Date(a.endAt);
-            const candidates = from ? items.filter((i) => i.id !== from.id && i.requesterId && i.requesterId !== userId && i.carId !== from.carId && (i.status === 'PENDING' || i.status === 'APPROVED') && overlap(from, i)) : [];
+            // ① 날짜의 배차들 중: 상대 배차(다른 사람) / 내 배차 분리
+            const others = swapDayItems.filter((i) => i.requesterId && i.requesterId !== userId);
+            const mine = swapDayItems.filter((i) => i.requesterId === userId);
+            const to = swapDayItems.find((i) => i.id === swapToId);
+            // ③ 내 배차 후보: 상대 배차와 다른 차량이어야 교환 의미가 있음
+            const myCandidates = to ? mine.filter((m) => m.carId !== to.carId) : mine;
+            const from = swapDayItems.find((i) => i.id === swapFromId);
+            const stepLbl = (n: number, t: string) => (
+              <span style={{ fontSize: 12, color: '#475569' }}>
+                <b style={{ display: 'inline-flex', width: 18, height: 18, borderRadius: '50%', background: '#0F3D73', color: '#fff', fontSize: 11, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}>{n}</b>
+                {t}
+              </span>
+            );
             return (
               <>
                 <label style={{ display: 'grid', gap: 4 }}>
-                  <span style={{ fontSize: 12, color: '#475569' }}>내 배차 (교환할 내 차량)</span>
-                  <select value={swapFromId} onChange={(e) => { setSwapFromId(e.target.value); setSwapToId(''); }} style={{ padding: '6px 8px' }}>
-                    <option value="">선택 ({calendarMonth} 기준)</option>
-                    {mine.map((m) => <option key={m.id} value={m.id}>{m.carName}{m.carType ? ` (${m.carType})` : ''} · {formatDateTime(m.startAt)}~{formatTime(m.endAt)} · {m.destination}</option>)}
-                  </select>
+                  {stepLbl(1, '교환할 날짜 선택')}
+                  <input type="date" value={swapDate} onChange={(e) => { setSwapDate(e.target.value); setSwapToId(''); setSwapFromId(''); }} style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: 6, width: 180 }} />
                 </label>
-                {from && (
+                <label style={{ display: 'grid', gap: 4 }}>
+                  {stepLbl(2, '그 날짜에 예약된 상대 차량(배차) 선택 — 내가 쓰고 싶은 차량')}
+                  <select value={swapToId} onChange={(e) => { setSwapToId(e.target.value); setSwapFromId(''); }} style={{ padding: '6px 8px' }}>
+                    <option value="">선택</option>
+                    {others.map((c) => <option key={c.id} value={c.id}>{c.carName}{c.carType ? ` (${c.carType})` : ''} · {c.requesterName} · {formatDateTime(c.startAt)}~{formatTime(c.endAt)}{c.destination ? ` · ${c.destination}` : ''}</option>)}
+                  </select>
+                  {others.length === 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>{swapDate}에 다른 구성원의 배차가 없습니다.</span>}
+                </label>
+                {to && (
                   <label style={{ display: 'grid', gap: 4 }}>
-                    <span style={{ fontSize: 12, color: '#475569' }}>교환할 상대 배차 (같은 시간대 다른 차량)</span>
-                    <select value={swapToId} onChange={(e) => setSwapToId(e.target.value)} style={{ padding: '6px 8px' }}>
+                    {stepLbl(3, '맞바꿀 내 배차 선택 — 상대에게 넘겨줄 내 차량')}
+                    <select value={swapFromId} onChange={(e) => setSwapFromId(e.target.value)} style={{ padding: '6px 8px' }}>
                       <option value="">선택</option>
-                      {candidates.map((c) => <option key={c.id} value={c.id}>{c.requesterName} · {c.carName}{c.carType ? ` (${c.carType})` : ''} · {formatDateTime(c.startAt)}~{formatTime(c.endAt)}</option>)}
+                      {myCandidates.map((m) => <option key={m.id} value={m.id}>{m.carName}{m.carType ? ` (${m.carType})` : ''} · {formatDateTime(m.startAt)}~{formatTime(m.endAt)}{m.destination ? ` · ${m.destination}` : ''}</option>)}
                     </select>
-                    {candidates.length === 0 && <span style={{ fontSize: 11, color: '#94a3b8' }}>겹치는 시간대의 다른 차량 배차가 없습니다.</span>}
+                    {myCandidates.length === 0 && <span style={{ fontSize: 11, color: '#dc2626' }}>{swapDate}에 교환 가능한 내 배차가 없습니다. (같은 날짜에 내 배차가 있어야 교환할 수 있어요)</span>}
                   </label>
+                )}
+                {to && from && (
+                  <div style={{ fontSize: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 10px', color: '#1d4ed8' }}>
+                    교환 결과: 내가 <b>{to.carName}</b> 사용({formatTime(from.startAt)}~{formatTime(from.endAt)}) ↔ {to.requesterName}님이 <b>{from.carName}</b> 사용({formatTime(to.startAt)}~{formatTime(to.endAt)}). 상대가 동의하면 즉시 맞바꿉니다.
+                  </div>
                 )}
                 <label style={{ display: 'grid', gap: 4 }}>
                   <span style={{ fontSize: 12, color: '#475569' }}>메모 (선택)</span>

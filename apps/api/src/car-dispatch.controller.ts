@@ -454,6 +454,7 @@ export class CarDispatchController {
       where: {
         startAt: { lte: end },
         endAt: { gte: start },
+        status: { not: 'CANCELLED' as any }, // 취소된 배차는 캘린더에서 제외
       },
       orderBy: { startAt: 'asc' },
       include: { car: true, requester: true },
@@ -476,6 +477,23 @@ export class CarDispatchController {
   }
 
   // ── 차량 교환 요청 ──────────────────────────────
+  // 교환 후 충돌 검증: dispatch가 newCarId 로 바뀌었을 때, 관련 두 배차를 제외한
+  // 다른 활성 배차(PENDING/APPROVED)와 시간이 겹치면 에러 메시지 반환.
+  private async swapConflict(dispatch: any, newCarId: string, excludeIds: string[]): Promise<string | null> {
+    const other = await this.prisma.carDispatchRequest.findFirst({
+      where: {
+        id: { notIn: excludeIds },
+        carId: newCarId,
+        status: { in: ['PENDING', 'APPROVED'] as any },
+        startAt: { lt: dispatch.endAt },
+        endAt: { gt: dispatch.startAt },
+      },
+      include: { requester: { select: { name: true } }, car: { select: { name: true } } },
+    });
+    if (!other) return null;
+    return `교환 후 ${(other as any).car?.name || '차량'}이(가) ${(other as any).requester?.name || '다른'}님의 기존 배차와 시간이 겹칩니다`;
+  }
+
   @Post('swap')
   async swapRequest(@Body() dto: { fromDispatchId?: string; toDispatchId?: string; actorId?: string; note?: string }) {
     if (!dto.fromDispatchId || !dto.toDispatchId || !dto.actorId) throw new BadRequestException('필수 항목 누락');
@@ -485,6 +503,13 @@ export class CarDispatchController {
     if ((from as any).requesterId !== dto.actorId) throw new BadRequestException('본인 배차에서만 교환을 요청할 수 있습니다');
     if ((to as any).requesterId === dto.actorId) throw new BadRequestException('상대 배차를 선택하세요');
     if ((from as any).carId === (to as any).carId) throw new BadRequestException('같은 차량은 교환할 수 없습니다');
+    if ((from as any).status === 'CANCELLED' || (to as any).status === 'CANCELLED') throw new BadRequestException('취소된 배차는 교환할 수 없습니다');
+    // 교환 성립 시 충돌 사전 검증 (내 배차↔상대 차량, 상대 배차↔내 차량)
+    const ex = [String((from as any).id), String((to as any).id)];
+    const c1 = await this.swapConflict(from, (to as any).carId, ex);
+    if (c1) throw new BadRequestException(c1);
+    const c2 = await this.swapConflict(to, (from as any).carId, ex);
+    if (c2) throw new BadRequestException(c2);
     const req = await (this.prisma as any).carSwapRequest.create({
       data: { fromDispatchId: dto.fromDispatchId, toDispatchId: dto.toDispatchId, requestedById: dto.actorId, targetUserId: (to as any).requesterId, note: dto.note || null },
     });
@@ -503,6 +528,13 @@ export class CarDispatchController {
     const from = await this.prisma.carDispatchRequest.findUnique({ where: { id: req.fromDispatchId } });
     const to = await this.prisma.carDispatchRequest.findUnique({ where: { id: req.toDispatchId } });
     if (!from || !to) throw new BadRequestException('배차를 찾을 수 없습니다');
+    if ((from as any).status === 'CANCELLED' || (to as any).status === 'CANCELLED') throw new BadRequestException('취소된 배차가 포함되어 교환할 수 없습니다');
+    // 동의 시점에도 충돌 재검증 (요청 이후 다른 배차가 생겼을 수 있음)
+    const ex = [String(from.id), String(to.id)];
+    const c1 = await this.swapConflict(from, (to as any).carId, ex);
+    if (c1) throw new BadRequestException(c1);
+    const c2 = await this.swapConflict(to, (from as any).carId, ex);
+    if (c2) throw new BadRequestException(c2);
     await this.prisma.$transaction(async (tx) => {
       // 두 배차의 차량을 맞바꿈
       await tx.carDispatchRequest.update({ where: { id: from.id }, data: { carId: (to as any).carId } });
@@ -907,7 +939,19 @@ export class CarDispatchController {
     if (dto.endAt) { const d = new Date(dto.endAt); if (!isNaN(d.getTime())) data.endAt = d; }
     if (data.startAt && data.endAt && data.endAt <= data.startAt) throw new BadRequestException('종료 시간이 시작 시간보다 빠를 수 없습니다');
 
-    const updated = await this.prisma.carDispatchRequest.update({ where: { id }, data });
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.carDispatchRequest.update({ where: { id }, data });
+      if (dto.cancel) {
+        // 배차 취소 시 진행 중이던 결재도 종료 처리(EXPIRED) — 결재하기 인박스에서 제거
+        const approvals = await tx.approvalRequest.findMany({ where: { subjectType: 'CAR_DISPATCH', subjectId: id, status: 'PENDING' as any }, select: { id: true } });
+        for (const a of approvals) {
+          await tx.approvalRequest.update({ where: { id: a.id }, data: { status: 'EXPIRED' as any } });
+          await tx.approvalStep.updateMany({ where: { requestId: a.id, status: 'PENDING' as any }, data: { status: 'EXPIRED' as any, comment: '배차 취소로 자동 종료' } });
+        }
+        await tx.event.create({ data: { subjectType: 'CAR_DISPATCH', subjectId: id, activity: 'DispatchCancelled', userId: dto.actorId || null, attrs: { by: actor?.name || dto.actorId } } as any });
+      }
+      return u;
+    });
     return updated;
   }
 }
