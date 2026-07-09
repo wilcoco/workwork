@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
+import { canViewWorklog } from './lib/worklog-visibility';
 
 class InboxQueryDto {
   @IsString()
@@ -48,8 +49,19 @@ export class NotificationsController {
       });
       const fbMap: Record<string, any> = {};
       for (const fb of feedbacks) fbMap[fb.id] = fb;
+      // 수신자가 볼 수 없는 공개범위의 업무일지 댓글은 알림에서도 내용을 노출하지 않는다.
+      const recipient = await this.prisma.user.findUnique({ where: { id: String(q.userId) }, select: { id: true, role: true } });
+      const wlFbIds = feedbacks.filter((f: any) => f.subjectType === 'Worklog').map((f: any) => String(f.subjectId));
+      const wls = wlFbIds.length
+        ? await this.prisma.worklog.findMany({ where: { id: { in: Array.from(new Set(wlFbIds)) } }, select: { id: true, visibility: true, createdById: true } })
+        : [];
+      const wlById = new Map(wls.map((w: any) => [String(w.id), w]));
       for (const n of feedbackNotifs) {
         const fb = fbMap[(n as any).payload?.feedbackId];
+        if (fb && fb.subjectType === 'Worklog') {
+          const wl = wlById.get(String(fb.subjectId));
+          if (!wl || !canViewWorklog(recipient, wl)) continue; // 열람 불가 → enrich 생략
+        }
         if (fb) {
           (n as any)._feedback = {
             id: fb.id,

@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, 
 import { IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
+import { canViewWorklog } from './lib/worklog-visibility';
 
 class ReportDto {
   @IsString()
@@ -1559,7 +1560,7 @@ export class WorklogsController {
   }
 
   @Get(':id')
-  async get(@Param('id') id: string) {
+  async get(@Param('id') id: string, @Query('viewerId') viewerId?: string) {
     const wl = await (this.prisma as any).worklog.findUnique({
       where: { id },
       include: {
@@ -1568,6 +1569,25 @@ export class WorklogsController {
       },
     });
     if (!wl) return null;
+    // 공개 범위 검사: 제한된 일지는 열람 권한이 있어야 반환. (작성자/역할 통과 외에 이 일지의 결재자도 허용)
+    if (String(wl.visibility || 'ALL').toUpperCase() !== 'ALL') {
+      const viewer = viewerId
+        ? await (this.prisma as any).user.findUnique({ where: { id: String(viewerId) }, select: { id: true, role: true } })
+        : null;
+      let allowed = canViewWorklog(viewer, wl);
+      if (!allowed && viewerId) {
+        // 결재 대상 일지라면 결재자(단계 포함)에게는 열람 허용
+        const appr = await (this.prisma as any).approvalRequest.findFirst({
+          where: {
+            subjectType: 'Worklog', subjectId: id,
+            OR: [{ approverId: String(viewerId) }, { steps: { some: { approverId: String(viewerId) } } }],
+          },
+          select: { id: true },
+        });
+        allowed = !!appr;
+      }
+      if (!allowed) throw new ForbiddenException('이 업무일지를 열람할 권한이 없습니다');
+    }
     const task = await (this.prisma as any).processTaskInstance.findFirst({ where: { worklogId: id }, include: { instance: true } });
     const process = task
       ? {

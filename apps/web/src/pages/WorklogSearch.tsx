@@ -45,7 +45,8 @@ function CommentsBox({ worklogId }: { worklogId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const r = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=${encodeURIComponent('Worklog')}&subjectId=${encodeURIComponent(worklogId)}&limit=100`);
+      const vId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+      const r = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=${encodeURIComponent('Worklog')}&subjectId=${encodeURIComponent(worklogId)}&limit=100${vId ? `&viewerId=${encodeURIComponent(vId)}` : ''}`);
       setItems((r.items || []).map((x: any) => ({ id: x.id, authorName: x.authorName, content: x.content, createdAt: x.createdAt })));
     } catch (e) {
       setError('댓글 조회 실패');

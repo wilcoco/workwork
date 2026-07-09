@@ -65,7 +65,8 @@ export function Home() {
   useEffect(() => {
     if (!detail?.id) { setDetailFull(null); return; }
     setDetailFull(null);
-    apiJson<any>(`/api/worklogs/${detail.id}`).then(setDetailFull).catch(() => setDetailFull(null));
+    const vId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+    apiJson<any>(`/api/worklogs/${detail.id}${vId ? `?viewerId=${encodeURIComponent(vId)}` : ''}`).then(setDetailFull).catch(() => setDetailFull(null));
   }, [detail?.id]);
 
   const [urgentOpen, setUrgentOpen] = useState(false);
@@ -275,7 +276,8 @@ export function Home() {
   useEffect(() => {
     const t = window.setTimeout(async () => {
       try {
-        const fb = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&limit=60`);
+        const vId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+        const fb = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&limit=60${vId ? `&viewerId=${encodeURIComponent(vId)}` : ''}`);
         setComments((fb.items || []).map((x: any) => ({ id: x.id, subjectId: x.subjectId, authorId: x.authorId, authorName: x.authorName, authorTeam: x.authorTeam ?? null, content: x.content, createdAt: x.createdAt })));
       } catch {
         // ignore
@@ -484,7 +486,8 @@ export function Home() {
                       onClick={async () => {
                         if (!n.subjectId) return;
                         try {
-                          const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(n.subjectId)}`);
+                          const vId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+                          const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(n.subjectId)}${vId ? `?viewerId=${encodeURIComponent(vId)}` : ''}`);
                           setDetail(wl);
                           // Mark notification as read
                           apiJson(`/api/notifications/${n.id}/read`, { method: 'POST', body: JSON.stringify({ actorId: localStorage.getItem('userId') || '' }) }).catch(() => {});
@@ -1232,12 +1235,13 @@ function CommentWithContext({ c, filterTeam, filterName, viewMode }: { c: FB; fi
   void viewMode;
   useEffect(() => {
     (async () => {
+      const vId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
       try {
-        const w = await apiJson<any>(`/api/worklogs/${encodeURIComponent(c.subjectId)}`);
+        const w = await apiJson<any>(`/api/worklogs/${encodeURIComponent(c.subjectId)}${vId ? `?viewerId=${encodeURIComponent(vId)}` : ''}`);
         setWl(w);
       } catch {}
       try {
-        const fbr = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&subjectId=${encodeURIComponent(c.subjectId)}&limit=20`);
+        const fbr = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=Worklog&subjectId=${encodeURIComponent(c.subjectId)}&limit=20${vId ? `&viewerId=${encodeURIComponent(vId)}` : ''}`);
         const items = (fbr.items || []).map((x: any) => ({ id: x.id, authorId: x.authorId, authorName: x.authorName, authorTeam: x.authorTeam ?? null, content: x.content, createdAt: x.createdAt }));
         const before = items.filter((x) => x.id !== c.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         setPrev(before);
@@ -1413,7 +1417,8 @@ function CommentsBox({
     setLoading(true);
     setError(null);
     try {
-      const r = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=${encodeURIComponent('Worklog')}&subjectId=${encodeURIComponent(worklogId)}&limit=100`);
+      const vId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+      const r = await apiJson<{ items: any[] }>(`/api/feedbacks?subjectType=${encodeURIComponent('Worklog')}&subjectId=${encodeURIComponent(worklogId)}&limit=100${vId ? `&viewerId=${encodeURIComponent(vId)}` : ''}`);
       // Sort ascending by createdAt so the newest comment appears at
       // the bottom — matches conventional chat/threaded comment UX.
       const mapped = (r.items || []).map((x: any) => ({

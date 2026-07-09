@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { PrismaService } from './prisma.service';
+import { canViewWorklog } from './lib/worklog-visibility';
 
 class CreateFeedbackDto {
   @IsString()
@@ -145,8 +146,16 @@ export class FeedbacksController {
     @Query('excludeAuthorId') excludeAuthorId?: string,
     @Query('excludeType') excludeType?: string,
     @Query('limit') limitStr?: string,
+    @Query('viewerId') viewerId?: string,
   ) {
     const limit = Math.min(parseInt(limitStr || '50', 10) || 50, 100);
+    // 업무일지 댓글은 그 업무일지의 공개 범위를 넘어 보이면 안 된다 → viewer 기준으로 필터링.
+    const viewer = viewerId
+      ? await this.prisma.user.findUnique({ where: { id: String(viewerId) }, select: { id: true, role: true } })
+      : null;
+    // 제한된 일지의 댓글이 제외돼도 limit 만큼 채우도록 넉넉히 조회 후 잘라낸다.
+    const isWorklog = subjectType === 'Worklog';
+    const fetchTake = isWorklog ? Math.min(limit * 4, 400) : limit;
     const where: any = {};
     if (subjectType) where.subjectType = subjectType;
     if (subjectId) where.subjectId = subjectId;
@@ -168,12 +177,30 @@ export class FeedbacksController {
         return { items: [] };
       }
     }
-    const items = await this.prisma.feedback.findMany({
+    const rawItems = await this.prisma.feedback.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: limit,
+      take: fetchTake,
       include: { author: { include: { orgUnit: { select: { id: true, name: true } } } } },
     });
+
+    // 공개 범위 필터: Worklog 댓글은 viewer가 그 일지를 볼 수 있을 때만 노출
+    let items = rawItems;
+    if (isWorklog && rawItems.length) {
+      const wlIds = Array.from(new Set(rawItems.map((it: any) => String(it.subjectId)).filter(Boolean)));
+      const wls = await this.prisma.worklog.findMany({
+        where: { id: { in: wlIds } },
+        select: { id: true, visibility: true, createdById: true },
+      });
+      const wlById = new Map(wls.map((w: any) => [String(w.id), w]));
+      items = rawItems.filter((it: any) => {
+        const wl = wlById.get(String(it.subjectId));
+        if (!wl) return false; // 원 일지가 없거나 삭제됨 → 노출 안 함
+        return canViewWorklog(viewer, wl);
+      });
+    }
+    items = items.slice(0, limit);
+
     // Pull instructions linked to any of these feedbacks in one query.
     const fbIds = items.map((it: any) => it.id);
     const instructions = fbIds.length
