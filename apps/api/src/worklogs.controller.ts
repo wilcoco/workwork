@@ -3,6 +3,7 @@ import { IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsNotEmpty, I
 import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 import { canViewWorklog } from './lib/worklog-visibility';
+import { callAI } from './llm/ai-client';
 
 class ReportDto {
   @IsString()
@@ -1606,6 +1607,66 @@ export class WorklogsController {
       include: { user: { select: { id: true, name: true } } },
     });
     return { items };
+  }
+
+  /**
+   * 업무일지 작성 직후 AI 보완 질문 — 더 충실한 일지를 위해 빠진 것만 최대 3개 묻는다.
+   * (결과/수치, 문제·배운 점, 다음 계획 관점) 답변은 보충 기록(supplement)으로 저장된다.
+   * AI 실패 시 빈 배열 반환 — 작성 흐름을 절대 막지 않는다.
+   */
+  @Post(':id/ai/questions')
+  async aiFollowupQuestions(@Param('id') id: string, @Body() body: { userId?: string }) {
+    const uid = String(body?.userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const wl = await (this.prisma as any).worklog.findUnique({
+      where: { id },
+      select: { id: true, note: true, structuredData: true, createdById: true },
+    });
+    if (!wl) throw new BadRequestException('worklog not found');
+    if (wl.createdById !== uid) throw new ForbiddenException('본인의 업무일지에만 사용할 수 있습니다');
+
+    const text = String(wl.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000);
+    if (text.length < 10) return { questions: [] };
+
+    const sys = `당신은 업무일지를 더 충실한 기록으로 만드는 코치입니다. 반드시 JSON만 출력하세요.
+아래 업무일지를 읽고, 다음 관점 중 "일지에 빠져 있는 것만" 골라 최대 3개 질문하세요:
+1. 결과/성과: 무엇이 어떻게 되었는지, 가능하면 수치 (예: 몇 건, 몇 %, 얼마나)
+2. 문제/배운 점: 막혔던 것, 특이사항, 다음에 다르게 할 것
+3. 다음 계획: 이 일의 다음 단계가 무엇인지
+
+규칙:
+- 이미 일지에 적혀 있는 내용은 절대 묻지 마세요.
+- 한 문장으로 바로 답할 수 있게 구체적으로 물으세요.
+- 물을 것이 없으면 빈 배열을 반환하세요. 억지로 만들지 마세요.
+
+출력 JSON: { "questions": [{ "id": number, "question": string }] }`;
+
+    try {
+      const result = await callAI({
+        system: sys,
+        user: `[업무일지]\n${text}`,
+        model: 'claude',
+        temperature: 0.3,
+        maxTokens: 800,
+        jsonSchema: {
+          name: 'worklog_questions',
+          schema: {
+            type: 'object' as const,
+            properties: {
+              questions: { type: 'array', items: { type: 'object', properties: { id: { type: 'number' }, question: { type: 'string' } }, required: ['id', 'question'] } },
+            },
+            required: ['questions'],
+          },
+        },
+      });
+      const questions = (Array.isArray(result?.parsed?.questions) ? result.parsed.questions : [])
+        .map((q: any, i: number) => ({ id: typeof q?.id === 'number' ? q.id : i + 1, question: String(q?.question || '').trim() }))
+        .filter((q: any) => q.question)
+        .slice(0, 3);
+      return { questions };
+    } catch {
+      return { questions: [] }; // AI 실패는 조용히 — 작성 흐름 유지
+    }
   }
 
   @Post(':id/supplements')

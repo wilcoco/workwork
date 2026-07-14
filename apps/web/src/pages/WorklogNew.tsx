@@ -89,6 +89,31 @@ export function WorklogNew() {
   const [delegateDueAt, setDelegateDueAt] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
+  // 저장 직후 AI 보완 질문: 답변은 보충 기록(supplement)으로 남는다. 건너뛰기 가능.
+  const [aiFu, setAiFu] = useState<{ worklogId: string; questions: Array<{ id: number; question: string }> } | null>(null);
+  const [aiFuLoading, setAiFuLoading] = useState(false);
+  const [aiFuAnswers, setAiFuAnswers] = useState<Record<number, string>>({});
+  const [aiFuSaving, setAiFuSaving] = useState(false);
+
+  async function submitAiFuAnswers() {
+    if (!aiFu) return;
+    const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+    const qa = aiFu.questions
+      .map((q) => ({ q: q.question, a: (aiFuAnswers[q.id] || '').trim() }))
+      .filter((x) => x.a);
+    if (!qa.length) { nav('/search?mode=list'); return; }
+    setAiFuSaving(true);
+    try {
+      const content = '[AI 보완 문답]\n' + qa.map((x) => `Q. ${x.q}\nA. ${x.a}`).join('\n\n');
+      await apiFetch(`/api/worklogs/${encodeURIComponent(aiFu.worklogId)}/supplements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid, content }),
+      });
+    } catch { /* 보충 저장 실패해도 일지는 저장됨 — 흐름 유지 */ }
+    setAiFuSaving(false);
+    nav('/search?mode=list');
+  }
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName: string }>>([]);
   const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; instance: { id: string; title: string } }>>([]);
@@ -502,6 +527,26 @@ export function WorklogNew() {
           });
         }
       }
+      // 저장 완료 → AI 보완 질문 (실패/없음이면 바로 목록으로)
+      if (worklogId) {
+        setAiFuLoading(true);
+        try {
+          const r = await apiFetch(`/api/worklogs/${encodeURIComponent(worklogId)}/ai/questions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: createdById }),
+          });
+          const d = r.ok ? await r.json() : { questions: [] };
+          const qs = Array.isArray(d?.questions) ? d.questions : [];
+          if (qs.length) {
+            setAiFuAnswers({});
+            setAiFu({ worklogId, questions: qs });
+            setAiFuLoading(false);
+            return; // 모달에서 답변/건너뛰기 후 이동
+          }
+        } catch { /* ignore */ }
+        setAiFuLoading(false);
+      }
       nav('/search?mode=list');
     } catch (err: any) {
       setError(err.message || '에러가 발생했습니다');
@@ -512,6 +557,38 @@ export function WorklogNew() {
 
   return (
     <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
+      {/* 저장 직후 AI 보완 질문 로딩 표시 */}
+      {aiFuLoading && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 80 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '18px 24px', fontSize: 14, fontWeight: 600, color: '#334155' }}>
+            ✓ 저장되었습니다 — AI가 보완 질문을 준비 중입니다...
+          </div>
+        </div>
+      )}
+      {/* AI 보완 질문 모달: 답변은 보충 기록으로 저장, 건너뛰어도 일지는 이미 저장됨 */}
+      {aiFu && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 80, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 12, maxWidth: 640, width: '100%', maxHeight: '80vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>✓ 업무일지가 저장되었습니다</div>
+            <div style={{ fontSize: 13, color: '#64748b' }}>
+              더 충실한 기록을 위해 AI가 몇 가지만 여쭤봅니다. <b>아는 것만 짧게</b> 답해주세요 — 답변은 일지의 보충 기록으로 함께 남습니다. (건너뛰어도 됩니다)
+            </div>
+            {aiFu.questions.map((q) => (
+              <div key={q.id} style={{ display: 'grid', gap: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Q. {q.question}</div>
+                <textarea rows={2} value={aiFuAnswers[q.id] || ''} placeholder="한 문장이면 충분합니다 (모르면 비워두세요)"
+                  onChange={(e) => setAiFuAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))} />
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn" disabled={aiFuSaving} onClick={() => nav('/search?mode=list')}>건너뛰기</button>
+              <button type="button" className="btn btn-primary" disabled={aiFuSaving} onClick={() => void submitAiFuAnswers()}>
+                {aiFuSaving ? '저장 중...' : '답변 저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px' }}>
         <div style={{ fontSize: 13, color: '#92400e', fontWeight: 700, lineHeight: 1.45 }}>
