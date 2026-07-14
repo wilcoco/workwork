@@ -10,6 +10,7 @@ import '../styles/editor.css';
 import { todayKstYmd } from '../lib/time';
 import { toast } from '../components/Toast';
 import { BpmnMiniView } from '../components/BpmnMiniView';
+import { WorklogAiFollowup } from '../components/WorklogAiFollowup';
 import { toSafeHtml } from '../lib/richText';
 import { DocumentTags, DocumentTagsValue } from '../components/DocumentTags';
 import { WorklogDocument } from '../components/WorklogDocument';
@@ -450,6 +451,9 @@ export function WorklogQuickNew() {
     return (el.textContent || el.innerText || '').replace(/\s+/g, ' ').trim();
   }
 
+  // 저장 직후 AI 보완 질문/지식배지 심사 대상 일지 id
+  const [aiFollowupId, setAiFollowupId] = useState<string | null>(null);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -754,7 +758,9 @@ export function WorklogQuickNew() {
         }
       }
       toast('업무일지가 저장되었습니다.', 'success', 4000);
-      nav('/search?mode=list');
+      // AI 보완 질문 → 지식 배지 심사 후 목록으로 이동
+      setAiFollowupId(wl.id);
+      return;
     } catch (err: any) {
       setError(err?.message || '저장 실패');
       toast(err?.message || '업무일지 저장에 실패했습니다.', 'error');
@@ -846,6 +852,7 @@ export function WorklogQuickNew() {
 
   return (
     <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto' }}>
+      {aiFollowupId && <WorklogAiFollowup worklogId={aiFollowupId} onDone={() => nav('/search?mode=list')} />}
       <div className="card elevated accent">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, color: '#475569' }}>
           <div style={{ width: 36, height: 36, borderRadius: 999, background: '#f3f4f6', display: 'grid', placeItems: 'center', fontWeight: 700 }}>🙂</div>

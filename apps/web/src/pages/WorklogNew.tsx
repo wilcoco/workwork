@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LoadingButton } from '../components/LoadingButton';
 import { useNavigate } from 'react-router-dom';
+import { WorklogAiFollowup } from '../components/WorklogAiFollowup';
 import { apiFetch } from '../lib/api';
 
 interface ProcTask {
@@ -89,53 +90,9 @@ export function WorklogNew() {
   const [delegateDueAt, setDelegateDueAt] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
-  // 저장 직후 AI 보완 질문: 답변은 보충 기록(supplement)으로 남는다. 건너뛰기 가능.
-  const [aiFu, setAiFu] = useState<{ worklogId: string; questions: Array<{ id: number; question: string }> } | null>(null);
-  const [aiFuLoading, setAiFuLoading] = useState(false);
-  const [aiFuAnswers, setAiFuAnswers] = useState<Record<number, string>>({});
-  const [aiFuSaving, setAiFuSaving] = useState(false);
+  // 저장 직후 AI 보완 질문/지식배지 심사 (공용 컴포넌트)
+  const [aiFollowupId, setAiFollowupId] = useState<string | null>(null);
 
-  const [kbPraise, setKbPraise] = useState<string | null>(null); // 배지 획득 칭찬 문구
-
-  // 지식 배지 판정 후 마무리: 배지를 받으면 칭찬을 보여주고, 아니면 바로 목록으로
-  async function finishWithKbReview(worklogId: string) {
-    const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
-    try {
-      const r = await apiFetch(`/api/worklogs/${encodeURIComponent(worklogId)}/ai/kb-review`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: uid }),
-      });
-      const d = r.ok ? await r.json() : null;
-      if (d?.awarded) {
-        setAiFu(null);
-        setKbPraise(d.reason || '재사용 가능한 업무 지식으로 훌륭하게 정리되었습니다.');
-        return; // 칭찬 화면에서 확인 후 이동
-      }
-    } catch { /* ignore */ }
-    nav('/search?mode=list');
-  }
-
-  async function submitAiFuAnswers() {
-    if (!aiFu) return;
-    const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
-    const qa = aiFu.questions
-      .map((q) => ({ q: q.question, a: (aiFuAnswers[q.id] || '').trim() }))
-      .filter((x) => x.a);
-    setAiFuSaving(true);
-    try {
-      if (qa.length) {
-        const content = '[AI 보완 문답]\n' + qa.map((x) => `Q. ${x.q}\nA. ${x.a}`).join('\n\n');
-        await apiFetch(`/api/worklogs/${encodeURIComponent(aiFu.worklogId)}/supplements`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: uid, content }),
-        });
-      }
-    } catch { /* 보충 저장 실패해도 일지는 저장됨 — 흐름 유지 */ }
-    await finishWithKbReview(aiFu.worklogId);
-    setAiFuSaving(false);
-  }
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName: string }>>([]);
   const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; instance: { id: string; title: string } }>>([]);
@@ -549,26 +506,8 @@ export function WorklogNew() {
           });
         }
       }
-      // 저장 완료 → AI 보완 질문 (실패/없음이면 바로 목록으로)
-      if (worklogId) {
-        setAiFuLoading(true);
-        try {
-          const r = await apiFetch(`/api/worklogs/${encodeURIComponent(worklogId)}/ai/questions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: createdById }),
-          });
-          const d = r.ok ? await r.json() : { questions: [] };
-          const qs = Array.isArray(d?.questions) ? d.questions : [];
-          if (qs.length) {
-            setAiFuAnswers({});
-            setAiFu({ worklogId, questions: qs });
-            setAiFuLoading(false);
-            return; // 모달에서 답변/건너뛰기 후 이동
-          }
-        } catch { /* ignore */ }
-        setAiFuLoading(false);
-      }
+      // 저장 완료 → AI 보완 질문/지식배지 심사 (모달에서 완료 후 이동)
+      if (worklogId) { setAiFollowupId(worklogId); return; }
       nav('/search?mode=list');
     } catch (err: any) {
       setError(err.message || '에러가 발생했습니다');
@@ -579,57 +518,7 @@ export function WorklogNew() {
 
   return (
     <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
-      {/* 저장 직후 AI 보완 질문 로딩 표시 */}
-      {aiFuLoading && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 80 }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: '18px 24px', fontSize: 14, fontWeight: 600, color: '#334155' }}>
-            ✓ 저장되었습니다 — AI가 보완 질문을 준비 중입니다...
-          </div>
-        </div>
-      )}
-      {/* 지식 배지 획득 — AI 심사 통과 칭찬 */}
-      {kbPraise && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90, padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 14, maxWidth: 520, width: '100%', padding: 26, textAlign: 'center', display: 'grid', gap: 12 }}>
-            <div style={{ fontSize: 44 }}>🏅</div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: '#0F3D73' }}>훌륭한 업무 지식 정리입니다!</div>
-            <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.6 }}>{kbPraise}</div>
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>이 일지에 지식 배지가 달렸고, 지식 정리 랭킹에 집계됩니다.</div>
-            <button type="button" className="btn btn-primary" onClick={() => nav('/search?mode=list')}>확인</button>
-          </div>
-        </div>
-      )}
-      {/* AI 보완 질문 모달: 답변은 보충 기록으로 저장, 건너뛰어도 일지는 이미 저장됨 */}
-      {aiFu && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 80, padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 12, maxWidth: 640, width: '100%', maxHeight: '80vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
-            <div style={{ fontSize: 15, fontWeight: 800 }}>✓ 업무일지가 저장되었습니다</div>
-            <div style={{ fontSize: 13, color: '#64748b' }}>
-              더 충실한 기록을 위해 AI가 몇 가지만 여쭤봅니다. <b>아는 것만 짧게</b> 답해주세요 — 답변은 일지의 보충 기록으로 함께 남습니다. (건너뛰어도 됩니다)
-            </div>
-            {aiFu.questions.map((q) => (
-              <div key={q.id} style={{ display: 'grid', gap: 4 }}>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Q. {q.question}</div>
-                <textarea rows={2} value={aiFuAnswers[q.id] || ''} placeholder="한 문장이면 충분합니다 (모르면 비워두세요)"
-                  onChange={(e) => setAiFuAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))} />
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button type="button" className="btn" disabled={aiFuSaving}
-                onClick={async () => { if (!aiFu) return; setAiFuSaving(true); await finishWithKbReview(aiFu.worklogId); setAiFuSaving(false); }}>건너뛰기</button>
-              <button type="button" className="btn btn-primary" disabled={aiFuSaving} onClick={() => void submitAiFuAnswers()}>
-                {aiFuSaving ? '저장 중...' : '답변 저장'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 12, padding: '10px 12px' }}>
-        <div style={{ fontSize: 13, color: '#92400e', fontWeight: 700, lineHeight: 1.45 }}>
-          이 업무일지는 테스트 중인 상태이며 주된 업무일지는 기존 업무일지 앱에 작성해주세요.
-        </div>
-      </div>
+      {aiFollowupId && <WorklogAiFollowup worklogId={aiFollowupId} onDone={() => nav('/search?mode=list')} />}
 
       {instruction && (
         <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 12, padding: '12px 14px' }}>
