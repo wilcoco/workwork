@@ -1560,6 +1560,43 @@ export class WorklogsController {
     return { items: mapped, nextCursor, ...(wantTotal ? { total } : {}) };
   }
 
+  /** 지식 정리 랭킹 — 월별(기본 이번 달, month=all 전체) 배지 수 상위 구성원 */
+  @Get('kb-ranking')
+  async kbRanking(@Query('month') month?: string) {
+    const isAll = month === 'all';
+    let range: { gte: Date; lt: Date } | null = null;
+    if (!isAll) {
+      const now = new Date();
+      const m = /^\d{4}-\d{2}$/.test(String(month || '')) ? String(month) : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const [y, mo] = m.split('-').map(Number);
+      const nextM = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
+      range = { gte: new Date(`${m}-01T00:00:00+09:00`), lt: new Date(`${nextM}-01T00:00:00+09:00`) };
+    }
+    const badgeWhere: any = { kbBadge: true, ...(range ? { date: range } : {}) };
+    const badges = await (this.prisma as any).worklog.groupBy({ by: ['createdById'], where: badgeWhere, _count: { _all: true } });
+    const totals = await (this.prisma as any).worklog.groupBy({ by: ['createdById'], where: range ? { date: range } : {}, _count: { _all: true } });
+    const totalMap = new Map(totals.map((t: any) => [String(t.createdById), t._count._all]));
+    const userIds = badges.map((b: any) => String(b.createdById));
+    const users = userIds.length
+      ? await (this.prisma as any).user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, orgUnit: { select: { name: true } } } })
+      : [];
+    const uMap = new Map(users.map((u: any) => [String(u.id), u]));
+    const items = badges
+      .map((b: any) => {
+        const u: any = uMap.get(String(b.createdById));
+        return {
+          userId: b.createdById,
+          name: u?.name || '(알 수 없음)',
+          teamName: u?.orgUnit?.name || '',
+          badgeCount: b._count._all,
+          worklogCount: totalMap.get(String(b.createdById)) || 0,
+        };
+      })
+      .sort((a: any, b: any) => b.badgeCount - a.badgeCount)
+      .slice(0, 50);
+    return { items };
+  }
+
   @Get(':id')
   async get(@Param('id') id: string, @Query('viewerId') viewerId?: string) {
     const wl = await (this.prisma as any).worklog.findUnique({
@@ -1628,15 +1665,17 @@ export class WorklogsController {
     const text = String(wl.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000);
     if (text.length < 10) return { questions: [] };
 
-    const sys = `당신은 업무일지를 더 충실한 기록으로 만드는 코치입니다. 반드시 JSON만 출력하세요.
-아래 업무일지를 읽고, 다음 관점 중 "일지에 빠져 있는 것만" 골라 최대 3개 질문하세요:
-1. 결과/성과: 무엇이 어떻게 되었는지, 가능하면 수치 (예: 몇 건, 몇 %, 얼마나)
-2. 문제/배운 점: 막혔던 것, 특이사항, 다음에 다르게 할 것
-3. 다음 계획: 이 일의 다음 단계가 무엇인지
+    const sys = `당신은 업무일지를 "회사의 재사용 가능한 지식"으로 체계화하도록 돕는 코치입니다. 반드시 JSON만 출력하세요.
+대부분의 일지는 표면적인 처리 결과 나열에 그칩니다. 아래 일지를 읽고, 지식이 되도록 다음 관점 중 "빠져 있는 것만" 골라 최대 3개 질문하세요:
+
+1. 원인: 문제/불량/지연이 언급됐다면 — 근본 원인이 무엇이었는지
+2. 재발방지: 같은 문제가 다시 생기지 않게 무엇을 바꿨는지(또는 바꿔야 하는지)
+3. 지식 체계화: 이 경험에서 "다른 사람이 같은 일을 할 때 알아야 할" 노하우·기준·절차가 있는지 (예: 판단 기준 수치, 주의할 함정, 더 빠른 방법)
 
 규칙:
 - 이미 일지에 적혀 있는 내용은 절대 묻지 마세요.
-- 한 문장으로 바로 답할 수 있게 구체적으로 물으세요.
+- 문제/이슈 언급이 전혀 없는 단순 일지라면 3번(지식 체계화) 관점만 1개 물으세요.
+- 한두 문장으로 바로 답할 수 있게 구체적으로 물으세요.
 - 물을 것이 없으면 빈 배열을 반환하세요. 억지로 만들지 마세요.
 
 출력 JSON: { "questions": [{ "id": number, "question": string }] }`;
@@ -1666,6 +1705,75 @@ export class WorklogsController {
       return { questions };
     } catch {
       return { questions: [] }; // AI 실패는 조용히 — 작성 흐름 유지
+    }
+  }
+
+  /**
+   * 지식 배지 판정 — 일지 본문 + 보충 문답을 보고 "다른 구성원이 재사용할 수 있는
+   * 업무 지식"이 정리됐는지 엄격 판정. 합격 시 kbBadge 부여(+칭찬 한 줄).
+   * 배지는 한 번 받으면 유지(재판정으로 회수하지 않음).
+   */
+  @Post(':id/ai/kb-review')
+  async aiKbReview(@Param('id') id: string, @Body() body: { userId?: string }) {
+    const uid = String(body?.userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const wl = await (this.prisma as any).worklog.findUnique({
+      where: { id },
+      select: { id: true, note: true, createdById: true, kbBadge: true, kbBadgeNote: true },
+    });
+    if (!wl) throw new BadRequestException('worklog not found');
+    if (wl.createdById !== uid) throw new ForbiddenException('본인의 업무일지에만 사용할 수 있습니다');
+    if (wl.kbBadge) return { awarded: true, reason: wl.kbBadgeNote || '', already: true };
+
+    const sups = await (this.prisma as any).worklogSupplement.findMany({
+      where: { worklogId: id }, orderBy: { createdAt: 'asc' }, select: { content: true },
+    });
+    const strip = (s: string) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const text = [strip(wl.note || ''), ...sups.map((s: any) => strip(s.content || ''))].filter(Boolean).join('\n\n').slice(0, 8000);
+    if (text.length < 30) return { awarded: false, reason: '' };
+
+    const sys = `당신은 회사 지식자산 심사관입니다. 반드시 JSON만 출력하세요.
+아래 업무일지(보충 문답 포함)가 "다른 구성원이 재사용할 수 있는 업무 지식"으로 정리되어 있는지 엄격하게 판정하세요.
+
+합격 기준 (최소 하나가 '구체적으로' 있어야 함):
+- 문제의 근본 원인 분석
+- 재발방지 조치 (무엇을 바꿨는지)
+- 일반화된 노하우/판단 기준/절차 (다른 사람이 그대로 쓸 수 있는 수준)
+
+불합격: 단순 처리 결과 나열, "완료했습니다"식 보고, 구체성 없는 다짐("주의하겠음").
+판정은 엄격하게 — 배지의 가치를 지키세요. 애매하면 불합격입니다.
+
+출력 JSON: { "awarded": boolean, "reason": string }
+- awarded=true면 reason에 어떤 점이 훌륭한 지식 정리인지 한 문장 칭찬
+- awarded=false면 reason은 빈 문자열`;
+
+    try {
+      const result = await callAI({
+        system: sys,
+        user: `[업무일지 + 보충 문답]\n${text}`,
+        model: 'claude',
+        temperature: 0.2,
+        maxTokens: 500,
+        jsonSchema: {
+          name: 'kb_review',
+          schema: {
+            type: 'object' as const,
+            properties: { awarded: { type: 'boolean' }, reason: { type: 'string' } },
+            required: ['awarded', 'reason'],
+          },
+        },
+      });
+      const awarded = !!result?.parsed?.awarded;
+      const reason = String(result?.parsed?.reason || '').trim().slice(0, 300);
+      if (awarded) {
+        await (this.prisma as any).worklog.update({ where: { id }, data: { kbBadge: true, kbBadgeNote: reason || null } });
+        await (this.prisma as any).event.create({
+          data: { subjectType: 'Worklog', subjectId: id, activity: 'KnowledgeBadgeAwarded', userId: uid, attrs: { reason } },
+        }).catch(() => {});
+      }
+      return { awarded, reason };
+    } catch {
+      return { awarded: false, reason: '' }; // AI 실패는 조용히
     }
   }
 

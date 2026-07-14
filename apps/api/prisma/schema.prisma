@@ -302,7 +302,10 @@ model Worklog {
   processTaskInstanceId String?
   processTaskInstance   ProcessTaskInstance? @relation("TaskWorklogs", fields: [processTaskInstanceId], references: [id])
   supplements           WorklogSupplement[]
+  kbBadge               Boolean              @default(false) // AI 판정: 훌륭한 업무 지식 정리 배지
+  kbBadgeNote           String? // 배지 사유(칭찬 한 줄)
 
+  @@index([kbBadge, date])
   @@index([date])
   @@index([createdAt])
   @@index([createdById, date])

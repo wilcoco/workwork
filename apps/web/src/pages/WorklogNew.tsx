@@ -95,24 +95,46 @@ export function WorklogNew() {
   const [aiFuAnswers, setAiFuAnswers] = useState<Record<number, string>>({});
   const [aiFuSaving, setAiFuSaving] = useState(false);
 
+  const [kbPraise, setKbPraise] = useState<string | null>(null); // 배지 획득 칭찬 문구
+
+  // 지식 배지 판정 후 마무리: 배지를 받으면 칭찬을 보여주고, 아니면 바로 목록으로
+  async function finishWithKbReview(worklogId: string) {
+    const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+    try {
+      const r = await apiFetch(`/api/worklogs/${encodeURIComponent(worklogId)}/ai/kb-review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: uid }),
+      });
+      const d = r.ok ? await r.json() : null;
+      if (d?.awarded) {
+        setAiFu(null);
+        setKbPraise(d.reason || '재사용 가능한 업무 지식으로 훌륭하게 정리되었습니다.');
+        return; // 칭찬 화면에서 확인 후 이동
+      }
+    } catch { /* ignore */ }
+    nav('/search?mode=list');
+  }
+
   async function submitAiFuAnswers() {
     if (!aiFu) return;
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
     const qa = aiFu.questions
       .map((q) => ({ q: q.question, a: (aiFuAnswers[q.id] || '').trim() }))
       .filter((x) => x.a);
-    if (!qa.length) { nav('/search?mode=list'); return; }
     setAiFuSaving(true);
     try {
-      const content = '[AI 보완 문답]\n' + qa.map((x) => `Q. ${x.q}\nA. ${x.a}`).join('\n\n');
-      await apiFetch(`/api/worklogs/${encodeURIComponent(aiFu.worklogId)}/supplements`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: uid, content }),
-      });
+      if (qa.length) {
+        const content = '[AI 보완 문답]\n' + qa.map((x) => `Q. ${x.q}\nA. ${x.a}`).join('\n\n');
+        await apiFetch(`/api/worklogs/${encodeURIComponent(aiFu.worklogId)}/supplements`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: uid, content }),
+        });
+      }
     } catch { /* 보충 저장 실패해도 일지는 저장됨 — 흐름 유지 */ }
+    await finishWithKbReview(aiFu.worklogId);
     setAiFuSaving(false);
-    nav('/search?mode=list');
   }
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName: string }>>([]);
@@ -565,6 +587,18 @@ export function WorklogNew() {
           </div>
         </div>
       )}
+      {/* 지식 배지 획득 — AI 심사 통과 칭찬 */}
+      {kbPraise && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 14, maxWidth: 520, width: '100%', padding: 26, textAlign: 'center', display: 'grid', gap: 12 }}>
+            <div style={{ fontSize: 44 }}>🏅</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: '#0F3D73' }}>훌륭한 업무 지식 정리입니다!</div>
+            <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.6 }}>{kbPraise}</div>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>이 일지에 지식 배지가 달렸고, 지식 정리 랭킹에 집계됩니다.</div>
+            <button type="button" className="btn btn-primary" onClick={() => nav('/search?mode=list')}>확인</button>
+          </div>
+        </div>
+      )}
       {/* AI 보완 질문 모달: 답변은 보충 기록으로 저장, 건너뛰어도 일지는 이미 저장됨 */}
       {aiFu && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 80, padding: 16 }}>
@@ -581,7 +615,8 @@ export function WorklogNew() {
               </div>
             ))}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button type="button" className="btn" disabled={aiFuSaving} onClick={() => nav('/search?mode=list')}>건너뛰기</button>
+              <button type="button" className="btn" disabled={aiFuSaving}
+                onClick={async () => { if (!aiFu) return; setAiFuSaving(true); await finishWithKbReview(aiFu.worklogId); setAiFuSaving(false); }}>건너뛰기</button>
               <button type="button" className="btn btn-primary" disabled={aiFuSaving} onClick={() => void submitAiFuAnswers()}>
                 {aiFuSaving ? '저장 중...' : '답변 저장'}
               </button>

@@ -71,6 +71,7 @@ import { AuthTeamsPopupComplete } from './pages/AuthTeamsPopupComplete';
 import { AuthPending } from './pages/AuthPending';
 import { WorklogEvalMonthly } from './pages/WorklogEvalMonthly';
 import { WorkManuals } from './pages/WorkManuals';
+import { KbRanking } from './pages/KbRanking';
 import { MyManuals } from './pages/MyManuals';
 import { ManualCoverageReport } from './pages/ManualCoverageReport';
 import { WorkManualExt } from './pages/WorkManualExt';
@@ -352,6 +353,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/auth/teams-popup-complete" element={<AuthTeamsPopupComplete />} />
           <Route path="/auth/pending" element={<AuthPending />} />
           <Route path="/worklogs/new" element={<WorklogNew />} />
+          <Route path="/worklogs/kb-ranking" element={<KbRanking />} />
           <Route path="/worklogs/:id" element={<WorklogDetail />} />
           <Route path="/manuals" element={<WorkManuals />} />
           <Route path="/manuals/mine" element={<MyManuals />} />
@@ -521,6 +523,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/search">조회</Link>
           <Link to="/worklogs/weekly">주간 리포트</Link>
           <Link to="/worklogs/stats">업무 현황</Link>
+          <Link to="/worklogs/kb-ranking">지식 정리 랭킹</Link>
           {canEvaluate && <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>}
           <Link to="/worklogs/ai">AI 분석</Link>
         </NavDropdown>
@@ -767,6 +770,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/search', label: '조회' },
         { to: '/worklogs/weekly', label: '주간 리포트' },
         { to: '/worklogs/stats', label: '업무 현황' },
+        { to: '/worklogs/kb-ranking', label: '지식 정리 랭킹' },
         { to: '/worklogs/ai', label: 'AI 분석' },
         { to: '/worklogs/planner', label: 'Planner 태스크' },
       ];

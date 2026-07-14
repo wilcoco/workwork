@@ -325,7 +325,15 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
       )}
 
       {showTitle && (
-        <div style={{ fontWeight: 900, fontSize: variant === 'compact' ? 17 : 20, color: '#0f172a', lineHeight: 1.25 }}>{title || '(제목 없음)'}</div>
+        <div style={{ fontWeight: 900, fontSize: variant === 'compact' ? 17 : 20, color: '#0f172a', lineHeight: 1.25 }}>
+          {title || '(제목 없음)'}
+          {worklog?.kbBadge && (
+            <span title={worklog?.kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'}
+              style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 999, padding: '2px 8px', verticalAlign: 'middle' }}>
+              🏅 지식 배지
+            </span>
+          )}
+        </div>
       )}
 
       {showContext && (objectiveTitle || keyResultTitle || initiativeTitle || processTitle || processTaskName) ? (
