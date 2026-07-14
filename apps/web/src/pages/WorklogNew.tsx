@@ -147,7 +147,7 @@ export function WorklogNew() {
           let sourceWorklogTitle = '';
           if (found.sourceWorklogId) {
             try {
-              const wlRes = await apiFetch(`/api/worklogs/${encodeURIComponent(found.sourceWorklogId)}`);
+              const wlRes = await apiFetch(`/api/worklogs/${encodeURIComponent(found.sourceWorklogId)}${myUserId ? `?viewerId=${encodeURIComponent(myUserId)}` : ''}`);
               if (wlRes.ok) {
                 const wl = await wlRes.json();
                 sourceWorklogTitle = (wl.note || '').split('\n')[0] || '(제목 없음)';

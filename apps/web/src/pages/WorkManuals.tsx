@@ -410,7 +410,10 @@ export function WorkManuals() {
   }, [userId]);
 
   useEffect(() => {
-    void loadList();
+    // ?openId= 로 진입하면 해당 매뉴얼을 바로 선택 (내 매뉴얼 입력의 '열기' 등)
+    let openId = '';
+    try { openId = new URLSearchParams(window.location.search).get('openId') || ''; } catch {}
+    void loadList(openId || undefined);
   }, [loadList]);
 
   useEffect(() => {

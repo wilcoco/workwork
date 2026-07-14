@@ -44,7 +44,7 @@ export function ApprovalsMine() {
         let doc: any = null;
         if (a.subjectType === 'Worklog' && a.subjectId) {
           try {
-            const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(a.subjectId)}`);
+            const _vid = localStorage.getItem('userId') || ''; const wl = await apiJson<any>(`/api/worklogs/${encodeURIComponent(a.subjectId)}${_vid ? `?viewerId=${encodeURIComponent(_vid)}` : ''}`);
             doc = wl;
             const note: string = wl?.note || '';
             const first = (note || '').split(/\n+/)[0] || '';

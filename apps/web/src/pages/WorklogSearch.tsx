@@ -548,7 +548,7 @@ export function WorklogSearch() {
                 key={it.id}
                 className="feed-tile"
                 style={imgUrl ? { backgroundImage: `url(${imgUrl})`, cursor: 'pointer' } : { cursor: 'pointer' }}
-                onClick={async () => { setDetail(it); setDetailFull(null); try { const full = await apiJson<any>(`/api/worklogs/${it.id}`); setDetailFull(full); } catch {} }}
+                onClick={async () => { setDetail(it); setDetailFull(null); try { const _vid = localStorage.getItem('userId') || ''; const full = await apiJson<any>(`/api/worklogs/${it.id}${_vid ? `?viewerId=${encodeURIComponent(_vid)}` : ''}`); setDetailFull(full); } catch {} }}
                 title="내용 보기"
               >
                 {imgUrl ? (

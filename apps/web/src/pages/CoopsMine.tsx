@@ -71,11 +71,12 @@ export function CoopsMine() {
       let responseWl: WorklogDetail | null = null;
       const reqId = item.requestWorklogId;
       const resId = item.responseWorklogId;
+      const _vid = localStorage.getItem('userId') || '';
       try {
-        if (reqId) requestWl = await apiJson<WorklogDetail>(`/api/worklogs/${encodeURIComponent(reqId)}`);
+        if (reqId) requestWl = await apiJson<WorklogDetail>(`/api/worklogs/${encodeURIComponent(reqId)}${_vid ? `?viewerId=${encodeURIComponent(_vid)}` : ''}`);
       } catch {}
       try {
-        if (resId) responseWl = await apiJson<WorklogDetail>(`/api/worklogs/${encodeURIComponent(resId)}`);
+        if (resId) responseWl = await apiJson<WorklogDetail>(`/api/worklogs/${encodeURIComponent(resId)}${_vid ? `?viewerId=${encodeURIComponent(_vid)}` : ''}`);
       } catch {}
       setActiveDoc({ ticket: item, requestWl, responseWl });
     } catch (e: any) {
