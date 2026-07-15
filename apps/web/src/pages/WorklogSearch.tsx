@@ -22,6 +22,7 @@ type Item = {
   urgent?: boolean;
   kbBadge?: boolean;
   kbBadgeNote?: string;
+  authorKbCount?: number;
   keywords?: string;
 };
 
@@ -556,11 +557,11 @@ export function WorklogSearch() {
               >
                 {imgUrl ? (
                   <div className="feed-titlebar">
-                    <div className="feed-title">{it.title}{it.kbBadge ? <KbBadge note={it.kbBadgeNote} /> : null}</div>
+                    <div className="feed-title">{it.title}{it.kbBadge ? <KbBadge note={it.kbBadgeNote} count={it.authorKbCount} /> : null}</div>
                   </div>
                 ) : (
                   <div className="feed-fallback">
-                    <div className="feed-title">{it.title}{it.kbBadge ? <KbBadge note={it.kbBadgeNote} /> : null}</div>
+                    <div className="feed-title">{it.title}{it.kbBadge ? <KbBadge note={it.kbBadgeNote} count={it.authorKbCount} /> : null}</div>
                   </div>
                 )}
                 <div className="feed-caption">

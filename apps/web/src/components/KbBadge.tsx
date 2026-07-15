@@ -1,7 +1,7 @@
 /** 지식 배지 — AI 심사를 통과한 기록임을 나타내는 '시스템 인증' 비주얼 */
 
 /** 목록/제목용 인증 칩: ✓ 체크 인장 + 'AI 지식인증' */
-export function KbBadge({ note }: { note?: string | null }) {
+export function KbBadge({ note, count }: { note?: string | null; count?: number | null }) {
   return (
     <span
       title={note || 'AI 심사: 다른 구성원에게 도움이 되는 지식 기록으로 인증됨'}
@@ -18,7 +18,7 @@ export function KbBadge({ note }: { note?: string | null }) {
         color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 900,
         boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.4)',
       }}>✓</span>
-      AI 지식인증
+      AI 지식인증{typeof count === 'number' && count > 0 ? ` ${count}회` : ''}
     </span>
   );
 }
