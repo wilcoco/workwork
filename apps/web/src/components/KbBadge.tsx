@@ -24,7 +24,7 @@ export function KbBadge({ note }: { note?: string | null }) {
 }
 
 /** 상세 문서용 인증서 블록: 인장 + 인증 문구 + AI 심사평 */
-export function KbBadgeSeal({ note }: { note?: string | null }) {
+export function KbBadgeSeal({ note, count }: { note?: string | null; count?: number | null }) {
   return (
     <div style={{
       display: 'flex', gap: 12, alignItems: 'center',
@@ -40,6 +40,7 @@ export function KbBadgeSeal({ note }: { note?: string | null }) {
       <div style={{ display: 'grid', gap: 2 }}>
         <div style={{ fontWeight: 800, color: '#92400e', fontSize: 13, letterSpacing: 0.2 }}>
           AI 지식 인증 <span style={{ fontWeight: 600, color: '#b45309', fontSize: 11 }}>— 시스템이 심사한 우수 지식 기록입니다</span>
+          {typeof count === 'number' && count > 0 ? <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 800, color: '#92400e', background: '#fde68a', border: '1px solid #f59e0b', borderRadius: 999, padding: '1px 8px' }}>작성자 누적 인증 {count}회</span> : null}
         </div>
         {note ? <div style={{ fontSize: 12, color: '#78350f', lineHeight: 1.5 }}>“{note}”</div> : null}
       </div>

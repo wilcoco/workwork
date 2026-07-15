@@ -165,6 +165,17 @@ function WorklogSupplementSection({ worklogId, worklogAuthorId }: { worklogId: s
 }
 
 export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 'full' | 'compact' | 'content' }) {
+  // 지식 인증 일지면 작성자 누적 인증 횟수를 조회해 인장에 표시
+  const [kbCount, setKbCount] = useState<number | null>(null);
+  useEffect(() => {
+    const uid = worklog?.createdById || worklog?.createdBy?.id || worklog?.userId;
+    if (!worklog?.kbBadge || !uid || variant === 'compact') { setKbCount(null); return; }
+    apiFetch(`/api/worklogs/kb-count?userId=${encodeURIComponent(String(uid))}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setKbCount(typeof d?.count === 'number' ? d.count : null))
+      .catch(() => setKbCount(null));
+  }, [worklog?.kbBadge, worklog?.createdById, variant]);
+
   const [zoomSrc, setZoomSrc] = useState<string | null>(null);
 
   const title = useMemo(() => {
@@ -331,7 +342,7 @@ export function WorklogDocument({ worklog, variant }: { worklog: any; variant?: 
           {worklog?.kbBadge && <KbBadge note={worklog?.kbBadgeNote} />}
         </div>
       )}
-      {showTitle && worklog?.kbBadge && variant !== 'compact' && <KbBadgeSeal note={worklog?.kbBadgeNote} />}
+      {showTitle && worklog?.kbBadge && variant !== 'compact' && <KbBadgeSeal note={worklog?.kbBadgeNote} count={kbCount} />}
 
       {showContext && (objectiveTitle || keyResultTitle || initiativeTitle || processTitle || processTaskName) ? (
         <div style={{ display: 'grid', gap: 6, padding: 10, borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>

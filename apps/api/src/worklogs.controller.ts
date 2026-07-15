@@ -1562,6 +1562,15 @@ export class WorklogsController {
     return { items: mapped, nextCursor, ...(wantTotal ? { total } : {}) };
   }
 
+  /** 작성자의 누적 지식 인증 횟수 (배지 인장에 표시) */
+  @Get('kb-count')
+  async kbCount(@Query('userId') userId?: string) {
+    const uid = String(userId || '').trim();
+    if (!uid) return { count: 0 };
+    const count = await (this.prisma as any).worklog.count({ where: { createdById: uid, kbBadge: true } });
+    return { count };
+  }
+
   /** 지식 정리 랭킹 — 월별(기본 이번 달, month=all 전체) 배지 수 상위 구성원 */
   @Get('kb-ranking')
   async kbRanking(@Query('month') month?: string) {
