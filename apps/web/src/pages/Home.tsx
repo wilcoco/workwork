@@ -754,7 +754,7 @@ export function Home() {
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                                  <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}{(w as any).kbBadge ? <span title={(w as any).kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
                                   {viewMode === 'summary' ? (
                                     <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
                                   ) : null}
@@ -832,7 +832,7 @@ export function Home() {
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                                  <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}{(w as any).kbBadge ? <span title={(w as any).kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
                                   {viewMode === 'summary' ? (
                                     <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
                                   ) : null}
@@ -929,7 +929,7 @@ export function Home() {
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}</div>
+                                  <div style={{ fontWeight: 700 }}>{w.title || '(제목 없음)'}{(w as any).kbBadge ? <span title={(w as any).kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
                                   {viewMode === 'summary' ? (
                                     <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
                                   ) : null}
@@ -1005,7 +1005,7 @@ export function Home() {
                             <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'grid', gap: 2 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                                  <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}{(w as any).kbBadge ? <span title={(w as any).kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
                                   {viewMode === 'summary' ? (<UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />) : null}
                                 </div>
                                 <div style={{ fontSize: 12, color: '#475569', fontWeight: 800 }}>· {w.userName || ''}{w.teamName ? ` · ${w.teamName}` : ''} · {fmtDatetime(anyW.createdAt, w.date)}</div>
@@ -1104,7 +1104,7 @@ export function Home() {
                     <div style={{ display: 'grid', gap: 4, flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'grid', gap: 2 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}</div>
+                          <div style={{ fontWeight: 800, color: '#dc2626' }}>{w.title || '(제목 없음)'}{(w as any).kbBadge ? <span title={(w as any).kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
                           {viewMode === 'summary' ? (
                             <UserAvatar userId={authorId} name={authorName || w.title} size={22} style={{ marginLeft: 'auto' }} />
                           ) : null}

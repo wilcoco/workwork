@@ -1552,6 +1552,8 @@ export class WorklogsController {
         attachments: (it as any).attachments ?? undefined,
         note: it.note ?? undefined,
         urgent: (it as any).urgent ?? false,
+        kbBadge: (it as any).kbBadge ?? false,
+        kbBadgeNote: (it as any).kbBadgeNote ?? undefined,
         structuredData: (it as any).structuredData ?? undefined,
         tags: (it as any).tags ?? undefined,
         keywords: (it as any).keywords ?? undefined,

@@ -19,6 +19,8 @@ type Item = {
   attachments?: any;
   note?: string;
   urgent?: boolean;
+  kbBadge?: boolean;
+  kbBadgeNote?: string;
   keywords?: string;
 };
 
@@ -553,11 +555,11 @@ export function WorklogSearch() {
               >
                 {imgUrl ? (
                   <div className="feed-titlebar">
-                    <div className="feed-title">{it.title}</div>
+                    <div className="feed-title">{it.title}{it.kbBadge ? <span title={it.kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
                   </div>
                 ) : (
                   <div className="feed-fallback">
-                    <div className="feed-title">{it.title}</div>
+                    <div className="feed-title">{it.title}{it.kbBadge ? <span title={it.kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
                   </div>
                 )}
                 <div className="feed-caption">
