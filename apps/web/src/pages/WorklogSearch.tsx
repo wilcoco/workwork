@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LoadingButton } from '../components/LoadingButton';
 import { Link, useLocation } from 'react-router-dom';
+import { KbBadge } from '../components/KbBadge';
 import { apiJson, apiUrl } from '../lib/api';
 import { formatKstDatetime, formatMinutesAsHmKo } from '../lib/time';
 import { WorklogDocument } from '../components/WorklogDocument';
@@ -555,11 +556,11 @@ export function WorklogSearch() {
               >
                 {imgUrl ? (
                   <div className="feed-titlebar">
-                    <div className="feed-title">{it.title}{it.kbBadge ? <span title={it.kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
+                    <div className="feed-title">{it.title}{it.kbBadge ? <KbBadge note={it.kbBadgeNote} /> : null}</div>
                   </div>
                 ) : (
                   <div className="feed-fallback">
-                    <div className="feed-title">{it.title}{it.kbBadge ? <span title={it.kbBadgeNote || 'AI 심사: 훌륭한 업무 지식 정리'} style={{ marginLeft: 6 }}>🏅</span> : null}</div>
+                    <div className="feed-title">{it.title}{it.kbBadge ? <KbBadge note={it.kbBadgeNote} /> : null}</div>
                   </div>
                 )}
                 <div className="feed-caption">
