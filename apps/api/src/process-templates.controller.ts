@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { resolveActivitiesForBpmn } from './lib/activity-resolver';
 
 @Controller('process-templates')
 export class ProcessTemplatesController {
@@ -150,6 +151,7 @@ export class ProcessTemplatesController {
         linkToKpiType: n.linkToKpiType != null ? String(n.linkToKpiType) : undefined,
         approvalRouteType: n.approvalRouteType != null ? String(n.approvalRouteType) : undefined,
         approvalRoleCodes: toCsv(n.approvalRoleCodes),
+        activityId: n.activityId ? String(n.activityId) : undefined, // 온톨로지 활동 연결
         approvalUserIds: toCsv(n.approvalUserIds),
         isFinalApproval: n.isFinalApproval ? Boolean(n.isFinalApproval) : false,
         deadlineOffsetDays: typeof n.deadlineOffsetDays === 'number' ? n.deadlineOffsetDays : undefined,
@@ -521,6 +523,8 @@ export class ProcessTemplatesController {
     }
     const createdById = actor ? String(actor.id) : String(ownerId);
 
+    // 온톨로지: 태스크 노드를 활동 사전과 정합(결정론→AI→신규) 후 컴파일
+    try { await resolveActivitiesForBpmn(this.prisma, bpmnJson, String(actorId || ownerId || '')); } catch (e: any) { console.error('[ontology] resolve failed:', e?.message); }
     const compiled = this.compileBpmn(bpmnJson);
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -570,6 +574,7 @@ export class ProcessTemplatesController {
                 linkToKpiType: t.linkToKpiType,
                 approvalRouteType: t.approvalRouteType,
                 approvalRoleCodes: t.approvalRoleCodes,
+                activityId: t.activityId,
                 approvalUserIds: t.approvalUserIds,
                 isFinalApproval: t.isFinalApproval,
                 deadlineOffsetDays: t.deadlineOffsetDays,
@@ -627,6 +632,7 @@ export class ProcessTemplatesController {
               linkToKpiType: t.linkToKpiType,
               approvalRouteType: t.approvalRouteType,
               approvalRoleCodes: t.approvalRoleCodes,
+                activityId: t.activityId,
               approvalUserIds: t.approvalUserIds,
               isFinalApproval: t.isFinalApproval,
               deadlineOffsetDays: t.deadlineOffsetDays,
@@ -743,6 +749,11 @@ export class ProcessTemplatesController {
             : isOwner;
     if (!canEdit) throw new ForbiddenException('not allowed');
 
+    // 온톨로지: 저장 전 태스크 노드를 활동 사전과 정합 (bpmnJson에 activityId가 포함되어 저장됨)
+    if (bpmnJson) {
+      try { await resolveActivitiesForBpmn(this.prisma, bpmnJson, actorIdStr); } catch (e: any) { console.error('[ontology] resolve failed:', e?.message); }
+    }
+
     const safeOwnerId = isOwner ? ownerId : undefined;
     const safeVisibility = isOwner ? visibility : undefined;
     const safeOrgUnitId = isOwner ? orgUnitId : undefined;
@@ -816,6 +827,7 @@ export class ProcessTemplatesController {
                 linkToKpiType: t.linkToKpiType,
                 approvalRouteType: t.approvalRouteType,
                 approvalRoleCodes: t.approvalRoleCodes,
+                activityId: t.activityId,
                 approvalUserIds: t.approvalUserIds,
                 isFinalApproval: t.isFinalApproval,
                 deadlineOffsetDays: t.deadlineOffsetDays,
@@ -876,6 +888,7 @@ export class ProcessTemplatesController {
             linkToKpiType: t.linkToKpiType,
             approvalRouteType: t.approvalRouteType,
             approvalRoleCodes: t.approvalRoleCodes,
+                activityId: t.activityId,
             approvalUserIds: t.approvalUserIds,
             isFinalApproval: t.isFinalApproval,
             deadlineOffsetDays: t.deadlineOffsetDays,

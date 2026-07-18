@@ -1676,13 +1676,31 @@ export class WorklogsController {
     if (!uid) throw new BadRequestException('userId required');
     const wl = await (this.prisma as any).worklog.findUnique({
       where: { id },
-      select: { id: true, note: true, structuredData: true, createdById: true },
+      select: { id: true, note: true, structuredData: true, createdById: true, activityId: true },
     });
     if (!wl) throw new BadRequestException('worklog not found');
     if (wl.createdById !== uid) throw new ForbiddenException('본인의 업무일지에만 사용할 수 있습니다');
 
     const text = String(wl.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000);
     if (text.length < 10) return { questions: [] };
+
+    // 온톨로지: 이 일지가 실행한 활동의 기존 지식·판단기준을 질문 컨텍스트로 제공
+    let activityCtx = '';
+    if (wl.activityId) {
+      try {
+        const act = await (this.prisma as any).activity.findUnique({ where: { id: wl.activityId }, select: { name: true, criteria: true } });
+        const prior = await (this.prisma as any).worklog.findMany({
+          where: { activityId: wl.activityId, kbBadge: true, visibility: 'ALL', id: { not: id } },
+          orderBy: { date: 'desc' }, take: 3, select: { note: true },
+        });
+        const priorTxt = prior.map((p: any) => String(p.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400)).filter(Boolean);
+        if (act) {
+          activityCtx = `\n\n[이 작업(활동: ${act.name})의 기존 지식]` +
+            (act.criteria ? `\n- 판단기준: ${act.criteria}` : '') +
+            (priorTxt.length ? '\n' + priorTxt.map((t: string, i: number) => `- 과거 인증기록${i + 1}: ${t}`).join('\n') : '\n- (아직 축적된 지식 없음)');
+        }
+      } catch {}
+    }
 
     const sys = `당신은 업무일지를 "회사의 재사용 가능한 지식"으로 체계화하도록 돕는 코치입니다. 반드시 JSON만 출력하세요.
 대부분의 일지는 표면적인 처리 결과 나열에 그칩니다. 아래 일지를 읽고, 지식이 되도록 다음 관점 중 "빠져 있는 것만" 골라 최대 3개 질문하세요:
@@ -1696,13 +1714,14 @@ export class WorklogsController {
 - 문제/이슈 언급이 전혀 없는 단순 일지라면 3번(지식 체계화) 관점만 1개 물으세요.
 - 한두 문장으로 바로 답할 수 있게 구체적으로 물으세요.
 - 물을 것이 없으면 빈 배열을 반환하세요. 억지로 만들지 마세요.
+- [기존 지식]이 제공되면: 거기 이미 정리된 내용은 묻지 말고, 이번 기록이 기존 판단기준·과거 기록과 다르거나 어긋나는 점이 있으면 그것을 우선 물으세요.
 
 출력 JSON: { "questions": [{ "id": number, "question": string }] }`;
 
     try {
       const result = await callAI({
         system: sys,
-        user: `[업무일지]\n${text}`,
+        user: `[업무일지]\n${text}${activityCtx}`,
         model: 'claude',
         temperature: 0.3,
         maxTokens: 800,

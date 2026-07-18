@@ -93,11 +93,26 @@ export function WorklogNew() {
   // 저장 직후 AI 보완 질문/지식배지 심사 (공용 컴포넌트)
   const [aiFollowupId, setAiFollowupId] = useState<string | null>(null);
 
+
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<Array<{ id: string; name: string; orgName: string }>>([]);
   const [myProcTasks, setMyProcTasks] = useState<Array<{ id: string; name: string; instance: { id: string; title: string } }>>([]);
   const [selectedProcTaskId, setSelectedProcTaskId] = useState<string>(taskInstanceId || '');
   const [selectedProcInstId, setSelectedProcInstId] = useState<string>(processInstanceId || '');
+  // 온톨로지: 이 태스크의 활동에 쌓인 과거 인증 지식 — 작성 전에 참고하도록 표시
+  const [actKnowledge, setActKnowledge] = useState<{ name: string; criteria?: string; items: Array<{ id: string; title: string; excerpt: string; badgeNote: string; authorName: string }> } | null>(null);
+  useEffect(() => {
+    const tid = selectedProcTaskId || taskInstanceId;
+    if (!tid) { setActKnowledge(null); return; }
+    apiFetch(`/api/activities/for-task/${encodeURIComponent(tid)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.activity) setActKnowledge({ name: d.activity.name, criteria: d.activity.criteria || undefined, items: d.knowledge || [] });
+        else setActKnowledge(null);
+      })
+      .catch(() => setActKnowledge(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProcTaskId, taskInstanceId]);
   const [showProcPopup, setShowProcPopup] = useState(false);
   const [me, setMe] = useState<UserMe | null>(null);
   const [procInst, setProcInst] = useState<ProcInst | null>(null);
@@ -519,6 +534,21 @@ export function WorklogNew() {
   return (
     <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12, maxWidth: 720 }}>
       {aiFollowupId && <WorklogAiFollowup worklogId={aiFollowupId} onDone={() => nav('/search?mode=list')} />}
+
+      {/* 온톨로지: 이 작업(활동)의 과거 인증 지식 — 같은 일을 했던 사람들의 정리 */}
+      {actKnowledge && (actKnowledge.items.length > 0 || actKnowledge.criteria) && (
+        <div style={{ border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: 10, padding: '10px 12px', display: 'grid', gap: 6 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: '#92400e' }}>📚 이 작업의 과거 지식 — {actKnowledge.name}</div>
+          {actKnowledge.criteria && <div style={{ fontSize: 12, color: '#0f766e' }}>판단기준: {actKnowledge.criteria}</div>}
+          {actKnowledge.items.map((k) => (
+            <div key={k.id} style={{ fontSize: 12, color: '#78350f', borderTop: '1px dashed #fde68a', paddingTop: 4 }}>
+              <b>{k.title}</b> <span style={{ color: '#b45309' }}>— {k.authorName}</span>
+              {k.excerpt && <div>{k.excerpt}</div>}
+            </div>
+          ))}
+          {actKnowledge.items.length === 0 && <div style={{ fontSize: 12, color: '#b45309' }}>아직 인증 지식이 없습니다 — 이번 기록이 첫 지식이 될 수 있습니다.</div>}
+        </div>
+      )}
 
       {instruction && (
         <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 12, padding: '12px 14px' }}>

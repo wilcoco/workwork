@@ -1265,8 +1265,23 @@ export class CompanyDataController {
       try {
         const kw = (keywords || []).filter(Boolean).slice(0, 5);
         if (kw.length) {
+          // 온톨로지 경로: 키워드가 활동 이름과 맞으면 그 활동에 귀속된 인증 지식을 우선 포함
+          let activityWlIds: string[] = [];
+          try {
+            const acts = await (this.prisma as any).activity.findMany({
+              where: { OR: kw.map((k: string) => ({ name: { contains: k, mode: 'insensitive' } })) },
+              select: { id: true }, take: 10,
+            });
+            if (acts.length) {
+              const awl = await (this.prisma as any).worklog.findMany({
+                where: { activityId: { in: acts.map((a: any) => a.id) }, kbBadge: true, visibility: 'ALL' },
+                select: { id: true }, take: 5, orderBy: { date: 'desc' },
+              });
+              activityWlIds = awl.map((w: any) => String(w.id));
+            }
+          } catch {}
           const kbLogs = await (this.prisma as any).worklog.findMany({
-            where: { visibility: 'ALL', OR: kw.map((k: string) => ({ note: { contains: k, mode: 'insensitive' } })) },
+            where: { visibility: 'ALL', OR: [ ...(activityWlIds.length ? [{ id: { in: activityWlIds } }] : []), ...kw.map((k: string) => ({ note: { contains: k, mode: 'insensitive' } })) ] },
             orderBy: [{ kbBadge: 'desc' }, { date: 'desc' }],
             take: 5,
             select: { note: true, kbBadge: true, date: true, createdBy: { select: { name: true } } },

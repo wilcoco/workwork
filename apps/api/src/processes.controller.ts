@@ -1651,6 +1651,15 @@ export class ProcessesController {
         if (body.cooperationId) linkData.cooperationId = String(body.cooperationId);
         if (body.approvalRequestId) linkData.approvalRequestId = String(body.approvalRequestId);
       }
+      // 온톨로지: 이 태스크로 작성된 일지를 활동에 귀속 — 지식(🏅)이 활동에 쌓이는 경로
+      if (linkData.worklogId) {
+        try {
+          const tmplForAct = await tx.processTaskTemplate.findUnique({ where: { id: task.taskTemplateId }, select: { activityId: true } });
+          if (tmplForAct?.activityId) {
+            await tx.worklog.update({ where: { id: linkData.worklogId }, data: { activityId: tmplForAct.activityId } });
+          }
+        } catch { /* 연결 실패는 완료 흐름에 영향 없음 */ }
+      }
       // If approvalRequestId not provided for an APPROVAL task, auto-create it now
       if (!linkData.approvalRequestId) {
         const tmpl = await tx.processTaskTemplate.findUnique({ where: { id: task.taskTemplateId } });

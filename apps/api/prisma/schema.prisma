@@ -236,6 +236,7 @@ model KeyResult {
   direction         ThresholdDirection?
   assignments       KeyResultAssignment[]
   analysis25        String?
+  activityId String? // 온톨로지: 이 지표가 측정하는 활동
 }
 
 model KeyResultAssignment {
@@ -280,6 +281,27 @@ model Initiative {
   processTaskInstances ProcessTaskInstance[]
 }
 
+
+// ── 온톨로지: 활동(Activity) 등록부 ─────────────────────────────
+// 회사가 수행하는 "작업"의 단일 사전. 매뉴얼(정의)·프로세스(실행)·업무일지(기록/지식)·
+// KPI(측정)·중점과제(변경)가 모두 이 노드를 공통 참조한다.
+model Activity {
+  id          String   @id @default(cuid())
+  name        String   // 대표 이름 (예: "사출 초품 검사")
+  normName    String   @unique // 정합용 정규화 키(공백·기호 제거 소문자)
+  taskType    String?  // WORKLOG | APPROVAL | COOPERATION
+  description String?
+  aliases     Json?    // string[] — 같은 활동의 다른 표현들
+  roleHint    String?  // 담당 역할 표현 (예: "품질팀 팀장")
+  criteria    String?  // 판단 기준 (예: "Cpk >= 1.67")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+  @@index([taskType])
+}
+
 model Worklog {
   id                    String               @id @default(cuid())
   initiativeId          String
@@ -304,8 +326,10 @@ model Worklog {
   supplements           WorklogSupplement[]
   kbBadge               Boolean              @default(false) // AI 판정: 훌륭한 업무 지식 정리 배지
   kbBadgeNote           String? // 배지 사유(칭찬 한 줄)
+  activityId            String? // 온톨로지: 이 일지가 실행한 활동 (지식이 활동에 귀속되는 경로)
 
   @@index([kbBadge, date])
+  @@index([activityId])
   @@index([date])
   @@index([createdAt])
   @@index([createdById, date])
@@ -968,6 +992,7 @@ model ProcessTaskTemplate {
   loopBackTargetId           String? // 반려 시 돌아갈 태스크 템플릿 ID (루프백)
   loopBackCondition          String? // 루프백 조건 (예: last.approval.status == 'REJECTED')
   maxLoopCount               Int? // 최대 루프 횟수 (기본 3, 무한루프 방지)
+  activityId                 String? // 온톨로지: 이 태스크가 참조하는 활동
   taskInstances              ProcessTaskInstance[]
 }
 
@@ -1479,6 +1504,7 @@ model KeyInitiative {
   @@index([dueDate])
   @@index([orgUnitId])
   @@index([alignsToObjectiveId])
+  activityId String? // 온톨로지: 이 과제가 개선하는 활동
 }
 
 model KeyInitiativeProgress {
