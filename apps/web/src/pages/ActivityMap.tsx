@@ -6,7 +6,7 @@ import { apiJson } from '../lib/api';
  * 회사가 수행하는 활동 전체를 한 화면에서 조망: 어디서 쓰이고(프로세스),
  * 얼마나 실행되고(일지), 지식이 어디에 쌓였고(🏅), 어디가 비어 있는가(리스크).
  */
-type Item = { id: string; name: string; taskType?: string | null; roleHint?: string | null; domain?: string | null; category?: string | null; aliasCount: number; templateUse: number; worklogCount: number; knowledgeCount: number; lastRunAt?: string | null };
+type Item = { id: string; name: string; taskType?: string | null; roleHint?: string | null; domain?: string | null; category?: string | null; aliasCount: number; templateUse: number; worklogCount: number; knowledgeCount: number; kpiCount?: number; initiativeCount?: number; lastRunAt?: string | null };
 type Overview = {
   totals: { activities: number; withKnowledge: number; executedActivities: number; totalKnowledge: number; byType: Record<string, number> };
   items: Item[]; risky: Item[]; rich: Item[];
@@ -21,6 +21,29 @@ export function ActivityMap() {
   const [error, setError] = useState('');
   const [mining, setMining] = useState(false);
   const [organizing, setOrganizing] = useState(false);
+
+  // 탑다운 매칭: KPI/중점과제를 활동과 연결
+  const [mappingGoals, setMappingGoals] = useState(false);
+  async function mapGoals() {
+    if (!confirm('KPI 지표와 중점과제를 활동 사전과 매칭합니다 (확실한 것만 연결). 진행할까요?')) return;
+    setMappingGoals(true);
+    try {
+      const r = await apiJson<any>(`/api/activities/map-goals`, { method: 'POST', body: JSON.stringify({ actorId: userId }) });
+      alert(`KPI ${r.kpiMapped}/${r.kpiScanned}건, 중점과제 ${r.initiativeMapped}/${r.initiativeScanned}건 연결${r.note ? `\n${r.note}` : ''}`);
+      const d = await apiJson<Overview>('/api/activities/dashboard/overview'); setData(d);
+    } catch (e: any) { alert(e?.message || '실행 실패'); }
+    finally { setMappingGoals(false); }
+  }
+
+  // 갭 영역에 중점과제 생성 (③ 부족 영역 → 과제)
+  async function createInitiativeForDomain(domain: string) {
+    const title = prompt(`「${domain}」 영역에 만들 중점과제 제목을 입력하세요:`, `${domain} 업무 체계화 및 지표 정립`);
+    if (!title?.trim()) return;
+    try {
+      await apiJson(`/api/key-initiatives`, { method: 'POST', body: JSON.stringify({ title: title.trim(), goal: `[활동 지도 갭 보완] ${domain} 영역`, assigneeId: userId, createdById: userId, actorId: userId }) });
+      alert('중점과제가 생성되었습니다. 목표관리 ▸ 중점 추진 과제에서 담당·기한을 지정하세요.');
+    } catch (e: any) { alert(e?.message || '생성 실패'); }
+  }
 
   // 체계 정리: 미분류 활동을 대분류/중분류로 AI 분류
   async function organize() {
@@ -91,6 +114,9 @@ export function ActivityMap() {
           <button className="btn btn-sm btn-outline" disabled={organizing} onClick={() => void organize()} title="활동을 대분류(기능 영역)→중분류 체계로 정리합니다 (팀장 이상)">
             {organizing ? '🗂 정리 중...' : '🗂 체계 정리'}
           </button>
+          <button className="btn btn-sm btn-outline" disabled={mappingGoals} onClick={() => void mapGoals()} title="KPI 지표·중점과제를 활동과 매칭합니다 (팀장 이상)">
+            {mappingGoals ? '🎯 매칭 중...' : '🎯 KPI·과제 매칭'}
+          </button>
         </div>
       </div>
 
@@ -109,6 +135,32 @@ export function ActivityMap() {
           </div>
         ))}
       </div>
+
+      {/* ③ 갭 분석: 실행은 있는데 목표(KPI·과제)가 없는 도메인 → 과제 생성 */}
+      {(() => {
+        const byDomain = new Map<string, { wl: number; goals: number }>();
+        for (const it of data.items) {
+          const d = it.domain || '미분류';
+          const cur = byDomain.get(d) || { wl: 0, goals: 0 };
+          cur.wl += it.worklogCount; cur.goals += (it.kpiCount || 0) + (it.initiativeCount || 0);
+          byDomain.set(d, cur);
+        }
+        const gaps = Array.from(byDomain.entries()).filter(([d, v]) => d !== '미분류' && v.wl >= 5 && v.goals === 0).sort((a, b) => b[1].wl - a[1].wl);
+        if (!gaps.length) return null;
+        return (
+          <div style={{ border: '1px solid #c4b5fd', background: '#f5f3ff', borderRadius: 10, padding: '10px 16px' }}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: '#5b21b6', marginBottom: 6 }}>🎯 목표 공백 — 실행(일지)은 많은데 KPI·중점과제가 연결되지 않은 영역</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {gaps.map(([d, v]) => (
+                <span key={d} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, border: '1px solid #ddd6fe', background: '#fff', borderRadius: 8, padding: '4px 8px' }}>
+                  <b style={{ color: '#5b21b6' }}>{d}</b> <span style={{ color: '#7c3aed' }}>일지 {v.wl}건 · 목표 0</span>
+                  <button className="btn btn-sm btn-outline" style={{ fontSize: 11, padding: '1px 8px' }} onClick={() => void createInitiativeForDomain(d)}>+ 중점과제</button>
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 인사이트: 지식 공백 리스크 / 지식 자산 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 10 }}>
@@ -159,7 +211,7 @@ export function ActivityMap() {
             return (
               <details key={domain} open={domain !== '미분류'} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
                 <summary style={{ padding: '10px 14px', background: domain === '미분류' ? '#f8fafc' : '#eff6ff', cursor: 'pointer', fontWeight: 800, fontSize: 14, color: '#0f172a' }}>
-                  {domain} <span style={{ fontWeight: 500, fontSize: 12, color: '#64748b' }}>— 활동 {items.length}개{kn ? ` · 지식 🏅${kn}` : ''}</span>
+                  {domain} <span style={{ fontWeight: 500, fontSize: 12, color: '#64748b' }}>— 활동 {items.length}개{kn ? ` · 지식 🏅${kn}` : ''}{(() => { const g = items.reduce((s2, x) => s2 + (x.kpiCount || 0) + (x.initiativeCount || 0), 0); return g ? ` · 목표연결 🎯${g}` : ''; })()}</span>
                 </summary>
                 <div style={{ padding: '6px 10px 10px', display: 'grid', gap: 8 }}>
                   {Array.from(cats.entries()).sort((a, b) => b[1].length - a[1].length).map(([cat, catItems]) => (

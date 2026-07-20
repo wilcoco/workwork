@@ -77,6 +77,65 @@ export class ActivitiesController {
     return { classified, remaining };
   }
 
+  /** 탑다운 매칭: KPI(KeyResult)·중점과제(KeyInitiative)를 활동과 연결 (팀장 이상) */
+  @Post('map-goals')
+  async mapGoals(@Body() body: { actorId?: string }) {
+    const uid = String(body?.actorId || '').trim();
+    if (!uid) throw new BadRequestException('actorId required');
+    const actor = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
+    if (!['CEO', 'EXEC', 'MANAGER'].includes(String(actor?.role || '').toUpperCase())) {
+      throw new ForbiddenException('팀장 이상만 실행할 수 있습니다');
+    }
+    const acts = await (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } });
+    if (!acts.length) return { kpiMapped: 0, initiativeMapped: 0, note: '활동이 없습니다 — 먼저 추출/체계 정리를 실행하세요' };
+    const actList = acts.map((a: any) => `[${a.id}] ${a.name}${a.domain ? ` (${a.domain})` : ''}`).join('\n');
+
+    const mapBatch = async (rows: Array<{ id: string; text: string }>, model: string): Promise<Map<string, string>> => {
+      const out = new Map<string, string>();
+      const CHUNK = 25;
+      for (let st = 0; st < rows.length; st += CHUNK) {
+        const chunk = rows.slice(st, st + CHUNK);
+        try {
+          const res = await callAI({
+            model: 'claude',
+            system: `너는 회사 목표와 활동 사전을 연결하는 사서다. 반드시 JSON만 출력한다.
+각 ${model}이(가) 아래 [활동 목록] 중 어떤 활동의 성과/개선과 직접 관련되는지 판정하라.
+직접 관련이 확실할 때만 activityId를 지정하고, 애매하면 null. 잘못된 연결이 더 해롭다.
+[활동 목록]\n${actList}`,
+            user: chunk.map((r, j) => `#${st + j} ${r.text}`).join('\n') + '\n\n출력: { "items": [{ "index": number, "activityId": string|null }] }',
+            temperature: 0.1, maxTokens: 1500,
+            jsonSchema: { name: 'goal_map', schema: { type: 'object' as const, properties: { items: { type: 'array', items: { type: 'object', properties: { index: { type: 'number' }, activityId: { type: ['string', 'null'] } }, required: ['index'] } } }, required: ['items'] } },
+          });
+          for (const m of res?.parsed?.items || []) {
+            const idx = Number(m.index) - st;
+            const row = chunk[idx];
+            const vid = m.activityId && acts.some((a: any) => a.id === m.activityId) ? String(m.activityId) : null;
+            if (row && vid) out.set(row.id, vid);
+          }
+        } catch (e: any) { console.error('[ontology] map-goals chunk failed:', e?.message?.slice(0, 120)); }
+      }
+      return out;
+    };
+
+    // KPI (팀 KPI 지표)
+    const krs = await (this.prisma as any).keyResult.findMany({
+      where: { activityId: null }, take: 200,
+      select: { id: true, title: true, metric: true, objective: { select: { title: true } } },
+    });
+    const krMap = await mapBatch(krs.map((k: any) => ({ id: k.id, text: `KPI: ${k.title}${k.metric ? ` (산식: ${k.metric})` : ''} / 목표: ${k.objective?.title || ''}` })), 'KPI 지표');
+    for (const [id, aid] of krMap) await (this.prisma as any).keyResult.update({ where: { id }, data: { activityId: aid } });
+
+    // 중점과제
+    const kis = await (this.prisma as any).keyInitiative.findMany({
+      where: { activityId: null }, take: 200,
+      select: { id: true, title: true, goal: true },
+    });
+    const kiMap = await mapBatch(kis.map((k: any) => ({ id: k.id, text: `과제: ${k.title}${k.goal ? ` / 목표: ${String(k.goal).slice(0, 80)}` : ''}` })), '중점과제');
+    for (const [id, aid] of kiMap) await (this.prisma as any).keyInitiative.update({ where: { id }, data: { activityId: aid } });
+
+    return { kpiScanned: krs.length, kpiMapped: krMap.size, initiativeScanned: kis.length, initiativeMapped: kiMap.size };
+  }
+
   /** 활동 검색/목록 */
   @Get()
   async list(@Query('q') q?: string, @Query('limit') limitStr?: string) {
@@ -133,15 +192,18 @@ export class ActivitiesController {
    */
   @Get('dashboard/overview')
   async dashboard() {
-    const [activities, tplCounts, wlCounts, kbCounts, lastRuns] = await Promise.all([
+    const [activities, tplCounts, wlCounts, kbCounts, lastRuns, kpiCounts, kiCounts] = await Promise.all([
       (this.prisma as any).activity.findMany({ orderBy: { createdAt: 'asc' } }),
       (this.prisma as any).processTaskTemplate.groupBy({ by: ['activityId'], where: { activityId: { not: null } }, _count: { _all: true } }),
       (this.prisma as any).worklog.groupBy({ by: ['activityId'], where: { activityId: { not: null } }, _count: { _all: true } }),
       (this.prisma as any).worklog.groupBy({ by: ['activityId'], where: { activityId: { not: null }, kbBadge: true }, _count: { _all: true } }),
       (this.prisma as any).worklog.groupBy({ by: ['activityId'], where: { activityId: { not: null } }, _max: { date: true } }),
+      (this.prisma as any).keyResult.groupBy({ by: ['activityId'], where: { activityId: { not: null } }, _count: { _all: true } }),
+      (this.prisma as any).keyInitiative.groupBy({ by: ['activityId'], where: { activityId: { not: null } }, _count: { _all: true } }),
     ]);
     const m = (rows: any[], f = '_count') => new Map(rows.map((r: any) => [String(r.activityId), f === '_max' ? r._max.date : r._count._all]));
     const tplMap = m(tplCounts), wlMap = m(wlCounts), kbMap = m(kbCounts), lastMap = m(lastRuns, '_max');
+    const kpiMap = m(kpiCounts), kiMap2 = m(kiCounts);
 
     const items = activities.map((a: any) => ({
       id: a.id,
@@ -154,6 +216,8 @@ export class ActivitiesController {
       templateUse: tplMap.get(String(a.id)) || 0,
       worklogCount: wlMap.get(String(a.id)) || 0,
       knowledgeCount: kbMap.get(String(a.id)) || 0,
+      kpiCount: kpiMap.get(String(a.id)) || 0,
+      initiativeCount: kiMap2.get(String(a.id)) || 0,
       lastRunAt: lastMap.get(String(a.id)) || null,
       createdAt: a.createdAt,
     }));
