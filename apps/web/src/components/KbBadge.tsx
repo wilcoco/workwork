@@ -7,7 +7,7 @@
  */
 export function KbBadge({ note, count }: { note?: string | null; count?: number | null }) {
   const tip = (note || 'AI 심사: 이 업무일지가 지식 기록으로 인증되었습니다')
-    + (typeof count === 'number' && count > 0 ? `\n(작성자 누적 인증 ${count}회)` : '');
+    + (typeof count === 'number' && count > 0 ? `\n(작성자의 ${count}번째 지식 인증)` : '');
   return (
     <span
       title={tip}
@@ -30,14 +30,14 @@ export function KbBadge({ note, count }: { note?: string | null; count?: number 
 }
 
 /**
- * 작성자 누적 인증 횟수 — 문서 인증 배지와는 별개의 "작성자 통계" 표시.
- * 배지(골드 인장)와 혼동되지 않도록 간격을 두고, 무채색 + 라벨 명시로 그린다.
+ * "작성자의 N번째 지식인증" — 그 시점 기준 순번(문서마다 고정)이라 최종 누적과 혼동되지 않는다.
+ * 배지(골드 인장)와 구분되게 간격 + 무채색 + 라벨 명시.
  */
 export function KbAuthorCount({ count }: { count?: number | null }) {
   if (typeof count !== 'number' || count <= 0) return null;
   return (
     <span
-      title={`이 작성자가 지금까지 받은 지식 인증: 총 ${count}회`}
+      title={`이 일지는 작성자의 ${count}번째 지식 인증입니다 (작성 시점 기준)`}
       style={{
         display: 'inline-flex', alignItems: 'center', marginLeft: 8,
         padding: '1px 8px', borderRadius: 6, fontSize: 10, fontWeight: 600,
@@ -45,7 +45,7 @@ export function KbAuthorCount({ count }: { count?: number | null }) {
         verticalAlign: 'middle', whiteSpace: 'nowrap', lineHeight: 1.7,
       }}
     >
-      작성자 누적 인증 {count}회
+      작성자 {count}번째 지식인증
     </span>
   );
 }

@@ -1533,12 +1533,22 @@ export class WorklogsController {
         })
     ).slice(0, limit);
     const nextCursor = items.length === limit ? items[items.length - 1].id : undefined;
-    // 인증 일지 작성자의 누적 인증 횟수 (홈/조회 칩에 표시)
+    // 인증 일지의 "작성자 N번째 인증" 순번 — 그 시점 기준 값이라 문서마다 고정된다 (최종 누적 아님)
     const kbAuthorIds = Array.from(new Set(items.filter((it: any) => (it as any).kbBadge).map((it: any) => String(it.createdById))));
-    const kbCountMap = new Map<string, number>();
+    const kbSeqMap = new Map<string, number>(); // worklogId → 순번
     if (kbAuthorIds.length) {
-      const grouped = await (this.prisma as any).worklog.groupBy({ by: ['createdById'], where: { kbBadge: true, createdById: { in: kbAuthorIds } }, _count: { _all: true } });
-      for (const g of grouped) kbCountMap.set(String(g.createdById), g._count._all);
+      const badged = await (this.prisma as any).worklog.findMany({
+        where: { kbBadge: true, createdById: { in: kbAuthorIds } },
+        select: { id: true, createdById: true, date: true, createdAt: true },
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      });
+      const perAuthor = new Map<string, number>();
+      for (const b of badged) {
+        const k = String(b.createdById);
+        const n = (perAuthor.get(k) || 0) + 1;
+        perAuthor.set(k, n);
+        kbSeqMap.set(String(b.id), n);
+      }
     }
     const mapped = items.map((it: any) => {
       const lines = (it.note || '').split(/\n+/);
@@ -1561,7 +1571,7 @@ export class WorklogsController {
         urgent: (it as any).urgent ?? false,
         kbBadge: (it as any).kbBadge ?? false,
         kbBadgeNote: (it as any).kbBadgeNote ?? undefined,
-        authorKbCount: kbCountMap.get(String(it.createdById)) ?? undefined,
+        authorKbSeq: kbSeqMap.get(String(it.id)) ?? undefined, // 작성자의 몇 번째 인증인지 (그 시점 기준)
         structuredData: (it as any).structuredData ?? undefined,
         tags: (it as any).tags ?? undefined,
         keywords: (it as any).keywords ?? undefined,
