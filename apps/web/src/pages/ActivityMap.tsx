@@ -6,7 +6,7 @@ import { apiJson } from '../lib/api';
  * 회사가 수행하는 활동 전체를 한 화면에서 조망: 어디서 쓰이고(프로세스),
  * 얼마나 실행되고(일지), 지식이 어디에 쌓였고(🏅), 어디가 비어 있는가(리스크).
  */
-type Item = { id: string; name: string; taskType?: string | null; roleHint?: string | null; aliasCount: number; templateUse: number; worklogCount: number; knowledgeCount: number; lastRunAt?: string | null };
+type Item = { id: string; name: string; taskType?: string | null; roleHint?: string | null; domain?: string | null; category?: string | null; aliasCount: number; templateUse: number; worklogCount: number; knowledgeCount: number; lastRunAt?: string | null };
 type Overview = {
   totals: { activities: number; withKnowledge: number; executedActivities: number; totalKnowledge: number; byType: Record<string, number> };
   items: Item[]; risky: Item[]; rich: Item[];
@@ -20,6 +20,21 @@ export function ActivityMap() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
   const [mining, setMining] = useState(false);
+  const [organizing, setOrganizing] = useState(false);
+
+  // 체계 정리: 미분류 활동을 대분류/중분류로 AI 분류
+  async function organize() {
+    if (!confirm('추출된 활동을 회사 기능 체계(영업/생산/품질 등 대분류 → 중분류)로 정리합니다. 진행할까요?')) return;
+    setOrganizing(true);
+    try {
+      const r = await apiJson<{ classified: number; remaining: number }>(`/api/activities/organize`, {
+        method: 'POST', body: JSON.stringify({ actorId: userId }),
+      });
+      alert(`활동 ${r.classified}개 분류 완료${r.remaining ? ` (미분류 ${r.remaining}개 남음 — 다시 실행하면 이어서 처리)` : ' — 전부 분류됨'}`);
+      const d = await apiJson<Overview>('/api/activities/dashboard/overview'); setData(d);
+    } catch (e: any) { alert(e?.message || '실행 실패'); }
+    finally { setOrganizing(false); }
+  }
 
   // 상향식 채굴: 기존 업무일지에서 활동 추출·정합 (반복 클릭 시 미연결 일지 이어서 처리)
   async function mine() {
@@ -73,6 +88,9 @@ export function ActivityMap() {
           <button className="btn btn-sm btn-outline" disabled={mining} onClick={() => void mine()} title="기존 업무일지에서 활동을 추출해 사전을 채웁니다 (팀장 이상)">
             {mining ? '⛏ 추출 중... (1~2분)' : '⛏ 일지에서 활동 추출'}
           </button>
+          <button className="btn btn-sm btn-outline" disabled={organizing} onClick={() => void organize()} title="활동을 대분류(기능 영역)→중분류 체계로 정리합니다 (팀장 이상)">
+            {organizing ? '🗂 정리 중...' : '🗂 체계 정리'}
+          </button>
         </div>
       </div>
 
@@ -108,7 +126,7 @@ export function ActivityMap() {
         </div>
       </div>
 
-      {/* 활동 목록 */}
+      {/* 활동 목록 — 도메인(대분류) ▸ 중분류 체계 트리 */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="활동 검색" style={{ padding: '5px 10px', fontSize: 13 }} />
         <select value={typeF} onChange={(e) => setTypeF(e.target.value)} style={{ padding: '5px 8px', fontSize: 13 }}>
@@ -119,32 +137,57 @@ export function ActivityMap() {
         </select>
         <span style={{ fontSize: 12, color: '#94a3b8' }}>{filtered.length}개 · 활동을 클릭하면 축적 지식을 봅니다</span>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={th}>활동</th><th style={th}>유형</th><th style={th}>담당 힌트</th>
-              <th style={{ ...th, textAlign: 'right' }}>프로세스 사용</th>
-              <th style={{ ...th, textAlign: 'right' }}>실행(일지)</th>
-              <th style={{ ...th, textAlign: 'right' }}>지식 🏅</th>
-              <th style={th}>최근 실행</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((it) => (
-              <tr key={it.id} onClick={() => void openKnowledge(it.id)} style={{ cursor: 'pointer', background: it.knowledgeCount > 0 ? '#fffdf5' : undefined }}>
-                <td style={{ ...td, fontWeight: 600 }}>{it.name}{it.aliasCount > 0 && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>+별칭{it.aliasCount}</span>}</td>
-                <td style={td}>{TYPE_KO[String(it.taskType)] || it.taskType || '—'}</td>
-                <td style={{ ...td, color: '#64748b', fontSize: 12 }}>{it.roleHint || '—'}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{it.templateUse}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{it.worklogCount}</td>
-                <td style={{ ...td, textAlign: 'right', fontWeight: it.knowledgeCount ? 800 : 400, color: it.knowledgeCount ? '#b45309' : '#94a3b8' }}>{it.knowledgeCount || '—'}</td>
-                <td style={{ ...td, fontSize: 12, color: '#94a3b8' }}>{it.lastRunAt ? new Date(it.lastRunAt).toLocaleDateString() : '—'}</td>
-              </tr>
-            ))}
-            {!filtered.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>아직 등록된 활동이 없습니다. 프로세스 템플릿을 저장하면 활동이 자동 등록됩니다.</td></tr>}
-          </tbody>
-        </table>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {(() => {
+          const domains = new Map<string, Item[]>();
+          for (const it of filtered) {
+            const d = it.domain || '미분류';
+            if (!domains.has(d)) domains.set(d, []);
+            domains.get(d)!.push(it);
+          }
+          const order = ['영업', '연구개발', '금형', '생산-사출', '생산-도장', '생산-조립', '생산관리', '품질', '구매·자재', '물류', '설비·보전', '경영지원', '안전·환경', '기타', '미분류'];
+          const sorted = Array.from(domains.entries()).sort((a, b) => (order.indexOf(a[0]) + 100 * Number(order.indexOf(a[0]) < 0)) - (order.indexOf(b[0]) + 100 * Number(order.indexOf(b[0]) < 0)));
+          return sorted.map(([domain, items]) => {
+            const kn = items.reduce((s2, x) => s2 + x.knowledgeCount, 0);
+            // 중분류 그룹
+            const cats = new Map<string, Item[]>();
+            for (const it of items) {
+              const c = it.category || '기타';
+              if (!cats.has(c)) cats.set(c, []);
+              cats.get(c)!.push(it);
+            }
+            return (
+              <details key={domain} open={domain !== '미분류'} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
+                <summary style={{ padding: '10px 14px', background: domain === '미분류' ? '#f8fafc' : '#eff6ff', cursor: 'pointer', fontWeight: 800, fontSize: 14, color: '#0f172a' }}>
+                  {domain} <span style={{ fontWeight: 500, fontSize: 12, color: '#64748b' }}>— 활동 {items.length}개{kn ? ` · 지식 🏅${kn}` : ''}</span>
+                </summary>
+                <div style={{ padding: '6px 10px 10px', display: 'grid', gap: 8 }}>
+                  {Array.from(cats.entries()).sort((a, b) => b[1].length - a[1].length).map(([cat, catItems]) => (
+                    <div key={cat}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', padding: '4px 4px 2px' }}>{cat} <span style={{ fontWeight: 400, color: '#94a3b8' }}>({catItems.length})</span></div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {catItems.map((it) => (
+                          <button key={it.id} type="button" onClick={() => void openKnowledge(it.id)}
+                            title={`프로세스 사용 ${it.templateUse} · 일지 ${it.worklogCount} · 지식 ${it.knowledgeCount}${it.roleHint ? ` · 담당: ${it.roleHint}` : ''}`}
+                            style={{
+                              fontSize: 12, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
+                              border: `1px solid ${it.knowledgeCount ? '#f59e0b' : '#e2e8f0'}`,
+                              background: it.knowledgeCount ? '#fffbeb' : '#fff', color: '#334155',
+                            }}>
+                            {it.name}
+                            {it.worklogCount > 0 && <span style={{ color: '#94a3b8', marginLeft: 4 }}>{it.worklogCount}</span>}
+                            {it.knowledgeCount > 0 && <b style={{ color: '#b45309', marginLeft: 4 }}>🏅{it.knowledgeCount}</b>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          });
+        })()}
+        {!filtered.length && <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>아직 등록된 활동이 없습니다. ⛏ 추출 또는 프로세스 템플릿 저장으로 채워집니다.</div>}
       </div>
 
       {/* 활동 지식 모달 */}

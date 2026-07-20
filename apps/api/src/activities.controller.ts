@@ -1,6 +1,10 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { mineWorklogActivities } from './lib/activity-miner';
+import { callAI } from './llm/ai-client';
+
+/** 체계 대분류 — 제한된 풀 (AI는 이 안에서만 고른다) */
+const DOMAINS = ['영업', '연구개발', '금형', '생산-사출', '생산-도장', '생산-조립', '생산관리', '품질', '구매·자재', '물류', '설비·보전', '경영지원', '안전·환경', '기타'];
 
 /**
  * 온톨로지: 활동(Activity) 조회 API.
@@ -20,6 +24,57 @@ export class ActivitiesController {
       throw new ForbiddenException('팀장 이상만 실행할 수 있습니다');
     }
     return mineWorklogActivities(this.prisma, { actorId: uid, days: body?.days ?? 180, onlyBadged: !!body?.onlyBadged, limit: body?.limit ?? 100 });
+  }
+
+  /** 체계 정리 — 미분류 활동을 대분류(고정 풀)/중분류로 AI 분류 (팀장 이상) */
+  @Post('organize')
+  async organize(@Body() body: { actorId?: string }) {
+    const uid = String(body?.actorId || '').trim();
+    if (!uid) throw new BadRequestException('actorId required');
+    const actor = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
+    if (!['CEO', 'EXEC', 'MANAGER'].includes(String(actor?.role || '').toUpperCase())) {
+      throw new ForbiddenException('팀장 이상만 실행할 수 있습니다');
+    }
+    const acts = await (this.prisma as any).activity.findMany({
+      where: { domain: null },
+      select: { id: true, name: true, taskType: true, roleHint: true },
+      take: 300,
+    });
+    if (!acts.length) return { classified: 0, remaining: 0 };
+    let classified = 0;
+    const CHUNK = 30;
+    for (let start = 0; start < acts.length; start += CHUNK) {
+      const chunk = acts.slice(start, start + CHUNK);
+      try {
+        const res = await callAI({
+          model: 'claude',
+          system: `너는 자동차 부품 제조사(캠스)의 업무 체계 분류 담당이다. 반드시 JSON만 출력한다.
+각 활동을 대분류(domain)와 중분류(category)로 분류하라.
+- domain은 반드시 다음 중 하나: ${DOMAINS.join(', ')}
+- category는 2~8자 명사형 소그룹 (예: 발주, 검사, 견적, 보고서, 결재, 일정관리). 비슷한 활동은 같은 category로.
+출력: { "items": [{ "index": number, "domain": string, "category": string }] }`,
+          user: chunk.map((a: any, j: number) => `#${start + j} ${a.name}${a.roleHint ? ` (담당: ${a.roleHint})` : ''}`).join('\n'),
+          temperature: 0.1, maxTokens: 3000,
+          jsonSchema: {
+            name: 'organize',
+            schema: { type: 'object' as const, properties: { items: { type: 'array', items: { type: 'object', properties: { index: { type: 'number' }, domain: { type: 'string' }, category: { type: 'string' } }, required: ['index', 'domain'] } } }, required: ['items'] },
+          },
+        });
+        for (const m of res?.parsed?.items || []) {
+          const idx = Number(m.index) - start;
+          const a = chunk[idx];
+          if (!a) continue;
+          const domain = DOMAINS.includes(String(m.domain)) ? String(m.domain) : '기타'; // 풀 밖 값 방지
+          const category = String(m.category || '').trim().slice(0, 20) || null;
+          await (this.prisma as any).activity.update({ where: { id: a.id }, data: { domain, category } });
+          classified++;
+        }
+      } catch (e: any) {
+        console.error('[ontology] organize chunk failed:', e?.message?.slice(0, 150));
+      }
+    }
+    const remaining = await (this.prisma as any).activity.count({ where: { domain: null } });
+    return { classified, remaining };
   }
 
   /** 활동 검색/목록 */
@@ -93,6 +148,8 @@ export class ActivitiesController {
       name: a.name,
       taskType: a.taskType,
       roleHint: a.roleHint,
+      domain: a.domain || null,
+      category: a.category || null,
       aliasCount: Array.isArray(a.aliases) ? a.aliases.length : 0,
       templateUse: tplMap.get(String(a.id)) || 0,
       worklogCount: wlMap.get(String(a.id)) || 0,

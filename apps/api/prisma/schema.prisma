@@ -294,12 +294,15 @@ model Activity {
   aliases     Json?    // string[] — 같은 활동의 다른 표현들
   roleHint    String?  // 담당 역할 표현 (예: "품질팀 팀장")
   criteria    String?  // 판단 기준 (예: "Cpk >= 1.67")
+  domain      String?  // 체계: 대분류 (기능 영역 — 고정 풀에서 AI 분류)
+  category    String?  // 체계: 중분류 (짧은 명사 그룹)
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([name])
   @@index([taskType])
+  @@index([domain])
 }
 
 model Worklog {
