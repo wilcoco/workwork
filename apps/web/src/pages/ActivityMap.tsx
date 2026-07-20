@@ -61,25 +61,30 @@ export function ActivityMap() {
 
   // 상향식 채굴: 기존 업무일지에서 활동 추출·정합 (반복 클릭 시 미연결 일지 이어서 처리)
   const [mineProgress, setMineProgress] = useState('');
+  const [mineDays, setMineDays] = useState(180); // 분석 기간 (0=전체)
+  const [mineMax, setMineMax] = useState(500); // 최대 처리 건수
   async function mine() {
-    if (!confirm('최근 6개월의 미처리 업무일지 전체에서 활동을 추출해 사전에 등록/연결합니다.\n100건 단위로 자동 반복 처리하며 수 분 걸릴 수 있습니다 (중간에 페이지를 닫아도 처리된 만큼은 저장됨). 진행할까요?')) return;
+    const maxCount = Math.max(100, Math.min(mineMax || 500, 4000));
+    const periodLabel = mineDays ? `최근 ${mineDays >= 360 ? `${Math.round(mineDays / 30 / 12 * 10) / 10}년` : `${Math.round(mineDays / 30)}개월`}` : '전체 기간';
+    if (!confirm(`${periodLabel}의 미처리 업무일지에서 최대 ${maxCount}건을 분석해 활동 사전에 등록/연결합니다.\n100건 단위로 자동 반복 처리하며 수 분 걸릴 수 있습니다 (중간에 페이지를 닫아도 처리된 만큼은 저장됨). 진행할까요?`)) return;
     setMining(true);
     const total = { scanned: 0, linked: 0, created: 0, skipped: 0 };
+    const rounds = Math.ceil(maxCount / 100);
     let failStreak = 0;
     try {
-      for (let round = 1; round <= 40; round++) {
-        setMineProgress(`${round}회차 · 누적 ${total.scanned}건 처리`);
+      for (let round = 1; round <= rounds; round++) {
+        setMineProgress(`${round}/${rounds}회차 · 누적 ${total.scanned}건`);
+        const batch = Math.min(100, maxCount - total.scanned);
         const r = await apiJson<{ scanned: number; linked: number; created: number; skipped: number; error?: string }>(`/api/activities/mine-worklogs`, {
-          method: 'POST', body: JSON.stringify({ actorId: userId, days: 180, limit: 100 }),
+          method: 'POST', body: JSON.stringify({ actorId: userId, days: mineDays, limit: batch }),
         });
         if (r.error) { if (++failStreak >= 2) { alert('AI 추출이 연속 실패했습니다 — 잠시 후 다시 시도하세요.\n' + `(지금까지 ${total.scanned}건 처리, 연결 ${total.linked}건)`); break; } continue; }
         failStreak = 0;
         total.scanned += r.scanned; total.linked += r.linked; total.created += r.created; total.skipped += r.skipped;
-        if (r.scanned === 0 || r.scanned < 100) { // 잔여 소진
-          alert(`완료 — 일지 ${total.scanned}건 처리, 활동 연결 ${total.linked}건 (신규 활동 ${total.created}개, 작업 특정불가 ${total.skipped}건)`);
+        if (r.scanned < batch || total.scanned >= maxCount) {
+          alert(`${r.scanned < batch ? '잔여 소진 — ' : ''}일지 ${total.scanned}건 처리, 활동 연결 ${total.linked}건 (신규 활동 ${total.created}개, 작업 특정불가 ${total.skipped}건)${total.scanned >= maxCount && r.scanned >= batch ? '\n남은 일지는 버튼을 다시 눌러 이어서 처리할 수 있습니다.' : ''}`);
           break;
         }
-        if (round === 40) alert(`40회차까지 처리 — 일지 ${total.scanned}건, 연결 ${total.linked}건. 남은 일지는 버튼을 다시 눌러 이어서 처리하세요.`);
       }
       const d = await apiJson<Overview>(`/api/activities/dashboard/overview?actorId=${encodeURIComponent(userId)}`); setData(d);
     } catch (e: any) { alert((e?.message || '실행 실패') + (total.scanned ? `\n(중단 전까지 ${total.scanned}건 처리, 연결 ${total.linked}건)` : '')); }
@@ -120,9 +125,26 @@ export function ActivityMap() {
         <h2 style={{ margin: '0 0 4px' }}>🗺 회사 활동 지도</h2>
         <div style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>프로세스 템플릿을 만들 때마다 회사의 <b>활동 사전</b>이 자동으로 자랍니다. 각 활동에 실행 기록(일지)과 인증 지식(🏅)이 쌓입니다.</span>
-          <button className="btn btn-sm btn-outline" disabled={mining} onClick={() => void mine()} title="기존 업무일지에서 활동을 추출해 사전을 채웁니다 (임원 이상)">
-            {mining ? `⛏ 추출 중... ${mineProgress}` : '⛏ 일지에서 활동 추출'}
-          </button>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #e2e8f0', borderRadius: 8, padding: '2px 6px', background: '#f8fafc' }}>
+            <select value={mineDays} disabled={mining} onChange={(e) => setMineDays(Number(e.target.value))} title="분석 기간" style={{ fontSize: 12, border: 'none', background: 'transparent' }}>
+              <option value={90}>최근 3개월</option>
+              <option value={180}>최근 6개월</option>
+              <option value={365}>최근 1년</option>
+              <option value={730}>최근 2년</option>
+              <option value={0}>전체 기간</option>
+            </select>
+            <select value={mineMax} disabled={mining} onChange={(e) => setMineMax(Number(e.target.value))} title="최대 분석 건수" style={{ fontSize: 12, border: 'none', background: 'transparent' }}>
+              <option value={100}>100건</option>
+              <option value={300}>300건</option>
+              <option value={500}>500건</option>
+              <option value={1000}>1,000건</option>
+              <option value={2000}>2,000건</option>
+              <option value={4000}>4,000건</option>
+            </select>
+            <button className="btn btn-sm btn-outline" disabled={mining} onClick={() => void mine()} title="선택한 기간·건수의 업무일지에서 활동을 추출해 사전을 채웁니다 (임원 이상)">
+              {mining ? `⛏ 추출 중... ${mineProgress}` : '⛏ 일지에서 활동 추출'}
+            </button>
+          </span>
           <button className="btn btn-sm btn-outline" disabled={organizing} onClick={() => void organize()} title="활동을 대분류(기능 영역)→중분류 체계로 정리합니다 (임원 이상)">
             {organizing ? '🗂 정리 중...' : '🗂 체계 정리'}
           </button>
