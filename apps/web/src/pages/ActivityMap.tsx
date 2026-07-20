@@ -60,18 +60,30 @@ export function ActivityMap() {
   }
 
   // 상향식 채굴: 기존 업무일지에서 활동 추출·정합 (반복 클릭 시 미연결 일지 이어서 처리)
+  const [mineProgress, setMineProgress] = useState('');
   async function mine() {
-    if (!confirm('최근 6개월 업무일지(최대 100건)에서 활동을 추출해 사전에 등록/연결합니다.\n반복 실행하면 남은 일지를 이어서 처리합니다. 진행할까요?')) return;
+    if (!confirm('최근 6개월의 미처리 업무일지 전체에서 활동을 추출해 사전에 등록/연결합니다.\n100건 단위로 자동 반복 처리하며 수 분 걸릴 수 있습니다 (중간에 페이지를 닫아도 처리된 만큼은 저장됨). 진행할까요?')) return;
     setMining(true);
+    const total = { scanned: 0, linked: 0, created: 0, skipped: 0 };
+    let failStreak = 0;
     try {
-      const r = await apiJson<{ scanned: number; linked: number; created: number; skipped: number; error?: string }>(`/api/activities/mine-worklogs`, {
-        method: 'POST', body: JSON.stringify({ actorId: userId, days: 180, limit: 100 }),
-      });
-      if (r.error) alert('AI 추출 실패 — 잠시 후 다시 시도하세요.');
-      else alert(`일지 ${r.scanned}건 처리 — 활동 연결 ${r.linked}건 (신규 활동 ${r.created}개, 작업 특정불가 ${r.skipped}건)`);
+      for (let round = 1; round <= 40; round++) {
+        setMineProgress(`${round}회차 · 누적 ${total.scanned}건 처리`);
+        const r = await apiJson<{ scanned: number; linked: number; created: number; skipped: number; error?: string }>(`/api/activities/mine-worklogs`, {
+          method: 'POST', body: JSON.stringify({ actorId: userId, days: 180, limit: 100 }),
+        });
+        if (r.error) { if (++failStreak >= 2) { alert('AI 추출이 연속 실패했습니다 — 잠시 후 다시 시도하세요.\n' + `(지금까지 ${total.scanned}건 처리, 연결 ${total.linked}건)`); break; } continue; }
+        failStreak = 0;
+        total.scanned += r.scanned; total.linked += r.linked; total.created += r.created; total.skipped += r.skipped;
+        if (r.scanned === 0 || r.scanned < 100) { // 잔여 소진
+          alert(`완료 — 일지 ${total.scanned}건 처리, 활동 연결 ${total.linked}건 (신규 활동 ${total.created}개, 작업 특정불가 ${total.skipped}건)`);
+          break;
+        }
+        if (round === 40) alert(`40회차까지 처리 — 일지 ${total.scanned}건, 연결 ${total.linked}건. 남은 일지는 버튼을 다시 눌러 이어서 처리하세요.`);
+      }
       const d = await apiJson<Overview>('/api/activities/dashboard/overview'); setData(d);
-    } catch (e: any) { alert(e?.message || '실행 실패'); }
-    finally { setMining(false); }
+    } catch (e: any) { alert((e?.message || '실행 실패') + (total.scanned ? `\n(중단 전까지 ${total.scanned}건 처리, 연결 ${total.linked}건)` : '')); }
+    finally { setMining(false); setMineProgress(''); }
   }
   const [q, setQ] = useState('');
   const [typeF, setTypeF] = useState('');
@@ -109,7 +121,7 @@ export function ActivityMap() {
         <div style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>프로세스 템플릿을 만들 때마다 회사의 <b>활동 사전</b>이 자동으로 자랍니다. 각 활동에 실행 기록(일지)과 인증 지식(🏅)이 쌓입니다.</span>
           <button className="btn btn-sm btn-outline" disabled={mining} onClick={() => void mine()} title="기존 업무일지에서 활동을 추출해 사전을 채웁니다 (팀장 이상)">
-            {mining ? '⛏ 추출 중... (1~2분)' : '⛏ 일지에서 활동 추출'}
+            {mining ? `⛏ 추출 중... ${mineProgress}` : '⛏ 일지에서 활동 추출'}
           </button>
           <button className="btn btn-sm btn-outline" disabled={organizing} onClick={() => void organize()} title="활동을 대분류(기능 영역)→중분류 체계로 정리합니다 (팀장 이상)">
             {organizing ? '🗂 정리 중...' : '🗂 체계 정리'}

@@ -26,7 +26,9 @@ export async function mineWorklogActivities(
   const where: any = { activityId: null };
   if (opts.worklogIds?.length) where.id = { in: opts.worklogIds };
   else {
-    where.visibility = 'ALL'; // 배치 채굴은 공개 일지만 (제한 일지는 인증 시 개별 연결됨)
+    // 제한(비공개) 일지도 채굴 대상에 포함한다 — 저장되는 활동명은 인스턴스 정보(고객사·금액 등)를
+    // 제거한 일반명이고, 일지 내용 노출은 조회 단계(knowledgeOf 등)에서 visibility로 걸러진다.
+    // 공개만 채굴하면 원가·영업처럼 비공개 위주로 쓰는 팀의 활동이 지도에서 통째로 빠진다.
     if (opts.onlyBadged) where.kbBadge = true;
     if (opts.days) where.date = { gte: new Date(Date.now() - opts.days * 86400000) };
   }
