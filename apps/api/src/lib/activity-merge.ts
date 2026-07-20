@@ -118,7 +118,7 @@ export async function mergeSimilarActivities(
           const clash = newNorm && newNorm !== canonical.normName ? await tx.activity.findFirst({ where: { normName: newNorm, id: { not: canonical.id } }, select: { id: true } }) : null;
           await tx.activity.update({ where: { id: canonical.id }, data: { name: canonName, aliases: aliasPool, ...(newNorm && !clash ? { normName: newNorm } : {}) } });
           await tx.activity.deleteMany({ where: { id: { in: otherIds } } });
-        });
+        }, { timeout: 20000 });
         merged++; removed += others.length;
         if (samples.length < 20) samples.push({ canonical: canonName, absorbed: absorbedNames });
       } catch (e: any) {

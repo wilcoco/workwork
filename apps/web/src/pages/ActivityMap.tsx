@@ -53,18 +53,25 @@ export function ActivityMap() {
     if (!confirm('이름이 비슷해 사실상 같은 반복작업인 활동들을 AI로 묶어 하나로 통합합니다.\n예: "구매원가 계산서 작성 및 송부", "구매원가 2차 계산서 작성" → "구매원가 계산서 작성".\n원본 이름은 별칭으로 보존됩니다. 후보가 소진될 때까지 자동 반복하며 수 분 걸릴 수 있습니다. 진행할까요?')) return;
     setMerging(true);
     const tot = { merged: 0, removed: 0 };
+    let failStreak = 0;
+    const MAX = 60;
     try {
-      for (let round = 1; round <= 30; round++) {
+      for (let round = 1; round <= MAX; round++) {
         setMergeProgress(`${round}회차 · 통합 ${tot.merged}그룹`);
-        const r = await apiJson<{ candidates: number; processed: number; merged: number; removed: number; remaining: number }>(`/api/activities/merge-similar`, {
-          method: 'POST', body: JSON.stringify({ actorId: userId, limit: 30 }),
-        });
+        let r: { candidates: number; processed: number; merged: number; removed: number; remaining: number };
+        try {
+          r = await apiJson(`/api/activities/merge-similar`, { method: 'POST', body: JSON.stringify({ actorId: userId, limit: 5 }) });
+        } catch (err: any) {
+          if (++failStreak >= 3) { alert(`서버 오류가 반복됩니다 — 잠시 후 다시 시도하세요.\n(지금까지 ${tot.merged}그룹 통합, ${tot.removed}개 정리)`); break; }
+          continue; // 일시적 오류는 건너뛰고 재시도
+        }
+        failStreak = 0;
         tot.merged += r.merged; tot.removed += r.removed;
-        if (r.remaining === 0 || r.processed === 0) {
+        if (r.remaining === 0 || r.candidates === 0) {
           alert(`완료 — ${tot.merged}개 그룹 통합, 중복 활동 ${tot.removed}개 정리`);
           break;
         }
-        if (round === 30) alert(`30회차까지 진행 — ${tot.merged}그룹 통합, ${tot.removed}개 정리. 남은 후보는 버튼을 다시 눌러 이어서 처리하세요.`);
+        if (round === MAX) alert(`${MAX}회차까지 진행 — ${tot.merged}그룹 통합, ${tot.removed}개 정리. 남은 후보는 버튼을 다시 눌러 이어서 처리하세요.`);
       }
       const d = await apiJson<Overview>(`/api/activities/dashboard/overview?actorId=${encodeURIComponent(userId)}`); setData(d);
     } catch (e: any) { alert((e?.message || '실행 실패') + (tot.merged ? `\n(중단 전까지 ${tot.merged}그룹 통합)` : '')); }
