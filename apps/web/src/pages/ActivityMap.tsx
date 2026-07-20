@@ -21,6 +21,7 @@ export function ActivityMap() {
   const [error, setError] = useState('');
   const [mining, setMining] = useState(false);
   const [organizing, setOrganizing] = useState(false);
+  const [orgProgress, setOrgProgress] = useState('');
 
   // 탑다운 매칭: KPI/중점과제를 활동과 연결
   const [mappingGoals, setMappingGoals] = useState(false);
@@ -45,18 +46,52 @@ export function ActivityMap() {
     } catch (e: any) { alert(e?.message || '생성 실패'); }
   }
 
-  // 체계 정리: 미분류 활동을 대분류/중분류로 AI 분류
-  async function organize() {
-    if (!confirm('추출된 활동을 회사 기능 체계(영업/생산/품질 등 대분류 → 중분류)로 정리합니다. 진행할까요?')) return;
-    setOrganizing(true);
+  // 유사 활동 병합: 잘게 쪼개진 활동을 하나의 반복작업으로 통합 (반복 실행 시 남은 후보 이어서)
+  const [merging, setMerging] = useState(false);
+  const [mergeProgress, setMergeProgress] = useState('');
+  async function mergeSimilar() {
+    if (!confirm('이름이 비슷해 사실상 같은 반복작업인 활동들을 AI로 묶어 하나로 통합합니다.\n예: "구매원가 계산서 작성 및 송부", "구매원가 2차 계산서 작성" → "구매원가 계산서 작성".\n원본 이름은 별칭으로 보존됩니다. 후보가 소진될 때까지 자동 반복하며 수 분 걸릴 수 있습니다. 진행할까요?')) return;
+    setMerging(true);
+    const tot = { merged: 0, removed: 0 };
     try {
-      const r = await apiJson<{ classified: number; remaining: number }>(`/api/activities/organize`, {
-        method: 'POST', body: JSON.stringify({ actorId: userId }),
-      });
-      alert(`활동 ${r.classified}개 분류 완료${r.remaining ? ` (미분류 ${r.remaining}개 남음 — 다시 실행하면 이어서 처리)` : ' — 전부 분류됨'}`);
+      for (let round = 1; round <= 30; round++) {
+        setMergeProgress(`${round}회차 · 통합 ${tot.merged}그룹`);
+        const r = await apiJson<{ candidates: number; processed: number; merged: number; removed: number; remaining: number }>(`/api/activities/merge-similar`, {
+          method: 'POST', body: JSON.stringify({ actorId: userId, limit: 30 }),
+        });
+        tot.merged += r.merged; tot.removed += r.removed;
+        if (r.remaining === 0 || r.processed === 0) {
+          alert(`완료 — ${tot.merged}개 그룹 통합, 중복 활동 ${tot.removed}개 정리`);
+          break;
+        }
+        if (round === 30) alert(`30회차까지 진행 — ${tot.merged}그룹 통합, ${tot.removed}개 정리. 남은 후보는 버튼을 다시 눌러 이어서 처리하세요.`);
+      }
+      const d = await apiJson<Overview>(`/api/activities/dashboard/overview?actorId=${encodeURIComponent(userId)}`); setData(d);
+    } catch (e: any) { alert((e?.message || '실행 실패') + (tot.merged ? `\n(중단 전까지 ${tot.merged}그룹 통합)` : '')); }
+    finally { setMerging(false); setMergeProgress(''); }
+  }
+
+  // 체계 정리: 미분류 활동을 대분류/중분류로 AI 분류 (미분류 소진까지 자동 반복)
+  async function organize() {
+    if (!confirm('추출된 활동을 회사 기능 체계(영업/생산/품질 등 대분류 → 중분류)로 정리합니다.\n미분류가 없어질 때까지 자동 반복하며 수 분 걸릴 수 있습니다. 진행할까요?')) return;
+    setOrganizing(true);
+    let totalClassified = 0;
+    try {
+      for (let round = 1; round <= 30; round++) {
+        setOrgProgress(`${round}회차 · 누적 ${totalClassified}개`);
+        const r = await apiJson<{ classified: number; remaining: number }>(`/api/activities/organize`, {
+          method: 'POST', body: JSON.stringify({ actorId: userId }),
+        });
+        totalClassified += r.classified;
+        if (r.remaining === 0 || r.classified === 0) {
+          alert(`활동 ${totalClassified}개 분류 완료${r.remaining ? ` (미분류 ${r.remaining}개 남음)` : ' — 전부 분류됨'}`);
+          break;
+        }
+        if (round === 30) alert(`30회차까지 진행 — ${totalClassified}개 분류. 남으면 버튼을 다시 누르세요.`);
+      }
       const d = await apiJson<Overview>(`/api/activities/dashboard/overview?actorId=${encodeURIComponent(userId)}`); setData(d);
     } catch (e: any) { alert(e?.message || '실행 실패'); }
-    finally { setOrganizing(false); }
+    finally { setOrganizing(false); setOrgProgress(''); }
   }
 
   // 상향식 채굴: 기존 업무일지에서 활동 추출·정합 (반복 클릭 시 미연결 일지 이어서 처리)
@@ -145,8 +180,11 @@ export function ActivityMap() {
               {mining ? `⛏ 추출 중... ${mineProgress}` : '⛏ 일지에서 활동 추출'}
             </button>
           </span>
+          <button className="btn btn-sm btn-outline" disabled={merging} onClick={() => void mergeSimilar()} title="이름이 비슷해 사실상 같은 활동을 하나로 통합합니다 (원본명은 별칭 보존, 임원 이상)">
+            {merging ? `🔗 통합 중... ${mergeProgress}` : '🔗 유사 활동 병합'}
+          </button>
           <button className="btn btn-sm btn-outline" disabled={organizing} onClick={() => void organize()} title="활동을 대분류(기능 영역)→중분류 체계로 정리합니다 (임원 이상)">
-            {organizing ? '🗂 정리 중...' : '🗂 체계 정리'}
+            {organizing ? `🗂 정리 중... ${orgProgress}` : '🗂 체계 정리'}
           </button>
           <button className="btn btn-sm btn-outline" disabled={mappingGoals} onClick={() => void mapGoals()} title="KPI 지표·중점과제를 활동과 매칭합니다 (임원 이상)">
             {mappingGoals ? '🎯 매칭 중...' : '🎯 KPI·과제 매칭'}

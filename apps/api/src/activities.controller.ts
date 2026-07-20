@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { mineWorklogActivities } from './lib/activity-miner';
+import { mergeSimilarActivities } from './lib/activity-merge';
 import { callAI } from './llm/ai-client';
 
 /** 체계 대분류 — 제한된 풀 (AI는 이 안에서만 고른다) */
@@ -31,6 +32,14 @@ export class ActivitiesController {
     if (!uid) throw new BadRequestException('actorId required');
     await this.assertExec(uid);
     return mineWorklogActivities(this.prisma, { actorId: uid, days: body?.days ?? 180, onlyBadged: !!body?.onlyBadged, limit: body?.limit ?? 100 });
+  }
+
+  /** 유사 활동 병합 — 잘게 쪼개진 활동을 하나의 반복작업으로 통합 (임원 이상). 반복 실행 시 남은 후보 이어서 처리 */
+  @Post('merge-similar')
+  async mergeSimilar(@Body() body: { actorId?: string; limit?: number; threshold?: number; dryRun?: boolean }) {
+    const uid = String(body?.actorId || '').trim();
+    await this.assertExec(uid);
+    return mergeSimilarActivities(this.prisma, { actorId: uid, limit: body?.limit, threshold: body?.threshold, dryRun: !!body?.dryRun });
   }
 
   /** 체계 정리 — 미분류 활동을 대분류(고정 풀)/중분류로 AI 분류 (임원 이상) */
