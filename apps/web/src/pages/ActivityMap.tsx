@@ -16,8 +16,25 @@ type Knowledge = { activity: { id: string; name: string; taskType?: string; crit
 const TYPE_KO: Record<string, string> = { WORKLOG: '업무', APPROVAL: '결재', COOPERATION: '협조' };
 
 export function ActivityMap() {
+  const userId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
+  const [mining, setMining] = useState(false);
+
+  // 상향식 채굴: 기존 업무일지에서 활동 추출·정합 (반복 클릭 시 미연결 일지 이어서 처리)
+  async function mine() {
+    if (!confirm('최근 6개월 업무일지(최대 100건)에서 활동을 추출해 사전에 등록/연결합니다.\n반복 실행하면 남은 일지를 이어서 처리합니다. 진행할까요?')) return;
+    setMining(true);
+    try {
+      const r = await apiJson<{ scanned: number; linked: number; created: number; skipped: number; error?: string }>(`/api/activities/mine-worklogs`, {
+        method: 'POST', body: JSON.stringify({ actorId: userId, days: 180, limit: 100 }),
+      });
+      if (r.error) alert('AI 추출 실패 — 잠시 후 다시 시도하세요.');
+      else alert(`일지 ${r.scanned}건 처리 — 활동 연결 ${r.linked}건 (신규 활동 ${r.created}개, 작업 특정불가 ${r.skipped}건)`);
+      const d = await apiJson<Overview>('/api/activities/dashboard/overview'); setData(d);
+    } catch (e: any) { alert(e?.message || '실행 실패'); }
+    finally { setMining(false); }
+  }
   const [q, setQ] = useState('');
   const [typeF, setTypeF] = useState('');
   const [sel, setSel] = useState<Knowledge | null>(null);
@@ -51,8 +68,11 @@ export function ActivityMap() {
     <div style={{ display: 'grid', gap: 16 }}>
       <div>
         <h2 style={{ margin: '0 0 4px' }}>🗺 회사 활동 지도</h2>
-        <div style={{ fontSize: 13, color: '#64748b' }}>
-          프로세스 템플릿을 만들 때마다 회사의 <b>활동 사전</b>이 자동으로 자랍니다. 각 활동에 실행 기록(일지)과 인증 지식(🏅)이 쌓입니다.
+        <div style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span>프로세스 템플릿을 만들 때마다 회사의 <b>활동 사전</b>이 자동으로 자랍니다. 각 활동에 실행 기록(일지)과 인증 지식(🏅)이 쌓입니다.</span>
+          <button className="btn btn-sm btn-outline" disabled={mining} onClick={() => void mine()} title="기존 업무일지에서 활동을 추출해 사전을 채웁니다 (팀장 이상)">
+            {mining ? '⛏ 추출 중... (1~2분)' : '⛏ 일지에서 활동 추출'}
+          </button>
         </div>
       </div>
 

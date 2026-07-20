@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
 import { canViewWorklog } from './lib/worklog-visibility';
 import { callAI } from './llm/ai-client';
+import { mineWorklogActivities } from './lib/activity-miner';
 
 class ReportDto {
   @IsString()
@@ -1767,7 +1768,7 @@ export class WorklogsController {
     if (!uid) throw new BadRequestException('userId required');
     const wl = await (this.prisma as any).worklog.findUnique({
       where: { id },
-      select: { id: true, note: true, createdById: true, kbBadge: true, kbBadgeNote: true },
+      select: { id: true, note: true, createdById: true, kbBadge: true, kbBadgeNote: true, activityId: true },
     });
     if (!wl) throw new BadRequestException('worklog not found');
     if (wl.createdById !== uid) throw new ForbiddenException('본인의 업무일지에만 사용할 수 있습니다');
@@ -1816,6 +1817,10 @@ export class WorklogsController {
       const reason = String(result?.parsed?.reason || '').trim().slice(0, 300);
       if (awarded) {
         await (this.prisma as any).worklog.update({ where: { id }, data: { kbBadge: true, kbBadgeNote: reason || null } });
+        // 온톨로지: 인증 지식이 활동에 귀속되도록, 미연결 일지는 백그라운드로 추출·정합
+        if (!wl.activityId) {
+          void mineWorklogActivities(this.prisma, { worklogIds: [id], actorId: uid }).catch(() => {});
+        }
         await (this.prisma as any).event.create({
           data: { subjectType: 'Worklog', subjectId: id, activity: 'KnowledgeBadgeAwarded', userId: uid, attrs: { reason } },
         }).catch(() => {});

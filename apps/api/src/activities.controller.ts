@@ -1,5 +1,6 @@
-import { BadRequestException, Controller, Get, Param, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { mineWorklogActivities } from './lib/activity-miner';
 
 /**
  * 온톨로지: 활동(Activity) 조회 API.
@@ -8,6 +9,18 @@ import { PrismaService } from './prisma.service';
 @Controller('activities')
 export class ActivitiesController {
   constructor(private prisma: PrismaService) {}
+
+  /** 업무일지에서 활동 추출·정합 (상향식 채굴, 팀장 이상). 반복 실행 시 미연결 일지만 이어서 처리 */
+  @Post('mine-worklogs')
+  async mineWorklogs(@Body() body: { actorId?: string; days?: number; onlyBadged?: boolean; limit?: number }) {
+    const uid = String(body?.actorId || '').trim();
+    if (!uid) throw new BadRequestException('actorId required');
+    const actor = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
+    if (!['CEO', 'EXEC', 'MANAGER'].includes(String(actor?.role || '').toUpperCase())) {
+      throw new ForbiddenException('팀장 이상만 실행할 수 있습니다');
+    }
+    return mineWorklogActivities(this.prisma, { actorId: uid, days: body?.days ?? 180, onlyBadged: !!body?.onlyBadged, limit: body?.limit ?? 100 });
+  }
 
   /** 활동 검색/목록 */
   @Get()
