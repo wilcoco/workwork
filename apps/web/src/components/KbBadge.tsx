@@ -29,6 +29,27 @@ export function KbBadge({ note, count }: { note?: string | null; count?: number 
   );
 }
 
+/**
+ * 작성자 누적 인증 횟수 — 문서 인증 배지와는 별개의 "작성자 통계" 표시.
+ * 배지(골드 인장)와 혼동되지 않도록 간격을 두고, 무채색 + 라벨 명시로 그린다.
+ */
+export function KbAuthorCount({ count }: { count?: number | null }) {
+  if (typeof count !== 'number' || count <= 0) return null;
+  return (
+    <span
+      title={`이 작성자가 지금까지 받은 지식 인증: 총 ${count}회`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', marginLeft: 8,
+        padding: '1px 8px', borderRadius: 6, fontSize: 10, fontWeight: 600,
+        color: '#475569', background: '#f1f5f9', border: '1px solid #cbd5e1',
+        verticalAlign: 'middle', whiteSpace: 'nowrap', lineHeight: 1.7,
+      }}
+    >
+      작성자 누적 인증 {count}회
+    </span>
+  );
+}
+
 /** 상세 문서용 인증서 블록: 인장 + 인증 문구 + AI 심사평 */
 export function KbBadgeSeal({ note, count }: { note?: string | null; count?: number | null }) {
   return (
