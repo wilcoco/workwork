@@ -38,23 +38,32 @@ export async function mineWorklogActivities(
   });
   if (!wls.length) return { scanned: 0, linked: 0, created: 0, skipped: 0 };
 
-  // 1) AI 배치 추출 (한 번의 호출)
+  // 1) AI 추출 — 20건씩 청크 (응답 JSON이 maxTokens를 넘지 않도록). 청크 실패는 해당 청크만 건너뜀.
   const extracted: Record<number, { name: string | null; taskType?: string }> = {};
-  try {
-    const userMsg = wls.map((w: any, i: number) => `#${i} ${strip(w.note).slice(0, 400)}`).join('\n---\n');
-    const res = await callAI({
-      model: 'claude', system: EXTRACT_SYS, user: userMsg, temperature: 0.1, maxTokens: 3000,
-      jsonSchema: {
-        name: 'wl_activities',
-        schema: {
-          type: 'object' as const,
-          properties: { items: { type: 'array', items: { type: 'object', properties: { index: { type: 'number' }, activityName: { type: ['string', 'null'] }, taskType: { type: 'string' } }, required: ['index'] } } },
-          required: ['items'],
+  const CHUNK = 20;
+  let aiErrors = 0;
+  for (let start = 0; start < wls.length; start += CHUNK) {
+    const chunk = wls.slice(start, start + CHUNK);
+    try {
+      const userMsg = chunk.map((w: any, j: number) => `#${start + j} ${strip(w.note).slice(0, 300)}`).join('\n---\n');
+      const res = await callAI({
+        model: 'claude', system: EXTRACT_SYS, user: userMsg, temperature: 0.1, maxTokens: 3500,
+        jsonSchema: {
+          name: 'wl_activities',
+          schema: {
+            type: 'object' as const,
+            properties: { items: { type: 'array', items: { type: 'object', properties: { index: { type: 'number' }, activityName: { type: ['string', 'null'] }, taskType: { type: 'string' } }, required: ['index'] } } },
+            required: ['items'],
+          },
         },
-      },
-    });
-    for (const m of res?.parsed?.items || []) extracted[Number(m.index)] = { name: m.activityName ? String(m.activityName).trim() : null, taskType: String(m.taskType || 'WORKLOG').toUpperCase() };
-  } catch {
+      });
+      for (const m of res?.parsed?.items || []) extracted[Number(m.index)] = { name: m.activityName ? String(m.activityName).trim() : null, taskType: String(m.taskType || 'WORKLOG').toUpperCase() };
+    } catch (e: any) {
+      aiErrors++;
+      console.error('[ontology-miner] extract chunk failed:', e?.message?.slice(0, 200));
+    }
+  }
+  if (aiErrors > 0 && Object.keys(extracted).length === 0) {
     return { scanned: wls.length, linked: 0, created: 0, skipped: wls.length, error: 'ai-extract-failed' };
   }
 
