@@ -244,4 +244,85 @@ export class ActivitiesController {
     const rich = [...items].filter((x: any) => x.knowledgeCount > 0).sort((a: any, b: any) => b.knowledgeCount - a.knowledgeCount).slice(0, 10);
     return { totals, items, risky, rich };
   }
+
+  /**
+   * 전략 정렬 지도 — 탑다운(전략 기둥 ▸ Objective ▸ KR/과제)과 바텀업(활동 ▸ 일지)을 잇는다.
+   * 각 목표에 연결된 활동의 실행량(일지)·지식(🏅)을 굴려올려, "선언된 목표에 실행 증거가 있는가",
+   * "실행은 많은데 목표에 연결 안 된 활동은 무엇인가"를 양방향으로 대조한다. (임원 이상)
+   */
+  @Get('strategy-map')
+  async strategyMap(@Query('actorId') actorId?: string) {
+    await this.assertExec(actorId);
+    const [objectives, initiatives, activities, wlCounts, kbCounts] = await Promise.all([
+      (this.prisma as any).objective.findMany({
+        select: {
+          id: true, title: true, pillar: true, parentId: true,
+          orgUnit: { select: { name: true } },
+          keyResults: { select: { id: true, title: true, metric: true, unit: true, target: true, activityId: true } },
+        },
+      }),
+      (this.prisma as any).keyInitiative.findMany({
+        where: { status: { not: 'DONE' } },
+        select: { id: true, title: true, status: true, activityId: true, alignsToObjectiveId: true, orgUnit: { select: { name: true } } },
+      }),
+      (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } }),
+      (this.prisma as any).worklog.groupBy({ by: ['activityId'], where: { activityId: { not: null } }, _count: { _all: true } }),
+      (this.prisma as any).worklog.groupBy({ by: ['activityId'], where: { activityId: { not: null }, kbBadge: true }, _count: { _all: true } }),
+    ]);
+
+    const wlMap = new Map(wlCounts.map((r: any) => [String(r.activityId), r._count._all]));
+    const kbMap = new Map(kbCounts.map((r: any) => [String(r.activityId), r._count._all]));
+    const actMap = new Map((activities as any[]).map((a) => [String(a.id), a]));
+    const evi = (activityId: string | null) => {
+      if (!activityId) return { activityId: null, activityName: null, domain: null, worklogCount: 0, knowledgeCount: 0 };
+      const a = actMap.get(String(activityId));
+      return { activityId, activityName: a?.name || '(삭제된 활동)', domain: a?.domain || null, worklogCount: Number(wlMap.get(String(activityId)) || 0), knowledgeCount: Number(kbMap.get(String(activityId)) || 0) };
+    };
+
+    // 과제를 정렬된 Objective별로 묶기
+    const kiByObj = new Map<string, any[]>();
+    for (const ki of initiatives) {
+      if (!ki.alignsToObjectiveId) continue;
+      const arr = kiByObj.get(ki.alignsToObjectiveId) || [];
+      arr.push({ id: ki.id, title: ki.title, status: ki.status, orgUnitName: ki.orgUnit?.name || null, ...evi(ki.activityId) });
+      kiByObj.set(ki.alignsToObjectiveId, arr);
+    }
+
+    const objOut = objectives.map((o: any) => {
+      const krs = (o.keyResults || []).map((k: any) => ({ id: k.id, title: k.title, metric: k.metric, unit: k.unit, target: k.target, ...evi(k.activityId) }));
+      const kis = kiByObj.get(o.id) || [];
+      const goals = [...krs, ...kis];
+      const worklogs = goals.reduce((s, g) => s + g.worklogCount, 0);
+      const knowledge = goals.reduce((s, g) => s + g.knowledgeCount, 0);
+      const linkedGoals = goals.filter((g) => g.activityId).length;
+      return {
+        id: o.id, title: o.title, pillar: o.pillar || null,
+        orgUnitName: o.orgUnit?.name || null,
+        auto: /^Auto Objective/i.test(o.title || ''),
+        krs, initiatives: kis,
+        exec: { worklogs, knowledge, totalGoals: goals.length, linkedGoals, unlinkedGoals: goals.length - linkedGoals },
+      };
+    });
+
+    // 역방향 공백: 실행(일지)은 많은데 어떤 목표에도 연결 안 된 활동 상위 12
+    const linkedActIds = new Set<string>();
+    for (const o of objOut) for (const g of [...o.krs, ...o.initiatives]) if (g.activityId) linkedActIds.add(String(g.activityId));
+    const orphanActivities = (activities as any[])
+      .map((a) => ({ id: a.id, name: a.name, domain: a.domain || null, worklogCount: Number(wlMap.get(String(a.id)) || 0), knowledgeCount: Number(kbMap.get(String(a.id)) || 0) }))
+      .filter((a) => !linkedActIds.has(String(a.id)) && a.worklogCount >= 3)
+      .sort((a, b) => b.worklogCount - a.worklogCount)
+      .slice(0, 12);
+
+    const totalGoals = objOut.reduce((s: number, o: any) => s + o.exec.totalGoals, 0);
+    const linkedGoals = objOut.reduce((s: number, o: any) => s + o.exec.linkedGoals, 0);
+    const totals = {
+      objectives: objOut.length,
+      goals: totalGoals,
+      linkedGoals,
+      // 실행 증거 없는 목표: 연결 활동 일지 0 (또는 미연결)
+      deadGoals: objOut.reduce((s: number, o: any) => s + [...o.krs, ...o.initiatives].filter((g: any) => g.worklogCount === 0).length, 0),
+      orphanActivities: orphanActivities.length,
+    };
+    return { totals, objectives: objOut, orphanActivities };
+  }
 }
