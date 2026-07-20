@@ -14,27 +14,31 @@ const DOMAINS = ['영업', '연구개발', '금형', '생산-사출', '생산-�
 export class ActivitiesController {
   constructor(private prisma: PrismaService) {}
 
-  /** 업무일지에서 활동 추출·정합 (상향식 채굴, 팀장 이상). 반복 실행 시 미연결 일지만 이어서 처리 */
+  /** 활동 지도는 전사 실행·목표 데이터를 한눈에 펼치므로 임원 이상 전용. 반환값 = 뷰어 role */
+  private async assertExec(uid?: string): Promise<string> {
+    const id = String(uid || '').trim();
+    if (!id) throw new BadRequestException('actorId required');
+    const actor = await (this.prisma as any).user.findUnique({ where: { id }, select: { role: true } });
+    const role = String(actor?.role || '').toUpperCase();
+    if (!['CEO', 'EXEC'].includes(role)) throw new ForbiddenException('임원 이상만 볼 수 있습니다');
+    return role;
+  }
+
+  /** 업무일지에서 활동 추출·정합 (상향식 채굴, 임원 이상). 반복 실행 시 미연결 일지만 이어서 처리 */
   @Post('mine-worklogs')
   async mineWorklogs(@Body() body: { actorId?: string; days?: number; onlyBadged?: boolean; limit?: number }) {
     const uid = String(body?.actorId || '').trim();
     if (!uid) throw new BadRequestException('actorId required');
-    const actor = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
-    if (!['CEO', 'EXEC', 'MANAGER'].includes(String(actor?.role || '').toUpperCase())) {
-      throw new ForbiddenException('팀장 이상만 실행할 수 있습니다');
-    }
+    await this.assertExec(uid);
     return mineWorklogActivities(this.prisma, { actorId: uid, days: body?.days ?? 180, onlyBadged: !!body?.onlyBadged, limit: body?.limit ?? 100 });
   }
 
-  /** 체계 정리 — 미분류 활동을 대분류(고정 풀)/중분류로 AI 분류 (팀장 이상) */
+  /** 체계 정리 — 미분류 활동을 대분류(고정 풀)/중분류로 AI 분류 (임원 이상) */
   @Post('organize')
   async organize(@Body() body: { actorId?: string }) {
     const uid = String(body?.actorId || '').trim();
     if (!uid) throw new BadRequestException('actorId required');
-    const actor = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
-    if (!['CEO', 'EXEC', 'MANAGER'].includes(String(actor?.role || '').toUpperCase())) {
-      throw new ForbiddenException('팀장 이상만 실행할 수 있습니다');
-    }
+    await this.assertExec(uid);
     const acts = await (this.prisma as any).activity.findMany({
       where: { domain: null },
       select: { id: true, name: true, taskType: true, roleHint: true },
@@ -82,10 +86,7 @@ export class ActivitiesController {
   async mapGoals(@Body() body: { actorId?: string }) {
     const uid = String(body?.actorId || '').trim();
     if (!uid) throw new BadRequestException('actorId required');
-    const actor = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
-    if (!['CEO', 'EXEC', 'MANAGER'].includes(String(actor?.role || '').toUpperCase())) {
-      throw new ForbiddenException('팀장 이상만 실행할 수 있습니다');
-    }
+    await this.assertExec(uid);
     const acts = await (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } });
     if (!acts.length) return { kpiMapped: 0, initiativeMapped: 0, note: '활동이 없습니다 — 먼저 추출/체계 정리를 실행하세요' };
     const actList = acts.map((a: any) => `[${a.id}] ${a.name}${a.domain ? ` (${a.domain})` : ''}`).join('\n');
@@ -138,7 +139,8 @@ export class ActivitiesController {
 
   /** 활동 검색/목록 */
   @Get()
-  async list(@Query('q') q?: string, @Query('limit') limitStr?: string) {
+  async list(@Query('q') q?: string, @Query('limit') limitStr?: string, @Query('actorId') actorId?: string) {
+    await this.assertExec(actorId);
     const limit = Math.min(parseInt(limitStr || '50', 10) || 50, 200);
     const where: any = q?.trim() ? { name: { contains: q.trim(), mode: 'insensitive' } } : {};
     const items = await (this.prisma as any).activity.findMany({ where, orderBy: { updatedAt: 'desc' }, take: limit });
@@ -157,17 +159,20 @@ export class ActivitiesController {
     return this.knowledgeOf(activityId);
   }
 
-  /** 활동의 축적 지식(🏅 인증 일지) */
+  /** 활동의 축적 지식(🏅 인증 일지) — 활동 지도(임원 이상)에서 호출, 모든 공개범위 자료 활용 */
   @Get(':id/knowledge')
-  async knowledge(@Param('id') id: string) {
-    return this.knowledgeOf(id);
+  async knowledge(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    const role = await this.assertExec(actorId);
+    const vis = role === 'CEO' ? undefined : { in: ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'] };
+    return this.knowledgeOf(id, vis);
   }
 
-  private async knowledgeOf(activityId: string) {
+  /** visibilityFilter 미지정(공개 ALL만) = 일반 구성원용(for-task). undefined 전달 = 전체 */
+  private async knowledgeOf(activityId: string, visibilityFilter: any = 'ALL') {
     const activity = await (this.prisma as any).activity.findUnique({ where: { id: activityId } });
     if (!activity) throw new BadRequestException('activity not found');
     const logs = await (this.prisma as any).worklog.findMany({
-      where: { activityId, kbBadge: true, visibility: 'ALL' }, // 공개 일지만 (제한 일지 유출 방지)
+      where: { activityId, kbBadge: true, ...(visibilityFilter !== undefined ? { visibility: visibilityFilter } : {}) },
       orderBy: { date: 'desc' },
       take: 5,
       select: { id: true, note: true, kbBadgeNote: true, date: true, createdBy: { select: { name: true } } },
@@ -191,7 +196,8 @@ export class ActivitiesController {
    * "회사가 무슨 일을 하고, 어디에 지식이 쌓였고, 어디가 비어 있는가"의 조망.
    */
   @Get('dashboard/overview')
-  async dashboard() {
+  async dashboard(@Query('actorId') actorId?: string) {
+    await this.assertExec(actorId);
     const [activities, tplCounts, wlCounts, kbCounts, lastRuns, kpiCounts, kiCounts] = await Promise.all([
       (this.prisma as any).activity.findMany({ orderBy: { createdAt: 'asc' } }),
       (this.prisma as any).processTaskTemplate.groupBy({ by: ['activityId'], where: { activityId: { not: null } }, _count: { _all: true } }),

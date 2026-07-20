@@ -584,7 +584,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/process/inbox">내 할 일</Link>
           <Link to="/process/my">참여 프로세스</Link>
           <Link to="/process/dashboard">프로세스 대시보드</Link>
-          <Link to="/process/activity-map">회사 활동 지도</Link>
+          {isExec && <Link to="/process/activity-map">회사 활동 지도</Link>}
           <Link to="/process/templates">프로세스 템플릿</Link>
           <Link to="/process/from-manual">매뉴얼로 프로세스 만들기 (AI)</Link>
         </NavDropdown>
@@ -857,7 +857,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/process/inbox', label: '내 할 일' },
         { to: '/process/my', label: '참여 프로세스' },
         { to: '/process/dashboard', label: '프로세스 대시보드' },
-        { to: '/process/activity-map', label: '회사 활동 지도' },
+        ...(isExec ? [{ to: '/process/activity-map', label: '회사 활동 지도' }] : []),
         { to: '/process/templates', label: '프로세스 템플릿' },
         { to: '/process/from-manual', label: '매뉴얼로 프로세스 만들기 (AI)' },
       ];

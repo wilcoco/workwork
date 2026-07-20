@@ -30,7 +30,7 @@ export function ActivityMap() {
     try {
       const r = await apiJson<any>(`/api/activities/map-goals`, { method: 'POST', body: JSON.stringify({ actorId: userId }) });
       alert(`KPI ${r.kpiMapped}/${r.kpiScanned}건, 중점과제 ${r.initiativeMapped}/${r.initiativeScanned}건 연결${r.note ? `\n${r.note}` : ''}`);
-      const d = await apiJson<Overview>('/api/activities/dashboard/overview'); setData(d);
+      const d = await apiJson<Overview>(`/api/activities/dashboard/overview?actorId=${encodeURIComponent(userId)}`); setData(d);
     } catch (e: any) { alert(e?.message || '실행 실패'); }
     finally { setMappingGoals(false); }
   }
@@ -54,7 +54,7 @@ export function ActivityMap() {
         method: 'POST', body: JSON.stringify({ actorId: userId }),
       });
       alert(`활동 ${r.classified}개 분류 완료${r.remaining ? ` (미분류 ${r.remaining}개 남음 — 다시 실행하면 이어서 처리)` : ' — 전부 분류됨'}`);
-      const d = await apiJson<Overview>('/api/activities/dashboard/overview'); setData(d);
+      const d = await apiJson<Overview>(`/api/activities/dashboard/overview?actorId=${encodeURIComponent(userId)}`); setData(d);
     } catch (e: any) { alert(e?.message || '실행 실패'); }
     finally { setOrganizing(false); }
   }
@@ -81,7 +81,7 @@ export function ActivityMap() {
         }
         if (round === 40) alert(`40회차까지 처리 — 일지 ${total.scanned}건, 연결 ${total.linked}건. 남은 일지는 버튼을 다시 눌러 이어서 처리하세요.`);
       }
-      const d = await apiJson<Overview>('/api/activities/dashboard/overview'); setData(d);
+      const d = await apiJson<Overview>(`/api/activities/dashboard/overview?actorId=${encodeURIComponent(userId)}`); setData(d);
     } catch (e: any) { alert((e?.message || '실행 실패') + (total.scanned ? `\n(중단 전까지 ${total.scanned}건 처리, 연결 ${total.linked}건)` : '')); }
     finally { setMining(false); setMineProgress(''); }
   }
@@ -90,7 +90,7 @@ export function ActivityMap() {
   const [sel, setSel] = useState<Knowledge | null>(null);
 
   useEffect(() => {
-    apiJson<Overview>('/api/activities/dashboard/overview')
+    apiJson<Overview>(`/api/activities/dashboard/overview?actorId=${encodeURIComponent(userId)}`)
       .then(setData)
       .catch((e) => setError(e?.message || '조회 실패'));
   }, []);
@@ -103,7 +103,7 @@ export function ActivityMap() {
   }, [data, q, typeF]);
 
   async function openKnowledge(id: string) {
-    try { setSel(await apiJson<Knowledge>(`/api/activities/${encodeURIComponent(id)}/knowledge`)); } catch {}
+    try { setSel(await apiJson<Knowledge>(`/api/activities/${encodeURIComponent(id)}/knowledge?actorId=${encodeURIComponent(userId)}`)); } catch {}
   }
 
   if (error) return <div style={{ padding: 24, color: '#ef4444' }}>{error}</div>;
@@ -120,13 +120,13 @@ export function ActivityMap() {
         <h2 style={{ margin: '0 0 4px' }}>🗺 회사 활동 지도</h2>
         <div style={{ fontSize: 13, color: '#64748b', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span>프로세스 템플릿을 만들 때마다 회사의 <b>활동 사전</b>이 자동으로 자랍니다. 각 활동에 실행 기록(일지)과 인증 지식(🏅)이 쌓입니다.</span>
-          <button className="btn btn-sm btn-outline" disabled={mining} onClick={() => void mine()} title="기존 업무일지에서 활동을 추출해 사전을 채웁니다 (팀장 이상)">
+          <button className="btn btn-sm btn-outline" disabled={mining} onClick={() => void mine()} title="기존 업무일지에서 활동을 추출해 사전을 채웁니다 (임원 이상)">
             {mining ? `⛏ 추출 중... ${mineProgress}` : '⛏ 일지에서 활동 추출'}
           </button>
-          <button className="btn btn-sm btn-outline" disabled={organizing} onClick={() => void organize()} title="활동을 대분류(기능 영역)→중분류 체계로 정리합니다 (팀장 이상)">
+          <button className="btn btn-sm btn-outline" disabled={organizing} onClick={() => void organize()} title="활동을 대분류(기능 영역)→중분류 체계로 정리합니다 (임원 이상)">
             {organizing ? '🗂 정리 중...' : '🗂 체계 정리'}
           </button>
-          <button className="btn btn-sm btn-outline" disabled={mappingGoals} onClick={() => void mapGoals()} title="KPI 지표·중점과제를 활동과 매칭합니다 (팀장 이상)">
+          <button className="btn btn-sm btn-outline" disabled={mappingGoals} onClick={() => void mapGoals()} title="KPI 지표·중점과제를 활동과 매칭합니다 (임원 이상)">
             {mappingGoals ? '🎯 매칭 중...' : '🎯 KPI·과제 매칭'}
           </button>
         </div>
