@@ -14,6 +14,30 @@ export class HealthController {
     return { ok: true, v: '2026_0422_0750' };
   }
 
+  /** AI 헬스체크 — 서버의 Claude 호출이 살아있는지, 실패면 어떤 오류인지 (키는 노출 안 함) */
+  @Get('ai')
+  async ai() {
+    const key = process.env.ANTHROPIC_API_KEY;
+    if (!key) return { ok: false, error: 'ANTHROPIC_API_KEY not set' };
+    const model = process.env.CLAUDE_MODEL || 'claude-opus-4-8';
+    const t0 = Date.now();
+    try {
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
+      });
+      const ms = Date.now() - t0;
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        return { ok: false, model, status: resp.status, ms, error: text.slice(0, 500) };
+      }
+      return { ok: true, model, ms };
+    } catch (e: any) {
+      return { ok: false, model, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 300) };
+    }
+  }
+
   @Get('db')
   async db() {
     try {
