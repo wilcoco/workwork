@@ -66,6 +66,7 @@ import { ProcessTemplates } from './pages/ProcessTemplates';
 import { ProcessDashboard } from './pages/ProcessDashboard';
 import { ActivityMap } from './pages/ActivityMap';
 import { StrategyMap } from './pages/StrategyMap';
+import { KpiContribution } from './pages/KpiContribution';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -432,6 +433,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/process/dashboard" element={<ProcessDashboard />} />
           <Route path="/process/activity-map" element={<ActivityMap />} />
           <Route path="/process/strategy-map" element={<StrategyMap />} />
+          <Route path="/process/kpi-contribution" element={<KpiContribution />} />
           <Route path="/process/my" element={<ProcessMy />} />
           <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
@@ -588,6 +590,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           {isExec && <Link to="/process/activity-map">회사 활동 지도</Link>}
           {isExec && <Link to="/process/strategy-map">전략 정렬 지도</Link>}
+          {isExec && <Link to="/process/kpi-contribution">KPI 기여 분석</Link>}
           <Link to="/process/templates">프로세스 템플릿</Link>
           <Link to="/process/from-manual">매뉴얼로 프로세스 만들기 (AI)</Link>
         </NavDropdown>
@@ -862,6 +865,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         ...(isExec ? [{ to: '/process/activity-map', label: '회사 활동 지도' }] : []),
         ...(isExec ? [{ to: '/process/strategy-map', label: '전략 정렬 지도' }] : []),
+        ...(isExec ? [{ to: '/process/kpi-contribution', label: 'KPI 기여 분석' }] : []),
         { to: '/process/templates', label: '프로세스 템플릿' },
         { to: '/process/from-manual', label: '매뉴얼로 프로세스 만들기 (AI)' },
       ];

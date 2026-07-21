@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, 
 import { PrismaService } from './prisma.service';
 import { mineWorklogActivities } from './lib/activity-miner';
 import { mergeSimilarActivities } from './lib/activity-merge';
+import { shortlist, type ActivityLite } from './lib/activity-match';
 import { callAI } from './llm/ai-client';
 
 /** 체계 대분류 — 제한된 풀 (AI는 이 안에서만 고른다) */
@@ -96,30 +97,40 @@ export class ActivitiesController {
     const uid = String(body?.actorId || '').trim();
     if (!uid) throw new BadRequestException('actorId required');
     await this.assertExec(uid);
-    const acts = await (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } });
+    const acts = await (this.prisma as any).activity.findMany({ select: { id: true, name: true, normName: true, aliases: true, domain: true } });
     if (!acts.length) return { kpiMapped: 0, initiativeMapped: 0, note: '활동이 없습니다 — 먼저 추출/체계 정리를 실행하세요' };
-    const actList = acts.map((a: any) => `[${a.id}] ${a.name}${a.domain ? ` (${a.domain})` : ''}`).join('\n');
+    const actsLite: ActivityLite[] = acts.map((a: any) => ({ id: a.id, name: a.name, normName: a.normName, aliases: Array.isArray(a.aliases) ? a.aliases : [] }));
+    const domainOf = new Map<string, string>(acts.map((a: any) => [a.id, a.domain || '']));
 
+    // 매칭률 개선: 활동 전체(수천 개)를 프롬프트에 넣지 않고, 목표 텍스트별로
+    // 유사도 상위 후보만 추려 그 안에서 고르게 한다(후보 밖 ID는 무시).
     const mapBatch = async (rows: Array<{ id: string; text: string }>, model: string): Promise<Map<string, string>> => {
       const out = new Map<string, string>();
-      const CHUNK = 25;
-      for (let st = 0; st < rows.length; st += CHUNK) {
-        const chunk = rows.slice(st, st + CHUNK);
+      const prepped = rows.map((r) => ({
+        ...r,
+        cands: shortlist(r.text, undefined, actsLite, 25).filter((c) => c.score >= 0.1),
+      })).filter((r) => r.cands.length > 0);
+      const CHUNK = 8;
+      for (let st = 0; st < prepped.length; st += CHUNK) {
+        const chunk = prepped.slice(st, st + CHUNK);
         try {
+          const user = chunk.map((r, j) =>
+            `#${st + j} ${r.text}\n  후보: ${r.cands.map((c) => `[${c.id}] ${c.name}${domainOf.get(c.id) ? `(${domainOf.get(c.id)})` : ''}`).join(' | ')}`
+          ).join('\n\n') + '\n\n출력: { "items": [{ "index": number, "activityId": string|null }] }';
           const res = await callAI({
             model: 'claude',
             system: `너는 회사 목표와 활동 사전을 연결하는 사서다. 반드시 JSON만 출력한다.
-각 ${model}이(가) 아래 [활동 목록] 중 어떤 활동의 성과/개선과 직접 관련되는지 판정하라.
-직접 관련이 확실할 때만 activityId를 지정하고, 애매하면 null. 잘못된 연결이 더 해롭다.
-[활동 목록]\n${actList}`,
-            user: chunk.map((r, j) => `#${st + j} ${r.text}`).join('\n') + '\n\n출력: { "items": [{ "index": number, "activityId": string|null }] }',
+각 ${model}이(가) 해당 항목의 [후보] 활동 중 어떤 활동의 성과/개선과 직접 관련되는지 판정하라.
+반드시 그 항목의 후보 안에서만 activityId를 고르고, 직접 관련이 확실치 않으면 null. 잘못된 연결이 더 해롭다.`,
+            user,
             temperature: 0.1, maxTokens: 1500,
             jsonSchema: { name: 'goal_map', schema: { type: 'object' as const, properties: { items: { type: 'array', items: { type: 'object', properties: { index: { type: 'number' }, activityId: { type: ['string', 'null'] } }, required: ['index'] } } }, required: ['items'] } },
           });
           for (const m of res?.parsed?.items || []) {
             const idx = Number(m.index) - st;
             const row = chunk[idx];
-            const vid = m.activityId && acts.some((a: any) => a.id === m.activityId) ? String(m.activityId) : null;
+            // 해당 행의 후보 안에서만 인정 (전체 사전 대비 오연결 방지)
+            const vid = row && m.activityId && row.cands.some((c) => c.id === m.activityId) ? String(m.activityId) : null;
             if (row && vid) out.set(row.id, vid);
           }
         } catch (e: any) { console.error('[ontology] map-goals chunk failed:', e?.message?.slice(0, 120)); }
@@ -333,5 +344,149 @@ export class ActivitiesController {
       orphanActivities: orphanActivities.length,
     };
     return { totals, objectives: objOut, orphanActivities };
+  }
+
+  /**
+   * KPI 기여 분석 (임원): 선택 월에 대해
+   *  ① 목표(KPI)별 투입시간·일지·인원·실적/달성률 랭킹 — "무엇이 KPI를 움직였나"
+   *  ② 시간은 많이 쓰는데 어떤 목표에도 연결 안 된 활동 — "돈 안 되는 시간 어디에 쓰나"
+   *  ③ 이번 달 실행 증거(일지) 없는 KPI
+   * 기여 판정 = 결정론적 조인 두 갈래의 합집합:
+   *  (a) 활동 링크: worklog.activityId == keyResult.activityId (🎯 매칭 전제)
+   *  (b) 실적 입력: ProgressEntry(worklogId, keyResultId) — 일지에서 지표값을 직접 입력한 증거
+   */
+  @Get('kpi-contribution')
+  async kpiContribution(@Query('actorId') actorId?: string, @Query('month') monthStr?: string) {
+    await this.assertExec(actorId);
+    const month = /^\d{4}-\d{2}$/.test(String(monthStr || '')) ? String(monthStr) : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+    const [y, m] = month.split('-').map(Number);
+    const start = new Date(`${month}-01T00:00:00+09:00`);
+    const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
+
+    const [worklogs, entries, krs, kiLinks] = await Promise.all([
+      (this.prisma as any).worklog.findMany({
+        where: { date: { gte: start, lt: end } },
+        select: {
+          id: true, activityId: true, timeSpentMinutes: true, createdById: true,
+          activity: { select: { name: true, domain: true } },
+        },
+      }),
+      (this.prisma as any).progressEntry.findMany({
+        where: { periodStart: { gte: start, lt: end }, NOT: { keyResultId: null } },
+        orderBy: { createdAt: 'desc' },
+        select: { keyResultId: true, worklogId: true, krValue: true },
+      }),
+      (this.prisma as any).keyResult.findMany({
+        where: { NOT: { objective: { title: { startsWith: 'Auto Objective' } } } },
+        select: {
+          id: true, title: true, unit: true, target: true, direction: true, pillar: true, activityId: true,
+          activity: { select: { name: true } },
+          objective: { select: { title: true, pillar: true, orgUnit: { select: { name: true } } } },
+        },
+      }),
+      (this.prisma as any).keyInitiative.findMany({ where: { NOT: { activityId: null } }, select: { activityId: true } }),
+    ]);
+
+    // 지표별 실적(월 최신값) + 실적 입력에 연결된 일지들
+    const valByKr = new Map<string, number>();
+    const entryWlByKr = new Map<string, Set<string>>();
+    const entryLinkedWl = new Set<string>();
+    for (const e of entries) {
+      const kid = String(e.keyResultId);
+      if (e.krValue != null && !valByKr.has(kid)) valByKr.set(kid, e.krValue); // createdAt desc → 첫 값이 최신
+      if (e.worklogId) {
+        const s = entryWlByKr.get(kid) || new Set<string>();
+        s.add(String(e.worklogId));
+        entryWlByKr.set(kid, s);
+        entryLinkedWl.add(String(e.worklogId));
+      }
+    }
+
+    // 활동별 월 일지 묶음
+    const wlByActivity = new Map<string, any[]>();
+    for (const w of worklogs) {
+      if (!w.activityId) continue;
+      const arr = wlByActivity.get(String(w.activityId)) || [];
+      arr.push(w);
+      wlByActivity.set(String(w.activityId), arr);
+    }
+    const wlById = new Map(worklogs.map((w: any) => [String(w.id), w]));
+
+    const achOf = (kr: any, v: number | null): number | null => {
+      if (v == null || kr.target == null) return null;
+      let pct: number;
+      if (kr.direction === 'AT_MOST') {
+        if (v <= 0) return 100;
+        if (kr.target === 0) return 0;
+        pct = (kr.target / v) * 100;
+      } else {
+        if (kr.target === 0) return null;
+        pct = (v / kr.target) * 100;
+      }
+      return Number.isFinite(pct) ? Math.round(pct * 10) / 10 : null;
+    };
+
+    // KPI(필러 있는 지표)만 대상
+    const kpiKrs = krs.filter((k: any) => k.pillar || k.objective?.pillar);
+    const goals = kpiKrs.map((kr: any) => {
+      const evidence = new Map<string, any>();
+      if (kr.activityId) for (const w of wlByActivity.get(String(kr.activityId)) || []) evidence.set(String(w.id), w);
+      for (const wid of entryWlByKr.get(String(kr.id)) || []) {
+        const w = wlById.get(wid);
+        if (w) evidence.set(wid, w);
+      }
+      const evArr = Array.from(evidence.values());
+      const minutes = evArr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
+      const people = new Set(evArr.map((w) => w.createdById)).size;
+      const value = valByKr.get(String(kr.id)) ?? null;
+      return {
+        krId: kr.id, title: kr.title, unit: kr.unit || '', target: kr.target,
+        pillar: kr.pillar || kr.objective?.pillar || null,
+        teamName: kr.objective?.orgUnit?.name || '',
+        activityName: kr.activity?.name || null,
+        value, ach: achOf(kr, value),
+        minutes, logs: evArr.length, people,
+      };
+    }).sort((a: any, b: any) => b.minutes - a.minutes);
+
+    // 목표(지표·중점과제) 어딘가에 연결된 활동 집합
+    const linkedActIds = new Set<string>();
+    for (const k of krs) if (k.activityId) linkedActIds.add(String(k.activityId));
+    for (const k of kiLinks) linkedActIds.add(String(k.activityId));
+
+    // ② 시간多·기여低: 이번 달 투입시간 상위인데 어떤 목표에도 연결 안 된 활동
+    const lowAgg = new Map<string, { name: string; domain: string | null; minutes: number; logs: number; people: Set<string> }>();
+    for (const [aid, arr] of wlByActivity) {
+      if (linkedActIds.has(aid)) continue;
+      const minutes = arr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
+      if (minutes <= 0) continue;
+      lowAgg.set(aid, {
+        name: arr[0].activity?.name || '(활동)', domain: arr[0].activity?.domain || null,
+        minutes, logs: arr.length, people: new Set(arr.map((w: any) => w.createdById)),
+      });
+    }
+    const lowContribution = Array.from(lowAgg.entries())
+      .map(([activityId, v]) => ({ activityId, name: v.name, domain: v.domain, minutes: v.minutes, logs: v.logs, people: v.people.size }))
+      .sort((a, b) => b.minutes - a.minutes)
+      .slice(0, 20);
+
+    // 전략 정렬률: 이번 달 전체 일지 시간 중 목표 연결(활동 링크 or 실적 입력) 시간 비율
+    let totalMinutes = 0, linkedMinutes = 0;
+    for (const w of worklogs) {
+      const t = w.timeSpentMinutes || 0;
+      totalMinutes += t;
+      if ((w.activityId && linkedActIds.has(String(w.activityId))) || entryLinkedWl.has(String(w.id))) linkedMinutes += t;
+    }
+
+    const noEvidence = goals.filter((g: any) => g.logs === 0 && g.value == null).map((g: any) => ({ krId: g.krId, title: g.title, teamName: g.teamName, pillar: g.pillar }));
+
+    return {
+      month,
+      align: { totalMinutes, linkedMinutes, pct: totalMinutes > 0 ? Math.round((linkedMinutes / totalMinutes) * 1000) / 10 : null },
+      coverage: { totalGoals: goals.length, withEvidence: goals.filter((g: any) => g.logs > 0 || g.value != null).length, matchedGoals: kpiKrs.filter((k: any) => k.activityId).length },
+      goals,
+      lowContribution,
+      noEvidence,
+    };
   }
 }
