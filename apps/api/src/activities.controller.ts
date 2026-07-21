@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, 
 import { PrismaService } from './prisma.service';
 import { mineWorklogActivities } from './lib/activity-miner';
 import { mergeSimilarActivities } from './lib/activity-merge';
-import { shortlist, type ActivityLite } from './lib/activity-match';
+import { bigramSim, normalizeActivityName, type ActivityLite } from './lib/activity-match';
 import { callAI } from './llm/ai-client';
 
 /** 체계 대분류 — 제한된 풀 (AI는 이 안에서만 고른다) */
@@ -104,11 +104,30 @@ export class ActivitiesController {
 
     // 매칭률 개선: 활동 전체(수천 개)를 프롬프트에 넣지 않고, 목표 텍스트별로
     // 유사도 상위 후보만 추려 그 안에서 고르게 한다(후보 밖 ID는 무시).
-    const mapBatch = async (rows: Array<{ id: string; text: string }>, model: string): Promise<Map<string, string>> => {
+    // 후보 검색은 긴 설명문이 아니라 짧은 키(제목/산식)별로 — 긴 문자열은 bigram이 희석돼 후보가 안 잡힌다.
+    // 주의: activity-match.shortlist()는 동일명 정합용 0.45 컷이 있어 여기선 부적합 →
+    // 컷 없이 bigram 직접 랭킹(상위 25, 최소 0.08). 최종 판정은 AI가 후보 안에서 보수적으로.
+    const candsForKeys = (keys: string[]) => {
+      const best = new Map<string, { id: string; name: string; score: number }>();
+      for (const key of keys) {
+        const norm = normalizeActivityName(String(key || ''));
+        if (norm.length < 2) continue;
+        for (const a of actsLite) {
+          let score = bigramSim(norm, a.normName);
+          for (const al of a.aliases || []) score = Math.max(score, bigramSim(norm, normalizeActivityName(al)));
+          // 포함 관계 부스트: 짧은 KPI 키가 활동명에 통째로 들어있으면(예: '도장품질' ⊂ '도장품질검사') 강한 후보
+          if (score < 0.6 && (a.normName.includes(norm) || norm.includes(a.normName))) score = 0.6;
+          const prev = best.get(a.id);
+          if (!prev || score > prev.score) best.set(a.id, { id: a.id, name: a.name, score });
+        }
+      }
+      return Array.from(best.values()).filter((c) => c.score >= 0.08).sort((a, b) => b.score - a.score).slice(0, 25);
+    };
+    const mapBatch = async (rows: Array<{ id: string; text: string; keys: string[] }>, model: string): Promise<Map<string, string>> => {
       const out = new Map<string, string>();
       const prepped = rows.map((r) => ({
         ...r,
-        cands: shortlist(r.text, undefined, actsLite, 25).filter((c) => c.score >= 0.1),
+        cands: candsForKeys(r.keys),
       })).filter((r) => r.cands.length > 0);
       const CHUNK = 8;
       for (let st = 0; st < prepped.length; st += CHUNK) {
@@ -138,12 +157,16 @@ export class ActivitiesController {
       return out;
     };
 
-    // KPI (팀 KPI 지표)
-    const krs = await (this.prisma as any).keyResult.findMany({
-      where: { activityId: null }, take: 200,
+    // KPI (팀 KPI 지표) — Auto Objective 컨테이너 하위·정크(Auto KR 등)는 제외
+    const krs = (await (this.prisma as any).keyResult.findMany({
+      where: { activityId: null, NOT: { objective: { title: { startsWith: 'Auto Objective' } } } }, take: 200,
       select: { id: true, title: true, metric: true, objective: { select: { title: true } } },
-    });
-    const krMap = await mapBatch(krs.map((k: any) => ({ id: k.id, text: `KPI: ${k.title}${k.metric ? ` (산식: ${k.metric})` : ''} / 목표: ${k.objective?.title || ''}` })), 'KPI 지표');
+    })).filter((k: any) => String(k.title || '').trim().length >= 2 && !/^auto kr/i.test(String(k.title || '').trim()));
+    const krMap = await mapBatch(krs.map((k: any) => ({
+      id: k.id,
+      text: `KPI: ${k.title}${k.metric ? ` (산식: ${k.metric})` : ''} / 목표: ${k.objective?.title || ''}`,
+      keys: [k.title, k.metric].filter(Boolean),
+    })), 'KPI 지표');
     for (const [id, aid] of krMap) await (this.prisma as any).keyResult.update({ where: { id }, data: { activityId: aid } });
 
     // 중점과제
@@ -151,7 +174,11 @@ export class ActivitiesController {
       where: { activityId: null }, take: 200,
       select: { id: true, title: true, goal: true },
     });
-    const kiMap = await mapBatch(kis.map((k: any) => ({ id: k.id, text: `과제: ${k.title}${k.goal ? ` / 목표: ${String(k.goal).slice(0, 80)}` : ''}` })), '중점과제');
+    const kiMap = await mapBatch(kis.map((k: any) => ({
+      id: k.id,
+      text: `과제: ${k.title}${k.goal ? ` / 목표: ${String(k.goal).slice(0, 80)}` : ''}`,
+      keys: [k.title],
+    })), '중점과제');
     for (const [id, aid] of kiMap) await (this.prisma as any).keyInitiative.update({ where: { id }, data: { activityId: aid } });
 
     return { kpiScanned: krs.length, kpiMapped: krMap.size, initiativeScanned: kis.length, initiativeMapped: kiMap.size };
