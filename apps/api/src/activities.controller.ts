@@ -123,12 +123,14 @@ export class ActivitiesController {
       }
       return Array.from(best.values()).filter((c) => c.score >= 0.08).sort((a, b) => b.score - a.score).slice(0, 25);
     };
+    const diag = { withCands: 0, aiCalls: 0, aiErrors: [] as string[], aiItems: 0, nulls: 0, invalidIds: 0 };
     const mapBatch = async (rows: Array<{ id: string; text: string; keys: string[] }>, model: string): Promise<Map<string, string>> => {
       const out = new Map<string, string>();
       const prepped = rows.map((r) => ({
         ...r,
         cands: candsForKeys(r.keys),
       })).filter((r) => r.cands.length > 0);
+      diag.withCands += prepped.length;
       const CHUNK = 8;
       for (let st = 0; st < prepped.length; st += CHUNK) {
         const chunk = prepped.slice(st, st + CHUNK);
@@ -145,14 +147,21 @@ export class ActivitiesController {
             temperature: 0.1, maxTokens: 1500,
             jsonSchema: { name: 'goal_map', schema: { type: 'object' as const, properties: { items: { type: 'array', items: { type: 'object', properties: { index: { type: 'number' }, activityId: { type: ['string', 'null'] } }, required: ['index'] } } }, required: ['items'] } },
           });
+          diag.aiCalls++;
           for (const m of res?.parsed?.items || []) {
+            diag.aiItems++;
             const idx = Number(m.index) - st;
             const row = chunk[idx];
+            if (!m.activityId) { diag.nulls++; continue; }
             // 해당 행의 후보 안에서만 인정 (전체 사전 대비 오연결 방지)
-            const vid = row && m.activityId && row.cands.some((c) => c.id === m.activityId) ? String(m.activityId) : null;
+            const vid = row && row.cands.some((c) => c.id === m.activityId) ? String(m.activityId) : null;
             if (row && vid) out.set(row.id, vid);
+            else diag.invalidIds++;
           }
-        } catch (e: any) { console.error('[ontology] map-goals chunk failed:', e?.message?.slice(0, 120)); }
+        } catch (e: any) {
+          diag.aiErrors.push(String(e?.message || e).slice(0, 160));
+          console.error('[ontology] map-goals chunk failed:', e?.message?.slice(0, 120));
+        }
       }
       return out;
     };
@@ -181,7 +190,7 @@ export class ActivitiesController {
     })), '중점과제');
     for (const [id, aid] of kiMap) await (this.prisma as any).keyInitiative.update({ where: { id }, data: { activityId: aid } });
 
-    return { kpiScanned: krs.length, kpiMapped: krMap.size, initiativeScanned: kis.length, initiativeMapped: kiMap.size };
+    return { kpiScanned: krs.length, kpiMapped: krMap.size, initiativeScanned: kis.length, initiativeMapped: kiMap.size, diag: { ...diag, aiErrors: diag.aiErrors.slice(0, 3) } };
   }
 
   /** 활동 검색/목록 */
