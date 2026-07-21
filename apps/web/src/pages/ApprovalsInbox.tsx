@@ -24,6 +24,8 @@ export function ApprovalsInbox() {
   const [total, setTotal] = useState(0);
   const [nameInput, setNameInput] = useState('');   // 신청자 이름 입력(즉시)
   const [nameQuery, setNameQuery] = useState('');    // 신청자 이름(디바운스 적용)
+  const [titleInput, setTitleInput] = useState('');  // 제목 검색 입력(즉시)
+  const [titleQuery, setTitleQuery] = useState('');  // 제목 검색(디바운스 적용)
   const [memberNames, setMemberNames] = useState<string[]>([]); // 드롭다운용 구성원 이름 목록
   const loadSeq = useRef(0); // 최신 로드만 반영(오래된 응답 무시)
 
@@ -52,14 +54,20 @@ export function ApprovalsInbox() {
     return () => clearTimeout(t);
   }, [nameInput]);
 
+  // 제목 검색 디바운스 (400ms — 서버가 문서 테이블 전체를 검색하므로 약간 여유)
+  useEffect(() => {
+    const t = setTimeout(() => setTitleQuery(titleInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [titleInput]);
+
   useEffect(() => {
     if (userId) void load();
-  }, [userId, statusFilter, subjectTypeFilter, typeFilter, nameQuery, page]);
+  }, [userId, statusFilter, subjectTypeFilter, typeFilter, nameQuery, titleQuery, page]);
 
   // Reset page when filter changes
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, subjectTypeFilter, typeFilter, nameQuery]);
+  }, [statusFilter, subjectTypeFilter, typeFilter, nameQuery, titleQuery]);
 
   async function load() {
     if (!userId) return;
@@ -75,6 +83,7 @@ export function ApprovalsInbox() {
       // PENDING 필터일 때는 자신의 차례인 것만 보여줌
       if (statusFilter === 'PENDING') params.set('currentApproverOnly', '1');
       if (nameQuery) params.set('requesterName', nameQuery); // 신청자(구성원) 이름 필터
+      if (titleQuery) params.set('titleQuery', titleQuery); // 문서 제목 검색 (서버가 대상 문서 검색)
       params.set('limit', String(PAGE_SIZE));
       params.set('offset', String((page - 1) * PAGE_SIZE));
       params.set('withTotal', '1');
@@ -212,6 +221,23 @@ export function ApprovalsInbox() {
             <button
               type="button"
               onClick={() => setNameInput('')}
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: 14 }}
+              title="지우기"
+            >✕</button>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>제목</label>
+          <input
+            value={titleInput}
+            onChange={(e) => setTitleInput(e.target.value)}
+            placeholder="제목/내용 검색"
+            style={{ ...input, width: 160 }}
+          />
+          {titleInput && (
+            <button
+              type="button"
+              onClick={() => setTitleInput('')}
               style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: 14 }}
               title="지우기"
             >✕</button>

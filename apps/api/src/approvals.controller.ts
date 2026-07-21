@@ -98,11 +98,58 @@ class ListApprovalsQueryDto {
 
   @IsOptional() @IsString()
   requesterName?: string; // 신청자(구성원) 이름으로 필터
+
+  @IsOptional() @IsString()
+  titleQuery?: string; // 문서 제목(대상 문서 내용) 검색 — 일지/배차/근태/출장/프로세스 전체
 }
 
 @Controller('approvals')
 export class ApprovalsController {
   constructor(private prisma: PrismaService) {}
+
+  /**
+   * 제목 검색: 결재 목록의 제목은 대상 문서에서 조립되므로(일지 첫 줄, 배차 목적지,
+   * 근태 종류, 출장지, 프로세스명), 각 대상 테이블을 검색해 subjectId 필터로 변환한다.
+   */
+  private async titleSubjectFilter(tqRaw?: string): Promise<any | null> {
+    const tq = String(tqRaw || '').trim();
+    if (!tq) return null;
+    const c = { contains: tq, mode: 'insensitive' as any };
+    const low = tq.toLowerCase();
+    // 근태 제목의 [종류] 라벨은 enum이라, 라벨 키워드가 검색어에 걸리면 해당 type도 포함
+    const KIND_LABELS: Array<[string, string[]]> = [
+      ['OT', ['ot', '오티', '연장근무']],
+      ['VACATION', ['휴가', '연차']],
+      ['PARENTAL_LEAVE', ['육아휴직', '육아']],
+      ['PUBLIC_DUTY', ['공가']],
+      ['EARLY_LEAVE', ['조퇴']],
+      ['FLEXIBLE', ['유연근무']],
+      ['HOLIDAY_WORK', ['휴일근무', '휴일대체']],
+      ['HOLIDAY_REST', ['대체휴무', '휴일대체']],
+    ];
+    const attTypes = KIND_LABELS.filter(([, ls]) => ls.some((l) => l.includes(low) || low.includes(l))).map(([t]) => t);
+    const take = 2000;
+    const [wls, cars, logis, atts, trips, procs] = await Promise.all([
+      this.prisma.worklog.findMany({ where: { note: c }, select: { id: true }, take }),
+      this.prisma.carDispatchRequest.findMany({ where: { OR: [{ destination: c }, { purpose: c }] }, select: { id: true }, take }),
+      (this.prisma as any).logisticsDispatchRequest.findMany({ where: { OR: [{ loadingPlace: c }, { unloadingPlace: c }, { vehicleType: c }, { cargoDetails: c }] }, select: { id: true }, take }),
+      this.prisma.attendanceRequest.findMany({ where: { OR: [{ reason: c }, ...(attTypes.length ? [{ type: { in: attTypes as any } }] : [])] }, select: { id: true }, take }),
+      (this.prisma as any).businessTripRequest.findMany({ where: { OR: [{ destination: c }, { purpose: c }] }, select: { id: true }, take }),
+      (this.prisma as any).processInstance.findMany({ where: { title: c }, select: { id: true }, take }),
+    ]);
+    const or: any[] = [];
+    const push = (type: string, rows: any[]) => {
+      if (rows.length) or.push({ subjectType: { equals: type, mode: 'insensitive' as any }, subjectId: { in: rows.map((r: any) => String(r.id)) } });
+    };
+    push('WORKLOG', wls); // DB에는 'Worklog'로 저장된 건도 있어 equals-insensitive 사용
+    push('CAR_DISPATCH', cars);
+    push('LOGISTICS_DISPATCH', logis);
+    push('ATTENDANCE', atts);
+    push('BUSINESS_TRIP', trips);
+    push('PROCESS', procs);
+    if (!or.length) return { id: '__no_title_match__' }; // 아무 문서도 안 걸리면 빈 결과
+    return { OR: or };
+  }
 
   @Get()
   async list(@Query() q: ListApprovalsQueryDto) {
@@ -136,6 +183,8 @@ export class ApprovalsController {
     if (rname) {
       and.push({ requestedBy: { name: { contains: rname, mode: 'insensitive' as any } } });
     }
+    const titleFilter = await this.titleSubjectFilter(q.titleQuery);
+    if (titleFilter) and.push(titleFilter);
     if (and.length) where.AND = and;
     if (q.from || q.to) {
       where.createdAt = {};
@@ -283,6 +332,8 @@ export class ApprovalsController {
     if (rname) {
       and.push({ requestedBy: { name: { contains: rname, mode: 'insensitive' as any } } });
     }
+    const titleFilter = await this.titleSubjectFilter(q.titleQuery);
+    if (titleFilter) and.push(titleFilter);
     if (and.length) where.AND = and;
     if (q.from || q.to) {
       where.createdAt = {};

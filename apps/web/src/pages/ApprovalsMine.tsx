@@ -13,6 +13,8 @@ export function ApprovalsMine() {
   const [statusFilter, setStatusFilter] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('ALL');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'APPROVAL' | 'REQUEST'>('ALL');
   const [subjectTypeFilter, setSubjectTypeFilter] = useState<'ALL' | 'ATTENDANCE' | 'BUSINESS_TRIP' | 'CAR_DISPATCH' | 'LOGISTICS_DISPATCH'>('ALL');
+  const [titleInput, setTitleInput] = useState('');
+  const [titleQuery, setTitleQuery] = useState('');
 
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -20,9 +22,14 @@ export function ApprovalsMine() {
   }, []);
 
   useEffect(() => {
+    const h = setTimeout(() => setTitleQuery(titleInput.trim()), 400);
+    return () => clearTimeout(h);
+  }, [titleInput]);
+
+  useEffect(() => {
     if (userId) void load(userId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, statusFilter, subjectTypeFilter]);
+  }, [userId, statusFilter, subjectTypeFilter, titleQuery]);
 
   async function load(reqUserId?: string) {
     const uid = reqUserId || userId;
@@ -35,6 +42,7 @@ export function ApprovalsMine() {
       params.set('limit', '50');
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
       if (subjectTypeFilter !== 'ALL') params.set('subjectType', subjectTypeFilter);
+      if (titleQuery) params.set('titleQuery', titleQuery); // 문서 제목 검색 (서버가 대상 문서 검색)
       const list = await apiJson<{ items: any[] }>(`/api/approvals?${params.toString()}`);
       const baseItems = (list.items || []).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       // enrich subjects
@@ -120,6 +128,23 @@ export function ApprovalsMine() {
             <option value="CAR_DISPATCH">차량 배차</option>
             <option value="LOGISTICS_DISPATCH">물류 배차</option>
           </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label style={{ fontSize: 12, color: '#475569' }}>제목</label>
+          <input
+            value={titleInput}
+            onChange={(e) => setTitleInput(e.target.value)}
+            placeholder="제목/내용 검색"
+            style={{ ...input, width: 160 }}
+          />
+          {titleInput && (
+            <button
+              type="button"
+              onClick={() => setTitleInput('')}
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: 14 }}
+              title="지우기"
+            >✕</button>
+          )}
         </div>
         {loading && <span style={{ fontSize: 12, color: '#64748b' }}>로딩중...</span>}
       </div>
