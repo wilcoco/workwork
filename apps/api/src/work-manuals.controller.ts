@@ -3,6 +3,7 @@ import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import { BASE_TYPES, BASE_TYPE_MAP, QUESTION_SETS, TACIT_KNOWLEDGE_QUESTIONS, OPTION_GROUPS, AI_SYSTEM_PROMPT, recommendOptions, detectSecurityInfo, type PhaseData } from './manual-externalization.constants';
 import { callAI, type AIModel } from './llm/ai-client';
+import { exactMatch, shortlist } from './lib/activity-match';
 
 class CreateWorkManualDto {
   @IsString() @IsNotEmpty()
@@ -448,6 +449,7 @@ export class WorkManualsController {
     const created = await (this.prisma as any).workManual.create({
       data: { userId: uid, title, content, authorName, authorTeamName, department, baseType, options, phaseData, currentPhase },
     });
+    void this.linkManualActivity(created.id, String(dto.title || '')).catch(() => {}); // 온톨로지: 제목 기준 활동 결정론 연결 (AI 불필요)
     return created;
   }
 
@@ -1072,6 +1074,15 @@ targetField 가능한 값: ${allowedFields}
       layerScore: layerScore ?? null,
       stepScores: ruleResult.stepScores,
     };
+  }
+
+  /** 매뉴얼→활동 결정론 연결: 제목이 활동명/별칭과 일치하거나 유사도 0.7 이상일 때만 (오연결 방지) */
+  private async linkManualActivity(manualId: string, title: string) {
+    if (!title.trim()) return;
+    const acts = (await (this.prisma as any).activity.findMany({ select: { id: true, name: true, normName: true, aliases: true, taskType: true } }))
+      .map((a: any) => ({ ...a, aliases: Array.isArray(a.aliases) ? a.aliases : [] }));
+    const hit = exactMatch(title, acts) || (() => { const c = shortlist(title, undefined, acts, 1)[0]; return c && c.score >= 0.7 ? c : null; })();
+    if (hit) await (this.prisma as any).workManual.update({ where: { id: manualId }, data: { activityId: hit.id } });
   }
 
   /**

@@ -416,6 +416,8 @@ model WorkManual {
   @@index([status])
   @@index([reviewerId])
   @@index([baseType])
+  activityId String? // 온톨로지: 이 매뉴얼이 정의하는 활동
+
 }
 
 model Event {
