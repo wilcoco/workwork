@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 
 /**
@@ -33,6 +34,14 @@ export function OntologyExplorer() {
   const [error, setError] = useState('');
   const [trail, setTrail] = useState<Chip[]>([]); // 탐색 경로 (빵부스러기)
   const [viewMode, setViewMode] = useState<'graph' | 'card'>('graph');
+  const [sp] = useSearchParams();
+
+  // 조감도 등 외부에서 ?type=&id= 로 바로 진입
+  useEffect(() => {
+    const t = sp.get('type'), i = sp.get('id');
+    if (t && i && !data) void open({ type: t, id: i, label: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const debounceRef = useRef<number | undefined>(undefined);
 
   // 검색 디바운스
@@ -55,12 +64,13 @@ export function OntologyExplorer() {
     try {
       const r = await apiJson<Explore>(`/api/ontology/explore?type=${encodeURIComponent(chip.type)}&id=${encodeURIComponent(chip.id)}&actorId=${encodeURIComponent(userId)}`);
       setData(r);
+      const label = chip.label || r.node?.label || '';
       setTrail((prev) => {
         if (fromTrail) {
           const i = prev.findIndex((x) => x.type === chip.type && x.id === chip.id);
-          return i >= 0 ? prev.slice(0, i + 1) : [...prev, chip];
+          return i >= 0 ? prev.slice(0, i + 1) : [...prev, { ...chip, label }];
         }
-        return [...prev.slice(-7), { type: chip.type, id: chip.id, label: chip.label }];
+        return [...prev.slice(-7), { type: chip.type, id: chip.id, label }];
       });
     } catch (e: any) { setError(e?.message || '조회 실패'); }
     finally { setLoading(false); }

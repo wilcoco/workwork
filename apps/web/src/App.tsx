@@ -68,6 +68,7 @@ import { ProcessDashboard } from './pages/ProcessDashboard';
 import { ActivityMap } from './pages/ActivityMap';
 import { StrategyMap } from './pages/StrategyMap';
 import { OntologyExplorer } from './pages/OntologyExplorer';
+import { CompanyAtlas } from './pages/CompanyAtlas';
 import { KpiContribution } from './pages/KpiContribution';
 import { CompanyPulse } from './pages/CompanyPulse';
 import { ProcessInbox } from './pages/ProcessInbox';
@@ -438,6 +439,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/process/activity-map" element={<ActivityMap />} />
           <Route path="/process/strategy-map" element={<StrategyMap />} />
           <Route path="/process/ontology" element={<OntologyExplorer />} />
+          <Route path="/process/atlas" element={<CompanyAtlas />} />
           <Route path="/process/kpi-contribution" element={<KpiContribution />} />
           <Route path="/process/company-pulse" element={<CompanyPulse />} />
           <Route path="/process/my" element={<ProcessMy />} />
@@ -597,6 +599,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/process/dashboard">프로세스 대시보드</Link>
           {isExec && <Link to="/process/activity-map">회사 활동 지도</Link>}
           {isExec && <Link to="/process/strategy-map">전략 정렬 지도</Link>}
+          {isExec && <Link to="/process/atlas">회사 조감도</Link>}
           {isExec && <Link to="/process/ontology">온톨로지 탐색기</Link>}
           {isExec && <Link to="/process/kpi-contribution">KPI 기여 분석</Link>}
           {isExec && <Link to="/process/company-pulse">회사 실행 현황판</Link>}
@@ -875,6 +878,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/process/dashboard', label: '프로세스 대시보드' },
         ...(isExec ? [{ to: '/process/activity-map', label: '회사 활동 지도' }] : []),
         ...(isExec ? [{ to: '/process/strategy-map', label: '전략 정렬 지도' }] : []),
+        ...(isExec ? [{ to: '/process/atlas', label: '회사 조감도' }] : []),
         ...(isExec ? [{ to: '/process/ontology', label: '온톨로지 탐색기' }] : []),
         ...(isExec ? [{ to: '/process/kpi-contribution', label: 'KPI 기여 분석' }] : []),
         ...(isExec ? [{ to: '/process/company-pulse', label: '회사 실행 현황판' }] : []),
