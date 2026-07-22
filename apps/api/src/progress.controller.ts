@@ -202,8 +202,14 @@ export class ProgressController {
     const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
     const entries = await this.prisma.progressEntry.findMany({
       where: { keyResultId: { in: krIds }, actorId: uid, periodStart: { gte: start, lt: end } },
-      select: { keyResultId: true },
+      orderBy: { createdAt: 'desc' },
+      select: { keyResultId: true, krValue: true },
     });
+    const latestVal = new Map<string, number>();
+    for (const e of entries) {
+      const k = String(e.keyResultId);
+      if (e.krValue != null && !latestVal.has(k)) latestVal.set(k, e.krValue); // desc → 첫 값이 최신
+    }
     const filled = new Set(entries.map((e) => String(e.keyResultId)));
     return {
       month,
@@ -213,6 +219,7 @@ export class ProgressController {
         unit: a.keyResult.unit || '',
         target: a.keyResult.target ?? null,
         filled: filled.has(String(a.keyResult.id)),
+        value: latestVal.get(String(a.keyResult.id)) ?? null,
       })),
     };
   }

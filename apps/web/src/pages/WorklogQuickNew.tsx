@@ -34,8 +34,10 @@ export function WorklogQuickNew() {
   const [helpTickets, setHelpTickets] = useState<Array<{ id: string; label: string }>>([]);
   const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [selection, setSelection] = useState<string>('new:1'); // default: 수동 입력(신규 과제)
-  // 이번 달 실적 미입력 KPI 넛지 (KPI를 과제로 받아 일지에서 입력하는 흐름의 유도)
-  const [kpiNudge, setKpiNudge] = useState<Array<{ krId: string; title: string; unit: string; target: number | null }>>([]);
+  // 내 KPI 과제 보드 — 일지가 KPI를 과제로 받아 입력하는 완성형 구조.
+  // 할당된 KPI 전체가 기본 골격으로 뜨고, 한 일지에서 여러 KPI 실적을 함께 기록한다.
+  const [kpiBoard, setKpiBoard] = useState<Array<{ krId: string; title: string; unit: string; target: number | null; filled: boolean; value: number | null }>>([]);
+  const [kpiInputs, setKpiInputs] = useState<Record<string, string>>({}); // krId → 이번 달 실적값 입력
   const [krValue, setKrValue] = useState<string>('');
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
   const [krAchieved, setKrAchieved] = useState<boolean>(false);
@@ -168,9 +170,9 @@ export function WorklogQuickNew() {
         setOrgUnitId(ou);
         setMyRole((me as any)?.role || '');
         const myId = me.id || uid;
-        // 이번 달 실적 미입력 KPI 넛지 로드 (실패는 조용히)
-        apiJson<{ items: Array<{ krId: string; title: string; unit: string; target: number | null; filled: boolean }> }>(`/api/progress/my-kpi-month?userId=${encodeURIComponent(myId)}`)
-          .then((r) => setKpiNudge((r.items || []).filter((x) => !x.filled).map(({ krId, title, unit, target }) => ({ krId, title, unit, target }))))
+        // 내 KPI 과제 보드 로드 (실패는 조용히)
+        apiJson<{ items: Array<{ krId: string; title: string; unit: string; target: number | null; filled: boolean; value: number | null }> }>(`/api/progress/my-kpi-month?userId=${encodeURIComponent(myId)}`)
+          .then((r) => setKpiBoard(r.items || []))
           .catch(() => {});
         // Always load my own initiatives (personal OKR/KPI tasks) and enrich with my OKR metadata (O/KR)
         try {
@@ -627,6 +629,24 @@ export function WorklogQuickNew() {
           }
         }
       }
+      // 내 KPI 과제 보드: 입력된 실적값들을 이 일지에 연결해 일괄 기록.
+      // (기존 단일 선택(kr:) 경로로 이미 보낸 KPI는 중복 방지를 위해 건너뜀)
+      {
+        const legacyKrId = selection.startsWith('kr:') ? selection.substring(3) : null;
+        for (const [krId, raw] of Object.entries(kpiInputs)) {
+          const s = String(raw).trim();
+          if (!s || krId === legacyKrId) continue;
+          const v = Number(s);
+          if (!Number.isFinite(v)) continue;
+          if (!kpiBoard.some((k) => k.krId === krId)) continue; // 내 할당 KPI만
+          try {
+            await apiJson('/api/progress', {
+              method: 'POST',
+              body: JSON.stringify({ subjectType: 'KR', subjectId: krId, actorId: userId, worklogId: wl.id, krValue: v, note: title || undefined, at: date }),
+            });
+          } catch {}
+        }
+      }
       // 중점 추진 과제: 일지 내용을 과제 진행 컨텐츠로 축적 (진행률 입력 시 상태 자동 갱신)
       if (isKi) {
         const kiId = selection.substring(3);
@@ -866,30 +886,45 @@ export function WorklogQuickNew() {
         </div>
         {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         <form onSubmit={submit} style={{ display: 'grid', gap: 10 }}>
-          {kpiNudge.length > 0 && (
-            <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 12px' }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>
-                📊 이번 달 실적 미입력 KPI {kpiNudge.length}개 — 클릭해서 이 일지에 실적을 함께 기록하세요
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {kpiNudge.map((k) => (
-                  <button
-                    key={k.krId}
-                    type="button"
-                    onClick={() => { setSelection(`kr:${k.krId}`); }}
-                    style={{
-                      fontSize: 12, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
-                      border: selection === `kr:${k.krId}` ? '1.5px solid #b45309' : '1px solid #fcd34d',
-                      background: selection === `kr:${k.krId}` ? '#fde68a' : '#fff',
-                      color: '#92400e', fontWeight: selection === `kr:${k.krId}` ? 700 : 500,
-                    }}
-                  >
-                    {k.title}{k.target != null ? ` (목표 ${k.target}${k.unit})` : ''}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {kpiBoard.length > 0 && (() => {
+            const unfilled = kpiBoard.filter((k) => !k.filled);
+            const inputCount = Object.values(kpiInputs).filter((v) => String(v).trim() !== '').length;
+            return (
+              <details open={unfilled.length > 0} style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 12px' }}>
+                <summary style={{ fontSize: 13, fontWeight: 700, color: '#b45309', cursor: 'pointer' }}>
+                  📊 내 KPI 과제 ({kpiBoard.length - unfilled.length}/{kpiBoard.length} 입력됨{unfilled.length ? ` · 미입력 ${unfilled.length}` : ''})
+                  {inputCount > 0 && <span style={{ marginLeft: 8, fontSize: 11, background: '#b45309', color: '#fff', borderRadius: 10, padding: '1px 8px' }}>이 일지에 {inputCount}건 기록</span>}
+                </summary>
+                <div style={{ fontSize: 11, color: '#a16207', margin: '6px 0 8px' }}>
+                  이번 달 실적값을 적으면 일지 저장 시 KPI에 함께 기록됩니다. (여러 개 동시 입력 가능)
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {[...unfilled, ...kpiBoard.filter((k) => k.filled)].map((k) => (
+                    <div key={k.krId} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 10px', flexWrap: 'wrap' }}>
+                      <span style={{ flex: 1, minWidth: 160, fontSize: 13, fontWeight: 600, color: '#78350f' }}>
+                        {k.title}
+                        <span style={{ fontWeight: 400, color: '#a16207' }}>{k.target != null ? ` · 목표 ${k.target}${k.unit}` : ''}</span>
+                      </span>
+                      {k.filled && (
+                        <span style={{ fontSize: 11, color: '#15803d', background: '#dcfce7', borderRadius: 10, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                          ✓ 입력됨{k.value != null ? ` ${k.value}${k.unit}` : ''}
+                        </span>
+                      )}
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder={k.filled ? '수정값' : '이번 달 실적'}
+                        value={kpiInputs[k.krId] ?? ''}
+                        onChange={(e) => setKpiInputs((prev) => ({ ...prev, [k.krId]: e.target.value }))}
+                        style={{ width: 110, padding: '5px 8px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13 }}
+                      />
+                      <span style={{ fontSize: 12, color: '#94a3b8', minWidth: 24 }}>{k.unit}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          })()}
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
           <div className="resp-2">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} required />
