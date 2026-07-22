@@ -170,16 +170,28 @@ export class OntologyController {
       });
       if (!w) throw new BadRequestException('not found');
       if (vis && !['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'].includes(String(w.visibility || 'ALL'))) throw new ForbiddenException('열람 권한이 없는 일지입니다');
-      const [act2, entLinks2] = await Promise.all([
+      const [act2, entLinks2, wlTags] = await Promise.all([
         w.activityId ? p.activity.findUnique({ where: { id: w.activityId } }) : null,
         p.worklogEntity.findMany({ where: { worklogId: oid }, select: { entityId: true } }),
+        p.worklogGoalTag.findMany({ where: { worklogId: oid, goalType: { in: ['KR', 'KI'] }, goalId: { not: '' } } }),
       ]);
+      const tagKrIds = wlTags.filter((x: any) => x.goalType === 'KR').map((x: any) => x.goalId);
+      const tagKiIds = wlTags.filter((x: any) => x.goalType === 'KI').map((x: any) => x.goalId);
+      const [tagKrs, tagKis] = await Promise.all([
+        tagKrIds.length ? p.keyResult.findMany({ where: { id: { in: tagKrIds } }, select: { id: true, title: true } }) : [],
+        tagKiIds.length ? p.keyInitiative.findMany({ where: { id: { in: tagKiIds } }, select: { id: true, title: true } }) : [],
+      ]);
+      const srcOf = (gid: string, gt: string) => (wlTags.find((x: any) => x.goalId === gid && x.goalType === gt)?.source === 'USER' ? '본인 확정' : 'AI 분류');
       const ents2 = entLinks2.length ? await p.ontologyEntity.findMany({ where: { id: { in: entLinks2.map((l: any) => l.entityId) } } }) : [];
       const first = String(w.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       return {
         node: { type: 'worklog', id: w.id, label: first.slice(0, 80) || '(내용 없음)', sub: `업무일지 · ${w.createdBy?.name || ''} · ${w.date ? new Date(w.date).toISOString().slice(0, 10) : ''}${w.kbBadge ? ' · 🏅 지식인증' : ''}`, meta: {} },
         sections: [
           { key: 'activity', label: '수행한 활동', items: act2 ? [{ type: 'activity', id: act2.id, label: act2.name, sub: act2.domain }] : [], summary: act2 ? undefined : '활동 미연결 (⛏ 채굴 대상)' },
+          { key: 'goals', label: '기여 KPI·과제', items: [
+            ...tagKrs.map((k: any) => ({ type: 'keyResult', id: k.id, label: k.title, sub: srcOf(k.id, 'KR') })),
+            ...tagKis.map((k: any) => ({ type: 'keyInitiative', id: k.id, label: k.title, sub: srcOf(k.id, 'KI') })),
+          ] },
           { key: 'entities', label: '다룬 대상', items: ents2.map((e2: any) => ({ type: 'entity', id: e2.id, label: e2.name, sub: ENTITY_KIND_KO[e2.kind] || '대상' })) },
           { key: 'people', label: '작성자', items: [
             ...(w.createdBy ? [{ type: 'user', id: w.createdBy.id, label: w.createdBy.name, sub: w.createdBy.orgUnit?.name || null }] : []),
@@ -210,14 +222,29 @@ export class OntologyController {
         ? await p.keyResult.findUnique({ where: { id: oid }, include: { objective: { select: { id: true, title: true, pillar: true } } } })
         : await p.keyInitiative.findUnique({ where: { id: oid }, include: { alignsToObjective: { select: { id: true, title: true, pillar: true } }, assignee: { select: { name: true } } } });
       if (!g) throw new BadRequestException('not found');
-      const act = g.activityId ? await p.activity.findUnique({ where: { id: g.activityId } }) : null;
-      const st = act ? await actStats([act.id]) : new Map();
       const obj = isKr ? g.objective : g.alignsToObjective;
+      const tagWhere = { goalType: isKr ? 'KR' : 'KI', goalId: oid };
+      const [links, tagRows] = await Promise.all([
+        p.goalActivityLink.findMany({ where: tagWhere, select: { activityId: true } }),
+        p.worklogGoalTag.findMany({ where: tagWhere, select: { worklogId: true } }),
+      ]);
+      const linkActIds = [...new Set([...(g.activityId ? [String(g.activityId)] : []), ...links.map((l: any) => String(l.activityId))])];
+      const linkActs = linkActIds.length ? await p.activity.findMany({ where: { id: { in: linkActIds } } }) : [];
+      const st = await actStats(linkActIds);
+      const tagWlIds = tagRows.map((r: any) => r.worklogId);
+      const [tagWlRecent, tagTime, kisUnder] = await Promise.all([
+        tagWlIds.length ? p.worklog.findMany({ where: { id: { in: tagWlIds }, ...(vis ? { visibility: vis } : {}) }, orderBy: { date: 'desc' }, take: 6, select: { id: true, note: true, date: true, kbBadge: true, createdBy: { select: { name: true } } } }) : [],
+        tagWlIds.length ? p.worklog.aggregate({ where: { id: { in: tagWlIds } }, _sum: { timeSpentMinutes: true } }) : { _sum: { timeSpentMinutes: 0 } },
+        isKr && obj ? p.keyInitiative.findMany({ where: { alignsToObjectiveId: obj.id }, select: { id: true, title: true, status: true }, take: 10 }) : [],
+      ]);
+      const tagHours = Math.round(Number(tagTime._sum.timeSpentMinutes || 0) / 60);
       return {
         node: { type: t, id: g.id, label: g.title, sub: isKr ? `KPI${g.metric ? ` · 산식: ${g.metric}` : ''}` : `중점과제 · ${g.status}${g.assignee?.name ? ` · ${g.assignee.name}` : ''}` },
         sections: [
           { key: 'strategy', label: '전략 계보', items: obj ? [{ type: 'objective', id: obj.id, label: obj.title, sub: obj.pillar || '전략 미지정' }] : [] },
-          { key: 'activity', label: isKr ? '측정하는 활동' : '개선하는 활동', items: act ? [actChip(act, st.get(act.id))] : [], summary: act ? undefined : '활동 미연결 — 활동 지도에서 🎯 매칭 실행' },
+          ...(isKr ? [{ key: 'initiatives', label: '이 KPI 밑의 중점과제', items: kisUnder.map((k: any) => ({ type: 'keyInitiative', id: k.id, label: k.title, sub: k.status })) }] : []),
+          { key: 'activity', label: isKr ? '측정하는 활동' : '개선하는 활동', items: linkActs.map((a: any) => actChip(a, st.get(String(a.id)))), summary: linkActs.length ? undefined : '활동 미연결 — 활동 지도에서 🎯 매칭 실행' },
+          { key: 'execution', label: '기여 일지 (KPI 태그)', items: tagWlRecent.map((w: any) => this.wlChip(w)), summary: tagWlIds.length ? `태그 일지 ${tagWlIds.length}건 · 투입 ${tagHours}h` : '태그된 일지 없음' },
         ],
       };
     }
@@ -272,17 +299,27 @@ export class OntologyController {
       const o = await p.orgUnit.findUnique({ where: { id: oid }, select: { id: true, name: true, type: true, users: { select: { id: true, name: true }, take: 50 } } });
       if (!o) throw new BadRequestException('not found');
       const memberIds = o.users.map((u: any) => u.id);
-      const [objs, manCnt, wlTop] = await Promise.all([
+      const [objs, manCnt, wlTop, teamKrs, teamKis] = await Promise.all([
         p.objective.findMany({ where: { orgUnitId: oid }, select: { id: true, title: true, pillar: true }, take: 12 }),
         p.workManual.count({ where: { userId: { in: memberIds } } }),
         memberIds.length ? p.worklog.groupBy({ by: ['activityId'], where: { createdById: { in: memberIds }, activityId: { not: null } }, _count: { _all: true }, orderBy: { _count: { activityId: 'desc' } }, take: 10 }).catch(() => []) : [],
+        p.keyResult.findMany({ where: { objective: { orgUnitId: oid } }, select: { id: true, title: true, unit: true, objective: { select: { pillar: true } } }, take: 20 }),
+        p.keyInitiative.findMany({ where: { OR: [{ orgUnitId: oid }, { alignsToObjective: { orgUnitId: oid } }] }, select: { id: true, title: true, status: true }, take: 12 }),
       ]);
+      // KPI별 실행량(태그 일지 수) — 팀의 주요 연결노드로 KPI를 세우고 실행 증거를 붙인다
+      const krTagCnt = new Map<string, number>();
+      if (teamKrs.length) {
+        const grp = await p.worklogGoalTag.groupBy({ by: ['goalId'], where: { goalType: 'KR', goalId: { in: teamKrs.map((k: any) => k.id) } }, _count: { _all: true } }).catch(() => []);
+        for (const r of grp as any[]) krTagCnt.set(String(r.goalId), r._count._all);
+      }
       const actIds = wlTop.map((r: any) => String(r.activityId));
       const acts = actIds.length ? await p.activity.findMany({ where: { id: { in: actIds } } }) : [];
       const actById = new Map<string, any>(acts.map((a: any) => [String(a.id), a] as [string, any]));
       return {
         node: { type: 'orgUnit', id: o.id, label: o.name, sub: `조직 · 구성원 ${o.users.length}명 · 매뉴얼 ${manCnt}개` },
         sections: [
+          { key: 'kpis', label: 'KPI (실행 태그)', items: [...teamKrs].sort((a: any, b: any) => (krTagCnt.get(String(b.id)) || 0) - (krTagCnt.get(String(a.id)) || 0)).slice(0, 12).map((k: any) => ({ type: 'keyResult', id: k.id, label: k.title, sub: `${k.objective?.pillar || ''}${krTagCnt.get(String(k.id)) ? ` · 일지 ${krTagCnt.get(String(k.id))}건` : ' · 태그 0'}`.trim() })) },
+          { key: 'initiatives', label: '중점과제', items: teamKis.map((k: any) => ({ type: 'keyInitiative', id: k.id, label: k.title, sub: k.status })) },
           { key: 'strategy', label: '목표', items: objs.filter((x: any) => !/^Auto Objective/i.test(x.title)).map((x: any) => ({ type: 'objective', id: x.id, label: x.title, sub: x.pillar || '전략 미지정' })) },
           { key: 'activities', label: '주요 활동 (일지 기준)', items: wlTop.map((r: any) => { const a = actById.get(String(r.activityId)); return a ? { type: 'activity', id: a.id, label: a.name, sub: a.domain, worklogs: r._count._all, knowledge: 0 } : null; }).filter(Boolean) },
           { key: 'people', label: '구성원', items: o.users.slice(0, 12).map((u: any) => ({ type: 'user', id: u.id, label: u.name, sub: null })) },
