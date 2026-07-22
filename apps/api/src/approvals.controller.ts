@@ -108,6 +108,33 @@ export class ApprovalsController {
   constructor(private prisma: PrismaService) {}
 
   /**
+   * 결재 참여자 통보 — 상신자 + 결재선 결재자들에게 의견/최종결과를 푸시한다.
+   * onlyActed=true면 이미 승인한 앞 단계만(중간 의견 통보), false면 결재선 전원(최종 결과 통보).
+   */
+  private async notifyParticipants(tx: any, opts: { req: any; type: string; actorId: string; comment?: string; onlyActed?: boolean }) {
+    const actor = await tx.user.findUnique({ where: { id: opts.actorId }, select: { name: true } }).catch(() => null);
+    const targets = new Set<string>([opts.req.requestedById]);
+    for (const st of opts.req.steps || []) {
+      if (opts.onlyActed && st.status !== 'APPROVED') continue;
+      targets.add(st.approverId);
+    }
+    targets.delete(opts.actorId);
+    const comment = String(opts.comment || '').trim();
+    for (const uid of targets) {
+      await tx.notification.create({
+        data: {
+          userId: uid, type: opts.type, subjectType: opts.req.subjectType, subjectId: opts.req.subjectId,
+          payload: {
+            requestId: opts.req.id, byId: opts.actorId, byName: actor?.name || '',
+            ...(comment ? { comment, reason: comment } : {}),
+            forRequester: uid === opts.req.requestedById,
+          },
+        },
+      });
+    }
+  }
+
+  /**
    * 제목 검색: 결재 목록의 제목은 대상 문서에서 조립되므로(일지 첫 줄, 배차 목적지,
    * 근태 종류, 출장지, 프로세스명), 각 대상 테이블을 검색해 subjectId 필터로 변환한다.
    */
@@ -534,7 +561,7 @@ export class ApprovalsController {
           await exec.finalizeMilestoneApproval(tx as any, id, 'APPROVED', dto.actorId, dto.comment);
         }
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id, comment: dto.comment } } });
-        await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
+        await this.notifyParticipants(tx, { req, type: 'ApprovalGranted', actorId: dto.actorId, comment: dto.comment });
         return updated;
       });
     }
@@ -590,6 +617,10 @@ export class ApprovalsController {
           await (tx as any).notification.create({ data: { userId: na.approverId, type: 'ApprovalRequested', subjectType: req.subjectType, subjectId: req.subjectId, payload: { requestId: id, requestedById: req.requestedById } } });
         }
         await (tx as any).event.create({ data: { subjectType: req.subjectType, subjectId: req.subjectId, activity: 'ApprovalRequested', userId: dto.actorId, attrs: { requestId: id, nextStepNo: nextStageNo } } });
+        // 의견을 단 승인 → 상신자 + 이미 결재한 앞 단계에 의견 통보
+        if (String(dto.comment || '').trim()) {
+          await this.notifyParticipants(tx, { req, type: 'ApprovalCommented', actorId: dto.actorId, comment: dto.comment, onlyActed: true });
+        }
       });
       return await this.prisma.approvalRequest.findUnique({ where: { id }, include: { steps: true } });
     }
@@ -617,7 +648,7 @@ export class ApprovalsController {
         await exec.finalizeMilestoneApproval(tx as any, id, 'APPROVED', dto.actorId, dto.comment);
       }
       await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id } } });
-      await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalGranted', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id } } });
+      await this.notifyParticipants(tx, { req, type: 'ApprovalGranted', actorId: dto.actorId, comment: dto.comment });
       return updated;
     });
   }
@@ -649,7 +680,7 @@ export class ApprovalsController {
           await exec.finalizeMilestoneApproval(tx as any, id, 'REJECTED', dto.actorId, dto.comment);
         }
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, reason: dto.comment } } });
-        await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
+        await this.notifyParticipants(tx, { req, type: 'ApprovalRejected', actorId: dto.actorId, comment: dto.comment });
         return updated;
       });
     }
@@ -700,7 +731,7 @@ export class ApprovalsController {
       const engine = new ProcessesController(this.prisma);
       await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
       await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo, reason: dto.comment } } });
-      await (tx as any).notification.create({ data: { userId: updated.requestedById, type: 'ApprovalRejected', subjectType: updated.subjectType, subjectId: updated.subjectId, payload: { requestId: id, reason: dto.comment } } });
+      await this.notifyParticipants(tx, { req, type: 'ApprovalRejected', actorId: dto.actorId, comment: dto.comment });
       return updated;
     });
   }

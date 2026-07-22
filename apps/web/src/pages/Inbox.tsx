@@ -7,7 +7,11 @@ function getNotificationUrl(n: any): string {
   const t = String(n?.type || '').trim();
   const st = String(n?.subjectType || '').toUpperCase();
   const sid = String(n?.subjectId || '');
-  if (t === 'ApprovalRequested' || t === 'ApprovalGranted' || t === 'ApprovalRejected') return '/approvals/inbox';
+  if (t === 'ApprovalRequested') return '/approvals/inbox';
+  if (t === 'ApprovalGranted' || t === 'ApprovalRejected' || t === 'ApprovalCommented') {
+    // 상신자는 올린 결재에서, 결재 참여자는 결재하기에서 보는 게 자연스럽다
+    return n?.payload?.forRequester ? '/approvals/mine' : '/approvals/inbox';
+  }
   if (st === 'CAR_SWAP' || t === 'CarSwapRequested' || t === 'CarSwapAgreed' || t === 'CarSwapDeclined') return '/dispatch/corporate';
   if (t === 'HelpRequested') return '/coops/inbox';
   if (t === 'Delegated') return '/me/goals';
@@ -27,6 +31,7 @@ function typeLabel(n: any): string {
   if (t === 'ApprovalRequested') return '결재 요청';
   if (t === 'ApprovalGranted') return '결재 승인';
   if (t === 'ApprovalRejected') return '결재 반려';
+  if (t === 'ApprovalCommented') return '결재 의견';
   if (t === 'HelpRequested') return '업무 요청';
   if (t === 'CarSwapRequested') return '차량 교환 요청';
   if (t === 'CarSwapAgreed') return '차량 교환 동의';
@@ -124,6 +129,19 @@ export function Inbox() {
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>{formatKstDatetime(n.createdAt)}</span>
               </div>
               <div style={{ fontSize: 12, color: '#475569' }}>{n.subjectType}{n.subjectId ? ` · ${n.subjectId.slice(0, 8)}…` : ''}</div>
+              {(() => {
+                const p = n.payload || {};
+                const t = String(n.type || '');
+                const isApproval = t === 'ApprovalGranted' || t === 'ApprovalRejected' || t === 'ApprovalCommented';
+                if (!isApproval || (!p.byName && !p.comment)) return null;
+                const verb = t === 'ApprovalGranted' ? '최종 승인' : t === 'ApprovalRejected' ? '반려' : '의견과 함께 승인';
+                return (
+                  <div style={{ fontSize: 12, color: '#334155', marginTop: 3 }}>
+                    {p.byName ? <b>{p.byName}</b> : null}{p.byName ? ` — ${verb}` : ''}
+                    {p.comment ? <span style={{ color: '#64748b' }}>{' · "'}{String(p.comment).slice(0, 120)}{'"'}</span> : null}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
