@@ -57,6 +57,7 @@ export function Home() {
   const [pendingInstructions, setPendingInstructions] = useState<any[]>([]);
   const [pendingComments, setPendingComments] = useState<any[]>([]); // 내 업무일지에 달린 답변 필요한 댓글
   const [pendingSwaps, setPendingSwaps] = useState<any[]>([]); // 내게 온 차량 교환 요청 (대기중)
+  const [approvalNotices, setApprovalNotices] = useState<any[]>([]); // 결재 소식: 의견/최종 승인·반려 (안 읽은 것)
   const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
   const [overdueYear, setOverdueYear] = useState<'2026' | 'before' | 'all'>('2026');
   const [overdueLoading, setOverdueLoading] = useState(false);
@@ -328,6 +329,14 @@ export function Home() {
       } catch {
         setPendingComments([]);
       }
+      // 결재 소식: 내가 참여한 결재의 의견/최종결과 알림 (안 읽은 것)
+      try {
+        const res = await apiJson<{ items: any[] }>(`/api/inbox?userId=${encodeURIComponent(viewerId)}&onlyUnread=true&limit=50`);
+        const kinds = ['ApprovalCommented', 'ApprovalGranted', 'ApprovalRejected'];
+        setApprovalNotices((res.items || []).filter((n: any) => kinds.includes(String(n.type || ''))).slice(0, 10));
+      } catch {
+        setApprovalNotices([]);
+      }
       // 나에게 온 차량 교환 요청 (대기중)
       try {
         const res = await apiJson<{ items: any[] }>(`/api/car-dispatch/swap-inbox?userId=${encodeURIComponent(viewerId)}`);
@@ -414,7 +423,7 @@ export function Home() {
         </div>
       )}
       {/* 알림 배너 */}
-      {(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0) && (
+      {(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
@@ -448,6 +457,39 @@ export function Home() {
               >
                 결재하기 →
               </button>
+            </div>
+          )}
+          {approvalNotices.length > 0 && (
+            <div style={{ background: '#faf5ff', border: '1px solid #d8b4fe', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, color: '#7e22ce', marginBottom: 6, fontSize: 13 }}>📮 결재 소식 ({approvalNotices.length}건) - 의견·최종 결과</div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {approvalNotices.slice(0, 3).map((n: any) => {
+                  const p = n.payload || {};
+                  const t = String(n.type || '');
+                  const verb = t === 'ApprovalGranted' ? '최종 승인' : t === 'ApprovalRejected' ? '반려' : '의견';
+                  const verbColor = t === 'ApprovalRejected' ? '#dc2626' : t === 'ApprovalGranted' ? '#16a34a' : '#7e22ce';
+                  return (
+                    <div
+                      key={n.id}
+                      onClick={() => {
+                        apiJson(`/api/notifications/${n.id}/read`, { method: 'POST', body: JSON.stringify({ actorId: localStorage.getItem('userId') || '' }) }).catch(() => {});
+                        nav(p.forRequester ? '/approvals/mine' : '/approvals/inbox');
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
+                    >
+                      <span style={{ color: '#581c87', fontWeight: 600 }}>• {p.byName || '결재자'}</span>
+                      <b style={{ color: verbColor, fontSize: 12 }}>{verb}</b>
+                      <span style={{ color: '#6b21a8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.comment ? `“${String(p.comment).slice(0, 60)}”` : (p.forRequester ? '내가 올린 결재' : '내가 결재한 문서')}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#9333ea' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+                    </div>
+                  );
+                })}
+                {approvalNotices.length > 3 && (
+                  <div style={{ fontSize: 12, color: '#9333ea' }}>외 {approvalNotices.length - 3}건 더... (알림함에서 확인)</div>
+                )}
+              </div>
             </div>
           )}
           {pendingSwaps.length > 0 && (
