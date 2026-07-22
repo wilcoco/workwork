@@ -1662,3 +1662,20 @@ model WorklogEntity {
   @@unique([worklogId, entityId])
   @@index([entityId])
 }
+
+// 온톨로지: 일지 ↔ 목표(KPI/중점과제) 분류 태그.
+// AI 배치 매핑(source=AI)과 본인 분류(source=USER)가 같은 테이블 사용 — USER가 정본.
+// goalType 'NONE' = 검토했으나 해당 목표 없음(재스캔 방지 + '목표 없는 일' 신호).
+model WorklogGoalTag {
+  id          String   @id @default(cuid())
+  worklogId   String
+  goalType    String // 'KR' | 'KI' | 'NONE'
+  goalId      String   @default("") // NONE이면 ''
+  source      String   @default("AI") // 'AI' | 'USER'
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([worklogId, goalType, goalId])
+  @@index([goalType, goalId])
+  @@index([worklogId])
+}

@@ -3,6 +3,7 @@ import { PrismaService } from './prisma.service';
 import { mineWorklogActivities } from './lib/activity-miner';
 import { mergeSimilarActivities } from './lib/activity-merge';
 import { mineWorklogEntities } from './lib/entity-miner';
+import { mapWorklogsToTeamKpis } from './lib/worklog-kpi-mapper';
 import { bigramSim, normalizeActivityName, type ActivityLite } from './lib/activity-match';
 import { callAI } from './llm/ai-client';
 
@@ -98,6 +99,15 @@ export class ActivitiesController {
     }
     const remaining = await (this.prisma as any).activity.count({ where: { domain: null } });
     return { classified, remaining };
+  }
+
+  /** 일지→팀 KPI 배치 분류: 업무내용을 읽어 작성자 팀의 KPI에 태깅 (임원 이상). 반복 실행 = 이어서 처리 */
+  @Post('map-worklog-kpis')
+  async mapWorklogKpis(@Body() body: { actorId?: string; limit?: number }) {
+    const uid = String(body?.actorId || '').trim();
+    if (!uid) throw new BadRequestException('actorId required');
+    await this.assertExec(uid);
+    return mapWorklogsToTeamKpis(this.prisma, { actorId: uid, limit: body?.limit });
   }
 
   /** 탑다운 매칭: KPI(KeyResult)·중점과제(KeyInitiative)를 활동과 연결 (팀장 이상) */
@@ -441,7 +451,7 @@ export class ActivitiesController {
     const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
 
     // Activity 는 관계(relation) 없는 독립 모델 — 조인 대신 별도 조회 후 Map 매핑
-    const [worklogs, entries, krs, kiLinks, actRows] = await Promise.all([
+    const [worklogs, entries, krs, kiLinks, actRows, kpiTags] = await Promise.all([
       (this.prisma as any).worklog.findMany({
         where: { date: { gte: start, lt: end } },
         select: { id: true, activityId: true, timeSpentMinutes: true, createdById: true },
@@ -460,6 +470,7 @@ export class ActivitiesController {
       }),
       (this.prisma as any).goalActivityLink.findMany({ select: { goalType: true, goalId: true, activityId: true } }),
       (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } }),
+      (this.prisma as any).worklogGoalTag.findMany({ where: { goalType: 'KR' }, select: { worklogId: true, goalId: true } }),
     ]);
     const actInfo = new Map<string, { name: string; domain: string | null }>(
       (actRows as any[]).map((a) => [String(a.id), { name: a.name, domain: a.domain || null }]),
@@ -471,6 +482,16 @@ export class ActivitiesController {
       const s = krActIds.get(String(l.goalId)) || new Set<string>();
       s.add(String(l.activityId));
       krActIds.set(String(l.goalId), s);
+    }
+    // 증거 ③: 일지→KPI 분류 태그 (AI 배치 + 본인 분류)
+    const tagWlByKr = new Map<string, Set<string>>();
+    const taggedWl = new Set<string>();
+    for (const t of kpiTags as any[]) {
+      if (!t.goalId) continue;
+      const s = tagWlByKr.get(String(t.goalId)) || new Set<string>();
+      s.add(String(t.worklogId));
+      tagWlByKr.set(String(t.goalId), s);
+      taggedWl.add(String(t.worklogId));
     }
 
     // 지표별 실적(월 최신값) + 실적 입력에 연결된 일지들
@@ -524,6 +545,11 @@ export class ActivitiesController {
         const w = wlById.get(wid);
         if (w) evidence.set(wid, w);
       }
+      // ③ 분류 태그 경로 (해당 월 일지만 — wlById가 월 범위)
+      for (const wid of tagWlByKr.get(String(kr.id)) || []) {
+        const w = wlById.get(wid);
+        if (w) evidence.set(wid, w);
+      }
       const evArr = Array.from(evidence.values());
       const minutes = evArr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
       const people = new Set(evArr.map((w) => w.createdById)).size;
@@ -567,7 +593,7 @@ export class ActivitiesController {
     for (const w of worklogs) {
       const t = w.timeSpentMinutes || 0;
       totalMinutes += t;
-      if ((w.activityId && linkedActIds.has(String(w.activityId))) || entryLinkedWl.has(String(w.id))) linkedMinutes += t;
+      if ((w.activityId && linkedActIds.has(String(w.activityId))) || entryLinkedWl.has(String(w.id)) || taggedWl.has(String(w.id))) linkedMinutes += t;
     }
 
     const noEvidence = goals.filter((g: any) => g.logs === 0 && g.value == null).map((g: any) => ({ krId: g.krId, title: g.title, teamName: g.teamName, pillar: g.pillar }));

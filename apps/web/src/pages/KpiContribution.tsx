@@ -45,6 +45,7 @@ export function KpiContribution() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [mapping, setMapping] = useState(false);
+  const [wlMapping, setWlMapping] = useState<string | null>(null); // 일지→KPI 배치 분류 진행표시
 
   async function load() {
     if (!userId) return;
@@ -69,6 +70,25 @@ export function KpiContribution() {
     finally { setMapping(false); }
   }
 
+  // 🤖 일지→팀 KPI 배치 분류: 남은 일지가 0이 될 때까지 자동 반복 (최대 12회)
+  async function runWorklogKpiMapping() {
+    if (!confirm('전체 미분류 업무일지를 AI가 읽어 작성자 팀의 KPI에 분류합니다.\n(일지 수천 건 기준 수 분~수십 분, AI 비용 발생)\n시작할까요?')) return;
+    let totTagged = 0, totNone = 0;
+    try {
+      for (let i = 1; i <= 12; i++) {
+        setWlMapping(`분류 중… ${i}회차 (누적 ${totTagged}건 태깅)`);
+        const r = await apiJson<{ scanned: number; tagged: number; tags: number; none: number; remaining: number; aiErrors: string[] }>(
+          `/api/activities/map-worklog-kpis`, { method: 'POST', body: JSON.stringify({ actorId: userId, limit: 300 }) });
+        totTagged += r.tagged; totNone += r.none;
+        if (r.aiErrors?.length) { alert(`중단: ${r.aiErrors[0]}`); break; }
+        if (r.remaining <= 0 || r.scanned === 0) break;
+      }
+      alert(`🤖 일지→KPI 분류 완료\nKPI 태깅: ${totTagged}건 · 해당없음: ${totNone}건`);
+      await load();
+    } catch (e: any) { alert(e?.message || '분류 실패'); }
+    finally { setWlMapping(null); }
+  }
+
   const maxMin = Math.max(...(data?.goals || []).map((g) => g.minutes), 1);
 
   return (
@@ -79,6 +99,9 @@ export function KpiContribution() {
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ padding: '6px 8px' }} />
           <button type="button" className="btn btn-sm" disabled={mapping} onClick={() => void runMapping()}>
             {mapping ? '매칭 중…' : '🎯 목표-활동 매칭 실행'}
+          </button>
+          <button type="button" className="btn btn-sm" disabled={!!wlMapping} onClick={() => void runWorklogKpiMapping()}>
+            {wlMapping || '🤖 일지→KPI 분류(AI)'}
           </button>
           <Link to="/process/strategy-map" style={{ fontSize: 13, color: '#2563eb', textDecoration: 'none' }}>전략 정렬 지도 →</Link>
         </div>
