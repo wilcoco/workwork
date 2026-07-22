@@ -30,6 +30,7 @@ import { ExecInstructionDetail } from './pages/ExecInstructionDetail';
 import { ExecStrategy } from './pages/ExecStrategy';
 import { WorklogStatsDaily } from './pages/WorklogStatsDaily';
 import { WorklogAi } from './pages/WorklogAi';
+import { MyWorklogKpiTags } from './pages/MyWorklogKpiTags';
 import { TeamOkrInput } from './pages/TeamOkrInput';
 import { AdminOrgs } from './pages/AdminOrgs';
 import { ApprovalsSubmit } from './pages/ApprovalsSubmit';
@@ -373,6 +374,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/worklogs/stats" element={<WorklogStatsDaily />} />
           <Route path="/worklogs/eval-monthly" element={evalGuard(<WorklogEvalMonthly />)} />
           <Route path="/worklogs/ai" element={<WorklogAi />} />
+          <Route path="/worklogs/kpi-tags" element={<MyWorklogKpiTags />} />
           <Route path="/me/goals" element={<MeGoals />} />
           <Route path="/okr/input" element={<OkrInput />} />
           <Route path="/okr/tree" element={<OkrTree />} />
@@ -534,6 +536,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/worklogs/kb-ranking">지식 정리 랭킹</Link>
           {canEvaluate && <Link to="/worklogs/eval-monthly">업무 평가 리포트</Link>}
           <Link to="/worklogs/ai">AI 분석</Link>
+          <Link to="/worklogs/kpi-tags">내 일지 KPI 분류</Link>
         </NavDropdown>
         <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives') || location.pathname.startsWith('/goals') || location.pathname.startsWith('/team-tasks')}>
           <Link to="/goals/guide">📖 입력 가이드</Link>
@@ -784,6 +787,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/worklogs/stats', label: '업무 현황' },
         { to: '/worklogs/kb-ranking', label: '지식 정리 랭킹' },
         { to: '/worklogs/ai', label: 'AI 분석' },
+        { to: '/worklogs/kpi-tags', label: '내 일지 KPI 분류' },
         { to: '/worklogs/planner', label: 'Planner 태스크' },
       ];
       return canEvaluate

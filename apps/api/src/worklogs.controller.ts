@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { IsArray, IsBoolean, IsDateString, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from './prisma.service';
@@ -1631,6 +1631,94 @@ export class WorklogsController {
       .sort((a: any, b: any) => b.badgeCount - a.badgeCount)
       .slice(0, 50);
     return { items };
+  }
+
+  /**
+   * 내 일지 KPI 분류 목록 — AI 자동 배정(WorklogGoalTag source=AI)을 본인이 검토·수정하는 화면용.
+   * 내 일지(월 기준) + 각 일지의 현재 태그 + 우리 팀 KPI 후보를 반환.
+   */
+  @Get('my-kpi-tags')
+  async myKpiTags(@Query('userId') userId?: string, @Query('month') monthStr?: string) {
+    const uid = String(userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const me = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { orgUnitId: true } });
+    const month = /^\d{4}-\d{2}$/.test(String(monthStr || '')) ? String(monthStr) : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+    const [y, m] = month.split('-').map(Number);
+    const start = new Date(`${month}-01T00:00:00+09:00`);
+    const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
+
+    // 우리 팀 KPI 후보 (pillar Objective 하위, 정크 제외)
+    let kpis: Array<{ id: string; title: string; unit: string }> = [];
+    if (me?.orgUnitId) {
+      const objs = await (this.prisma as any).objective.findMany({
+        where: { orgUnitId: me.orgUnitId },
+        select: { title: true, pillar: true, keyResults: { select: { id: true, title: true, unit: true } } },
+      });
+      for (const o of objs) {
+        if (!o.pillar || String(o.title || '').startsWith('Auto Objective')) continue;
+        for (const kr of o.keyResults || []) {
+          const t = String(kr.title || '').trim();
+          if (t.length < 2 || /^auto/i.test(t)) continue;
+          kpis.push({ id: kr.id, title: t, unit: kr.unit || '' });
+        }
+      }
+    }
+
+    const wls = await (this.prisma as any).worklog.findMany({
+      where: { createdById: uid, date: { gte: start, lt: end } },
+      orderBy: { date: 'desc' },
+      select: { id: true, date: true, note: true, timeSpentMinutes: true },
+    });
+    const ids = wls.map((w: any) => String(w.id));
+    const tags = ids.length
+      ? await (this.prisma as any).worklogGoalTag.findMany({ where: { worklogId: { in: ids } }, select: { worklogId: true, goalType: true, goalId: true, source: true } })
+      : [];
+    const tagMap = new Map<string, any[]>();
+    for (const t of tags) {
+      const arr = tagMap.get(String(t.worklogId)) || [];
+      arr.push({ goalType: t.goalType, goalId: t.goalId, source: t.source });
+      tagMap.set(String(t.worklogId), arr);
+    }
+    return {
+      month,
+      kpis,
+      items: wls.map((w: any) => ({
+        id: w.id,
+        date: w.date,
+        minutes: w.timeSpentMinutes || 0,
+        snippet: String(w.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120),
+        tags: tagMap.get(String(w.id)) || [],
+      })),
+    };
+  }
+
+  /**
+   * 내 일지 KPI 분류 확정 — 해당 일지의 태그를 통째로 교체(USER가 정본).
+   * krIds 빈 배열 = '해당 KPI 없음' 확정. 이후 AI 배치는 이 일지를 건드리지 않는다.
+   */
+  @Put(':id/kpi-tags')
+  async setKpiTags(@Param('id') id: string, @Body() body: { userId?: string; krIds?: string[] }) {
+    const uid = String(body?.userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const wl = await (this.prisma as any).worklog.findUnique({ where: { id }, select: { createdById: true } });
+    if (!wl) throw new BadRequestException('worklog not found');
+    if (wl.createdById !== uid) throw new ForbiddenException('본인의 업무일지만 분류를 수정할 수 있습니다');
+    const krIds = Array.from(new Set((Array.isArray(body?.krIds) ? body!.krIds! : []).map((s) => String(s || '').trim()).filter(Boolean))).slice(0, 5);
+    // 존재하는 KR만 허용
+    const valid = krIds.length
+      ? (await (this.prisma as any).keyResult.findMany({ where: { id: { in: krIds } }, select: { id: true } })).map((k: any) => String(k.id))
+      : [];
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.worklogGoalTag.deleteMany({ where: { worklogId: id } });
+      if (valid.length) {
+        for (const krId of valid) {
+          await tx.worklogGoalTag.create({ data: { worklogId: id, goalType: 'KR', goalId: krId, source: 'USER', createdById: uid } });
+        }
+      } else {
+        await tx.worklogGoalTag.create({ data: { worklogId: id, goalType: 'NONE', goalId: '', source: 'USER', createdById: uid } });
+      }
+    });
+    return { ok: true, krIds: valid };
   }
 
   @Get(':id')
