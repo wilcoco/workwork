@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, 
 import { PrismaService } from './prisma.service';
 import { mineWorklogActivities } from './lib/activity-miner';
 import { mergeSimilarActivities } from './lib/activity-merge';
+import { mineWorklogEntities } from './lib/entity-miner';
 import { bigramSim, normalizeActivityName, type ActivityLite } from './lib/activity-match';
 import { callAI } from './llm/ai-client';
 
@@ -33,6 +34,14 @@ export class ActivitiesController {
     if (!uid) throw new BadRequestException('actorId required');
     await this.assertExec(uid);
     return mineWorklogActivities(this.prisma, { actorId: uid, days: body?.days ?? 180, onlyBadged: !!body?.onlyBadged, limit: body?.limit ?? 100 });
+  }
+
+  /** 대상(설비·차종·고객사·부품·시스템) 채굴 — 일지에서 두 번째 객체 타입 추출 (임원 이상) */
+  @Post('mine-entities')
+  async mineEntities(@Body() body: { actorId?: string; days?: number; limit?: number }) {
+    const uid = String(body?.actorId || '').trim();
+    await this.assertExec(uid);
+    return mineWorklogEntities(this.prisma, { days: body?.days ?? 180, limit: body?.limit ?? 100 });
   }
 
   /** 유사 활동 병합 — 잘게 쪼개진 활동을 하나의 반복작업으로 통합 (임원 이상). 반복 실행 시 남은 후보 이어서 처리 */

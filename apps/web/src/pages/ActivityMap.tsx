@@ -23,6 +23,30 @@ export function ActivityMap() {
   const [organizing, setOrganizing] = useState(false);
   const [orgProgress, setOrgProgress] = useState('');
 
+  // 대상(설비·차종·고객사) 채굴 — 두 번째 객체 타입
+  const [miningEnt, setMiningEnt] = useState(false);
+  const [entProgress, setEntProgress] = useState('');
+  async function mineEntities() {
+    if (!confirm('업무일지에서 대상(설비·차종·고객사·협력사·부품·시스템)을 추출해 온톨로지에 등록합니다.\n100건 단위로 자동 반복 처리합니다 (활동 추출과 별도, 이미 처리된 일지는 건너뜀). 진행할까요?')) return;
+    setMiningEnt(true);
+    const tot = { scanned: 0, linked: 0, created: 0 };
+    let fail = 0;
+    try {
+      for (let round = 1; round <= 40; round++) {
+        setEntProgress(`${round}회차 · ${tot.scanned}건`);
+        let r: { scanned: number; linked: number; created: number; error?: string };
+        try {
+          r = await apiJson(`/api/activities/mine-entities`, { method: 'POST', body: JSON.stringify({ actorId: userId, days: 180, limit: 100 }) });
+        } catch { if (++fail >= 3) { alert(`서버 오류 반복 — 중단 (${tot.scanned}건 처리)`); break; } continue; }
+        if (r.error) { if (++fail >= 2) { alert(`AI 추출 실패 — 중단 (${tot.scanned}건 처리, 연결 ${tot.linked}건)`); break; } continue; }
+        fail = 0;
+        tot.scanned += r.scanned; tot.linked += r.linked; tot.created += r.created;
+        if (r.scanned < 100) { alert(`완료 — 일지 ${tot.scanned}건에서 대상 ${tot.created}개 등록, 링크 ${tot.linked}건`); break; }
+        if (round === 40) alert(`40회차 처리 — ${tot.scanned}건, 대상 ${tot.created}개. 남은 일지는 다시 눌러 이어서.`);
+      }
+    } finally { setMiningEnt(false); setEntProgress(''); }
+  }
+
   // 탑다운 매칭: KPI/중점과제를 활동과 연결
   const [mappingGoals, setMappingGoals] = useState(false);
   async function mapGoals() {
@@ -192,6 +216,9 @@ export function ActivityMap() {
           </button>
           <button className="btn btn-sm btn-outline" disabled={organizing} onClick={() => void organize()} title="활동을 대분류(기능 영역)→중분류 체계로 정리합니다 (임원 이상)">
             {organizing ? `🗂 정리 중... ${orgProgress}` : '🗂 체계 정리'}
+          </button>
+          <button className="btn btn-sm btn-outline" disabled={miningEnt} onClick={() => void mineEntities()} title="일지에서 설비·차종·고객사·부품·시스템을 추출해 온톨로지 대상으로 등록합니다 (임원 이상)">
+            {miningEnt ? `🏭 추출 중... ${entProgress}` : '🏭 대상 추출'}
           </button>
           <button className="btn btn-sm btn-outline" disabled={mappingGoals} onClick={() => void mapGoals()} title="KPI 지표·중점과제를 활동과 매칭합니다 (임원 이상)">
             {mappingGoals ? '🎯 매칭 중...' : '🎯 KPI·과제 매칭'}

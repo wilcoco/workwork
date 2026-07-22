@@ -12,6 +12,7 @@ type Explore = { node: Node; sections: Section[] };
 
 const TYPE_META: Record<string, { icon: string; label: string; color: string }> = {
   activity: { icon: '⚙️', label: '활동', color: '#0369a1' },
+  entity: { icon: '🏭', label: '대상', color: '#b45309' },
   objective: { icon: '🎯', label: '목표', color: '#7c3aed' },
   keyResult: { icon: '📊', label: 'KPI', color: '#16a34a' },
   keyInitiative: { icon: '🚩', label: '중점과제', color: '#d97706' },
@@ -87,7 +88,7 @@ export function OntologyExplorer() {
 
       {/* 검색 */}
       <div style={{ position: 'relative' }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 예: 구매원가, 품질 혁신, 사출, 홍길동..."
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 예: 구매원가, 품질 혁신, 사출기, 현대차, SP2, 홍길동..."
           style={{ width: '100%', padding: '10px 14px', fontSize: 14, border: '2px solid #cbd5e1', borderRadius: 10, boxSizing: 'border-box' }} />
         {(results.length > 0 || searching) && (
           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginTop: 4, maxHeight: 380, overflow: 'auto', boxShadow: '0 8px 24px rgba(15,23,42,0.12)' }}>

@@ -1,6 +1,8 @@
 import { BadRequestException, Controller, ForbiddenException, Get, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 
+const ENTITY_KIND_KO: Record<string, string> = { EQUIPMENT: '설비', VEHICLE: '차종', CUSTOMER: '고객사', SUPPLIER: '협력사', PART: '부품', SYSTEM: '시스템', OTHER: '대상' };
+
 /**
  * 온톨로지 탐색기 API — 회사의 객체(활동/목표/KR/과제/프로세스/매뉴얼/팀/사람)를
  * 하나의 의미망으로 보고, 아무 객체에서나 출발해 연결(정의/실행/지식/측정/변경/조직)을
@@ -28,8 +30,9 @@ export class OntologyController {
     const c = { contains: q, mode: 'insensitive' as any };
     const take = 6;
     const p = this.prisma as any;
-    const [acts, objs, krs, kis, tpls, mans, orgs, users] = await Promise.all([
+    const [acts, ents, objs, krs, kis, tpls, mans, orgs, users] = await Promise.all([
       p.activity.findMany({ where: { name: c }, select: { id: true, name: true, domain: true }, take }),
+      p.ontologyEntity.findMany({ where: { name: c }, select: { id: true, name: true, kind: true }, take }),
       p.objective.findMany({ where: { title: c }, select: { id: true, title: true, pillar: true, orgUnit: { select: { name: true } } }, take }),
       p.keyResult.findMany({ where: { title: c }, select: { id: true, title: true, objective: { select: { title: true } } }, take }),
       p.keyInitiative.findMany({ where: { title: c }, select: { id: true, title: true, status: true }, take }),
@@ -40,6 +43,7 @@ export class OntologyController {
     ]);
     const items = [
       ...acts.map((x: any) => ({ type: 'activity', id: x.id, label: x.name, sub: x.domain || '활동' })),
+      ...ents.map((x: any) => ({ type: 'entity', id: x.id, label: x.name, sub: ENTITY_KIND_KO[x.kind] || '대상' })),
       ...objs.map((x: any) => ({ type: 'objective', id: x.id, label: x.title, sub: `목표 · ${x.orgUnit?.name || ''}` })),
       ...krs.map((x: any) => ({ type: 'keyResult', id: x.id, label: x.title, sub: `KPI · ${x.objective?.title || ''}` })),
       ...kis.map((x: any) => ({ type: 'keyInitiative', id: x.id, label: x.title, sub: '중점과제' })),
@@ -77,7 +81,7 @@ export class OntologyController {
     if (t === 'activity') {
       const a = await p.activity.findUnique({ where: { id: oid } });
       if (!a) throw new BadRequestException('not found');
-      const [manuals, ptts, krs, kis, wlAgg, kbCnt, recentAuthors] = await Promise.all([
+      const [manuals, ptts, krs, kis, wlAgg, kbCnt, recentAuthors, entLinks] = await Promise.all([
         p.workManual.findMany({ where: { activityId: oid }, select: { id: true, title: true, authorName: true }, take: 10 }),
         p.processTaskTemplate.findMany({ where: { activityId: oid }, select: { processTemplate: { select: { id: true, title: true, status: true } } }, take: 30 }),
         p.keyResult.findMany({ where: { activityId: oid }, select: { id: true, title: true, objective: { select: { id: true, title: true, pillar: true } } }, take: 10 }),
@@ -85,6 +89,8 @@ export class OntologyController {
         p.worklog.aggregate({ where: { activityId: oid }, _count: { _all: true }, _max: { date: true } }),
         p.worklog.count({ where: { activityId: oid, kbBadge: true } }),
         p.worklog.findMany({ where: { activityId: oid }, orderBy: { date: 'desc' }, take: 30, select: { createdBy: { select: { name: true, orgUnit: { select: { id: true, name: true } } } } } }),
+        p.worklog.findMany({ where: { activityId: oid }, select: { id: true }, take: 500 }).then((ws: any[]) =>
+          ws.length ? p.worklogEntity.groupBy({ by: ['entityId'], where: { worklogId: { in: ws.map((w) => w.id) } }, _count: { _all: true }, orderBy: { _count: { entityId: 'desc' } }, take: 8 }) : []),
       ]);
       const tplMap = new Map<string, any>();
       for (const x of ptts) if (x.processTemplate) tplMap.set(x.processTemplate.id, x.processTemplate);
@@ -105,6 +111,37 @@ export class OntologyController {
           { key: 'measure', label: '측정', items: krs.map((k: any) => ({ type: 'keyResult', id: k.id, label: k.title, sub: `${k.objective?.pillar || ''} ${k.objective?.title || ''}`.trim() })) },
           { key: 'change', label: '변경', items: kis.map((k: any) => ({ type: 'keyInitiative', id: k.id, label: k.title, sub: k.status })), action: kis.length ? null : 'createInitiative' },
           { key: 'org', label: '조직', items: [...orgCount.values()].sort((x, y) => y.n - x.n).slice(0, 5).map((o) => ({ type: 'orgUnit', id: o.id, label: o.name, sub: `최근 일지 ${o.n}건` })) },
+          { key: 'entities', label: '다루는 대상', items: await (async () => {
+            const ids = (entLinks as any[]).map((r) => String(r.entityId));
+            if (!ids.length) return [];
+            const es = await p.ontologyEntity.findMany({ where: { id: { in: ids } } });
+            const cnt = new Map<string, number>((entLinks as any[]).map((r) => [String(r.entityId), r._count._all] as [string, number]));
+            return es.map((e: any) => ({ type: 'entity', id: e.id, label: e.name, sub: `${ENTITY_KIND_KO[e.kind] || ''} · 일지 ${cnt.get(String(e.id)) || 0}건` }));
+          })() },
+        ],
+      };
+    }
+
+    if (t === 'entity') {
+      const e = await p.ontologyEntity.findUnique({ where: { id: oid } });
+      if (!e) throw new BadRequestException('not found');
+      const links = await p.worklogEntity.findMany({ where: { entityId: oid }, select: { worklogId: true }, take: 1000 });
+      const wlIds = links.map((l: any) => l.worklogId);
+      const [wlAgg2, actTop, orgTop] = await Promise.all([
+        wlIds.length ? p.worklog.aggregate({ where: { id: { in: wlIds } }, _count: { _all: true }, _max: { date: true } }) : { _count: { _all: 0 }, _max: { date: null } },
+        wlIds.length ? p.worklog.groupBy({ by: ['activityId'], where: { id: { in: wlIds }, activityId: { not: null } }, _count: { _all: true }, orderBy: { _count: { activityId: 'desc' } }, take: 10 }) : [],
+        wlIds.length ? p.worklog.findMany({ where: { id: { in: wlIds } }, select: { createdBy: { select: { orgUnit: { select: { id: true, name: true } } } } }, take: 200 }) : [],
+      ]);
+      const actIds = (actTop as any[]).map((r) => String(r.activityId));
+      const acts2 = actIds.length ? await p.activity.findMany({ where: { id: { in: actIds } } }) : [];
+      const actById2 = new Map<string, any>(acts2.map((a: any) => [String(a.id), a] as [string, any]));
+      const orgCnt = new Map<string, { id: string; name: string; n: number }>();
+      for (const w of orgTop as any[]) { const o = w.createdBy?.orgUnit; if (!o) continue; const x = orgCnt.get(o.id) || { id: o.id, name: o.name, n: 0 }; x.n++; orgCnt.set(o.id, x); }
+      return {
+        node: { type: 'entity', id: e.id, label: e.name, sub: `${ENTITY_KIND_KO[e.kind] || '대상'} · 일지 ${wlAgg2._count._all}건${wlAgg2._max.date ? ` · 최근 ${new Date(wlAgg2._max.date).toISOString().slice(0, 10)}` : ''}`, meta: { aliases: (e.aliases || []).slice(0, 8) } },
+        sections: [
+          { key: 'activities', label: '관련 활동', items: (actTop as any[]).map((r) => { const a = actById2.get(String(r.activityId)); return a ? { type: 'activity', id: a.id, label: a.name, sub: a.domain, worklogs: r._count._all, knowledge: 0 } : null; }).filter(Boolean) },
+          { key: 'org', label: '다루는 조직', items: [...orgCnt.values()].sort((x, y) => y.n - x.n).slice(0, 6).map((o) => ({ type: 'orgUnit', id: o.id, label: o.name, sub: `일지 ${o.n}건` })) },
         ],
       };
     }

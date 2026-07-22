@@ -329,6 +329,7 @@ model Worklog {
   kbBadge               Boolean              @default(false) // AI 판정: 훌륭한 업무 지식 정리 배지
   kbBadgeNote           String? // 배지 사유(칭찬 한 줄)
   activityId            String? // 온톨로지: 이 일지가 실행한 활동 (지식이 활동에 귀속되는 경로)
+  entityMinedAt         DateTime? // 온톨로지: 대상(설비·차종·고객사 등) 추출 완료 시각
 
   @@index([kbBadge, date])
   @@index([activityId])
@@ -1632,4 +1633,32 @@ model GoalActivityLink {
   @@unique([goalType, goalId, activityId])
   @@index([activityId])
   @@index([goalType, goalId])
+}
+
+/// 온톨로지 "대상(masters)" 객체 — 활동이 다루는 실물/개념: 설비, 차종, 고객사, 협력사, 부품, 시스템.
+/// 활동과 달리 생명주기가 독립적(장비는 담당자가 바뀌어도 존속)이라 별도 객체 타입으로 분리.
+model OntologyEntity {
+  id        String   @id @default(cuid())
+  name      String
+  normName  String   @unique
+  kind      String   @default("OTHER") // EQUIPMENT/VEHICLE/CUSTOMER/SUPPLIER/PART/SYSTEM/OTHER
+  aliases   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  worklogLinks WorklogEntity[]
+
+  @@index([kind])
+  @@index([name])
+}
+
+/// 일지↔대상 링크 (활동↔대상은 일지 동시출현으로 파생 계산)
+model WorklogEntity {
+  id        String         @id @default(cuid())
+  worklogId String
+  entityId  String
+  entity    OntologyEntity @relation(fields: [entityId], references: [id])
+  createdAt DateTime       @default(now())
+
+  @@unique([worklogId, entityId])
+  @@index([entityId])
 }
