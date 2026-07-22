@@ -399,13 +399,11 @@ export class ActivitiesController {
     const start = new Date(`${month}-01T00:00:00+09:00`);
     const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
 
-    const [worklogs, entries, krs, kiLinks] = await Promise.all([
+    // Activity 는 관계(relation) 없는 독립 모델 — 조인 대신 별도 조회 후 Map 매핑
+    const [worklogs, entries, krs, kiLinks, actRows] = await Promise.all([
       (this.prisma as any).worklog.findMany({
         where: { date: { gte: start, lt: end } },
-        select: {
-          id: true, activityId: true, timeSpentMinutes: true, createdById: true,
-          activity: { select: { name: true, domain: true } },
-        },
+        select: { id: true, activityId: true, timeSpentMinutes: true, createdById: true },
       }),
       (this.prisma as any).progressEntry.findMany({
         where: { periodStart: { gte: start, lt: end }, NOT: { keyResultId: null } },
@@ -416,12 +414,15 @@ export class ActivitiesController {
         where: { NOT: { objective: { title: { startsWith: 'Auto Objective' } } } },
         select: {
           id: true, title: true, unit: true, target: true, direction: true, pillar: true, activityId: true,
-          activity: { select: { name: true } },
           objective: { select: { title: true, pillar: true, orgUnit: { select: { name: true } } } },
         },
       }),
       (this.prisma as any).keyInitiative.findMany({ where: { NOT: { activityId: null } }, select: { activityId: true } }),
+      (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } }),
     ]);
+    const actInfo = new Map<string, { name: string; domain: string | null }>(
+      (actRows as any[]).map((a) => [String(a.id), { name: a.name, domain: a.domain || null }]),
+    );
 
     // 지표별 실적(월 최신값) + 실적 입력에 연결된 일지들
     const valByKr = new Map<string, number>();
@@ -479,7 +480,7 @@ export class ActivitiesController {
         krId: kr.id, title: kr.title, unit: kr.unit || '', target: kr.target,
         pillar: kr.pillar || kr.objective?.pillar || null,
         teamName: kr.objective?.orgUnit?.name || '',
-        activityName: kr.activity?.name || null,
+        activityName: kr.activityId ? (actInfo.get(String(kr.activityId))?.name || null) : null,
         value, ach: achOf(kr, value),
         minutes, logs: evArr.length, people,
       };
@@ -496,8 +497,9 @@ export class ActivitiesController {
       if (linkedActIds.has(aid)) continue;
       const minutes = arr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
       if (minutes <= 0) continue;
+      const info = actInfo.get(aid);
       lowAgg.set(aid, {
-        name: arr[0].activity?.name || '(활동)', domain: arr[0].activity?.domain || null,
+        name: info?.name || '(활동)', domain: info?.domain || null,
         minutes, logs: arr.length, people: new Set(arr.map((w: any) => w.createdById)),
       });
     }
