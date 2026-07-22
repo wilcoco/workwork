@@ -21,16 +21,26 @@ export class OntologyController {
     return role;
   }
 
+  /** 임원=제한 일지까지, CEO=전체 (활동 지도 지식 모달과 동일 정책) */
+  private visFilter(role: string) {
+    return role === 'CEO' ? undefined : { in: ['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'] };
+  }
+
+  private wlChip(w: any) {
+    const first = String(w.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || '(내용 없음)';
+    return { type: 'worklog', id: w.id, label: first, sub: `${w.createdBy?.name || ''} · ${w.date ? new Date(w.date).toISOString().slice(5, 10) : ''}`, knowledge: w.kbBadge ? 1 : 0 };
+  }
+
   /** 전 객체 통합 검색 — 유형별 상위 몇 건씩 */
   @Get('search')
   async search(@Query('q') qRaw?: string, @Query('actorId') actorId?: string) {
-    await this.assertExec(actorId);
+    const role = await this.assertExec(actorId);
     const q = String(qRaw || '').trim();
     if (q.length < 1) return { items: [] };
     const c = { contains: q, mode: 'insensitive' as any };
     const take = 6;
     const p = this.prisma as any;
-    const [acts, ents, objs, krs, kis, tpls, mans, orgs, users] = await Promise.all([
+    const [acts, ents, objs, krs, kis, tpls, mans, orgs, users, wls] = await Promise.all([
       p.activity.findMany({ where: { name: c }, select: { id: true, name: true, domain: true }, take }),
       p.ontologyEntity.findMany({ where: { name: c }, select: { id: true, name: true, kind: true }, take }),
       p.objective.findMany({ where: { title: c }, select: { id: true, title: true, pillar: true, orgUnit: { select: { name: true } } }, take }),
@@ -40,6 +50,7 @@ export class OntologyController {
       p.workManual.findMany({ where: { title: c }, select: { id: true, title: true, authorName: true }, take }),
       p.orgUnit.findMany({ where: { name: c }, select: { id: true, name: true, type: true }, take }),
       p.user.findMany({ where: { name: c, status: 'ACTIVE' }, select: { id: true, name: true, orgUnit: { select: { name: true } } }, take }),
+      p.worklog.findMany({ where: { note: c, ...(this.visFilter(role) ? { visibility: this.visFilter(role) } : {}) }, orderBy: { date: 'desc' }, select: { id: true, note: true, date: true, kbBadge: true, createdBy: { select: { name: true } } }, take }),
     ]);
     const items = [
       ...acts.map((x: any) => ({ type: 'activity', id: x.id, label: x.name, sub: x.domain || '활동' })),
@@ -51,6 +62,7 @@ export class OntologyController {
       ...mans.map((x: any) => ({ type: 'workManual', id: x.id, label: x.title, sub: `매뉴얼 · ${x.authorName || ''}` })),
       ...orgs.map((x: any) => ({ type: 'orgUnit', id: x.id, label: x.name, sub: '조직' })),
       ...users.map((x: any) => ({ type: 'user', id: x.id, label: x.name, sub: `구성원 · ${x.orgUnit?.name || ''}` })),
+      ...wls.map((w: any) => this.wlChip(w)),
     ];
     return { items: items.slice(0, 30) };
   }
@@ -58,7 +70,8 @@ export class OntologyController {
   /** 객체 중심 연결 조회 — 중심 노드 + 축별(정의/실행/지식/측정/변경/조직) 연결 */
   @Get('explore')
   async explore(@Query('type') type?: string, @Query('id') id?: string, @Query('actorId') actorId?: string) {
-    await this.assertExec(actorId);
+    const role = await this.assertExec(actorId);
+    const vis = this.visFilter(role);
     const t = String(type || '').trim();
     const oid = String(id || '').trim();
     if (!t || !oid) throw new BadRequestException('type/id required');
@@ -81,7 +94,7 @@ export class OntologyController {
     if (t === 'activity') {
       const a = await p.activity.findUnique({ where: { id: oid } });
       if (!a) throw new BadRequestException('not found');
-      const [manuals, ptts, krs, kis, wlAgg, kbCnt, recentAuthors, entLinks] = await Promise.all([
+      const [manuals, ptts, krs, kis, wlAgg, kbCnt, recentAuthors, entLinks, recentWls, kbWls] = await Promise.all([
         p.workManual.findMany({ where: { activityId: oid }, select: { id: true, title: true, authorName: true }, take: 10 }),
         p.processTaskTemplate.findMany({ where: { activityId: oid }, select: { processTemplate: { select: { id: true, title: true, status: true } } }, take: 30 }),
         p.keyResult.findMany({ where: { activityId: oid }, select: { id: true, title: true, objective: { select: { id: true, title: true, pillar: true } } }, take: 10 }),
@@ -91,6 +104,8 @@ export class OntologyController {
         p.worklog.findMany({ where: { activityId: oid }, orderBy: { date: 'desc' }, take: 30, select: { createdBy: { select: { name: true, orgUnit: { select: { id: true, name: true } } } } } }),
         p.worklog.findMany({ where: { activityId: oid }, select: { id: true }, take: 500 }).then((ws: any[]) =>
           ws.length ? p.worklogEntity.groupBy({ by: ['entityId'], where: { worklogId: { in: ws.map((w) => w.id) } }, _count: { _all: true }, orderBy: { _count: { entityId: 'desc' } }, take: 8 }) : []),
+        p.worklog.findMany({ where: { activityId: oid, ...(vis ? { visibility: vis } : {}) }, orderBy: { date: 'desc' }, take: 6, select: { id: true, note: true, date: true, kbBadge: true, createdBy: { select: { name: true } } } }),
+        p.worklog.findMany({ where: { activityId: oid, kbBadge: true, ...(vis ? { visibility: vis } : {}) }, orderBy: { date: 'desc' }, take: 6, select: { id: true, note: true, date: true, kbBadge: true, createdBy: { select: { name: true } } } }),
       ]);
       const tplMap = new Map<string, any>();
       for (const x of ptts) if (x.processTemplate) tplMap.set(x.processTemplate.id, x.processTemplate);
@@ -106,8 +121,8 @@ export class OntologyController {
             ...manuals.map((m: any) => ({ type: 'workManual', id: m.id, label: m.title, sub: `매뉴얼 · ${m.authorName || ''}` })),
             ...[...tplMap.values()].map((tp: any) => ({ type: 'processTemplate', id: tp.id, label: tp.title, sub: `프로세스 · ${tp.status}` })),
           ] },
-          { key: 'execution', label: '실행', items: [], summary: `일지 ${wlAgg._count._all}건${wlAgg._max.date ? ` · 최근 ${new Date(wlAgg._max.date).toISOString().slice(0, 10)}` : ''}` },
-          { key: 'knowledge', label: '지식', items: [], summary: `🏅 인증 ${kbCnt}건` },
+          { key: 'execution', label: '실행 (최근 일지)', items: recentWls.map((w: any) => this.wlChip(w)), summary: `일지 총 ${wlAgg._count._all}건${wlAgg._max.date ? ` · 최근 ${new Date(wlAgg._max.date).toISOString().slice(0, 10)}` : ''}` },
+          { key: 'knowledge', label: '지식 (🏅 인증 일지)', items: kbWls.map((w: any) => this.wlChip(w)), summary: `🏅 인증 총 ${kbCnt}건` },
           { key: 'measure', label: '측정', items: krs.map((k: any) => ({ type: 'keyResult', id: k.id, label: k.title, sub: `${k.objective?.pillar || ''} ${k.objective?.title || ''}`.trim() })) },
           { key: 'change', label: '변경', items: kis.map((k: any) => ({ type: 'keyInitiative', id: k.id, label: k.title, sub: k.status })), action: kis.length ? null : 'createInitiative' },
           { key: 'org', label: '조직', items: [...orgCount.values()].sort((x, y) => y.n - x.n).slice(0, 5).map((o) => ({ type: 'orgUnit', id: o.id, label: o.name, sub: `최근 일지 ${o.n}건` })) },
@@ -137,11 +152,40 @@ export class OntologyController {
       const actById2 = new Map<string, any>(acts2.map((a: any) => [String(a.id), a] as [string, any]));
       const orgCnt = new Map<string, { id: string; name: string; n: number }>();
       for (const w of orgTop as any[]) { const o = w.createdBy?.orgUnit; if (!o) continue; const x = orgCnt.get(o.id) || { id: o.id, name: o.name, n: 0 }; x.n++; orgCnt.set(o.id, x); }
+      const entWls = wlIds.length ? await p.worklog.findMany({ where: { id: { in: wlIds }, ...(vis ? { visibility: vis } : {}) }, orderBy: { date: 'desc' }, take: 6, select: { id: true, note: true, date: true, kbBadge: true, createdBy: { select: { name: true } } } }) : [];
       return {
         node: { type: 'entity', id: e.id, label: e.name, sub: `${ENTITY_KIND_KO[e.kind] || '대상'} · 일지 ${wlAgg2._count._all}건${wlAgg2._max.date ? ` · 최근 ${new Date(wlAgg2._max.date).toISOString().slice(0, 10)}` : ''}`, meta: { aliases: (e.aliases || []).slice(0, 8) } },
         sections: [
           { key: 'activities', label: '관련 활동', items: (actTop as any[]).map((r) => { const a = actById2.get(String(r.activityId)); return a ? { type: 'activity', id: a.id, label: a.name, sub: a.domain, worklogs: r._count._all, knowledge: 0 } : null; }).filter(Boolean) },
           { key: 'org', label: '다루는 조직', items: [...orgCnt.values()].sort((x, y) => y.n - x.n).slice(0, 6).map((o) => ({ type: 'orgUnit', id: o.id, label: o.name, sub: `일지 ${o.n}건` })) },
+          { key: 'execution', label: '최근 일지', items: entWls.map((w: any) => this.wlChip(w)) },
+        ],
+      };
+    }
+
+    if (t === 'worklog') {
+      const w = await p.worklog.findUnique({
+        where: { id: oid },
+        select: { id: true, note: true, date: true, kbBadge: true, kbBadgeNote: true, visibility: true, activityId: true, createdBy: { select: { id: true, name: true, orgUnit: { select: { id: true, name: true } } } } },
+      });
+      if (!w) throw new BadRequestException('not found');
+      if (vis && !['ALL', 'MANAGER_PLUS', 'EXEC_PLUS'].includes(String(w.visibility || 'ALL'))) throw new ForbiddenException('열람 권한이 없는 일지입니다');
+      const [act2, entLinks2] = await Promise.all([
+        w.activityId ? p.activity.findUnique({ where: { id: w.activityId } }) : null,
+        p.worklogEntity.findMany({ where: { worklogId: oid }, select: { entityId: true } }),
+      ]);
+      const ents2 = entLinks2.length ? await p.ontologyEntity.findMany({ where: { id: { in: entLinks2.map((l: any) => l.entityId) } } }) : [];
+      const first = String(w.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return {
+        node: { type: 'worklog', id: w.id, label: first.slice(0, 80) || '(내용 없음)', sub: `업무일지 · ${w.createdBy?.name || ''} · ${w.date ? new Date(w.date).toISOString().slice(0, 10) : ''}${w.kbBadge ? ' · 🏅 지식인증' : ''}`, meta: {} },
+        sections: [
+          { key: 'activity', label: '수행한 활동', items: act2 ? [{ type: 'activity', id: act2.id, label: act2.name, sub: act2.domain }] : [], summary: act2 ? undefined : '활동 미연결 (⛏ 채굴 대상)' },
+          { key: 'entities', label: '다룬 대상', items: ents2.map((e2: any) => ({ type: 'entity', id: e2.id, label: e2.name, sub: ENTITY_KIND_KO[e2.kind] || '대상' })) },
+          { key: 'people', label: '작성자', items: [
+            ...(w.createdBy ? [{ type: 'user', id: w.createdBy.id, label: w.createdBy.name, sub: w.createdBy.orgUnit?.name || null }] : []),
+            ...(w.createdBy?.orgUnit ? [{ type: 'orgUnit', id: w.createdBy.orgUnit.id, label: w.createdBy.orgUnit.name, sub: '소속 팀' }] : []),
+          ] },
+          ...(w.kbBadge && w.kbBadgeNote ? [{ key: 'badge', label: 'AI 심사평', items: [], summary: `“${String(w.kbBadgeNote).slice(0, 150)}”` }] : []),
         ],
       };
     }

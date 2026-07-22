@@ -12,6 +12,7 @@ type Explore = { node: Node; sections: Section[] };
 
 const TYPE_META: Record<string, { icon: string; label: string; color: string }> = {
   activity: { icon: '⚙️', label: '활동', color: '#0369a1' },
+  worklog: { icon: '📝', label: '업무일지', color: '#0e7490' },
   entity: { icon: '🏭', label: '대상', color: '#b45309' },
   objective: { icon: '🎯', label: '목표', color: '#7c3aed' },
   keyResult: { icon: '📊', label: 'KPI', color: '#16a34a' },
@@ -196,6 +197,9 @@ export function OntologyExplorer() {
       {data && !loading && (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+            {data.node.type === 'worklog' && (
+              <button className="btn btn-sm btn-outline" onClick={() => window.open(`/worklogs/${encodeURIComponent(data.node.id)}`, '_blank')}>📄 일지 원문 열기</button>
+            )}
             <button className={viewMode === 'graph' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline'} onClick={() => setViewMode('graph')}>🕸 그래프</button>
             <button className={viewMode === 'card' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline'} onClick={() => setViewMode('card')}>▦ 카드</button>
           </div>
