@@ -11,7 +11,7 @@ export class HealthController {
 
   @Get()
   get() {
-    return { ok: true, v: '2026_0422_0750' };
+    return { ok: true, v: '2026_0722_1130' };
   }
 
   /** AI 헬스체크 — 서버의 Claude 호출이 살아있는지, 실패면 어떤 오류인지 (키는 노출 안 함) */
