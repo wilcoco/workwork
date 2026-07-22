@@ -292,7 +292,9 @@ export function TeamKpiInput() {
           <select value={orgUnitId} onChange={(e) => setOrgUnitId(e.target.value)}>
             <option value="">선택</option>
             {orgs
-              .filter((o) => o.type === 'TEAM')
+              // 팀 + 하위 조직 없는 말단 조직(에스콘처럼 COMPANY형 독립 조직 포함)
+              .filter((o) => o.type === 'TEAM' || !orgs.some((c) => c.parentId === o.id))
+              .filter((o) => o.name !== '테스트')
               .filter((o) => {
                 if (myRole === 'CEO') return true;
                 if (o.id === myOrgUnitId) return true; // 내 팀
