@@ -446,6 +446,11 @@ export class ActivitiesController {
   async kpiContribution(@Query('actorId') actorId?: string, @Query('month') monthStr?: string) {
     await this.assertExec(actorId);
     const month = /^\d{4}-\d{2}$/.test(String(monthStr || '')) ? String(monthStr) : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+    return this.computeMonthContribution(month);
+  }
+
+  /** 월별 기여 계산 코어 — kpi-contribution 과 company-pulse(현황판/추이)가 공유 */
+  private async computeMonthContribution(month: string) {
     const [y, m] = month.split('-').map(Number);
     const start = new Date(`${month}-01T00:00:00+09:00`);
     const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
@@ -454,7 +459,7 @@ export class ActivitiesController {
     const [worklogs, entries, krs, kiLinks, actRows, kpiTags] = await Promise.all([
       (this.prisma as any).worklog.findMany({
         where: { date: { gte: start, lt: end } },
-        select: { id: true, activityId: true, timeSpentMinutes: true, createdById: true },
+        select: { id: true, activityId: true, timeSpentMinutes: true, createdById: true, createdBy: { select: { orgUnit: { select: { name: true } } } } },
       }),
       (this.prisma as any).progressEntry.findMany({
         where: { periodStart: { gte: start, lt: end }, NOT: { keyResultId: null } },
@@ -590,11 +595,21 @@ export class ActivitiesController {
 
     // 전략 정렬률: 이번 달 전체 일지 시간 중 목표 연결(활동 링크 or 실적 입력) 시간 비율
     let totalMinutes = 0, linkedMinutes = 0;
+    const teamAgg = new Map<string, { totalMin: number; linkedMin: number; logs: number }>();
     for (const w of worklogs) {
       const t = w.timeSpentMinutes || 0;
       totalMinutes += t;
-      if ((w.activityId && linkedActIds.has(String(w.activityId))) || entryLinkedWl.has(String(w.id)) || taggedWl.has(String(w.id))) linkedMinutes += t;
+      const isLinked = (w.activityId && linkedActIds.has(String(w.activityId))) || entryLinkedWl.has(String(w.id)) || taggedWl.has(String(w.id));
+      if (isLinked) linkedMinutes += t;
+      const tn = w.createdBy?.orgUnit?.name || '(팀없음)';
+      const e = teamAgg.get(tn) || { totalMin: 0, linkedMin: 0, logs: 0 };
+      e.totalMin += t; e.logs++;
+      if (isLinked) e.linkedMin += t;
+      teamAgg.set(tn, e);
     }
+    const teams = Array.from(teamAgg.entries())
+      .map(([name, e]) => ({ name, totalMin: e.totalMin, linkedMin: e.linkedMin, logs: e.logs, pct: e.totalMin > 0 ? Math.round((e.linkedMin / e.totalMin) * 1000) / 10 : null }))
+      .sort((a, b) => b.totalMin - a.totalMin);
 
     const noEvidence = goals.filter((g: any) => g.logs === 0 && g.value == null).map((g: any) => ({ krId: g.krId, title: g.title, teamName: g.teamName, pillar: g.pillar }));
 
@@ -603,8 +618,44 @@ export class ActivitiesController {
       align: { totalMinutes, linkedMinutes, pct: totalMinutes > 0 ? Math.round((linkedMinutes / totalMinutes) * 1000) / 10 : null },
       coverage: { totalGoals: goals.length, withEvidence: goals.filter((g: any) => g.logs > 0 || g.value != null).length, matchedGoals: kpiKrs.filter((k: any) => k.activityId || krActIds.has(String(k.id))).length },
       goals,
+      teams,
       lowContribution,
       noEvidence,
+    };
+  }
+
+  /**
+   * 회사 실행 현황판 (임원): 이번 달 상세 + 최근 6개월 추이를 한 번에.
+   * "회사의 시간이 어디로 흐르고(기둥·팀·KPI 모자이크), 무엇을 움직였나"를 그래픽으로 보여주는 데이터.
+   */
+  @Get('company-pulse')
+  async companyPulse(@Query('actorId') actorId?: string, @Query('month') monthStr?: string) {
+    await this.assertExec(actorId);
+    const month = /^\d{4}-\d{2}$/.test(String(monthStr || '')) ? String(monthStr) : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+    // 선택 월 포함 최근 6개월
+    const months: string[] = [];
+    let [y, m] = month.split('-').map(Number);
+    for (let i = 0; i < 6; i++) {
+      months.unshift(`${y}-${String(m).padStart(2, '0')}`);
+      m--; if (m === 0) { m = 12; y--; }
+    }
+    const results = [] as Array<{ month: string; data: any }>;
+    for (const mm of months) results.push({ month: mm, data: await this.computeMonthContribution(mm) });
+    const cur = results[results.length - 1].data;
+    return {
+      month,
+      align: cur.align,
+      coverage: cur.coverage,
+      goals: cur.goals,
+      teams: cur.teams,
+      lowContribution: cur.lowContribution,
+      noEvidenceCount: (cur.noEvidence || []).length,
+      trend: results.map((r) => ({
+        month: r.month,
+        totalMinutes: r.data.align.totalMinutes,
+        linkedMinutes: r.data.align.linkedMinutes,
+        pct: r.data.align.pct,
+      })),
     };
   }
 }

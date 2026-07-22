@@ -69,6 +69,7 @@ import { ActivityMap } from './pages/ActivityMap';
 import { StrategyMap } from './pages/StrategyMap';
 import { OntologyExplorer } from './pages/OntologyExplorer';
 import { KpiContribution } from './pages/KpiContribution';
+import { CompanyPulse } from './pages/CompanyPulse';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -438,6 +439,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/process/strategy-map" element={<StrategyMap />} />
           <Route path="/process/ontology" element={<OntologyExplorer />} />
           <Route path="/process/kpi-contribution" element={<KpiContribution />} />
+          <Route path="/process/company-pulse" element={<CompanyPulse />} />
           <Route path="/process/my" element={<ProcessMy />} />
           <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
@@ -597,6 +599,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           {isExec && <Link to="/process/strategy-map">전략 정렬 지도</Link>}
           {isExec && <Link to="/process/ontology">온톨로지 탐색기</Link>}
           {isExec && <Link to="/process/kpi-contribution">KPI 기여 분석</Link>}
+          {isExec && <Link to="/process/company-pulse">회사 실행 현황판</Link>}
           <Link to="/process/templates">프로세스 템플릿</Link>
           <Link to="/process/from-manual">매뉴얼로 프로세스 만들기 (AI)</Link>
         </NavDropdown>
@@ -874,6 +877,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         ...(isExec ? [{ to: '/process/strategy-map', label: '전략 정렬 지도' }] : []),
         ...(isExec ? [{ to: '/process/ontology', label: '온톨로지 탐색기' }] : []),
         ...(isExec ? [{ to: '/process/kpi-contribution', label: 'KPI 기여 분석' }] : []),
+        ...(isExec ? [{ to: '/process/company-pulse', label: '회사 실행 현황판' }] : []),
         { to: '/process/templates', label: '프로세스 템플릿' },
         { to: '/process/from-manual', label: '매뉴얼로 프로세스 만들기 (AI)' },
       ];
