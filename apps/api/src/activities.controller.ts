@@ -350,7 +350,7 @@ export class ActivitiesController {
         },
       }),
       (this.prisma as any).keyInitiative.findMany({
-        where: { status: { not: 'DONE' } },
+        where: { status: { notIn: ['COMPLETED', 'CANCELLED'] as any } }, // KeyInitiativeStatus에 'DONE' 없음 — 'DONE' 사용 시 Prisma 검증에러로 500
         select: { id: true, title: true, status: true, activityId: true, alignsToObjectiveId: true, orgUnit: { select: { name: true } } },
       }),
       (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } }),
