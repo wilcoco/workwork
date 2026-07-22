@@ -1074,6 +1074,71 @@ targetField 가능한 값: ${allowedFields}
     };
   }
 
+  /**
+   * 회사 매뉴얼 작성 가이드라인 점검 — 저장 시점에 빠진 항목을 찾아 대화형 질문 생성.
+   * 가이드라인(2026 업무표준화): ①주기·소요시간 정량화 ②동사 위주 구체 서술
+   * ③인적·물적 자원 명시 ④화면캡처·저장경로 구체화 ⑤예외·실패 대처
+   */
+  @Post(':id/ai/guideline-check')
+  async guidelineCheck(@Param('id') id: string, @Body() dto: { userId?: string; aiModel?: string }) {
+    const uid = String(dto?.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const aiModel = (dto?.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const content = String(manual?.content || '').trim();
+    if (!content) throw new BadRequestException('manual content required');
+    const clipped = content.length > 12000 ? content.slice(0, 12000) : content;
+
+    const sys = `당신은 회사 업무표준화(매뉴얼) 가이드라인 검수자입니다. 반드시 JSON만 출력하세요.
+아래 5개 가이드라인 항목별로 매뉴얼에 해당 내용이 "실제로 적혀 있는지" 판정하고, 빠졌거나 부실한 항목에 대해서만 작성자가 한두 문장으로 답할 수 있는 구체적 질문을 만드세요.
+
+[가이드라인]
+1. cycle — 업무 주기·소요시간 정량화: 주기(일일/주간/월간/분기/발생 시)와 단위 업무별 평균 소요시간이 명시돼 있는가
+2. action — 동사 위주 구체 서술: "면접 준비" 같은 개괄 표현이 아니라, 제3자가 보고 따라 할 수 있는 단계별 행동(동사) 서술인가
+3. resources — 인적·물적 자원: 업무에 필요한 담당자/연락처, 사용하는 시스템·계정, 협력사 정보가 기재돼 있는가 (비밀번호 자체는 적지 말고 보관 위치를 적도록 안내)
+4. visuals — 시스템 경로·산출물 위치: ERP/시스템 조작이 있다면 메뉴 경로, 산출물이 저장되는 서버 경로와 파일명 규칙이 명시돼 있는가 (화면 캡처가 필요한 지점이 있으면 지적)
+5. exceptions — 예외·변수 대응: 정상 흐름 외 예외 상황·실패 사례와 그 대처법이 있는가
+
+규칙:
+- 이미 적혀 있는 항목은 ok:true로 표시하고 질문하지 마세요.
+- 질문은 최대 5개, 이 업무 내용에 맞게 구체적으로. (예: "발주 요청서 결재는 보통 며칠 걸리나요?" — O / "소요시간을 적어주세요" — X)
+- 질문마다 category에 해당 가이드라인 키(cycle/action/resources/visuals/exceptions)를 넣으세요.
+
+출력 JSON: { "checklist": [{ "key": string, "ok": boolean, "note": string }], "questions": [{ "id": number, "category": string, "question": string }] }`;
+
+    try {
+      const result = await callAI({ system: sys, user: `업무명: ${manual.title}\n\n[매뉴얼]\n${clipped}`, model: aiModel, temperature: 0.2 });
+      const parsed: any = result.parsed || {};
+      const KEYS = ['cycle', 'action', 'resources', 'visuals', 'exceptions'];
+      const checklist = KEYS.map((k) => {
+        const c = (Array.isArray(parsed.checklist) ? parsed.checklist : []).find((x: any) => x?.key === k);
+        return { key: k, ok: !!c?.ok, note: String(c?.note || '').slice(0, 200) };
+      });
+      const questions = (Array.isArray(parsed.questions) ? parsed.questions : [])
+        .map((q: any, i: number) => ({ id: i + 1, category: KEYS.includes(String(q?.category)) ? String(q.category) : 'action', question: String(q?.question || '').trim() }))
+        .filter((q: any) => q.question)
+        .slice(0, 5);
+      return { checklist, questions };
+    } catch (e: any) {
+      throw new BadRequestException(e?.message || 'AI 점검 실패');
+    }
+  }
+
+  /** 가이드라인 문답 반영 — 답변을 매뉴얼 본문에 구조화 섹션으로 추가 */
+  @Post(':id/ai/guideline-apply')
+  async guidelineApply(@Param('id') id: string, @Body() dto: { userId?: string; qa?: Array<{ category?: string; q?: string; a?: string }> }) {
+    const uid = String(dto?.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const LABELS: Record<string, string> = { cycle: '업무 주기·소요시간', action: '실행 방법 구체화', resources: '인적·물적 자원', visuals: '시스템 경로·산출물', exceptions: '예외·변수 대응' };
+    const qa = (Array.isArray(dto?.qa) ? dto.qa : [])
+      .map((x) => ({ category: LABELS[String(x?.category || '')] || '보완', q: String(x?.q || '').trim(), a: String(x?.a || '').trim() }))
+      .filter((x) => x.q && x.a);
+    if (!qa.length) return { applied: 0 };
+    const date = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const section = `\n\n---\n## 📋 가이드라인 보완 (${date})\n` + qa.map((x) => `- **[${x.category}]** ${x.q}\n  → ${x.a}`).join('\n');
+    const updated = await (this.prisma as any).workManual.update({ where: { id: manual.id }, data: { content: String(manual.content || '') + section } });
+    return { applied: qa.length, contentLength: String(updated.content || '').length };
+  }
+
   @Post(':id/ai/apply-answers')
   async applyAnswers(@Param('id') id: string, @Body() dto: ApplyAnswersDto) {
     const uid = String(dto.userId || '').trim();

@@ -32,6 +32,57 @@ export function MyManuals() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+  // 가이드라인 점검 모달: 저장 직후 빠진 항목을 대화로 보완
+  const [check, setCheck] = useState<null | { manualId: string; thenProcess: boolean; phase: 'loading' | 'ask'; checklist: Array<{ key: string; ok: boolean; note: string }>; questions: Array<{ id: number; category: string; question: string }> }>(null);
+  const [checkAnswers, setCheckAnswers] = useState<Record<number, string>>({});
+  const [applying, setApplying] = useState(false);
+
+  const CAT_LABEL: Record<string, string> = { cycle: '주기·소요시간', action: '실행 방법', resources: '자원·연락처', visuals: '경로·산출물', exceptions: '예외 대응' };
+
+  async function runGuidelineCheck(manualId: string, thenProcess: boolean) {
+    setCheck({ manualId, thenProcess, phase: 'loading', checklist: [], questions: [] });
+    setCheckAnswers({});
+    try {
+      const r = await apiJson<{ checklist: any[]; questions: any[] }>(`/api/work-manuals/${encodeURIComponent(manualId)}/ai/guideline-check`, {
+        method: 'POST', body: JSON.stringify({ userId }),
+      });
+      if (!r.questions?.length) {
+        setCheck(null);
+        toast('가이드라인 점검 통과 — 빠진 항목이 없습니다. 👏', 'success');
+        finishCheck(manualId, thenProcess);
+        return;
+      }
+      setCheck({ manualId, thenProcess, phase: 'ask', checklist: r.checklist || [], questions: r.questions });
+    } catch {
+      // AI 실패 시 조용히 통과 (저장은 이미 완료됨)
+      setCheck(null);
+      finishCheck(manualId, thenProcess);
+    }
+  }
+
+  function finishCheck(manualId: string, thenProcess: boolean) {
+    if (thenProcess) nav(`/process/from-manual?manualId=${encodeURIComponent(manualId)}`);
+    else void load();
+  }
+
+  async function applyCheckAnswers() {
+    if (!check) return;
+    const qa = check.questions.map((q) => ({ category: q.category, q: q.question, a: (checkAnswers[q.id] || '').trim() })).filter((x) => x.a);
+    setApplying(true);
+    try {
+      if (qa.length) {
+        await apiJson(`/api/work-manuals/${encodeURIComponent(check.manualId)}/ai/guideline-apply`, {
+          method: 'POST', body: JSON.stringify({ userId, qa }),
+        });
+        toast(`답변 ${qa.length}건이 매뉴얼에 추가되었습니다.`, 'success');
+      }
+      const { manualId, thenProcess } = check;
+      setCheck(null);
+      finishCheck(manualId, thenProcess);
+    } catch (e: any) {
+      toast(e?.message || '반영 실패', 'error');
+    } finally { setApplying(false); }
+  }
 
   async function load() {
     if (!userId) return;
@@ -59,11 +110,8 @@ export function MyManuals() {
         body: JSON.stringify({ userId, title: title.trim(), content: content.trim() }),
       });
       setTitle(''); setContent('');
-      if (thenProcess && created?.id) {
-        nav(`/process/from-manual?manualId=${encodeURIComponent(created.id)}`);
-        return;
-      }
-      toast('매뉴얼이 저장되었습니다.', 'success');
+      toast('매뉴얼이 저장되었습니다. 가이드라인 점검 중...', 'success');
+      if (created?.id) { void runGuidelineCheck(created.id, thenProcess); return; }
       await load();
     } catch (e: any) {
       toast(e?.message || '저장 실패', 'error');
@@ -113,6 +161,7 @@ export function MyManuals() {
               )}
               <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(m.updatedAt).toLocaleDateString()}</span>
               <button className="btn btn-sm" onClick={() => nav(`/manuals?openId=${encodeURIComponent(m.id)}`)}>열기</button>
+              <button className="btn btn-sm btn-outline" onClick={() => void runGuidelineCheck(m.id, false)} title="회사 작성 가이드라인(주기·소요시간/구체 서술/자원/경로/예외) 기준으로 빠진 부분을 점검하고 문답으로 보완합니다">📋 가이드 점검</button>
               <button className="btn btn-sm btn-primary" onClick={() => nav(`/process/from-manual?manualId=${encodeURIComponent(m.id)}`)}>
                 {processed ? '프로세스 다시 만들기' : '프로세스 만들기 →'}
               </button>
@@ -121,6 +170,47 @@ export function MyManuals() {
         })}
         {!items.length && !loading && <div style={{ fontSize: 13, color: '#94a3b8' }}>아직 작성한 매뉴얼이 없습니다. 위에서 첫 매뉴얼을 작성해 보세요.</div>}
       </div>
+
+      {/* 가이드라인 점검 모달 */}
+      {check && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 12, maxWidth: 680, width: '100%', maxHeight: '85vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
+            {check.phase === 'loading' ? (
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#334155', padding: 8 }}>✓ 저장되었습니다 — 작성 가이드라인 기준으로 점검 중입니다...</div>
+            ) : (
+              <>
+                <div style={{ fontSize: 15, fontWeight: 800 }}>📋 가이드라인 점검 — 몇 가지만 보완해 주세요</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {check.checklist.map((c) => (
+                    <span key={c.key} title={c.note} style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', border: `1px solid ${c.ok ? '#86efac' : '#fcd34d'}`, background: c.ok ? '#f0fdf4' : '#fffbeb', color: c.ok ? '#15803d' : '#b45309' }}>
+                      {c.ok ? '✓' : '△'} {CAT_LABEL[c.key] || c.key}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  회사 표준(주기·소요시간 / 따라 할 수 있는 서술 / 자원·연락처 / 경로·산출물 / 예외 대응) 중 빠진 부분입니다. <b>아는 것만 짧게</b> 답하면 매뉴얼에 자동 추가됩니다. 화면 캡처는 저장 후 본문 편집으로 붙여 주세요.
+                </div>
+                {check.questions.map((q) => (
+                  <div key={q.id} style={{ display: 'grid', gap: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>
+                      <span style={{ fontSize: 10, color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 6, padding: '1px 6px', marginRight: 6 }}>{CAT_LABEL[q.category] || q.category}</span>
+                      Q. {q.question}
+                    </div>
+                    <textarea rows={2} value={checkAnswers[q.id] || ''} placeholder="한두 문장이면 충분합니다 (모르면 비워두세요)"
+                      onChange={(e) => setCheckAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))} />
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn" disabled={applying} onClick={() => { const c = check; setCheck(null); if (c) finishCheck(c.manualId, c.thenProcess); }}>건너뛰기</button>
+                  <button type="button" className="btn btn-primary" disabled={applying} onClick={() => void applyCheckAnswers()}>
+                    {applying ? '반영 중...' : '답변을 매뉴얼에 추가'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
