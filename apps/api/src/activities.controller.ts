@@ -93,10 +93,12 @@ export class ActivitiesController {
 
   /** 탑다운 매칭: KPI(KeyResult)·중점과제(KeyInitiative)를 활동과 연결 (팀장 이상) */
   @Post('map-goals')
-  async mapGoals(@Body() body: { actorId?: string }) {
+  async mapGoals(@Body() body: { actorId?: string; enrich?: boolean }) {
     const uid = String(body?.actorId || '').trim();
     if (!uid) throw new BadRequestException('actorId required');
     await this.assertExec(uid);
+    // enrich: 링크 1개뿐인 목표(구 단일매칭 백필분)도 재스캔해 다중 연결로 확장
+    const enrich = body?.enrich === true;
     const acts = await (this.prisma as any).activity.findMany({ select: { id: true, name: true, normName: true, aliases: true, domain: true } });
     if (!acts.length) return { kpiMapped: 0, initiativeMapped: 0, note: '활동이 없습니다 — 먼저 추출/체계 정리를 실행하세요' };
     const actsLite: ActivityLite[] = acts.map((a: any) => ({ id: a.id, name: a.name, normName: a.normName, aliases: Array.isArray(a.aliases) ? a.aliases : [] }));
@@ -124,8 +126,9 @@ export class ActivitiesController {
       return Array.from(best.values()).filter((c) => c.score >= 0.08).sort((a, b) => b.score - a.score).slice(0, 25);
     };
     const diag = { withCands: 0, aiCalls: 0, aiErrors: [] as string[], aiItems: 0, nulls: 0, invalidIds: 0 };
-    const mapBatch = async (rows: Array<{ id: string; text: string; keys: string[] }>, model: string): Promise<Map<string, string>> => {
-      const out = new Map<string, string>();
+    // 다중 연결(1:N): 목표 하나가 여러 활동과 관련될 수 있다 — AI가 후보 중 관련 활동을 최대 5개까지 고른다.
+    const mapBatch = async (rows: Array<{ id: string; text: string; keys: string[] }>, model: string): Promise<Map<string, string[]>> => {
+      const out = new Map<string, string[]>();
       const prepped = rows.map((r) => ({
         ...r,
         cands: candsForKeys(r.keys),
@@ -137,26 +140,30 @@ export class ActivitiesController {
         try {
           const user = chunk.map((r, j) =>
             `#${st + j} ${r.text}\n  후보: ${r.cands.map((c) => `[${c.id}] ${c.name}${domainOf.get(c.id) ? `(${domainOf.get(c.id)})` : ''}`).join(' | ')}`
-          ).join('\n\n') + '\n\n출력: { "items": [{ "index": number, "activityId": string|null }] }';
+          ).join('\n\n') + '\n\n출력: { "items": [{ "index": number, "activityIds": string[] }] }';
           const res = await callAI({
             model: 'claude',
             system: `너는 회사 목표와 활동 사전을 연결하는 사서다. 반드시 JSON만 출력한다.
-각 ${model}이(가) 해당 항목의 [후보] 활동 중 어떤 활동의 성과/개선과 직접 관련되는지 판정하라.
-반드시 그 항목의 후보 안에서만 activityId를 고르고, 직접 관련이 확실치 않으면 null. 잘못된 연결이 더 해롭다.`,
+각 ${model}이(가) 해당 항목의 [후보] 활동 중 어떤 활동들의 성과/개선과 직접 관련되는지 판정하라.
+반드시 그 항목의 후보 안에서만 고르고, 직접 관련이 확실한 것만 0~5개 나열하라(관련도 높은 순).
+확실치 않으면 빈 배열. 잘못된 연결이 더 해롭다.`,
             user,
-            temperature: 0.1, maxTokens: 1500,
-            jsonSchema: { name: 'goal_map', schema: { type: 'object' as const, properties: { items: { type: 'array', items: { type: 'object', properties: { index: { type: 'number' }, activityId: { type: ['string', 'null'] } }, required: ['index'] } } }, required: ['items'] } },
+            temperature: 0.1, maxTokens: 2000,
+            jsonSchema: { name: 'goal_map', schema: { type: 'object' as const, properties: { items: { type: 'array', items: { type: 'object', properties: { index: { type: 'number' }, activityIds: { type: 'array', items: { type: 'string' } } }, required: ['index', 'activityIds'] } } }, required: ['items'] } },
           });
           diag.aiCalls++;
           for (const m of res?.parsed?.items || []) {
             diag.aiItems++;
             const idx = Number(m.index) - st;
             const row = chunk[idx];
-            if (!m.activityId) { diag.nulls++; continue; }
+            if (!row) continue;
             // 해당 행의 후보 안에서만 인정 (전체 사전 대비 오연결 방지)
-            const vid = row && row.cands.some((c) => c.id === m.activityId) ? String(m.activityId) : null;
-            if (row && vid) out.set(row.id, vid);
-            else diag.invalidIds++;
+            const valid = (Array.isArray(m.activityIds) ? m.activityIds : [])
+              .filter((aid: any) => row.cands.some((c) => c.id === aid))
+              .slice(0, 5);
+            diag.invalidIds += (Array.isArray(m.activityIds) ? m.activityIds.length : 0) - valid.length;
+            if (valid.length) out.set(row.id, valid as string[]);
+            else diag.nulls++;
           }
         } catch (e: any) {
           diag.aiErrors.push(String(e?.message || e).slice(0, 160));
@@ -165,30 +172,55 @@ export class ActivitiesController {
       }
       return out;
     };
+    // 링크 저장: 조인 테이블 upsert + 대표(primary) 컬럼은 비어있을 때 첫 번째로 채움
+    const saveLinks = async (goalType: 'KR' | 'KI', goalId: string, activityIds: string[]) => {
+      for (const aid of activityIds) {
+        await (this.prisma as any).goalActivityLink.upsert({
+          where: { goalType_goalId_activityId: { goalType, goalId, activityId: aid } },
+          create: { goalType, goalId, activityId: aid },
+          update: {},
+        });
+      }
+      const model = goalType === 'KR' ? (this.prisma as any).keyResult : (this.prisma as any).keyInitiative;
+      const cur = await model.findUnique({ where: { id: goalId }, select: { activityId: true } });
+      if (!cur?.activityId && activityIds[0]) await model.update({ where: { id: goalId }, data: { activityId: activityIds[0] } });
+    };
+
+    // 스캔 대상 = 링크 없는 목표 (enrich 모드면 링크 1개짜리도 재스캔해 다중 연결로 확장)
+    const allLinks = await (this.prisma as any).goalActivityLink.findMany({ select: { goalType: true, goalId: true } });
+    const linkCount = new Map<string, number>();
+    for (const l of allLinks) {
+      const key = `${l.goalType}:${l.goalId}`;
+      linkCount.set(key, (linkCount.get(key) || 0) + 1);
+    }
+    const needsScan = (type: 'KR' | 'KI', id: string) => {
+      const c = linkCount.get(`${type}:${id}`) || 0;
+      return c === 0 || (enrich && c <= 1);
+    };
 
     // KPI (팀 KPI 지표) — Auto Objective 컨테이너 하위·정크(Auto KR 등)는 제외
     const krs = (await (this.prisma as any).keyResult.findMany({
-      where: { activityId: null, NOT: { objective: { title: { startsWith: 'Auto Objective' } } } }, take: 200,
+      where: { NOT: { objective: { title: { startsWith: 'Auto Objective' } } } }, take: 400,
       select: { id: true, title: true, metric: true, objective: { select: { title: true } } },
-    })).filter((k: any) => String(k.title || '').trim().length >= 2 && !/^auto kr/i.test(String(k.title || '').trim()));
+    })).filter((k: any) => needsScan('KR', k.id) && String(k.title || '').trim().length >= 2 && !/^auto kr/i.test(String(k.title || '').trim()));
     const krMap = await mapBatch(krs.map((k: any) => ({
       id: k.id,
       text: `KPI: ${k.title}${k.metric ? ` (산식: ${k.metric})` : ''} / 목표: ${k.objective?.title || ''}`,
       keys: [k.title, k.metric].filter(Boolean),
     })), 'KPI 지표');
-    for (const [id, aid] of krMap) await (this.prisma as any).keyResult.update({ where: { id }, data: { activityId: aid } });
+    for (const [id, aids] of krMap) await saveLinks('KR', id, aids);
 
     // 중점과제
-    const kis = await (this.prisma as any).keyInitiative.findMany({
-      where: { activityId: null }, take: 200,
+    const kis = (await (this.prisma as any).keyInitiative.findMany({
+      take: 400,
       select: { id: true, title: true, goal: true },
-    });
+    })).filter((k: any) => needsScan('KI', k.id));
     const kiMap = await mapBatch(kis.map((k: any) => ({
       id: k.id,
       text: `과제: ${k.title}${k.goal ? ` / 목표: ${String(k.goal).slice(0, 80)}` : ''}`,
       keys: [k.title],
     })), '중점과제');
-    for (const [id, aid] of kiMap) await (this.prisma as any).keyInitiative.update({ where: { id }, data: { activityId: aid } });
+    for (const [id, aids] of kiMap) await saveLinks('KI', id, aids);
 
     return { kpiScanned: krs.length, kpiMapped: krMap.size, initiativeScanned: kis.length, initiativeMapped: kiMap.size, diag: { ...diag, aiErrors: diag.aiErrors.slice(0, 3) } };
   }
@@ -417,12 +449,20 @@ export class ActivitiesController {
           objective: { select: { title: true, pillar: true, orgUnit: { select: { name: true } } } },
         },
       }),
-      (this.prisma as any).keyInitiative.findMany({ where: { NOT: { activityId: null } }, select: { activityId: true } }),
+      (this.prisma as any).goalActivityLink.findMany({ select: { goalType: true, goalId: true, activityId: true } }),
       (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } }),
     ]);
     const actInfo = new Map<string, { name: string; domain: string | null }>(
       (actRows as any[]).map((a) => [String(a.id), { name: a.name, domain: a.domain || null }]),
     );
+    // 목표별 연결 활동 (다중, 조인 테이블 기준 + 레거시 단일컬럼 병합)
+    const krActIds = new Map<string, Set<string>>();
+    for (const l of kiLinks as any[]) {
+      if (l.goalType !== 'KR') continue;
+      const s = krActIds.get(String(l.goalId)) || new Set<string>();
+      s.add(String(l.activityId));
+      krActIds.set(String(l.goalId), s);
+    }
 
     // 지표별 실적(월 최신값) + 실적 입력에 연결된 일지들
     const valByKr = new Map<string, number>();
@@ -466,8 +506,11 @@ export class ActivitiesController {
     // KPI(필러 있는 지표)만 대상
     const kpiKrs = krs.filter((k: any) => k.pillar || k.objective?.pillar);
     const goals = kpiKrs.map((kr: any) => {
+      // 연결 활동들(다중) — 조인 테이블 + 레거시 컬럼 병합
+      const aidSet = new Set<string>(krActIds.get(String(kr.id)) || []);
+      if (kr.activityId) aidSet.add(String(kr.activityId));
       const evidence = new Map<string, any>();
-      if (kr.activityId) for (const w of wlByActivity.get(String(kr.activityId)) || []) evidence.set(String(w.id), w);
+      for (const aid of aidSet) for (const w of wlByActivity.get(aid) || []) evidence.set(String(w.id), w);
       for (const wid of entryWlByKr.get(String(kr.id)) || []) {
         const w = wlById.get(wid);
         if (w) evidence.set(wid, w);
@@ -476,20 +519,22 @@ export class ActivitiesController {
       const minutes = evArr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
       const people = new Set(evArr.map((w) => w.createdById)).size;
       const value = valByKr.get(String(kr.id)) ?? null;
+      const actNames = Array.from(aidSet).map((aid) => actInfo.get(aid)?.name).filter(Boolean) as string[];
       return {
         krId: kr.id, title: kr.title, unit: kr.unit || '', target: kr.target,
         pillar: kr.pillar || kr.objective?.pillar || null,
         teamName: kr.objective?.orgUnit?.name || '',
-        activityName: kr.activityId ? (actInfo.get(String(kr.activityId))?.name || null) : null,
+        activityName: actNames.length ? actNames.slice(0, 3).join(', ') + (actNames.length > 3 ? ` 외 ${actNames.length - 3}` : '') : null,
+        activityCount: aidSet.size,
         value, ach: achOf(kr, value),
         minutes, logs: evArr.length, people,
       };
     }).sort((a: any, b: any) => b.minutes - a.minutes);
 
-    // 목표(지표·중점과제) 어딘가에 연결된 활동 집합
+    // 목표(지표·중점과제) 어딘가에 연결된 활동 집합 (조인 테이블 전체 + 레거시)
     const linkedActIds = new Set<string>();
+    for (const l of kiLinks as any[]) linkedActIds.add(String(l.activityId));
     for (const k of krs) if (k.activityId) linkedActIds.add(String(k.activityId));
-    for (const k of kiLinks) linkedActIds.add(String(k.activityId));
 
     // ② 시간多·기여低: 이번 달 투입시간 상위인데 어떤 목표에도 연결 안 된 활동
     const lowAgg = new Map<string, { name: string; domain: string | null; minutes: number; logs: number; people: Set<string> }>();
@@ -521,7 +566,7 @@ export class ActivitiesController {
     return {
       month,
       align: { totalMinutes, linkedMinutes, pct: totalMinutes > 0 ? Math.round((linkedMinutes / totalMinutes) * 1000) / 10 : null },
-      coverage: { totalGoals: goals.length, withEvidence: goals.filter((g: any) => g.logs > 0 || g.value != null).length, matchedGoals: kpiKrs.filter((k: any) => k.activityId).length },
+      coverage: { totalGoals: goals.length, withEvidence: goals.filter((g: any) => g.logs > 0 || g.value != null).length, matchedGoals: kpiKrs.filter((k: any) => k.activityId || krActIds.has(String(k.id))).length },
       goals,
       lowContribution,
       noEvidence,

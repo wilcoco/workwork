@@ -911,6 +911,12 @@ export class WorklogsController {
       },
     });
 
+    // 온톨로지: 새 일지를 활동 사전에 자동 귀속 (fire-and-forget — 저장 흐름을 막지 않음).
+    // 수동 ⛏ 채굴에만 의존하면 채굴 이후 일지가 미연결로 쌓여 정렬률이 시간이 갈수록 하락한다.
+    if (String(dto.note || '').replace(/<[^>]+>/g, '').trim().length >= 10) {
+      void mineWorklogActivities(this.prisma, { worklogIds: [wl.id] }).catch(() => {});
+    }
+
     // 2) Events
     await this.prisma.event.create({
       data: {

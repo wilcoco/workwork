@@ -180,4 +180,40 @@ export class ProgressController {
     const items = await this.prisma.progressEntry.findMany({ where, orderBy: { createdAt: 'desc' } });
     return { items };
   }
+
+  /**
+   * 내 KPI 이번 달 입력 현황 — 업무일지 작성 화면의 "실적 미입력 KPI" 넛지용.
+   * 나에게 할당된 KPI(KeyResultAssignment)별 이번 달(KST) 실적 입력 여부.
+   */
+  @Get('my-kpi-month')
+  async myKpiMonth(@Query('userId') userId?: string) {
+    const uid = String(userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const assigns = await (this.prisma as any).keyResultAssignment.findMany({
+      where: { userId: uid },
+      include: { keyResult: { select: { id: true, title: true, unit: true, target: true, objective: { select: { title: true } } } } },
+    });
+    if (!assigns.length) return { items: [] };
+    const valid = assigns.filter((a: any) => a.keyResult && !/^Auto /i.test(String(a.keyResult.title || '')) && !/^Auto Objective/i.test(String(a.keyResult.objective?.title || '')));
+    const krIds = valid.map((a: any) => a.keyResult.id);
+    const month = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+    const [y, m] = month.split('-').map(Number);
+    const start = new Date(`${month}-01T00:00:00+09:00`);
+    const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
+    const entries = await this.prisma.progressEntry.findMany({
+      where: { keyResultId: { in: krIds }, actorId: uid, periodStart: { gte: start, lt: end } },
+      select: { keyResultId: true },
+    });
+    const filled = new Set(entries.map((e) => String(e.keyResultId)));
+    return {
+      month,
+      items: valid.map((a: any) => ({
+        krId: a.keyResult.id,
+        title: a.keyResult.title,
+        unit: a.keyResult.unit || '',
+        target: a.keyResult.target ?? null,
+        filled: filled.has(String(a.keyResult.id)),
+      })),
+    };
+  }
 }

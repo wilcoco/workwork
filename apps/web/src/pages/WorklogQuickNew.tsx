@@ -34,6 +34,8 @@ export function WorklogQuickNew() {
   const [helpTickets, setHelpTickets] = useState<Array<{ id: string; label: string }>>([]);
   const [myTasks, setMyTasks] = useState<Array<{ id: string; title: string; initTitle?: string; objTitle?: string; krTitle?: string; isKpi?: boolean; period: string; startAt?: string; krId?: string; krTarget?: number | null; krUnit?: string; krBaseline?: number | null; krDirection?: 'AT_LEAST' | 'AT_MOST' }>>([]);
   const [selection, setSelection] = useState<string>('new:1'); // default: 수동 입력(신규 과제)
+  // 이번 달 실적 미입력 KPI 넛지 (KPI를 과제로 받아 일지에서 입력하는 흐름의 유도)
+  const [kpiNudge, setKpiNudge] = useState<Array<{ krId: string; title: string; unit: string; target: number | null }>>([]);
   const [krValue, setKrValue] = useState<string>('');
   const [initiativeDone, setInitiativeDone] = useState<boolean>(false);
   const [krAchieved, setKrAchieved] = useState<boolean>(false);
@@ -166,6 +168,10 @@ export function WorklogQuickNew() {
         setOrgUnitId(ou);
         setMyRole((me as any)?.role || '');
         const myId = me.id || uid;
+        // 이번 달 실적 미입력 KPI 넛지 로드 (실패는 조용히)
+        apiJson<{ items: Array<{ krId: string; title: string; unit: string; target: number | null; filled: boolean }> }>(`/api/progress/my-kpi-month?userId=${encodeURIComponent(myId)}`)
+          .then((r) => setKpiNudge((r.items || []).filter((x) => !x.filled).map(({ krId, title, unit, target }) => ({ krId, title, unit, target }))))
+          .catch(() => {});
         // Always load my own initiatives (personal OKR/KPI tasks) and enrich with my OKR metadata (O/KR)
         try {
           const mine = await apiJson<{ items: any[] }>(`/api/initiatives/my?userId=${encodeURIComponent(uid)}`);
@@ -860,6 +866,30 @@ export function WorklogQuickNew() {
         </div>
         {error && <div style={{ color: 'red', marginBottom: 8 }}>{error}</div>}
         <form onSubmit={submit} style={{ display: 'grid', gap: 10 }}>
+          {kpiNudge.length > 0 && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 12px' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#b45309', marginBottom: 6 }}>
+                📊 이번 달 실적 미입력 KPI {kpiNudge.length}개 — 클릭해서 이 일지에 실적을 함께 기록하세요
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {kpiNudge.map((k) => (
+                  <button
+                    key={k.krId}
+                    type="button"
+                    onClick={() => { setSelection(`kr:${k.krId}`); }}
+                    style={{
+                      fontSize: 12, padding: '4px 10px', borderRadius: 20, cursor: 'pointer',
+                      border: selection === `kr:${k.krId}` ? '1.5px solid #b45309' : '1px solid #fcd34d',
+                      background: selection === `kr:${k.krId}` ? '#fde68a' : '#fff',
+                      color: '#92400e', fontWeight: selection === `kr:${k.krId}` ? 700 : 500,
+                    }}
+                  >
+                    {k.title}{k.target != null ? ` (목표 ${k.target}${k.unit})` : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <input placeholder="업무일지 제목" value={title} onChange={(e) => setTitle(e.target.value)} style={input} required />
           <div className="resp-2">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} required />
