@@ -101,13 +101,20 @@ export class ActivitiesController {
     return { classified, remaining };
   }
 
-  /** 일지→팀 KPI 배치 분류: 업무내용을 읽어 작성자 팀의 KPI에 태깅 (임원 이상). 반복 실행 = 이어서 처리 */
+  /** 일지→팀 KPI 배치 분류: 업무내용을 읽어 작성자 팀의 KPI에 태깅 (임원 이상). 반복 실행 = 이어서 처리.
+   *  reclassify=true: KPI 목록이 바뀐 뒤 AI 태그만 재판정(USER 확정 보호). orgUnitId로 팀 한정, cutoff로 반복 수렴 */
   @Post('map-worklog-kpis')
-  async mapWorklogKpis(@Body() body: { actorId?: string; limit?: number }) {
+  async mapWorklogKpis(@Body() body: { actorId?: string; limit?: number; reclassify?: boolean; orgUnitId?: string; cutoff?: string }) {
     const uid = String(body?.actorId || '').trim();
     if (!uid) throw new BadRequestException('actorId required');
     await this.assertExec(uid);
-    return mapWorklogsToTeamKpis(this.prisma, { actorId: uid, limit: body?.limit });
+    return mapWorklogsToTeamKpis(this.prisma, {
+      actorId: uid,
+      limit: body?.limit,
+      reclassify: body?.reclassify === true,
+      orgUnitId: String(body?.orgUnitId || '').trim() || undefined,
+      cutoff: String(body?.cutoff || '').trim() || undefined,
+    });
   }
 
   /** 탑다운 매칭: KPI(KeyResult)·중점과제(KeyInitiative)를 활동과 연결 (팀장 이상) */

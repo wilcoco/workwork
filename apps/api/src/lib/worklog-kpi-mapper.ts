@@ -17,9 +17,21 @@ const NOTE_CUT = 400;    // 일지 본문 컷
 
 export async function mapWorklogsToTeamKpis(
   prisma: any,
-  opts: { limit?: number; actorId?: string } = {},
+  opts: {
+    limit?: number;
+    actorId?: string;
+    /** 재분류 모드: AI 태그만 현재 KPI 기준으로 다시 판정. 본인 확정(USER)은 절대 건드리지 않음.
+     *  (기존 팀에 KPI가 추가된 경우 과거 일지 소급용) */
+    reclassify?: boolean;
+    /** 특정 팀만 처리 (orgUnitId) — 재분류 비용 절약용 */
+    orgUnitId?: string;
+    /** 재분류 반복 실행 수렴용 컷오프(ISO): 이 시각 이후 태그가 갱신된 일지는 건너뜀 */
+    cutoff?: string;
+  } = {},
 ): Promise<KpiMapResult> {
   const limit = Math.min(opts.limit || 300, 600);
+  const reclassify = opts.reclassify === true;
+  const cutoffMs = opts.cutoff ? new Date(opts.cutoff).getTime() : Date.now();
 
   // 1) 팀별 진성 KPI 사전 (pillar Objective 하위, Auto/정크 제외)
   const objs = await prisma.objective.findMany({
@@ -38,9 +50,20 @@ export async function mapWorklogsToTeamKpis(
   }
   if (!kpiByTeam.size) return { scanned: 0, tagged: 0, tags: 0, none: 0, remaining: 0, aiErrors: ['팀 KPI가 없습니다'] };
 
-  // 2) 미분류 일지 (태그가 하나도 없는 것 — NONE 포함 어떤 태그든 있으면 처리됨으로 간주)
-  const processedRows = await prisma.worklogGoalTag.findMany({ select: { worklogId: true }, distinct: ['worklogId'] });
-  const processed = new Set(processedRows.map((r: any) => String(r.worklogId)));
+  // 2) 대상 일지 선별
+  //  - 일반 모드: 태그가 하나도 없는 것 (NONE 포함 어떤 태그든 있으면 처리됨)
+  //  - 재분류 모드: USER 태그 있는 일지는 제외(정본 보호), AI-only 일지는 컷오프 이전 것만 재판정
+  const tagRows = await prisma.worklogGoalTag.findMany({ select: { worklogId: true, source: true, createdAt: true } });
+  const hasAnyTag = new Set<string>();
+  const userTagged = new Set<string>();
+  const lastTagAt = new Map<string, number>();
+  for (const r of tagRows) {
+    const id = String(r.worklogId);
+    hasAnyTag.add(id);
+    if (r.source === 'USER') userTagged.add(id);
+    const t = new Date(r.createdAt).getTime();
+    if (!lastTagAt.has(id) || t > lastTagAt.get(id)!) lastTagAt.set(id, t);
+  }
   const all = await prisma.worklog.findMany({
     orderBy: { date: 'desc' },
     select: { id: true, note: true, createdBy: { select: { orgUnitId: true } } },
@@ -48,13 +71,20 @@ export async function mapWorklogsToTeamKpis(
   const candidates: Array<{ id: string; text: string; team: string }> = [];
   let remainingTotal = 0;
   for (const w of all) {
-    if (processed.has(String(w.id))) continue;
+    const id = String(w.id);
+    if (reclassify) {
+      if (userTagged.has(id)) continue; // 본인 확정 보호
+      if (hasAnyTag.has(id) && (lastTagAt.get(id) || 0) >= cutoffMs) continue; // 이번 재분류 세션에서 이미 처리됨
+    } else {
+      if (hasAnyTag.has(id)) continue;
+    }
     const team = w.createdBy?.orgUnitId;
     if (!team || !kpiByTeam.has(team)) continue;
+    if (opts.orgUnitId && team !== opts.orgUnitId) continue;
     const text = String(w.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     if (text.length < 10) continue;
     remainingTotal++;
-    if (candidates.length < limit) candidates.push({ id: String(w.id), text: text.slice(0, NOTE_CUT), team });
+    if (candidates.length < limit) candidates.push({ id, text: text.slice(0, NOTE_CUT), team });
   }
   if (!candidates.length) return { scanned: 0, tagged: 0, tags: 0, none: 0, remaining: 0, aiErrors: [] };
 
@@ -102,6 +132,8 @@ ${kpiList}
             .map((s: any) => { const n = parseInt(String(s).replace(/[^0-9]/g, ''), 10); return kpis[n - 1]?.id || null; })
             .filter((x: any, i: number, a: any[]) => x && a.indexOf(x) === i)
             .slice(0, 3);
+          // 재분류: 기존 AI 태그를 새 판정으로 교체 (USER 태그 없는 일지만 여기 옴)
+          if (reclassify) await prisma.worklogGoalTag.deleteMany({ where: { worklogId: row.id, source: 'AI' } });
           if (krIds.length) {
             for (const krId of krIds) {
               await prisma.worklogGoalTag.upsert({
