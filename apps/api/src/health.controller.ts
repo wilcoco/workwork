@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
@@ -14,9 +14,26 @@ export class HealthController {
     return { ok: true, v: '2026_0722_1130' };
   }
 
-  /** AI 헬스체크 — 서버의 Claude 호출이 살아있는지, 실패면 어떤 오류인지 (키는 노출 안 함) */
+  /** AI 헬스체크 — 서버의 AI 호출이 살아있는지 (?provider=openai 로 OpenAI 경로도 점검, 키는 노출 안 함) */
   @Get('ai')
-  async ai() {
+  async ai(@Query('provider') provider?: string) {
+    if (String(provider || '').toLowerCase() === 'openai') {
+      const okey = process.env.OPENAI_API_KEY;
+      if (!okey) return { ok: false, provider: 'openai', error: 'OPENAI_API_KEY not set' };
+      const t0o = Date.now();
+      try {
+        const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${okey}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ model: 'gpt-4.1', max_tokens: 8, messages: [{ role: 'user', content: 'ping' }] }),
+        });
+        const ms = Date.now() - t0o;
+        if (!resp.ok) return { ok: false, provider: 'openai', status: resp.status, ms, error: (await resp.text().catch(() => '')).slice(0, 400) };
+        return { ok: true, provider: 'openai', model: 'gpt-4.1', ms };
+      } catch (e: any) {
+        return { ok: false, provider: 'openai', ms: Date.now() - t0o, error: String(e?.message || e).slice(0, 300) };
+      }
+    }
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) return { ok: false, error: 'ANTHROPIC_API_KEY not set' };
     const model = process.env.CLAUDE_MODEL || 'claude-opus-4-8';
