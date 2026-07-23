@@ -58,6 +58,9 @@ export function Home() {
   const [pendingComments, setPendingComments] = useState<any[]>([]); // 내 업무일지에 달린 답변 필요한 댓글
   const [pendingSwaps, setPendingSwaps] = useState<any[]>([]); // 내게 온 차량 교환 요청 (대기중)
   const [approvalNotices, setApprovalNotices] = useState<any[]>([]); // 결재 소식: 의견/최종 승인·반려 (안 읽은 것)
+  const [myName, setMyName] = useState('');
+  // 결재 알림 예외 계정 (대표 지시): 숨김 활성 계정에게는 결재 섹션 자체를 표시하지 않음
+  const hideApproval = ['김정중', '김선구'].includes(myName);
   const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
   const [overdueYear, setOverdueYear] = useState<'2026' | 'before' | 'all'>('2026');
   const [overdueLoading, setOverdueLoading] = useState(false);
@@ -306,6 +309,10 @@ export function Home() {
     const viewerId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
     if (!viewerId) return;
     const timer = window.setTimeout(() => void (async () => {
+      try {
+        const me = await apiJson<any>(`/api/users/me?userId=${encodeURIComponent(viewerId)}`);
+        setMyName(String(me?.name || ''));
+      } catch {}
       // 내가 결재해야 할 건 (현재 내 차례인 것만, 최대 3건 표시 + 총 건수)
       try {
         const res = await apiJson<{ items: any[]; total?: number }>(`/api/approvals?approverId=${encodeURIComponent(viewerId)}&status=PENDING&currentApproverOnly=true&withTotal=1&limit=3`);
@@ -423,13 +430,18 @@ export function Home() {
         </div>
       )}
       {/* 알림 배너 */}
-      {(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0) && (
+      {(!hideApproval || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
-            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>처리가 필요한 항목이 있습니다</span>
+            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>{(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0) ? '처리가 필요한 항목이 있습니다' : '오늘의 알림'}</span>
           </div>
-          {pendingApprovalsTotal > 0 && (
+          {!hideApproval && pendingApprovalsTotal === 0 && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 700, color: '#15803d' }}>
+              ✅ 결재할 것 없음
+            </div>
+          )}
+          {!hideApproval && pendingApprovalsTotal > 0 && (
             <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: 10 }}>
               <div style={{ fontWeight: 700, color: '#b45309', marginBottom: 6, fontSize: 13 }}>📋 결재 대기 ({pendingApprovalsTotal}건)</div>
               <div style={{ display: 'grid', gap: 4 }}>
@@ -459,7 +471,7 @@ export function Home() {
               </button>
             </div>
           )}
-          {approvalNotices.length > 0 && (
+          {!hideApproval && approvalNotices.length > 0 && (
             <div style={{ background: '#faf5ff', border: '1px solid #d8b4fe', borderRadius: 8, padding: 10 }}>
               <div style={{ fontWeight: 700, color: '#7e22ce', marginBottom: 6, fontSize: 13 }}>📮 결재 소식 ({approvalNotices.length}건) - 의견·최종 결과</div>
               <div style={{ display: 'grid', gap: 4 }}>
