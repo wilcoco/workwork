@@ -9,7 +9,8 @@ import { apiFetch } from '../lib/api';
  */
 export function WorklogAiFollowup({ worklogId, onDone }: { worklogId: string; onDone: () => void }) {
   const userId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
-  const [phase, setPhase] = useState<'loading' | 'ask' | 'praise'>('loading');
+  const [phase, setPhase] = useState<'loading' | 'ask' | 'praise' | 'feedback'>('loading');
+  const [hint, setHint] = useState('');
   const [questions, setQuestions] = useState<Array<{ id: number; question: string }>>([]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
@@ -48,6 +49,12 @@ export function WorklogAiFollowup({ worklogId, onDone }: { worklogId: string; on
         setPhase('praise');
         return;
       }
+      // 엄격 심사 도입: 탈락 시 개선 힌트를 보여줘 다음 기록의 질을 끌어올린다
+      if (d?.hint) {
+        setHint(d.hint);
+        setPhase('feedback');
+        return;
+      }
     } catch { /* ignore */ }
     onDone();
   }
@@ -76,6 +83,21 @@ export function WorklogAiFollowup({ worklogId, onDone }: { worklogId: string; on
       <div style={overlay}>
         <div style={{ background: '#fff', borderRadius: 12, padding: '18px 24px', fontSize: 14, fontWeight: 600, color: '#334155' }}>
           ✓ 저장되었습니다 — AI가 보완 질문을 준비 중입니다...
+        </div>
+      </div>
+    );
+  }
+  if (phase === 'feedback') {
+    return (
+      <div style={overlay}>
+        <div style={{ background: '#fff', borderRadius: 14, maxWidth: 520, width: '100%', padding: 26, textAlign: 'center', display: 'grid', gap: 12 }}>
+          <div style={{ fontSize: 40 }}>📝</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#334155' }}>저장 완료 — 이번엔 🏅 인증 기준에 조금 못 미쳤어요</div>
+          <div style={{ fontSize: 13, color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 12px', lineHeight: 1.6, textAlign: 'left' }}>
+            💡 {hint}
+          </div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>🏅은 원인·기준·절차처럼 다른 구성원이 재사용할 수 있는 지식에 부여됩니다. 보완 질문에 실제 경험으로 답하면 인증 확률이 크게 올라갑니다.</div>
+          <button type="button" className="btn btn-primary" onClick={onDone}>확인</button>
         </div>
       </div>
     );

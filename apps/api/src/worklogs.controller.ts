@@ -1872,29 +1872,33 @@ export class WorklogsController {
       where: { worklogId: id }, orderBy: { createdAt: 'asc' }, select: { content: true },
     });
     const strip = (s: string) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    const text = [strip(wl.note || ''), ...sups.map((s: any) => strip(s.content || ''))].filter(Boolean).join('\n\n').slice(0, 8000);
-    if (text.length < 30) return { awarded: false, reason: '' };
+    const noteText = strip(wl.note || '').slice(0, 6000);
+    const supText = sups.map((s: any) => strip(s.content || '')).filter(Boolean).join('\n\n').slice(0, 2000);
+    if (noteText.length < 30) return { awarded: false, reason: '', hint: '' };
 
-    const sys = `당신은 구성원의 기록 문화를 키우는 격려형 심사관입니다. 반드시 JSON만 출력하세요.
-아래 업무일지(보충 문답 포함)에 "다른 구성원에게 도움이 될 만한 내용"이 담겨 있는지 너그럽게 판정하세요.
+    // 엄격 심사 (대표 지시 2026-07-24): 내용만으로 주지 말고, AI 보완 질문에 "대답을 잘해야" 인증.
+    const sys = `당신은 회사 지식자산(🏅)의 엄격한 심사관입니다. 반드시 JSON만 출력하세요.
+🏅 인증은 "다른 구성원이 같은 상황에서 그대로 활용할 수 있는 재사용 지식"에만 부여합니다. 인증의 가치는 희소성에서 나옵니다.
 
-합격 기준 (하나라도 '시도'가 보이면 합격 — 완벽하지 않아도 됩니다):
-- 문제의 원인을 짚으려 한 흔적
-- 재발방지·개선을 위해 무엇을 했는지(하려는지)
-- 다른 사람에게 도움될 노하우·기준·팁·주의점
-- 구체적인 수치나 과정 설명이 담긴 성실한 기록
+합격 요건 — 아래를 모두 충족해야 합니다:
+1. 재사용 지식 요소가 2가지 이상 '구체적으로' 담겨 있을 것:
+   ① 원인 분석(왜 발생했는지) ② 판단 기준·수치(임계값·조건) ③ 절차·방법(따라할 수 있는 단계) ④ 재발방지책·개선안 ⑤ 함정·주의점
+2. [보완 문답]이 있는 경우, 답변의 질을 반드시 심사할 것:
+   - 답변이 질문의 요지에 실제로 답하고, 본문에 없던 새로운 정보를 추가해야 합격
+   - "네/아니오/없음/특이사항 없음/위와 같음" 류의 회피성 한 줄 답변, 질문 내용 되풀이면 불합격
+3. 단순 완료 보고("~했습니다" 나열), 일정·수치 나열만 있는 기록은 본문이 길어도 불합격
 
-불합격 (이 경우만): 한두 줄짜리 "완료했습니다"식 나열, 내용이 거의 없는 형식적 기록.
-애매하면 합격시키고 격려하세요.
+애매하면 불합격시키세요.
 
-출력 JSON: { "awarded": boolean, "reason": string }
-- awarded=true면 reason에 어떤 점이 좋은 기록인지 한 문장 칭찬
-- awarded=false면 reason은 빈 문자열`;
+출력 JSON: { "awarded": boolean, "reason": string, "hint": string }
+- awarded=true: reason에 어떤 지식 요소(원인/기준/절차/재발방지/주의점)가 좋았는지 한 문장, hint는 빈 문자열
+- awarded=false: reason은 빈 문자열, hint에 "무엇을 보완하면 인증받을 수 있는지" 구체적 한 문장 (예: "불량 원인을 수치 기준과 함께 적고, 보완 질문에 실제 경험으로 답해 보세요")`;
+    const text = `[본문]\n${noteText}\n\n[보완 문답]\n${supText || '(없음)'}`;
 
     try {
       const result = await callAI({
         system: sys,
-        user: `[업무일지 + 보충 문답]\n${text}`,
+        user: text,
         model: 'claude',
         temperature: 0.2,
         maxTokens: 500,
@@ -1902,13 +1906,14 @@ export class WorklogsController {
           name: 'kb_review',
           schema: {
             type: 'object' as const,
-            properties: { awarded: { type: 'boolean' }, reason: { type: 'string' } },
+            properties: { awarded: { type: 'boolean' }, reason: { type: 'string' }, hint: { type: 'string' } },
             required: ['awarded', 'reason'],
           },
         },
       });
       const awarded = !!result?.parsed?.awarded;
       const reason = String(result?.parsed?.reason || '').trim().slice(0, 300);
+      const hint = String(result?.parsed?.hint || '').trim().slice(0, 300);
       if (awarded) {
         await (this.prisma as any).worklog.update({ where: { id }, data: { kbBadge: true, kbBadgeNote: reason || null } });
         // 온톨로지: 인증 지식이 활동에 귀속되도록, 미연결 일지는 백그라운드로 추출·정합
@@ -1919,9 +1924,9 @@ export class WorklogsController {
           data: { subjectType: 'Worklog', subjectId: id, activity: 'KnowledgeBadgeAwarded', userId: uid, attrs: { reason } },
         }).catch(() => {});
       }
-      return { awarded, reason };
+      return { awarded, reason, hint: awarded ? '' : hint };
     } catch {
-      return { awarded: false, reason: '' }; // AI 실패는 조용히
+      return { awarded: false, reason: '', hint: '' }; // AI 실패는 조용히
     }
   }
 
