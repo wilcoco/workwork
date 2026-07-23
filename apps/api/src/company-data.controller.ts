@@ -312,7 +312,7 @@ export class CompanyDataController {
     ]);
     if (!supported.has(ext)) {
       throw new BadRequestException(
-        `지원하지 않는 파일 형식입니다 (.${ext}). OpenAI file_search는 PDF, Word(docx), PowerPoint(pptx), CSV, TXT, MD, JSON, Excel(xlsx) 등을 지원합니다.`,
+        `지원하지 않는 파일 형식입니다 (.${ext}). PDF, Word(docx), PowerPoint(pptx), CSV, TXT, MD, JSON, Excel(xlsx) 등을 올려 주세요.`,
       );
     }
   }
@@ -469,7 +469,8 @@ export class CompanyDataController {
     } catch {}
     this.assertSupportedForFileSearch(fileName);
 
-    const vsId = await this.ensureVectorStore();
+    let vsId = '';
+    try { vsId = await this.ensureVectorStore(); } catch (e: any) { console.error('[company-data] vector store unavailable:', e?.message?.slice(0, 100)); }
 
     // Handle Excel files by converting to CSV
     const ext = (fileName.match(/\.([a-z0-9]+)(?:[?#]|$)/i)?.[1] || '').toLowerCase();
@@ -510,19 +511,24 @@ export class CompanyDataController {
     const MAX_CONTENT_CHARS = 200_000; // DB/프롬프트 보호용 상한
     if (extractedText) extractedText = extractedText.trim().slice(0, MAX_CONTENT_CHARS) || null;
 
-    const openaiFileId = await this.uploadBinaryToOpenAI(uploadFileName, uploadMimeType, uploadBuffer);
-    await this.addFileToVectorStore(vsId, openaiFileId);
-
-    // Wait for OpenAI to finish chunking + embedding the file, otherwise the assistant won't find it.
-    const indexed = await this.waitForVectorStoreFile(vsId, openaiFileId);
-    if (indexed.status !== 'completed') {
-      console.error(`[company-data] upload ${fileName} indexing not completed: status=${indexed.status} error=${JSON.stringify(indexed.lastError || {})}`);
+    // OpenAI 벡터스토어 인덱싱은 best-effort — 분석은 Claude가 DB의 추출 텍스트를 직접 읽으므로
+    // OpenAI 장애·키 문제가 업로드를 막지 않는다 (provider=openai 선택 시의 색인용으로만 시도).
+    let openaiFileId: string | null = null;
+    try {
+      if (!vsId) throw new Error('vector store unavailable');
+      openaiFileId = await this.uploadBinaryToOpenAI(uploadFileName, uploadMimeType, uploadBuffer);
+      await this.addFileToVectorStore(vsId, openaiFileId);
+      const indexed = await this.waitForVectorStoreFile(vsId, openaiFileId);
+      if (indexed.status !== 'completed') {
+        console.error(`[company-data] upload ${fileName} indexing not completed: status=${indexed.status}`);
+      }
+      const assistantIdEnv = process.env.OPENAI_ASSISTANT_ID;
+      if (assistantIdEnv) await this.ensureAssistantHasVectorStore(assistantIdEnv, vsId);
+    } catch (e: any) {
+      console.error(`[company-data] OpenAI indexing skipped (Claude 경로는 영향 없음): ${e?.message?.slice(0, 150)}`);
     }
-
-    // Make sure the existing assistant (if env-configured) is actually linked to this vector store.
-    const assistantIdEnv = process.env.OPENAI_ASSISTANT_ID;
-    if (assistantIdEnv) {
-      await this.ensureAssistantHasVectorStore(assistantIdEnv, vsId);
+    if (!extractedText && !openaiFileId) {
+      throw new BadRequestException('파일에서 텍스트를 추출하지 못했습니다. CSV/Excel/PDF/DOCX/PPTX/TXT 형식을 사용해 주세요.');
     }
 
     return this.prisma.companyData.create({
@@ -1358,10 +1364,17 @@ export class CompanyDataController {
       take: 20,
     });
 
-    const context = dataSources
-      .filter((d) => d.content?.trim())
-      .map((d, i) => `[자료 ${i + 1}: ${d.title}]\n${d.content}`)
-      .join('\n\n---\n\n');
+    // 컨텍스트 예산: 파일당 6만자·합계 35만자 — Claude 컨텍스트(200K 토큰) 보호
+    const PER_DOC = 60_000, TOTAL = 350_000;
+    let used = 0;
+    const parts: string[] = [];
+    for (const [i, d] of dataSources.filter((x) => x.content?.trim()).entries()) {
+      if (used >= TOTAL) break;
+      const body = String(d.content).slice(0, Math.min(PER_DOC, TOTAL - used));
+      used += body.length;
+      parts.push(`[자료 ${i + 1}: ${d.title}]\n${body}`);
+    }
+    const context = parts.join('\n\n---\n\n');
 
     let userPrompt: string;
     let dataIds: string[];

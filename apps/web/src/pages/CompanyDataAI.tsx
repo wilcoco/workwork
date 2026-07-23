@@ -115,7 +115,7 @@ export function CompanyDataAI() {
       }
       // Keep the form open so the user sees a success notice. Clear only the title/desc fields.
       if (fileInputRef.current) fileInputRef.current.value = '';
-      setUploadedNotice(`"${title}" 등록 및 OpenAI 인덱싱 완료 — 이제 AI 질의에서 사용 가능합니다.`);
+      setUploadedNotice(`"${title}" 등록 완료 — 이제 AI 질의에서 사용 가능합니다.`);
       await loadData();
     } catch (e: any) {
       setError(e?.message || '파일 업로드 실패');
@@ -330,7 +330,7 @@ export function CompanyDataAI() {
                   </div>
                   <div style={{ fontSize: 12, color: '#475569', marginBottom: 8, lineHeight: 1.5 }}>
                     PDF, Word(docx), PowerPoint(pptx), CSV, TXT, MD, JSON 등을 업로드하면<br />
-                    OpenAI가 자동으로 내용을 인식해 AI 질의에 활용합니다. (Excel은 CSV로 변환 후 업로드)
+                    AI가 자동으로 내용을 추출해 질의에 활용합니다. (Excel은 CSV로 변환 저장)
                   </div>
                   <input
                     ref={fileInputRef}
@@ -343,7 +343,7 @@ export function CompanyDataAI() {
                     }}
                     style={{ fontSize: 13 }}
                   />
-                  {uploading && <span style={{ marginLeft: 10, fontSize: 12, color: '#2563eb' }}>OpenAI 업로드 + 인덱싱 중… (최대 1분)</span>}
+                  {uploading && <span style={{ marginLeft: 10, fontSize: 12, color: '#2563eb' }}>업로드·내용 추출 중… (최대 1분)</span>}
                   {uploadedNotice && (
                     <div style={{ marginTop: 10, padding: 8, background: '#ecfdf5', border: '1px solid #86efac', borderRadius: 8, color: '#166534', fontSize: 12, fontWeight: 600 }}>
                       ✅ {uploadedNotice}
@@ -361,7 +361,7 @@ export function CompanyDataAI() {
                   <textarea
                     value={addContent}
                     onChange={(e) => setAddContent(e.target.value)}
-                    placeholder="Excel/문서 내용을 여기에 복사·붙여넣기 하세요.&#10;예: 월별 매출, 부서별 실적, KPI 현황 등&#10;&#10;내용을 입력하면 OpenAI에 자동 업로드됩니다."
+                    placeholder="Excel/문서 내용을 여기에 복사·붙여넣기 하세요.&#10;예: 월별 매출, 부서별 실적, KPI 현황 등&#10;&#10;내용을 입력하면 AI 질의에 바로 활용됩니다."
                     rows={10}
                     style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: 13 }}
                   />
@@ -369,7 +369,7 @@ export function CompanyDataAI() {
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button style={btnGhost} onClick={() => setShowAdd(false)}>취소</button>
                   <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={handleAdd} disabled={saving}>
-                    {saving ? 'OpenAI 업로드 중…' : '등록'}
+                    {saving ? '등록 중…' : '등록'}
                   </button>
                 </div>
               </div>
@@ -416,7 +416,7 @@ export function CompanyDataAI() {
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
                         <button style={btnGhost} onClick={() => setEditingId(null)}>취소</button>
                         <button style={{ ...btnPrimary, opacity: saving ? 0.6 : 1 }} onClick={() => handleSaveContent(d.id)} disabled={saving}>
-                          {saving ? '업로드 중…' : '저장 (OpenAI 재업로드)'}
+                          {saving ? '업로드 중…' : '저장'}
                         </button>
                       </div>
                     </div>
@@ -427,7 +427,7 @@ export function CompanyDataAI() {
                           {d.content.slice(0, 500)}{d.content.length > 500 ? '…' : ''}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>내용 미입력 — 내용을 입력하면 OpenAI에 업로드되어 AI 질의에 활용됩니다</div>
+                        <div style={{ fontSize: 12, color: '#f59e0b', marginBottom: 6 }}>내용 미입력 — 내용을 입력하면 AI 질의에 활용됩니다</div>
                       )}
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button style={{ ...btnGhost, fontSize: 12, padding: '4px 12px' }} onClick={() => { setEditingId(d.id); setEditContent(d.content || ''); }}>
