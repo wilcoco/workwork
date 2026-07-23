@@ -16,6 +16,7 @@ type WorkManualDto = {
   versionUpAt?: string | null;
   status?: string;
   reviewerId?: string | null;
+  canReview?: boolean;
   reviewedAt?: string | null;
   reviewComment?: string | null;
   qualityScore?: number;
@@ -447,7 +448,7 @@ export function WorkManuals() {
     try {
       await apiJson(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/status`, {
         method: 'POST',
-        body: JSON.stringify({ userId, status: 'REVIEW', reviewerId }),
+        body: JSON.stringify({ userId, status: 'REVIEW', ...(reviewerId ? { reviewerId } : {}) }),
       });
       toast('검토 요청이 전송되었습니다.', 'success');
       setReviewerPickOpen(false);
@@ -1210,7 +1211,7 @@ export function WorkManuals() {
                 ) : null; })()}
 
                 {/* 검토자인 경우: 승인/반려 버튼 */}
-                {selected.status === 'REVIEW' && selected.reviewerId === userId && (
+                {selected.status === 'REVIEW' && (selected.reviewerId === userId || selected.canReview) && (
                   <div style={{ border: '1px solid #DBEAFE', borderRadius: 10, background: '#EFF6FF', padding: 12, display: 'grid', gap: 8 }}>
                     <div style={{ fontWeight: 800, fontSize: 13, color: '#1d4ed8' }}>검토 결정</div>
                     <textarea id="review-comment" placeholder="코멘트 (선택)" rows={2}
@@ -1240,9 +1241,15 @@ export function WorkManuals() {
                 {(!selected.status || selected.status === 'DRAFT' || selected.status === 'REJECTED') && selected.userId === userId && (
                   <div style={{ display: 'grid', gap: 6 }}>
                     {!reviewerPickOpen ? (
-                      <button className="btn btn-outline" type="button" onClick={() => setReviewerPickOpen(true)}
-                        disabled={statusLoading || (qualityScore !== null && qualityScore < MIN_QUALITY_SCORE)}
-                        style={{ justifySelf: 'start', color: '#2563eb', borderColor: '#2563eb' }}>팀장에게 검토 요청</button>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as any }}>
+                        <button className="btn" type="button" onClick={() => requestReview('')}
+                          disabled={statusLoading || (qualityScore !== null && qualityScore < MIN_QUALITY_SCORE)}
+                          title="조직도 라인(팀 책임자 → 팀장 → 상위 조직 → 대표)에서 검토자를 자동 지정합니다"
+                          style={{ background: '#2563eb', color: '#fff' }}>조직 라인으로 검토 요청</button>
+                        <button className="btn btn-outline" type="button" onClick={() => setReviewerPickOpen(true)}
+                          disabled={statusLoading || (qualityScore !== null && qualityScore < MIN_QUALITY_SCORE)}
+                          style={{ color: '#2563eb', borderColor: '#2563eb' }}>검토자 직접 선택</button>
+                      </div>
                     ) : (
                       <div style={{ border: '1px solid #DBEAFE', borderRadius: 8, background: '#F8FAFC', padding: 10, display: 'grid', gap: 6 }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>검토자 선택</div>

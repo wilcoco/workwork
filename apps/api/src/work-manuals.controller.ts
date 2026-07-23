@@ -3,6 +3,7 @@ import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import { BASE_TYPES, BASE_TYPE_MAP, QUESTION_SETS, TACIT_KNOWLEDGE_QUESTIONS, OPTION_GROUPS, AI_SYSTEM_PROMPT, recommendOptions, detectSecurityInfo, type PhaseData } from './manual-externalization.constants';
 import { callAI, type AIModel } from './llm/ai-client';
+import { isAncestorOrgManager } from './lib/org-hierarchy';
 import { exactMatch, shortlist } from './lib/activity-match';
 
 class CreateWorkManualDto {
@@ -405,15 +406,56 @@ export class WorkManualsController {
     return { id: m.id, title: m.title, content: m.content || '', status: m.status, qualityScore: m.qualityScore ?? 0, updatedAt: m.updatedAt, authorName: m.user?.name || '' };
   }
 
+  /**
+   * 조직도 기반 승인권 (대표 결정 2026-07-24): 매뉴얼 검토 승인 = 작성자 팀의 상향 라인 전체.
+   * CEO=전체 / 지정 검토자 / 작성자와 같은 팀의 팀장·임원 / 작성자 팀의 조상 조직 소속·책임자.
+   */
+  private async canReviewManual(uid: string, manual: { userId: string; reviewerId?: string | null }): Promise<boolean> {
+    if (!uid) return false;
+    if (String(manual.reviewerId || '') === uid) return true;
+    const viewer = await this.prisma.user.findUnique({ where: { id: uid }, select: { id: true, role: true, orgUnitId: true } });
+    if (!viewer) return false;
+    if (String(viewer.role) === 'CEO') return true;
+    const author = await this.prisma.user.findUnique({ where: { id: String(manual.userId) }, select: { orgUnitId: true } });
+    const targetOrg = author?.orgUnitId || null;
+    if (!targetOrg) return false;
+    if (viewer.orgUnitId === targetOrg && ['MANAGER', 'EXEC'].includes(String(viewer.role))) return true; // 같은 팀의 팀장·임원
+    return isAncestorOrgManager(this.prisma, viewer as any, targetOrg);
+  }
+
+  /** 조직도 라인에서 검토자 자동 선정: 팀 책임자 → 같은 팀 팀장 → 조상 조직 책임자 → CEO */
+  private async resolveOrgLineReviewer(authorId: string): Promise<string | null> {
+    const author = await this.prisma.user.findUnique({ where: { id: authorId }, select: { id: true, orgUnitId: true } });
+    let curId: string | null = author?.orgUnitId || null;
+    for (let hop = 0; curId && hop < 10; hop += 1) {
+      const cur: any = await this.prisma.orgUnit.findUnique({ where: { id: curId }, select: { id: true, parentId: true, managerId: true } });
+      if (!cur) break;
+      if (cur.managerId && cur.managerId !== authorId) return cur.managerId;
+      if (hop === 0) {
+        const mgr = await this.prisma.user.findFirst({ where: { orgUnitId: cur.id, role: 'MANAGER' as any, id: { not: authorId }, status: 'ACTIVE' as any }, select: { id: true } });
+        if (mgr) return mgr.id;
+      }
+      curId = cur.parentId;
+    }
+    const ceo = await this.prisma.user.findFirst({ where: { role: 'CEO' as any, status: 'ACTIVE' as any, id: { not: authorId } }, select: { id: true } });
+    return ceo?.id || null;
+  }
+
   @Get('review-queue')
   async reviewQueue(@Query('userId') userId?: string) {
     const uid = String(userId || '').trim();
     if (!uid) throw new BadRequestException('userId required');
-    const items = await (this.prisma as any).workManual.findMany({
-      where: { reviewerId: uid, status: 'REVIEW' },
+    // 지정 검토자뿐 아니라 조직도 라인(작성자 팀의 상향 라인)에 있으면 검토함에 표시
+    const all = await (this.prisma as any).workManual.findMany({
+      where: { status: 'REVIEW' },
       orderBy: { updatedAt: 'desc' },
-      take: 100,
+      take: 200,
     });
+    const items: any[] = [];
+    for (const it of all) {
+      if (await this.canReviewManual(uid, it)) items.push(it);
+      if (items.length >= 100) break;
+    }
     return {
       items: (items || []).map((it: any) => ({
         id: it.id,
@@ -425,7 +467,8 @@ export class WorkManualsController {
         version: it.version ?? 1,
         status: it.status,
         qualityScore: it.qualityScore ?? 0,
-        reviewerId: it.reviewerId || null, // 화면의 승인/반려 박스 조건에 필수 — 누락 시 검토자가 승인 불가
+        reviewerId: it.reviewerId || null,
+        canReview: true, // 이 큐에 담긴 것 = 조직도 기준 승인권 있음
         reviewedAt: it.reviewedAt || null,
         reviewComment: it.reviewComment || null,
         createdAt: it.createdAt,
@@ -543,8 +586,12 @@ export class WorkManualsController {
 
     const data: any = { status: nextStatus };
     if (nextStatus === 'REVIEW') {
-      const reviewerId = String(dto.reviewerId || '').trim();
-      if (!reviewerId) throw new BadRequestException('reviewerId required for REVIEW');
+      let reviewerId = String(dto.reviewerId || '').trim();
+      if (!reviewerId) {
+        // 조직도 라인 자동 지정: 작성자 팀 책임자 → 같은 팀 팀장 → 조상 조직 책임자 → CEO
+        reviewerId = (await this.resolveOrgLineReviewer(uid)) || '';
+        if (!reviewerId) throw new BadRequestException('조직도에서 검토자를 찾지 못했습니다 — 검토자를 직접 선택해 주세요');
+      }
       const reviewer = await this.prisma.user.findUnique({ where: { id: reviewerId } });
       if (!reviewer) throw new BadRequestException('reviewer not found');
       data.reviewerId = reviewerId;
@@ -570,7 +617,9 @@ export class WorkManualsController {
     const manual = await (this.prisma as any).workManual.findUnique({ where: { id: mid } });
     if (!manual) throw new BadRequestException('manual not found');
     if (String(manual.status) !== 'REVIEW') throw new BadRequestException('manual is not in REVIEW status');
-    if (String(manual.reviewerId) !== uid) throw new ForbiddenException('only assigned reviewer can review');
+    if (!(await this.canReviewManual(uid, manual))) {
+      throw new ForbiddenException('승인 권한이 없습니다 — 작성자 팀의 팀장·상위 조직 라인 또는 지정 검토자만 승인할 수 있습니다');
+    }
 
     const decision = String(dto.decision || '').trim().toUpperCase();
     if (!['APPROVED', 'REJECTED'].includes(decision)) {
