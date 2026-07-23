@@ -1094,7 +1094,8 @@ targetField 가능한 값: ${allowedFields}
   async guidelineCheck(@Param('id') id: string, @Body() dto: { userId?: string; aiModel?: string }) {
     const uid = String(dto?.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-    const aiModel = (dto?.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    // 기본 Claude — 한국어 질문 품질·스키마 출력 안정성 (대표 결정 2026-07-23). aiModel:'openai'로 폴백 가능
+    const aiModel = (dto?.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
     const content = String(manual?.content || '').trim();
     if (!content) throw new BadRequestException('manual content required');
     const clipped = content.length > 12000 ? content.slice(0, 12000) : content;
@@ -1117,7 +1118,20 @@ targetField 가능한 값: ${allowedFields}
 출력 JSON: { "checklist": [{ "key": string, "ok": boolean, "note": string }], "questions": [{ "id": number, "category": string, "question": string }] }`;
 
     try {
-      const result = await callAI({ system: sys, user: `업무명: ${manual.title}\n\n[매뉴얼]\n${clipped}`, model: aiModel, temperature: 0.2 });
+      const result = await callAI({
+        system: sys, user: `업무명: ${manual.title}\n\n[매뉴얼]\n${clipped}`, model: aiModel, temperature: 0.2, maxTokens: 1800,
+        jsonSchema: {
+          name: 'guideline_check',
+          schema: {
+            type: 'object' as const,
+            properties: {
+              checklist: { type: 'array', items: { type: 'object', properties: { key: { type: 'string' }, ok: { type: 'boolean' }, note: { type: 'string' } }, required: ['key', 'ok'] } },
+              questions: { type: 'array', items: { type: 'object', properties: { id: { type: 'number' }, category: { type: 'string' }, question: { type: 'string' } }, required: ['category', 'question'] } },
+            },
+            required: ['checklist', 'questions'],
+          },
+        },
+      });
       const parsed: any = result.parsed || {};
       const KEYS = ['cycle', 'action', 'resources', 'visuals', 'exceptions'];
       const checklist = KEYS.map((k) => {
