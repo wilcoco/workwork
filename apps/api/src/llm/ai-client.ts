@@ -253,7 +253,7 @@ export async function extractOdometerFromImage(
 
 // ─── Main entry point ────────────────────────────────────
 export async function callAI(opts: CallAIOptions): Promise<CallAIResult> {
-  const model = opts.model || 'openai';
+  const model = opts.model || 'claude'; // 전사 기본 Claude (대표 결정 2026-07-23)
 
   // If Claude requested but no API key, fall back to OpenAI
   if (model === 'claude' && !process.env.ANTHROPIC_API_KEY) {

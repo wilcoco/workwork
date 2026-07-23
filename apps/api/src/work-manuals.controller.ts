@@ -593,7 +593,7 @@ export class WorkManualsController {
   async aiBpmnQuestions(@Param('id') id: string, @Body() dto: AiQuestionsDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (dto.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -674,7 +674,7 @@ export class WorkManualsController {
   async aiBpmnCoverage(@Param('id') id: string, @Body() dto: AiBpmnCoverageDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (dto.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -763,7 +763,7 @@ export class WorkManualsController {
   async aiBpmn(@Param('id') id: string, @Body() dto: AiBpmnDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (dto.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -963,7 +963,7 @@ ${orgListText || '(없음)'}
   async aiQuestions(@Param('id') id: string, @Body() dto: AiQuestionsDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (dto.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -1261,7 +1261,7 @@ updatedContent는 원본 메뉴얼에 사용자 답변을 반영한 전체 메�
   async aiDraftSteps(@Param('id') id: string, @Body() dto: AiDraftStepsDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-    const aiModel = (dto.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (dto.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -1405,7 +1405,7 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
     const userMsg = `[사용자 자유 입력]\n${freeText}\n\n[이전 대화]\n${previousRoundsSummary || '(첫 라운드)'}`;
 
-    const model = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const model = (body.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
     console.log('[extPhase2] calling AI', { baseType, roundNum, freeTextLen: freeText.length, model });
     const result = await callAI({ system: sys, user: userMsg, temperature: 0.3, maxTokens: 600, model });
     const parsed = result.parsed || {};
@@ -1457,7 +1457,7 @@ ${qs.coreQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
         const sys = `${AI_SYSTEM_PROMPT}\n\n### 현재 기본형: ${btDef.name} (${btDef.id})\n${btDef.userDescription}\n\n### 이 기본형의 핵심 질문 가이드:\n${qs.coreQuestions.map((q: string, i: number) => `${i + 1}. ${q}`).join('\n')}\n\n### 지시사항\n- 현재 Round ${nextRound}/3 입니다.\n- 사용자가 자유 입력한 내용과 이전 대화를 분석하세요.\n- 2~3개의 구체적인 후속 질문을 생성하세요.\n- 각 질문은 기본형(${btDef.name})의 핵심 질문 가이드를 기반으로 하되, 사용자가 이미 답변한 내용은 반복하지 마세요.\n- 매 라운드마다 "지금까지 정리된 내용"을 structuredSoFar에 포함하세요.\n\n반드시 JSON만 출력하세요. 마크다운 코드펜스를 사용하지 마세요.\n출력 JSON:\n{\n  "questions": string[],\n  "structuredSoFar": string,\n  "summary": string,\n  "completionRate": number\n}`;
         const userMsg = `[사용자 자유 입력]\n${freeText}\n\n[이전 대화]\n${prevSummary}`;
         try {
-          const nextModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+          const nextModel = (body.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
           console.log('[extPhase2Answer] generating next round', nextRound, 'model:', nextModel);
           const result = await callAI({ system: sys, user: userMsg, temperature: 0.3, maxTokens: 600, model: nextModel });
           const parsed = result.parsed || {};
@@ -1601,7 +1601,7 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
 
     const userMsg = `업무명: ${manual.title}\n부서: ${manual.department || manual.authorTeamName || ''}\n작성자: ${manual.authorName || ''}\n\n[사용자 입력]\n${freeText}\n\n[AI 대화 내역]\n${roundsSummary || '(없음)'}`;
 
-    const aiModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (body.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
     console.log('[extPhase4] calling AI', { baseType, optionLabels, aiModel });
     const result = await callAI({ system: sys, user: userMsg, temperature: 0.2, model: aiModel });
     const parsed = result.parsed || {};
@@ -1679,7 +1679,7 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
 
     const userMsg = `[현재 매뉴얼]\n${currentContent}\n\n[암묵지 답변]\n${qaText}`;
 
-    const aiModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (body.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
     console.log('[extPhase5Complete] calling AI', { answeredQAs: answeredQAs.length, aiModel });
     const result = await callAI({ system: sys, user: userMsg, temperature: 0.15, model: aiModel });
     const parsed = result.parsed || {};
@@ -1712,7 +1712,7 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
   async generateSkillFile(@Param('id') id: string, @Body() body: { userId: string; aiModel?: string }) {
     const uid = String(body.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-    const aiModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (body.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
 
     const title = String(manual?.title || '').trim();
     const content = String(manual?.content || '').trim();
@@ -1876,7 +1876,7 @@ ${templateInstructions[baseType] || '구조화된 업무 매뉴얼을 작성하�
   async skillFileToBpmn(@Param('id') id: string, @Body() body: { userId: string; aiModel?: string }) {
     const uid = String(body.userId || '').trim();
     await this.requireOwner(uid, id);
-    const aiModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (body.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
 
     const skillFile = await (this.prisma as any).workSkillFile.findFirst({
       where: { manualId: id },
@@ -2002,7 +2002,7 @@ ${orgListText || '(없음)'}
   async skillQA(@Param('id') id: string, @Body() body: { userId: string; question: string; aiModel?: string }) {
     const uid = String(body.userId || '').trim();
     await this.requireOwner(uid, id);
-    const aiModel = (body.aiModel === 'claude' ? 'claude' : 'openai') as AIModel;
+    const aiModel = (body.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
     const question = String(body.question || '').trim();
     if (!question) throw new BadRequestException('질문을 입력해주세요.');
 

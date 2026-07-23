@@ -582,7 +582,7 @@ ${transcript}
   ]
 }`;
 
-    const result = await callAI({ system, user, model: 'openai', maxTokens: 4096 });
+    const result = await callAI({ system, user, model: 'claude', maxTokens: 4096 });
 
     const parsed = result.parsed || {};
     const corrections: Array<{ from?: string; to?: string; reason?: string }> = Array.isArray(parsed.corrections)

@@ -1172,7 +1172,7 @@ export class CompanyDataController {
     if (askSource === 'company-data') await this.assertExecOnly(body.userId);
 
     let provider: 'openai' | 'claude' | 'claude-opus' =
-      body.provider === 'claude-opus' ? 'claude-opus' : body.provider === 'claude' ? 'claude' : 'openai';
+      body.provider === 'openai' ? 'openai' : body.provider === 'claude' ? 'claude' : 'claude-opus'; // 기본 Claude Opus (대표 결정)
     // Premium Claude Opus (Extended Thinking) is available to all users —
     // we give everyone the highest-quality analysis. If an admin wants to
     // gate it again for cost reasons, set COMPANY_DATA_OPUS_EXEC_ONLY=1.
