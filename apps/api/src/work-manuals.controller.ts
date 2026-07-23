@@ -425,6 +425,9 @@ export class WorkManualsController {
         version: it.version ?? 1,
         status: it.status,
         qualityScore: it.qualityScore ?? 0,
+        reviewerId: it.reviewerId || null, // 화면의 승인/반려 박스 조건에 필수 — 누락 시 검토자가 승인 불가
+        reviewedAt: it.reviewedAt || null,
+        reviewComment: it.reviewComment || null,
         createdAt: it.createdAt,
         updatedAt: it.updatedAt,
       })),
