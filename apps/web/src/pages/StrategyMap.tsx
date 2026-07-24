@@ -21,7 +21,6 @@ type Data = {
 const PILLARS: { key: string; label: string; color: string; bg: string }[] = [
   { key: 'C', label: '생산성 혁신', color: '#2563eb', bg: '#eff6ff' },
   { key: 'Q', label: '품질 혁신', color: '#16a34a', bg: '#f0fdf4' },
-  { key: 'D', label: '납기 혁신', color: '#d97706', bg: '#fffbeb' },
   { key: 'DEV', label: '신차 개발', color: '#7c3aed', bg: '#f5f3ff' },
   { key: 'P', label: '역량 강화', color: '#db2777', bg: '#fdf2f8' },
   { key: '_', label: '전략 미지정', color: '#64748b', bg: '#f8fafc' },

@@ -24,7 +24,6 @@ const PILLARS: Record<string, { label: string; color: string; light: string }> =
   DEV: { label: '신차 개발', color: '#7c3aed', light: '#a78bfa' },
   C: { label: '생산성 혁신', color: '#2563eb', light: '#60a5fa' },
   Q: { label: '품질 혁신', color: '#16a34a', light: '#4ade80' },
-  D: { label: '납기 혁신', color: '#d97706', light: '#fbbf24' },
   P: { label: '역량 강화', color: '#db2777', light: '#f472b6' },
 };
 const PORDER = ['DEV', 'C', 'Q', 'D', 'P'];

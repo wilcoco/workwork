@@ -27,7 +27,6 @@ type Data = {
 const PILLAR_INFO: Record<string, { label: string; color: string; bg: string }> = {
   C: { label: '생산성', color: '#2563eb', bg: '#eff6ff' },
   Q: { label: '품질', color: '#16a34a', bg: '#f0fdf4' },
-  D: { label: '납기', color: '#d97706', bg: '#fffbeb' },
   DEV: { label: '신차개발', color: '#7c3aed', bg: '#f5f3ff' },
   P: { label: '역량', color: '#db2777', bg: '#fdf2f8' },
 };

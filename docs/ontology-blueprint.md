@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **활동** | `Activity` | 반복 가능한 작업 단위 — 5축의 공통 허브 | domain/category/taskType은 속성(별도 객체 아님) |
 | **대상** | `OntologyEntity` | 활동이 다루는 실물/개념 (설비·차종·고객사·협력사·부품·시스템) | kind는 속성. 생명주기가 활동·사람과 독립이라 분리 |
-| **목표** | `Objective` | 팀/회사의 정성 목표 | pillar(전략 기둥 C·Q·D·DEV·P)는 속성 |
+| **목표** | `Objective` | 팀/회사의 정성 목표 | pillar(전략 기둥 C·Q·DEV·P — 납기 D는 2026-07-24 대표 결정으로 제외, 납기성 지표는 품질 Q 하위)는 속성 |
 | **KPI** | `KeyResult` | 정량 지표 (측정) | |
 | **중점과제** | `KeyInitiative` | 변경/개선 프로젝트 | |
 | **프로세스** | `ProcessTemplate` (+`ProcessTaskTemplate`) | 활동의 실행 배열 (BPMN) | PTT는 프로세스의 하위 구성이지 독립 객체 아님 |

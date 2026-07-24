@@ -18,7 +18,6 @@ type Pulse = {
 const PILLARS: Array<{ key: string; label: string; color: string }> = [
   { key: 'C', label: '생산성 혁신', color: '#2563eb' },
   { key: 'Q', label: '품질 혁신', color: '#16a34a' },
-  { key: 'D', label: '납기 혁신', color: '#d97706' },
   { key: 'DEV', label: '신차 개발', color: '#7c3aed' },
   { key: 'P', label: '역량 강화', color: '#db2777' },
 ];

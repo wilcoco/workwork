@@ -316,7 +316,6 @@ export function TeamKpiInput() {
           <select value={krPillar} onChange={(e) => setKrPillar(e.target.value as Pillar)}>
             <option value="Q">Quality (품질)</option>
             <option value="C">Cost (원가)</option>
-            <option value="D">Delivery (납기)</option>
             <option value="DEV">Development (개발)</option>
             <option value="P">People (인재)</option>
           </select>
@@ -611,7 +610,7 @@ export function TeamKpiInput() {
                       <input style={fld} value={f.unit} onChange={(e) => set('unit', e.target.value)} /></label>
                     <label style={{ display: 'grid', gap: 3, flex: 1, minWidth: 120 }}><span style={{ fontSize: 12, color: '#475569' }}>분야</span>
                       <select style={fld} value={f.pillar} onChange={(e) => set('pillar', e.target.value)}>
-                        <option value="C">생산성</option><option value="Q">품질</option><option value="D">납기</option><option value="DEV">개발</option><option value="P">역량</option>
+                        <option value="C">생산성</option><option value="Q">품질</option><option value="DEV">개발</option><option value="P">역량</option>
                       </select></label>
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
