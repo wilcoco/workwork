@@ -58,6 +58,7 @@ export function Home() {
   const [pendingComments, setPendingComments] = useState<any[]>([]); // 내 업무일지에 달린 답변 필요한 댓글
   const [pendingSwaps, setPendingSwaps] = useState<any[]>([]); // 내게 온 차량 교환 요청 (대기중)
   const [approvalNotices, setApprovalNotices] = useState<any[]>([]); // 결재 소식: 의견/최종 승인·반려 (안 읽은 것)
+  const [weeklyDigest, setWeeklyDigest] = useState<any | null>(null); // 온톨로지 주간 리포트 (안 읽은 것)
   const [myName, setMyName] = useState('');
   // 결재 알림 예외 계정 (대표 지시): 숨김 활성 계정에게는 결재 섹션 자체를 표시하지 않음
   const hideApproval = ['김정중', '김선구'].includes(myName);
@@ -340,6 +341,8 @@ export function Home() {
       try {
         const res = await apiJson<{ items: any[] }>(`/api/inbox?userId=${encodeURIComponent(viewerId)}&onlyUnread=true&limit=50`);
         const kinds = ['ApprovalCommented', 'ApprovalGranted', 'ApprovalRejected'];
+        const digest = (res.items || []).find((n: any) => String(n.type) === 'OntologyDigest');
+        setWeeklyDigest(digest || null);
         setApprovalNotices((res.items || []).filter((n: any) => kinds.includes(String(n.type || ''))).slice(0, 10));
       } catch {
         setApprovalNotices([]);
@@ -436,6 +439,18 @@ export function Home() {
             <span style={{ fontSize: 20 }}>🔔</span>
             <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>{(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0) ? '처리가 필요한 항목이 있습니다' : '오늘의 알림'}</span>
           </div>
+          {weeklyDigest && (
+            <div
+              onClick={() => {
+                apiJson(`/api/notifications/${weeklyDigest.id}/read`, { method: 'POST', body: JSON.stringify({ actorId: localStorage.getItem('userId') || '' }) }).catch(() => {});
+                nav('/process/atlas');
+              }}
+              style={{ background: '#eef2ff', border: '1px solid #a5b4fc', borderRadius: 8, padding: 10, cursor: 'pointer' }}
+            >
+              <div style={{ fontWeight: 700, color: '#4338ca', fontSize: 13, marginBottom: 4 }}>📊 온톨로지 주간 리포트 — 조감도 보기 →</div>
+              <div style={{ fontSize: 12, color: '#4f46e5' }}>{String(weeklyDigest.payload?.summary || '')}</div>
+            </div>
+          )}
           {!hideApproval && pendingApprovalsTotal === 0 && (
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 700, color: '#15803d' }}>
               ✅ 결재할 것 없음
