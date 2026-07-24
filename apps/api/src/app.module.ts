@@ -59,6 +59,7 @@ import { TeamTasksController } from './team-tasks.controller';
 import { ExecInstructionsController } from './exec-instructions/exec-instructions.controller';
 import { ProcessDeadlineService } from './process-deadline.service';
 import { ProcessSchedulerService } from './process-scheduler.service';
+import { OntologySchedulerService } from './ontology-scheduler.service';
 import { DataverseService } from './dataverse.service';
 import { AuditLogService } from './audit-log.service';
 
@@ -125,6 +126,7 @@ import { AuditLogService } from './audit-log.service';
     TeamsNotificationService,
     ProcessDeadlineService,
     ProcessSchedulerService,
+    OntologySchedulerService,
     DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
