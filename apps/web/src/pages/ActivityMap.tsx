@@ -6,7 +6,7 @@ import { apiJson } from '../lib/api';
  * 회사가 수행하는 활동 전체를 한 화면에서 조망: 어디서 쓰이고(프로세스),
  * 얼마나 실행되고(일지), 지식이 어디에 쌓였고(🏅), 어디가 비어 있는가(리스크).
  */
-type Item = { id: string; name: string; taskType?: string | null; roleHint?: string | null; domain?: string | null; category?: string | null; aliasCount: number; templateUse: number; worklogCount: number; knowledgeCount: number; kpiCount?: number; initiativeCount?: number; lastRunAt?: string | null };
+type Item = { id: string; name: string; taskType?: string | null; roleHint?: string | null; status?: string | null; domain?: string | null; category?: string | null; aliasCount: number; templateUse: number; worklogCount: number; knowledgeCount: number; kpiCount?: number; initiativeCount?: number; lastRunAt?: string | null };
 type Overview = {
   totals: { activities: number; withKnowledge: number; executedActivities: number; totalKnowledge: number; byType: Record<string, number> };
   items: Item[]; risky: Item[]; rich: Item[];
@@ -326,11 +326,12 @@ export function ActivityMap() {
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         {catItems.map((it) => (
                           <button key={it.id} type="button" onClick={() => void openKnowledge(it.id)}
-                            title={`프로세스 사용 ${it.templateUse} · 일지 ${it.worklogCount} · 지식 ${it.knowledgeCount}${it.roleHint ? ` · 담당: ${it.roleHint}` : ''}`}
+                            title={`프로세스 사용 ${it.templateUse} · 일지 ${it.worklogCount} · 지식 ${it.knowledgeCount}${it.roleHint ? ` · 담당: ${it.roleHint}` : ''}${it.status === 'AUTO' ? ' · AI 채굴(미확인)' : ' · 확인됨'}`}
                             style={{
                               fontSize: 12, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
-                              border: `1px solid ${it.knowledgeCount ? '#f59e0b' : '#e2e8f0'}`,
+                              border: `1px ${it.status === 'AUTO' ? 'dashed' : 'solid'} ${it.knowledgeCount ? '#f59e0b' : '#e2e8f0'}`,
                               background: it.knowledgeCount ? '#fffbeb' : '#fff', color: '#334155',
+                              opacity: it.status === 'AUTO' ? 0.75 : 1,
                             }}>
                             {it.name}
                             {it.worklogCount > 0 && <span style={{ color: '#94a3b8', marginLeft: 4 }}>{it.worklogCount}</span>}

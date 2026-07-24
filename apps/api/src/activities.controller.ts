@@ -37,6 +37,14 @@ export class ActivitiesController {
     return mineWorklogActivities(this.prisma, { actorId: uid, days: body?.days ?? 180, onlyBadged: !!body?.onlyBadged, limit: body?.limit ?? 100 });
   }
 
+  /** 활동 확인(승격) — AUTO(AI채굴)를 사람이 확인해 CONFIRMED로 (임원 이상). Foundry의 상태 승격에 해당 */
+  @Post(':id/confirm')
+  async confirmActivity(@Param('id') id: string, @Body() body: { actorId?: string }) {
+    await this.assertExec(String(body?.actorId || ''));
+    const a = await (this.prisma as any).activity.update({ where: { id }, data: { status: 'CONFIRMED' } });
+    return { id: a.id, status: a.status };
+  }
+
   /** 대상(설비·차종·고객사·부품·시스템) 채굴 — 일지에서 두 번째 객체 타입 추출 (임원 이상) */
   @Post('mine-entities')
   async mineEntities(@Body() body: { actorId?: string; days?: number; limit?: number }) {
@@ -332,6 +340,7 @@ export class ActivitiesController {
       roleHint: a.roleHint,
       domain: a.domain || null,
       category: a.category || null,
+      status: a.status || 'AUTO',
       aliasCount: Array.isArray(a.aliases) ? a.aliases.length : 0,
       templateUse: tplMap.get(String(a.id)) || 0,
       worklogCount: wlMap.get(String(a.id)) || 0,

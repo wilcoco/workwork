@@ -1,5 +1,7 @@
-import { BadRequestException, Controller, ForbiddenException, Get, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { ActivitiesController } from './activities.controller';
+import { callAI } from './llm/ai-client';
 
 const ENTITY_KIND_KO: Record<string, string> = { EQUIPMENT: '설비', VEHICLE: '차종', CUSTOMER: '고객사', SUPPLIER: '협력사', PART: '부품', SYSTEM: '시스템', OTHER: '대상' };
 
@@ -29,6 +31,82 @@ export class OntologyController {
   private wlChip(w: any) {
     const first = String(w.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || '(내용 없음)';
     return { type: 'worklog', id: w.id, label: first, sub: `${w.createdBy?.name || ''} · ${w.date ? new Date(w.date).toISOString().slice(5, 10) : ''}`, knowledge: w.kbBadge ? 1 : 0 };
+  }
+
+  /**
+   * 온톨로지 자연어 질의 (AIP Logic 'Query objects' 패턴의 축약) — 임원 이상.
+   * 질문 키워드로 관련 객체를 좁혀 담고, 이번 달 실행 요약(company-pulse 코어)을 함께
+   * Claude에 그라운딩. 데이터에 없는 것은 없다고 답하게 한다.
+   */
+  @Post('ask')
+  async ask(@Body() body: { question?: string; actorId?: string; month?: string }) {
+    const role = await this.assertExec(String(body?.actorId || ''));
+    const q = String(body?.question || '').trim();
+    if (!q) throw new BadRequestException('question required');
+    const month = /^\d{4}-\d{2}$/.test(String(body?.month || '')) ? String(body?.month) : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+    const p = this.prisma as any;
+
+    // 1) 이번 달 실행 요약 (기존 코어 재사용)
+    const actCtl = new ActivitiesController(this.prisma as any);
+    const pulse: any = await (actCtl as any).computeMonthContribution(month);
+    const h = (min: number) => Math.round((min || 0) / 60);
+    const pillarAgg = new Map<string, number>();
+    for (const g of pulse.goals || []) pillarAgg.set(g.pillar || '무기둥', (pillarAgg.get(g.pillar || '무기둥') || 0) + g.minutes);
+    const summaryLines = [
+      `[${month} 실행 요약] 총 ${h(pulse.align.totalMinutes)}h, 목표 정렬 ${pulse.align.pct ?? '?'}% (KPI ${pulse.coverage.totalGoals}개 중 증거 있음 ${pulse.coverage.withEvidence})`,
+      `기둥별 시간(중복계상): ${[...pillarAgg.entries()].map(([k, v]) => `${k} ${h(v)}h`).join(', ')}`,
+      `팀별 시간: ${(pulse.teams || []).slice(0, 12).map((t: any) => `${t.name} ${h(t.totalMin)}h(정렬 ${t.pct ?? '?'}%)`).join(', ')}`,
+      `KPI 상위(시간순): ${(pulse.goals || []).slice(0, 10).map((g: any) => `${g.title}[${g.teamName}] ${h(g.minutes)}h·일지${g.logs}${g.ach != null ? `·달성${g.ach}%` : ''}`).join(' / ')}`,
+      `목표 미연결 활동 상위: ${(pulse.lowContribution || []).slice(0, 6).map((a: any) => `${a.name} ${h(a.minutes)}h`).join(', ')}`,
+    ];
+
+    // 2) 질문 키워드로 관련 객체 수집
+    const tokens = [...new Set(q.split(/[^가-힣a-zA-Z0-9]+/).filter((t) => t.length >= 2))].slice(0, 6);
+    const matched: Array<{ type: string; id: string; label: string; sub?: string }> = [];
+    const objLines: string[] = [];
+    for (const tk of tokens) {
+      const c = { contains: tk, mode: 'insensitive' as any };
+      const [acts, ents, teams] = await Promise.all([
+        p.activity.findMany({ where: { name: c }, select: { id: true, name: true, domain: true, status: true }, take: 4 }),
+        p.ontologyEntity.findMany({ where: { name: c }, select: { id: true, name: true, kind: true }, take: 3 }),
+        p.orgUnit.findMany({ where: { name: c }, select: { id: true, name: true }, take: 2 }),
+      ]);
+      for (const a of acts) {
+        if (matched.some((m) => m.id === a.id)) continue;
+        const [wl, kb] = await Promise.all([
+          p.worklog.aggregate({ where: { activityId: a.id }, _count: { _all: true }, _sum: { timeSpentMinutes: true } }),
+          p.worklog.count({ where: { activityId: a.id, kbBadge: true } }),
+        ]);
+        matched.push({ type: 'activity', id: a.id, label: a.name, sub: a.domain });
+        objLines.push(`활동 「${a.name}」(${a.domain || '미분류'}${a.status === 'AUTO' ? '·미확인' : ''}): 누적 일지 ${wl._count._all}건 ${h(wl._sum.timeSpentMinutes || 0)}h, 🏅지식 ${kb}건`);
+      }
+      for (const e of ents) {
+        if (matched.some((m) => m.id === e.id)) continue;
+        const n = await p.worklogEntity.count({ where: { entityId: e.id } });
+        matched.push({ type: 'entity', id: e.id, label: e.name, sub: ENTITY_KIND_KO[e.kind] });
+        objLines.push(`대상 「${e.name}」(${ENTITY_KIND_KO[e.kind] || ''}): 관련 일지 ${n}건`);
+      }
+      for (const t of teams) {
+        if (matched.some((m) => m.id === t.id)) continue;
+        matched.push({ type: 'orgUnit', id: t.id, label: t.name, sub: '조직' });
+      }
+    }
+
+    const context = `${summaryLines.join('\n')}${objLines.length ? `\n\n[질문 관련 객체]\n${objLines.join('\n')}` : ''}`;
+    const result = await callAI({
+      model: 'claude',
+      system: `너는 자동차 부품 제조사(캠스)의 온톨로지(활동·KPI·조직·실행 데이터) 분석 비서다.
+규칙:
+- 아래 [데이터]에 있는 수치와 사실만으로 답하라. 데이터에 없으면 "데이터에 없습니다"라고 말하라. 추측 금지.
+- 시간 단위는 h, 팀·활동·KPI 이름은 데이터의 표기 그대로.
+- 3~6문장, 핵심 수치를 인용해 간결하게. 필요하면 확인할 화면(조감도/탐색기/현황판)을 한 줄 권하라.
+- 시간 수치는 자기신고 기반이며 KPI별 합산은 중복 계상될 수 있음을 필요시 짧게 부기하라.`,
+      user: `[데이터]\n${context}\n\n[질문]\n${q}`,
+      temperature: 0.2, maxTokens: 1200,
+      jsonSchema: { name: 'ontology_answer', schema: { type: 'object' as const, properties: { answer: { type: 'string' } }, required: ['answer'] } },
+    });
+    const answer = String(result?.parsed?.answer || '').trim() || '답변을 생성하지 못했습니다.';
+    return { answer, matched: matched.slice(0, 10), month };
   }
 
   /** 전 객체 통합 검색 — 유형별 상위 몇 건씩 */
@@ -115,7 +193,7 @@ export class OntologyController {
         const e = orgCount.get(o.id) || { id: o.id, name: o.name, n: 0 }; e.n++; orgCount.set(o.id, e);
       }
       return {
-        node: { type: 'activity', id: a.id, label: a.name, sub: [a.domain, a.category].filter(Boolean).join(' ▸ ') || null, meta: { taskType: a.taskType, aliases: (a.aliases || []).slice(0, 8) } },
+        node: { type: 'activity', id: a.id, label: a.name, sub: [a.domain, a.category].filter(Boolean).join(' ▸ ') || null, meta: { taskType: a.taskType, aliases: (a.aliases || []).slice(0, 8), status: a.status || 'AUTO' } },
         sections: [
           { key: 'definition', label: '정의', items: [
             ...manuals.map((m: any) => ({ type: 'workManual', id: m.id, label: m.title, sub: `매뉴얼 · ${m.authorName || ''}` })),

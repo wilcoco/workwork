@@ -91,6 +91,11 @@ export async function resolveActivitiesForBpmn(prisma: any, bpmnJson: any, actor
       }
     }
   }
+  // 템플릿에 연결된 활동은 전부 CONFIRMED 승격 (사람 검토를 거친 정의)
+  try {
+    const linkedIds = (bpmnJson?.nodes || []).map((n: any) => n.activityId).filter(Boolean);
+    if (linkedIds.length) await prisma.activity.updateMany({ where: { id: { in: linkedIds }, status: 'AUTO' }, data: { status: 'CONFIRMED' } });
+  } catch {}
   return log;
 }
 
@@ -103,6 +108,7 @@ async function createActivity(prisma: any, node: any, actorId?: string): Promise
       data: {
         name,
         normName,
+        status: 'CONFIRMED', // 사람이 작성한 템플릿 경유 = 확인된 활동
         taskType: String(node.taskType || '').toUpperCase() || null,
         description: node.description ? strip(node.description).slice(0, 500) : null,
         roleHint: node.assigneeHint ? strip(node.assigneeHint).slice(0, 120) : null,

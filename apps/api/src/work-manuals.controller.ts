@@ -1134,7 +1134,10 @@ targetField 가능한 값: ${allowedFields}
     const acts = (await (this.prisma as any).activity.findMany({ select: { id: true, name: true, normName: true, aliases: true, taskType: true } }))
       .map((a: any) => ({ ...a, aliases: Array.isArray(a.aliases) ? a.aliases : [] }));
     const hit = exactMatch(title, acts) || (() => { const c = shortlist(title, undefined, acts, 1)[0]; return c && c.score >= 0.7 ? c : null; })();
-    if (hit) await (this.prisma as any).workManual.update({ where: { id: manualId }, data: { activityId: hit.id } });
+    if (hit) {
+      await (this.prisma as any).workManual.update({ where: { id: manualId }, data: { activityId: hit.id } });
+      await (this.prisma as any).activity.updateMany({ where: { id: hit.id, status: 'AUTO' }, data: { status: 'CONFIRMED' } }).catch(() => {});
+    }
   }
 
   /**

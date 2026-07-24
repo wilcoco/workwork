@@ -17,7 +17,7 @@ export interface MergeResult {
   dryRun?: boolean;
 }
 
-type Act = { id: string; name: string; normName: string; aliases: string[]; taskType: string | null; domain: string | null; wl: number };
+type Act = { id: string; name: string; normName: string; aliases: string[]; taskType: string | null; domain: string | null; wl: number; status?: string };
 
 /** union-find */
 class UF {
@@ -34,10 +34,10 @@ export async function mergeSimilarActivities(
   const threshold = opts.threshold ?? 0.5;
   const limit = Math.max(1, Math.min(opts.limit ?? 30, 60));
 
-  const rows = await prisma.activity.findMany({ select: { id: true, name: true, normName: true, aliases: true, taskType: true, domain: true } });
+  const rows = await prisma.activity.findMany({ select: { id: true, name: true, normName: true, aliases: true, taskType: true, domain: true, status: true } });
   const wlCounts = await prisma.worklog.groupBy({ by: ['activityId'], where: { activityId: { not: null } }, _count: { _all: true } });
   const wlMap = new Map(wlCounts.map((r: any) => [String(r.activityId), r._count._all]));
-  const acts: Act[] = rows.map((a: any) => ({ id: a.id, name: a.name, normName: a.normName || normalizeActivityName(a.name), aliases: Array.isArray(a.aliases) ? a.aliases : [], taskType: a.taskType || null, domain: a.domain || null, wl: Number(wlMap.get(String(a.id)) || 0) }));
+  const acts: Act[] = rows.map((a: any) => ({ id: a.id, name: a.name, normName: a.normName || normalizeActivityName(a.name), aliases: Array.isArray(a.aliases) ? a.aliases : [], taskType: a.taskType || null, domain: a.domain || null, wl: Number(wlMap.get(String(a.id)) || 0), status: a.status || 'AUTO' }));
   if (acts.length < 2) return { candidates: 0, processed: 0, merged: 0, removed: 0, remaining: 0, samples: [] };
 
   // 1) 결정론 클러스터링 — bigram 유사도 ≥ threshold 끼리 union.
@@ -116,7 +116,7 @@ export async function mergeSimilarActivities(
           // 대표 활동명/별칭 갱신 (normName 은 대표명 기준으로 재계산, 충돌 시 기존 유지)
           const newNorm = normalizeActivityName(canonName);
           const clash = newNorm && newNorm !== canonical.normName ? await tx.activity.findFirst({ where: { normName: newNorm, id: { not: canonical.id } }, select: { id: true } }) : null;
-          await tx.activity.update({ where: { id: canonical.id }, data: { name: canonName, aliases: aliasPool, ...(newNorm && !clash ? { normName: newNorm } : {}) } });
+          await tx.activity.update({ where: { id: canonical.id }, data: { name: canonName, aliases: aliasPool, ...(groupActs.some((x: any) => x.status === 'CONFIRMED') ? { status: 'CONFIRMED' } : {}), ...(newNorm && !clash ? { normName: newNorm } : {}) } });
           await tx.activity.deleteMany({ where: { id: { in: otherIds } } });
         }, { timeout: 20000 });
         merged++; removed += others.length;

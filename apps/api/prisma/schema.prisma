@@ -302,6 +302,8 @@ model Activity {
   @@index([name])
   @@index([taskType])
   @@index([domain])
+  status String @default("AUTO") // 생명주기: AUTO(AI채굴, 미확인)/CONFIRMED(템플릿·매뉴얼 연결 또는 사람 확인)/DEPRECATED
+
 }
 
 model Worklog {

@@ -8,7 +8,7 @@ import { apiJson } from '../lib/api';
  */
 type Chip = { type: string; id: string; label: string; sub?: string | null; worklogs?: number; knowledge?: number };
 type Section = { key: string; label: string; items: Chip[]; summary?: string; action?: string | null };
-type Node = { type: string; id: string; label: string; sub?: string | null; meta?: { taskType?: string; aliases?: string[] } };
+type Node = { type: string; id: string; label: string; sub?: string | null; meta?: { taskType?: string; aliases?: string[]; status?: string } };
 type Explore = { node: Node; sections: Section[] };
 
 const TYPE_META: Record<string, { icon: string; label: string; color: string }> = {
@@ -35,6 +35,30 @@ export function OntologyExplorer() {
   const [trail, setTrail] = useState<Chip[]>([]); // 탐색 경로 (빵부스러기)
   const [viewMode, setViewMode] = useState<'graph' | 'card'>('graph');
   const [sp] = useSearchParams();
+  // 온톨로지 자연어 질의
+  const [askQ, setAskQ] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [askResult, setAskResult] = useState<{ answer: string; matched: Chip[]; month: string } | null>(null);
+
+  async function runAsk() {
+    if (!askQ.trim() || asking) return;
+    setAsking(true);
+    try {
+      const r = await apiJson<{ answer: string; matched: Chip[]; month: string }>(`/api/ontology/ask`, {
+        method: 'POST', body: JSON.stringify({ question: askQ.trim(), actorId: userId }),
+      });
+      setAskResult(r);
+    } catch (e: any) { setAskResult({ answer: e?.message || '질의 실패', matched: [], month: '' }); }
+    finally { setAsking(false); }
+  }
+
+  async function confirmActivity() {
+    if (!data || data.node.type !== 'activity') return;
+    try {
+      await apiJson(`/api/activities/${encodeURIComponent(data.node.id)}/confirm`, { method: 'POST', body: JSON.stringify({ actorId: userId }) });
+      void open({ type: 'activity', id: data.node.id, label: data.node.label }, true);
+    } catch (e: any) { alert(e?.message || '확인 실패'); }
+  }
 
   // 조감도 등 외부에서 ?type=&id= 로 바로 진입
   useEffect(() => {
@@ -185,6 +209,30 @@ export function OntologyExplorer() {
         )}
       </div>
 
+      {/* 온톨로지에게 질문 */}
+      <div style={{ border: '1px solid #e0e7ff', background: '#f8faff', borderRadius: 12, padding: '10px 14px', display: 'grid', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={askQ} onChange={(e) => setAskQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runAsk(); }}
+            placeholder="💬 온톨로지에게 질문 — 예: 이번 달 품질에 시간을 제일 많이 쓴 팀은? 현대차 관련 일은 어느 팀이 하나?"
+            style={{ flex: 1, padding: '8px 12px', fontSize: 13, border: '1px solid #c7d2fe', borderRadius: 8 }} />
+          <button className="btn btn-sm btn-primary" disabled={asking || !askQ.trim()} onClick={() => void runAsk()}>{asking ? '분석 중…' : '질문'}</button>
+        </div>
+        {askResult && (
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{askResult.answer}</div>
+            {askResult.matched.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {askResult.matched.map((m) => (
+                  <button key={`${m.type}:${m.id}`} className="btn btn-sm btn-outline" style={{ fontSize: 11 }} onClick={() => void open(m)}>
+                    {meta(m.type).icon} {m.label.slice(0, 20)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* 탐색 경로 */}
       {trail.length > 0 && (
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#64748b' }}>
@@ -207,6 +255,10 @@ export function OntologyExplorer() {
       {data && !loading && (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+            {data.node.type === 'activity' && data.node.meta?.status === 'AUTO' && (
+              <button className="btn btn-sm btn-outline" style={{ color: '#b45309', borderColor: '#f59e0b' }} onClick={() => void confirmActivity()}
+                title="AI가 채굴한 미확인 활동입니다 — 확인하면 검증된 활동(CONFIRMED)으로 승격됩니다">⚠ 미확인 활동 — ✓ 확인 승격</button>
+            )}
             {data.node.type === 'worklog' && (
               <button className="btn btn-sm btn-outline" onClick={() => window.open(`/worklogs/${encodeURIComponent(data.node.id)}`, '_blank')}>📄 일지 원문 열기</button>
             )}
