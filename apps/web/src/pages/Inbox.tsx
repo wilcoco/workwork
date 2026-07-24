@@ -26,6 +26,8 @@ function getNotificationUrl(n: any): string {
   return '/';
 }
 
+const SUBJECT_KO: Record<string, string> = { ATTENDANCE: '근태 신청', CAR_DISPATCH: '법인차 배차', LOGISTICS_DISPATCH: '물류 배차', BUSINESS_TRIP: '출장', WORKLOG: '업무일지', PROCESS: '프로세스', ONTOLOGY: '온톨로지', CAR_SWAP: '차량 교환', HELPTICKET: '업무 요청' };
+
 function typeLabel(n: any): string {
   const t = String(n?.type || '');
   const st = String(n?.subjectType || '').toUpperCase();
@@ -99,16 +101,6 @@ export function Inbox() {
     <div style={{ display: 'grid', gap: 12 }}>
       <h2>인박스</h2>
       <div style={{ display: 'flex', gap: 12, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
-        <input
-          placeholder="내 User ID"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          style={{
-            ...input,
-            flex: isMobile ? '1 1 100%' : '0 0 auto',
-            minWidth: isMobile ? '100%' : undefined,
-          }}
-        />
         <button onClick={load} disabled={!userId || loading} style={primaryBtn}>{loading ? '로딩...' : '불러오기'}</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
@@ -130,7 +122,7 @@ export function Inbox() {
                 <b style={{ fontSize: 14 }}>{typeLabel(n)}</b>
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8' }}>{formatKstDatetime(n.createdAt)}</span>
               </div>
-              <div style={{ fontSize: 12, color: '#475569' }}>{n.subjectType}{n.subjectId ? ` · ${n.subjectId.slice(0, 8)}…` : ''}</div>
+              <div style={{ fontSize: 12, color: '#475569' }}>{n._summary || SUBJECT_KO[String(n.subjectType || '').toUpperCase()] || n.subjectType || ''}</div>
               {(() => {
                 const p = n.payload || {};
                 const t = String(n.type || '');
