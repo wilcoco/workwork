@@ -148,6 +148,40 @@ export function WorklogSearch() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'feed' | 'list'>('feed');
   const [detail, setDetail] = useState<Item | null>(null);
+  // OneDrive 공유링크 사진의 썸네일 URL 캐시 (공유링크는 <img> 직접 렌더 불가 → Graph 썸네일로 해석)
+  const [spThumbs, setSpThumbs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (mode !== 'feed' || !items.length) return;
+    const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+    if (!uid) return;
+    const need: string[] = [];
+    for (const it of items as any[]) {
+      for (const f of it?.attachments?.files || []) {
+        const u = String(f?.url || '');
+        if (!u || spThumbs[u] !== undefined) continue;
+        const isImg = /\.(png|jpe?g|gif|webp|bmp|svg|heic)$/i.test(String(f?.name || ''));
+        const isShare = /^https:\/\/[^/]*sharepoint\.com\//i.test(u) && !/\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(u);
+        if (isImg && isShare) need.push(u);
+      }
+    }
+    if (!need.length) return;
+    apiJson<{ thumbs: Record<string, string> }>(`/api/sharepoint-sync/share-thumbs`, {
+      method: 'POST',
+      body: JSON.stringify({ userId: uid, urls: Array.from(new Set(need)).slice(0, 60) }),
+    })
+      .then((r) => setSpThumbs((prev) => {
+        const next = { ...prev };
+        for (const u of need) next[u] = (r.thumbs || {})[u] || ''; // 실패도 ''로 기록해 재요청 방지
+        return next;
+      }))
+      .catch(() => setSpThumbs((prev) => {
+        const next = { ...prev };
+        for (const u of need) if (next[u] === undefined) next[u] = '';
+        return next;
+      }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, mode]);
   const [detailFull, setDetailFull] = useState<any>(null);
   const [kind, setKind] = useState<'' | 'OKR' | 'KPI'>('');
   const location = useLocation();
@@ -373,12 +407,25 @@ export function WorklogSearch() {
     })();
   }, [teamId, userId]);
 
+  // 첨부가 사진인지: 이름과 URL을 각각 검사 (OneDrive 공유링크는 URL에 확장자가 없어 이름으로 판별)
+  function isImageFile(f: any): boolean {
+    return /\.(png|jpe?g|gif|webp|bmp|svg|heic)$/i.test(String(f?.name || '')) ||
+      /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(String(f?.url || ''));
+  }
+  // URL을 <img>에 바로 쓸 수 있는지 (디스크 업로드/직접 이미지 URL). OneDrive 공유링크는 불가 → 썸네일 해석 필요
+  function isDirectImageUrl(u: string): boolean {
+    return /\.(png|jpe?g|gif|webp|bmp|svg)(\?|$)/i.test(u) || u.includes('/uploads/');
+  }
+
   function firstImageUrl(it: Item): string {
     const anyIt: any = it as any;
     const files = anyIt?.attachments?.files || [];
-    const fileImg = files.find((f: any) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test((f.url || f.name || '')));
-    if (fileImg) {
-      return absLink(fileImg.url as string);
+    for (const f of files) {
+      if (!isImageFile(f)) continue;
+      const u = String(f.url || '');
+      if (isDirectImageUrl(u)) return absLink(u);
+      const thumb = spThumbs[u]; // OneDrive 공유링크 → Graph 썸네일 (비동기 해석 후 채워짐)
+      if (thumb) return thumb;
     }
     const html = anyIt?.attachments?.contentHtml || '';
     if (html) {

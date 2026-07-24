@@ -83,6 +83,41 @@ export class SharePointSyncController {
   }
 
   /**
+   * POST /sharepoint-sync/share-thumbs
+   * OneDrive/SharePoint 공유링크들의 썸네일 URL 일괄 해석 (열람자의 Graph 토큰 사용).
+   * 공유링크는 <img>로 직접 렌더링이 안 되므로(HTML 반환), Graph shares API로
+   * 시간제한 CDN 썸네일 URL을 받아 돌려준다 — 업무일지 아이콘 보기 배경용.
+   */
+  @Post('share-thumbs')
+  async shareThumbs(@Body() body: { userId?: string; urls?: string[] }) {
+    const userId = String(body?.userId || '').trim();
+    if (!userId) throw new BadRequestException('userId required');
+    const urls = Array.from(new Set((Array.isArray(body?.urls) ? body!.urls! : [])
+      .map((u) => String(u || '').trim())
+      .filter((u) => /^https:\/\/[^/]*sharepoint\.com\//i.test(u))))
+      .slice(0, 60);
+    if (!urls.length) return { thumbs: {} };
+    let token: string;
+    try { token = await this.getGraphToken(userId); } catch { return { thumbs: {} }; } // 토큰 없으면 조용히 빈 결과
+    const fetchFn: any = (globalThis as any).fetch;
+    const thumbs: Record<string, string> = {};
+    await Promise.all(urls.map(async (u) => {
+      try {
+        // Graph 공유링크 인코딩: 'u!' + base64url(url)
+        const shareId = 'u!' + Buffer.from(u).toString('base64').replace(/=+$/, '').replace(/\//g, '_').replace(/\+/g, '-');
+        const r = await fetchFn(`https://graph.microsoft.com/v1.0/shares/${shareId}/driveItem?$select=id,name&$expand=thumbnails`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) return;
+        const j: any = await r.json();
+        const t = j?.thumbnails?.[0]?.large?.url || j?.thumbnails?.[0]?.medium?.url;
+        if (t) thumbs[u] = t;
+      } catch { /* 개별 실패 무시 */ }
+    }));
+    return { thumbs };
+  }
+
+  /**
    * GET /sharepoint-sync/site-id
    * Get SharePoint site ID from hostname and path.
    * Example: /sharepoint-sync/site-id?hostname=cams2002.sharepoint.com&sitePath=/sites/msteams_03d426
