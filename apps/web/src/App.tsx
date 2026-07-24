@@ -477,6 +477,19 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
 function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean; isExec: boolean; canEvaluate: boolean }) {
   const nav = useNavigate();
   const location = useLocation();
+  // 알림함 미읽음 배지 — 2분 폴링 + 라우트 이동 시 갱신
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
+    if (!uid) return;
+    let alive = true;
+    const load = () => apiJson<{ items: any[] }>(`/api/inbox?userId=${encodeURIComponent(uid)}&onlyUnread=true&limit=100`)
+      .then((r) => { if (alive) setUnread((r.items || []).length); })
+      .catch(() => {});
+    void load();
+    const t = window.setInterval(load, 120000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [location.pathname]);
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const userLogin = typeof localStorage !== 'undefined' ? localStorage.getItem('userLogin') || '' : '';
   const userName = typeof localStorage !== 'undefined' ? localStorage.getItem('userName') || '' : '';
@@ -638,6 +651,14 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
         <span className="nav-right">
           {token ? (
             <>
+              <Link to="/inbox" title="알림함" style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginRight: 10, fontSize: 18, textDecoration: 'none' }}>
+                🔔
+                {unread > 0 && (
+                  <span style={{ position: 'absolute', top: -6, right: -10, background: '#dc2626', color: '#fff', borderRadius: 999, fontSize: 10, fontWeight: 800, padding: '1px 5px', lineHeight: 1.4, minWidth: 14, textAlign: 'center' }}>
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
+              </Link>
               <span className="user-chip">{userName}{teamName ? ` · ${teamName}` : ''}{userLogin ? ` · ${userLogin}` : ''}</span>
               <button onClick={onLogout} className="btn btn-ghost">로그아웃</button>
             </>
