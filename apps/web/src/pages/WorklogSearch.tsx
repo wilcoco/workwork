@@ -427,6 +427,13 @@ export function WorklogSearch() {
       const thumb = spThumbs[u]; // OneDrive 공유링크 → Graph 썸네일 (비동기 해석 후 채워짐)
       if (thumb) return thumb;
     }
+    // 본문(note)에 삽입된 사진도 썸네일 대상 (대표 지시 2026-07-28: 본문·첨부 모두)
+    const noteHtml = String(anyIt?.note || '');
+    if (noteHtml.includes('<img')) {
+      const abs = absolutizeUploads(noteHtml);
+      const m = abs.match(/<img[^>]+src=["']([^"']+)["']/i);
+      if (m && m[1]) return m[1];
+    }
     const html = anyIt?.attachments?.contentHtml || '';
     if (html) {
       const abs = absolutizeUploads(html);
