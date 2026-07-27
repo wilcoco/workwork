@@ -13,6 +13,16 @@ type KrEvidence = {
   worklogs: Array<{ id: string; date: string; authorName: string; minutes: number; snippet: string }>;
 };
 
+// 업무일지 도입 시점 — 근거는 일지 기반이므로 그 이전 월엔 기록이 없다 (실측: 26년 5월부터 본격 사용)
+const WORKLOG_SINCE = { y: 2026, m: 5 };
+function evidencePeriodLabel(month: string): string {
+  const y = parseInt(month.slice(0, 4), 10);
+  const m = parseInt(month.slice(5, 7), 10);
+  if (y < WORKLOG_SINCE.y || (y === WORKLOG_SINCE.y && m < WORKLOG_SINCE.m)) return `${m}월 · 일지 도입 전`;
+  if (y === WORKLOG_SINCE.y) return `일지도입 ${WORKLOG_SINCE.m}월~${m}월`;
+  return `1~${m}월`;
+}
+
 const fmtH = (min: number) => (min >= 60 ? `${Math.round(min / 6) / 10}h` : `${min}m`);
 
 // ── KPI 온톨로지 맵 (활동 → KPI ← 수행자, 선 굵기 ∝ 투입시간) ──
@@ -361,6 +371,9 @@ export function KpiReport() {
           <button type="button" className="btn btn-sm" onClick={() => window.print()}>🖨 인쇄</button>
         </div>
       </div>
+      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: -8 }}>
+        ※ 실행 근거는 업무일지 기반입니다 — 일지 시스템은 2026년 5월 도입되어 그 이전 월의 실행 기록은 없습니다.
+      </div>
 
       {loading ? (
         <div>불러오는 중…</div>
@@ -426,8 +439,8 @@ export function KpiReport() {
                           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>누적 달성</div>
                           <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 1 }}>{month.slice(5, 7)}월 {a != null ? `${a}%` : '-'}</div>
                         </div>
-                        {/* ② 지표 정보 + 월별 차트 */}
-                        <div style={{ flex: 1.2, minWidth: 300, display: 'grid', gap: 6 }}>
+                        {/* ② 지표 정보 + 월별 차트 (고정폭 — 남는 공간은 근거 카드가 사용) */}
+                        <div style={{ flex: '0 1 320px', minWidth: 300, display: 'grid', gap: 6 }}>
                           <div style={{ fontWeight: 700 }}>{kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}</div>
                           <div style={{ fontSize: 13, color: '#475569' }}>
                             목표 <b>{kr.target ?? '-'}</b>
@@ -445,10 +458,10 @@ export function KpiReport() {
                             <span>{kr.direction === 'AT_MOST' ? '↓ 이하 좋음' : '↑ 이상 좋음'}</span>
                           </div>
                         </div>
-                        {/* ③ 실행 근거 + 온톨로지 */}
-                        <div style={{ flex: 1, minWidth: 250, background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 10, padding: '10px 12px', display: 'grid', gap: 5 }}>
+                        {/* ③ 실행 근거 + 온톨로지 (남은 폭 전체 사용) */}
+                        <div style={{ flex: '1 1 280px', minWidth: 250, background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 10, padding: '10px 12px', display: 'grid', gap: 5, alignContent: 'start' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>📎 실행 근거 (1~{parseInt(month.slice(5, 7), 10)}월)</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>📎 실행 근거 ({evidencePeriodLabel(month)})</span>
                             {ev && (
                               <button type="button" onClick={() => setMapKr(kr)}
                                 style={{ marginLeft: 'auto', fontSize: 11, color: '#6d28d9', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
@@ -547,10 +560,10 @@ export function KpiReport() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 800, width: '100%', maxHeight: '82vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
               <b style={{ fontSize: 16 }}>🕸 {mapKr.title}</b>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · 1~{parseInt(month.slice(5, 7), 10)}월 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간 · ◦점선 = 근거 일지에서 발견된 활동, 🎯 미연결)</span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · {evidencePeriodLabel(month)} 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간 · ◦점선 = 근거 일지에서 발견된 활동, 🎯 미연결)</span>
               <button type="button" onClick={() => setMapKr(null)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
             </div>
-            <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={achOf(mapKr, mapKr.monthly?.[selIdx] ?? null)} periodLabel={`1~${parseInt(month.slice(5, 7), 10)}월`} />
+            <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={achOf(mapKr, mapKr.monthly?.[selIdx] ?? null)} periodLabel={evidencePeriodLabel(month)} />
             {evidence[mapKr.id].worklogs.length > 0 && (
               <div style={{ display: 'grid', gap: 3, borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>근거 일지</div>
