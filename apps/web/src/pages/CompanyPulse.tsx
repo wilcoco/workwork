@@ -198,7 +198,7 @@ export function CompanyPulse() {
           {/* 모자이크 */}
           <div style={panel}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
-              <div style={{ fontWeight: 800, fontSize: 16 }}>회사의 시간, 어디로 흘렀나</div>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>전략·KPI별 시간 투입</div>
               <div style={{ fontSize: 12, color: '#94a3b8' }}>면적 = KPI 연결 투입시간 · 하단 바 = 달성률 (셀 클릭 = 근거 일지 보기)</div>
             </div>
             <div style={{ marginTop: 10 }}>
