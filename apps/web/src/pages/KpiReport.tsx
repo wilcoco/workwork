@@ -142,8 +142,8 @@ function cumModeOf(kr: Kr): 'avg' | 'sum' | 'last' {
 const CUM_LABEL: Record<string, string> = { avg: '평균', sum: '합계', last: '최신누계' };
 const MODE_BADGE: Record<string, { label: string; title: string }> = {
   avg: { label: '월별 독립측정', title: '매월 독립적으로 측정되는 지표 — 누적은 입력월 평균' },
-  sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적은 합산, 달성률은 누적합산÷목표' },
-  last: { label: '누계값 입력', title: '입력값 자체가 연초부터의 누계 — 누적은 최신 입력값, 달성률은 연간목표 대비' },
+  sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적은 합산, 달성률은 경과월 안분 목표 대비(6월=연간목표×6/12)' },
+  last: { label: '누계값 입력', title: '입력값 자체가 연초부터의 누계 — 누적은 최신 입력값, 달성률은 경과월 안분 목표 대비' },
 };
 
 // 선택월까지의 누적값. 입력 없는 달은 제외.
@@ -161,11 +161,18 @@ function cumValue(kr: Kr, uptoIdx: number): { value: number | null; months: numb
   return { value: mode === 'avg' ? Math.round((sum / vals.length) * 100) / 100 : Math.round(sum * 100) / 100, months: vals.length, mode };
 }
 
-// 누적 달성률: 세 방식 모두 목표(연간) 대비 — 합산형도 누적합산을 목표에 그대로 대비
+// 누적 달성률 — 평균형은 목표 그대로 대비.
+// 합산·누계형은 연간 목표를 경과월로 안분한 기대치 대비(6월이면 목표×6/12):
+// 연중에 연간 목표 전체로 나누면 항상 과소평가되기 때문(예: 연 5회 목표, 상반기 1회 → 2.5회 기대 대비 40%).
+function proratedTarget(kr: Kr, uptoIdx: number): number | null {
+  if (kr.target == null) return null;
+  return Math.round(kr.target * ((uptoIdx + 1) / 12) * 100) / 100;
+}
 function cumAch(kr: Kr, uptoIdx: number): number | null {
   const c = cumValue(kr, uptoIdx);
   if (c.value == null || kr.target == null) return null;
-  return achOf(kr, c.value);
+  if (c.mode === 'avg') return achOf(kr, c.value);
+  return achOf(kr, c.value, proratedTarget(kr, uptoIdx));
 }
 
 // ── 미니 월별 바 차트 (SVG, 의존성 없음) ──────────────────────
@@ -497,6 +504,12 @@ export function KpiReport() {
                             {month.slice(5, 7)}월 실적 <b style={{ color: '#0f172a' }}>{mv != null ? mv.toLocaleString() : '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
                             누적({CUM_LABEL[c.mode]}) <b style={{ color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</b>
+                            {c.mode !== 'avg' && c.value != null && kr.target != null && (
+                              <span style={{ marginLeft: 8, color: '#94a3b8', fontSize: 12 }}
+                                title={`달성률은 경과월 안분 목표(${proratedTarget(kr, selIdx)?.toLocaleString()}) 대비 · 연간 목표(${kr.target.toLocaleString()}) 대비로는 ${achOf(kr, c.value) ?? '-'}%`}>
+                                연간 대비 {achOf(kr, c.value) ?? '-'}%
+                              </span>
+                            )}
                             {typeof kr.weight === 'number' ? <span style={{ marginLeft: 8, color: '#94a3b8' }}>비중 {kr.weight}%</span> : null}
                           </div>
                           <MiniBars kr={kr} selIdx={selIdx} />
