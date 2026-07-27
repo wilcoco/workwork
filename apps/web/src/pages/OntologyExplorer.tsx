@@ -137,6 +137,13 @@ export function OntologyExplorer() {
     }
     const cMeta = meta(d.node.type);
     const trunc = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
+    // 제목을 자르지 않고 여러 줄로 (노드 라벨용)
+    const wrapLines = (t: string, per: number, max = 3): string[] => {
+      const out: string[] = [];
+      for (let i = 0; i < t.length && out.length < max; i += per) out.push(t.slice(i, i + per));
+      if (t.length > per * max) out[max - 1] = out[max - 1].slice(0, per - 1) + '…';
+      return out;
+    };
     return (
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', border: '1px solid #e5e7eb', borderRadius: 14, background: '#fcfcfd' }}>
         {/* 간선 */}
@@ -154,13 +161,15 @@ export function OntologyExplorer() {
             <g key={`n${i}`} onClick={() => void open(n.chip)} style={{ cursor: 'pointer' }}>
               <circle cx={n.x} cy={n.y} r={17} fill="#fff" stroke={m.color} strokeWidth={1.8} />
               <text x={n.x} y={n.y + 4.5} textAnchor="middle" fontSize={13}>{m.icon}</text>
-              <text x={n.x} y={n.y + 31} textAnchor="middle" fontSize={10.5} fontWeight={700} fill="#334155">{trunc(n.chip.label, 14)}</text>
+              {wrapLines(n.chip.label, 14).map((ln, li) => (
+                <text key={li} x={n.x} y={n.y + 31 + li * 11} textAnchor="middle" fontSize={10.5} fontWeight={700} fill="#334155">{ln}</text>
+              ))}
               {(n.chip.worklogs || n.chip.knowledge) ? (
-                <text x={n.x} y={n.y + 43} textAnchor="middle" fontSize={9} fill="#64748b">
+                <text x={n.x} y={n.y + 31 + wrapLines(n.chip.label, 14).length * 11 + 1} textAnchor="middle" fontSize={9} fill="#64748b">
                   {n.chip.worklogs ? `📝${n.chip.worklogs}` : ''}{n.chip.knowledge ? ` 🏅${n.chip.knowledge}` : ''}
                 </text>
               ) : n.chip.sub ? (
-                <text x={n.x} y={n.y + 43} textAnchor="middle" fontSize={9} fill="#94a3b8">{trunc(n.chip.sub, 16)}</text>
+                <text x={n.x} y={n.y + 31 + wrapLines(n.chip.label, 14).length * 11 + 1} textAnchor="middle" fontSize={9} fill="#94a3b8">{trunc(n.chip.sub, 16)}</text>
               ) : null}
               {n.more ? <text x={n.x + 24} y={n.y - 14} fontSize={9.5} fontWeight={800} fill="#7c3aed">+{n.more}</text> : null}
             </g>
@@ -170,9 +179,10 @@ export function OntologyExplorer() {
         <g>
           <circle cx={CX} cy={CY} r={52} fill={`${cMeta.color}14`} stroke={cMeta.color} strokeWidth={2.5} />
           <text x={CX} y={CY - 12} textAnchor="middle" fontSize={20}>{cMeta.icon}</text>
-          <text x={CX} y={CY + 8} textAnchor="middle" fontSize={12} fontWeight={800} fill="#0f172a">{trunc(d.node.label, 12)}</text>
-          {d.node.label.length > 12 && <text x={CX} y={CY + 22} textAnchor="middle" fontSize={11} fontWeight={700} fill="#0f172a">{trunc(d.node.label.slice(11), 12)}</text>}
-          <text x={CX} y={CY + 38} textAnchor="middle" fontSize={9.5} fill="#64748b">{cMeta.label}</text>
+          {wrapLines(d.node.label, 12).map((ln, li) => (
+            <text key={li} x={CX} y={CY + 8 + li * 13} textAnchor="middle" fontSize={li === 0 ? 12 : 11} fontWeight={li === 0 ? 800 : 700} fill="#0f172a">{ln}</text>
+          ))}
+          <text x={CX} y={CY + 8 + wrapLines(d.node.label, 12).length * 13 + 2} textAnchor="middle" fontSize={9.5} fill="#64748b">{cMeta.label}</text>
         </g>
         {secs.length === 0 && <text x={CX} y={CY + 90} textAnchor="middle" fontSize={12} fill="#94a3b8">연결된 객체가 없습니다</text>}
       </svg>

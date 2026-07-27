@@ -28,6 +28,7 @@ export function CompanyAtlas() {
   const [month, setMonth] = useState(() => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7));
   const [data, setData] = useState<Pulse | null>(null);
   const [error, setError] = useState('');
+  const [selPillar, setSelPillar] = useState<string | null>(null); // 기둥 클릭 → 화면 내 KPI 전개 (현황판 이동 없음)
 
   useEffect(() => {
     setData(null);
@@ -88,7 +89,13 @@ export function CompanyAtlas() {
   if (error) return <div style={{ padding: 24, color: '#ef4444' }}>{error}</div>;
 
   const achColor = (ach: number | null) => (ach == null ? '#94a3b8' : ach >= 100 ? '#16a34a' : ach >= 50 ? '#d97706' : '#dc2626');
-  const trunc = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
+  // 제목을 자르지 않고 여러 줄로 감싼다 (per 글자수 단위)
+  const wrapLines = (t: string, per: number, max = 4): string[] => {
+    const out: string[] = [];
+    for (let i = 0; i < t.length && out.length < max; i += per) out.push(t.slice(i, i + per));
+    if (t.length > per * max) out[max - 1] = out[max - 1].slice(0, per - 1) + '…';
+    return out;
+  };
 
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', display: 'grid', gap: 10 }}>
@@ -127,7 +134,9 @@ export function CompanyAtlas() {
               <g key={`is${i}`} onClick={() => nav(`/process/ontology?type=activity&id=${encodeURIComponent(a.activityId)}`)} style={{ cursor: 'pointer' }}>
                 <circle cx={a.x} cy={a.y} r={a.r} fill="#ede9fe" stroke="#8b5cf6" strokeWidth={1.5} />
                 <title>{a.name} — {layout.hrs(a.minutes)}h · 일지 {a.logs}건 · {a.people}명</title>
-                <text x={a.x} y={a.y + a.r + 12} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#5b21b6">{trunc(a.name, 12)}</text>
+                {wrapLines(a.name, 12).map((ln, li) => (
+                  <text key={li} x={a.x} y={a.y + a.r + 12 + li * 11} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#5b21b6">{ln}</text>
+                ))}
                 <text x={a.x} y={a.y + 4} textAnchor="middle" fontSize={9} fontWeight={800} fill="#6d28d9">{layout.hrs(a.minutes)}h</text>
               </g>
             ))}
@@ -139,14 +148,17 @@ export function CompanyAtlas() {
                 {g.ach != null && <circle cx={g.x} cy={g.y} r={g.r + 3.5} fill="none" stroke={achColor(g.ach)} strokeWidth={2} strokeOpacity={0.85} strokeDasharray={`${Math.min(100, Math.max(0, g.ach)) / 100 * 2 * Math.PI * (g.r + 3.5)} 999`} transform={`rotate(-90 ${g.x} ${g.y})`} />}
                 <title>{g.title} ({g.teamName}) — {layout.hrs(g.minutes)}h · 일지 {g.logs}건 · {g.people}명{g.ach != null ? ` · 달성률 ${g.ach}%` : ''}</title>
                 {g.r >= 13 && <text x={g.x} y={g.y + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={800} fill={g.color}>{layout.hrs(g.minutes)}h</text>}
-                <text x={g.x} y={g.y + g.r + 11} textAnchor="middle" fontSize={9} fontWeight={700} fill="#334155">{trunc(g.title, 12)}</text>
+                {wrapLines(g.title, 12).map((ln, li) => (
+                  <text key={li} x={g.x} y={g.y + g.r + 11 + li * 10.5} textAnchor="middle" fontSize={9} fontWeight={700} fill="#334155">{ln}</text>
+                ))}
                 {g.more ? <text x={g.x + g.r + 4} y={g.y - g.r} fontSize={9.5} fontWeight={800} fill="#7c3aed">+{g.more}</text> : null}
               </g>
             ))}
 
             {/* 기둥 노드 */}
             {layout.pillars.map((p) => (
-              <g key={`p${p.key}`} onClick={() => nav('/process/company-pulse')} style={{ cursor: 'pointer' }}>
+              <g key={`p${p.key}`} onClick={() => setSelPillar(selPillar === p.key ? null : p.key)} style={{ cursor: 'pointer' }}>
+                <title>{p.label} — 클릭하면 이 기둥의 KPI 전체가 아래에 펼쳐집니다</title>
                 <circle cx={p.x} cy={p.y} r={p.r} fill={p.hours === 0 ? '#fef2f2' : `${p.color}22`} stroke={p.hours === 0 ? '#dc2626' : p.color} strokeWidth={2.5} strokeDasharray={p.hours === 0 ? '5 4' : undefined} />
                 <text x={p.x} y={p.y - 2} textAnchor="middle" fontSize={12} fontWeight={800} fill={p.hours === 0 ? '#dc2626' : p.color}>{p.label}</text>
                 <text x={p.x} y={p.y + 13} textAnchor="middle" fontSize={10.5} fontWeight={700} fill={p.hours === 0 ? '#dc2626' : '#475569'}>{p.hours === 0 ? '실행 0' : `${p.hours.toLocaleString()}h`}</text>
@@ -162,13 +174,43 @@ export function CompanyAtlas() {
             </g>
           </svg>
 
+          {selPillar && (() => {
+            const pInfo = PILLARS.find((x) => x.key === selPillar)!;
+            const list = data.goals.filter((g) => (g.pillar || '') === selPillar).slice().sort((a, b) => b.minutes - a.minutes);
+            const hrs = (min: number) => Math.round(min / 60);
+            return (
+              <div style={{ border: `2px solid ${pInfo.color}44`, background: `${pInfo.color}08`, borderRadius: 14, padding: '12px 16px', display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <b style={{ color: pInfo.color, fontSize: 15 }}>{pInfo.label}</b>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>KPI {list.length}개 · {hrs(list.reduce((s2, g) => s2 + g.minutes, 0)).toLocaleString()}h — KPI를 누르면 온톨로지 탐색기에서 활동·기여 일지까지 이어집니다</span>
+                  <button className="btn btn-sm btn-outline" style={{ marginLeft: 'auto' }} onClick={() => setSelPillar(null)}>접기 ✕</button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 6 }}>
+                  {list.map((g) => (
+                    <div key={g.krId} onClick={() => nav(`/process/ontology?type=keyResult&id=${encodeURIComponent(g.krId)}`)}
+                      style={{ display: 'grid', gap: 2, padding: '8px 10px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')} onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{g.title}</div>
+                      <div style={{ fontSize: 11.5, color: '#64748b', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <span>{g.teamName}</span>
+                        <span style={{ color: '#0369a1' }}>{hrs(g.minutes)}h · 일지 {g.logs}건 · {g.people}명</span>
+                        {g.ach != null && <span style={{ fontWeight: 700, color: achColor(g.ach) }}>달성 {g.ach}%</span>}
+                        {g.logs === 0 && <span style={{ color: '#dc2626' }}>실행 증거 없음</span>}
+                      </div>
+                    </div>
+                  ))}
+                  {list.length === 0 && <div style={{ fontSize: 12, color: '#94a3b8' }}>이 기둥에 연결된 KPI가 없습니다</div>}
+                </div>
+              </div>
+            );
+          })()}
+
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11.5, color: '#64748b', alignItems: 'center' }}>
             <span>⬤ 면적 = 월 투입시간 (자기신고, 복수 KPI 태그는 중복 계상)</span>
             <span style={{ color: '#16a34a' }}>◠ 테두리 호 = 달성률</span>
             <span style={{ color: '#dc2626' }}>◌ 점선 = 실행 증거 없는 KPI ({data.noEvidenceCount}개)</span>
             <span style={{ color: '#7c3aed' }}>▨ 보라 섬 = 목표에 연결 안 된 실행</span>
             <span style={{ flex: 1 }} />
-            <button className="btn btn-sm btn-outline" onClick={() => nav('/process/company-pulse')}>실행 현황판 →</button>
             <button className="btn btn-sm btn-outline" onClick={() => nav('/process/strategy-map')}>전략 정렬 지도 →</button>
           </div>
         </>
