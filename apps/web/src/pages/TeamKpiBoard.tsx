@@ -312,7 +312,9 @@ export function TeamKpiBoard() {
         analysis25: editAnalysis25 || undefined,
         weight: editWeight === '' ? undefined : Number(editWeight),
       };
-      await apiJson(`/api/okrs/krs/${encodeURIComponent(selectedKr.id)}`, {
+      // 서버가 권한 판정(CEO/같은팀/산하팀 책임자)에 userId를 요구 — 누락 시 무조건 400 '저장 실패'
+      const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+      await apiJson(`/api/okrs/krs/${encodeURIComponent(selectedKr.id)}?userId=${encodeURIComponent(uid)}`, {
         method: 'PUT',
         body: JSON.stringify(body),
       });
