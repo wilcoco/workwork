@@ -329,6 +329,21 @@ export function KpiReport() {
   }
   useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [orgUnitId, month]);
 
+  // 집계 방식을 리포트에서 바로 변경 — 저장 즉시 누적·달성률 재계산(krs 상태에서 파생)
+  async function saveAggregation(krId: string, val: string) {
+    const prev = krs.find((k) => k.id === krId)?.aggregation ?? null;
+    setKrs((list) => list.map((k) => (k.id === krId ? { ...k, aggregation: (val || null) as Kr['aggregation'] } : k)));
+    try {
+      await apiJson(`/api/okrs/krs/${encodeURIComponent(krId)}?userId=${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ aggregation: val || 'NONE' }),
+      });
+    } catch (e: any) {
+      setKrs((list) => list.map((k) => (k.id === krId ? { ...k, aggregation: prev } : k)));
+      alert(e?.message || '집계 방식 저장에 실패했습니다');
+    }
+  }
+
   // 선택 월 가중 달성률 + 누적 가중 달성률
   const summary = useMemo(() => {
     let wsum = 0, wach = 0, done = 0, cwsum = 0, cwach = 0;
@@ -458,7 +473,17 @@ export function KpiReport() {
                         <div style={{ flex: '0 1 320px', minWidth: 300, display: 'grid', gap: 6 }}>
                           <div style={{ fontWeight: 700, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                             {kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}
-                            <span title={MODE_BADGE[c.mode].title} style={{ fontSize: 10, fontWeight: 700, color: c.mode === 'avg' ? '#0369a1' : c.mode === 'sum' ? '#92400e' : '#166534', background: c.mode === 'avg' ? '#e0f2fe' : c.mode === 'sum' ? '#fef3c7' : '#dcfce7', borderRadius: 8, padding: '1px 7px', cursor: 'help' }}>{MODE_BADGE[c.mode].label}</span>
+                            <select
+                              value={kr.aggregation ?? ''}
+                              onChange={(e) => void saveAggregation(kr.id, e.target.value)}
+                              title={`${MODE_BADGE[c.mode].title} — 여기서 바꾸면 즉시 저장되고 누적·달성률이 재계산됩니다.`}
+                              style={{ fontSize: 10, fontWeight: 700, color: c.mode === 'avg' ? '#0369a1' : c.mode === 'sum' ? '#92400e' : '#166534', background: c.mode === 'avg' ? '#e0f2fe' : c.mode === 'sum' ? '#fef3c7' : '#dcfce7', borderRadius: 8, padding: '1px 4px', border: '1px solid transparent', cursor: 'pointer' }}
+                            >
+                              <option value="">{`자동 · ${MODE_BADGE[cumModeOf({ ...kr, aggregation: null })].label}`}</option>
+                              <option value="AVG">월별 독립측정 (누적=평균)</option>
+                              <option value="SUM">월별 누계 (누적=합산)</option>
+                              <option value="LAST">누계값 입력 (누적=최신값)</option>
+                            </select>
                           </div>
                           <div style={{ fontSize: 13, color: '#475569' }}>
                             목표 <b>{kr.target ?? '-'}</b>
