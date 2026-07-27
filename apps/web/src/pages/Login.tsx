@@ -59,7 +59,8 @@ export function Login() {
           if (event.data.userId) localStorage.setItem('userId', event.data.userId);
           if (event.data.userName) localStorage.setItem('userName', event.data.userName);
           if (event.data.teamName !== undefined) localStorage.setItem('teamName', event.data.teamName || '');
-          nav(returnTo || '/');
+          // 전체 새로고침 — App token 상태 재평가 + 옛 토큰 잔류 요청 레이스 차단 (AuthEntraComplete와 동일)
+          window.location.href = returnTo || '/';
         }
       };
       window.addEventListener('message', handler);

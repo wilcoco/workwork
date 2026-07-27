@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 function safePath(raw?: string | null) {
   const s = String(raw || '').trim();
@@ -10,7 +9,6 @@ function safePath(raw?: string | null) {
 }
 
 export function AuthEntraComplete() {
-  const nav = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,11 +34,13 @@ export function AuthEntraComplete() {
       if (userName) localStorage.setItem('userName', userName);
       localStorage.setItem('teamName', teamName || '');
 
-      nav(returnTo || '/');
+      // 전체 새로고침으로 진입 — SPA nav()는 App의 token 상태를 갱신하지 못하고,
+      // 옛 토큰으로 나간 비행 중 요청의 401이 새 세션을 지우는 레이스도 페이지 전환으로 끊는다
+      window.location.replace(returnTo || '/');
     } catch (e: any) {
       setError(e?.message || '로그인 처리 실패');
     }
-  }, [nav]);
+  }, []);
 
   return (
     <div className="container">

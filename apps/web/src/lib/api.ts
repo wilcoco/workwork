@@ -51,6 +51,8 @@ export function apiFetch(input: string, init?: RequestInit) {
 }
 
 export async function apiJson<T = any>(input: string, init?: RequestInit): Promise<T> {
+  // 요청 시점의 토큰 기억 — 로그인 갱신 직후 뒤늦게 도착한 옛 요청의 401이 새 세션을 지우는 레이스 방지
+  const sentToken = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
   const res = await apiFetch(input, {
     ...init,
     headers: {
@@ -85,7 +87,10 @@ export async function apiJson<T = any>(input: string, init?: RequestInit): Promi
   }
   if (res.status === 401) {
     const path = typeof window !== 'undefined' ? window.location.pathname : '';
-    if (path !== '/login' && path !== '/auth/pending' && !path.startsWith('/auth/entra')) {
+    const currentToken = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+    // 토큰이 요청 이후 바뀌었으면(=방금 로그인 성공) 이 401은 옛 토큰의 잔류 응답 — 새 세션을 지우지 않는다
+    const staleResponse = currentToken != null && currentToken !== sentToken;
+    if (!staleResponse && path !== '/login' && path !== '/auth/pending' && !path.startsWith('/auth/entra')) {
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('token');
       }
