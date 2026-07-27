@@ -16,7 +16,7 @@ type KrEvidence = {
 const fmtH = (min: number) => (min >= 60 ? `${Math.round(min / 6) / 10}h` : `${min}m`);
 
 // ── KPI 온톨로지 맵 (활동 → KPI ← 수행자, 선 굵기 ∝ 투입시간) ──
-function KpiOntoMap({ kr, ev, ach }: { kr: Kr; ev: KrEvidence; ach: number | null }) {
+function KpiOntoMap({ kr, ev, ach, periodLabel }: { kr: Kr; ev: KrEvidence; ach: number | null; periodLabel: string }) {
   const acts = ev.activities.slice(0, 8);
   const ppl = ev.people.slice(0, 8);
   const rows = Math.max(acts.length, ppl.length, 1);
@@ -43,7 +43,7 @@ function KpiOntoMap({ kr, ev, ach }: { kr: Kr; ev: KrEvidence; ach: number | nul
           <g key={a.id}>
             <rect x={6} y={y - 17} width={212} height={34} rx={9} fill="#f5f3ff" stroke="#ddd6fe" />
             <text x={14} y={y - 3} fontSize={11.5} fontWeight={700} fill="#5b21b6">{a.name.length > 20 ? a.name.slice(0, 20) + '…' : a.name}</text>
-            <text x={14} y={y + 11} fontSize={10} fill="#7c3aed">{a.logs > 0 ? `일지 ${a.logs}건 · ${fmtH(a.minutes)}` : '이 달 기록 없음'}</text>
+            <text x={14} y={y + 11} fontSize={10} fill="#7c3aed">{a.logs > 0 ? `일지 ${a.logs}건 · ${fmtH(a.minutes)}` : `${periodLabel} 기록 없음`}</text>
           </g>
         );
       })}
@@ -65,7 +65,7 @@ function KpiOntoMap({ kr, ev, ach }: { kr: Kr; ev: KrEvidence; ach: number | nul
           </g>
         );
       })}
-      {ppl.length === 0 && <text x={608} y={cy} fontSize={12} fill="#94a3b8" textAnchor="middle">이 달 수행 기록 없음</text>}
+      {ppl.length === 0 && <text x={608} y={cy} fontSize={12} fill="#94a3b8" textAnchor="middle">{periodLabel} 수행 기록 없음</text>}
     </svg>
   );
 }
@@ -470,7 +470,7 @@ export function KpiReport() {
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                                       {ev.activities.slice(0, 5).map((a) => (
                                         <span key={a.id} style={{ fontSize: 11, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe', borderRadius: 10, padding: '1px 8px' }}>
-                                          {a.name} {a.logs > 0 ? <b>{a.logs}건·{fmtH(a.minutes)}</b> : <span style={{ color: '#c4b5fd' }}>기록없음</span>}
+                                          {a.name} {a.logs > 0 ? <b>{a.logs}건·{fmtH(a.minutes)}</b> : <span style={{ color: '#c4b5fd' }}>누적 기록없음</span>}
                                         </span>
                                       ))}
                                       {ev.activities.length > 5 && <span style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.activities.length - 5}</span>}
@@ -558,7 +558,7 @@ export function KpiReport() {
               <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · 1~{parseInt(month.slice(5, 7), 10)}월 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간)</span>
               <button type="button" onClick={() => setMapKr(null)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
             </div>
-            <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={achOf(mapKr, mapKr.monthly?.[selIdx] ?? null)} />
+            <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={achOf(mapKr, mapKr.monthly?.[selIdx] ?? null)} periodLabel={`1~${parseInt(month.slice(5, 7), 10)}월`} />
             {evidence[mapKr.id].worklogs.length > 0 && (
               <div style={{ display: 'grid', gap: 3, borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>근거 일지</div>
