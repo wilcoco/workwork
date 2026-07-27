@@ -496,10 +496,10 @@ export class OkrsController {
       actStats.sort((a, b) => b.minutes - a.minutes);
       const actStatsTop = actStats.slice(0, 12);
       // 수행 구성원 통계 (근거 일지 기준)
-      const peopleAgg = new Map<string, { name: string; logs: number; minutes: number }>();
+      const peopleAgg = new Map<string, { id: string; name: string; logs: number; minutes: number }>();
       for (const w of evArr) {
         const key = String(w.createdById);
-        const e = peopleAgg.get(key) || { name: w.createdBy?.name || '', logs: 0, minutes: 0 };
+        const e = peopleAgg.get(key) || { id: key, name: w.createdBy?.name || '', logs: 0, minutes: 0 };
         e.logs++; e.minutes += w.timeSpentMinutes || 0;
         peopleAgg.set(key, e);
       }

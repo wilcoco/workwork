@@ -9,7 +9,7 @@ type ProgressEntry = { krValue: number | null; periodStart: string; createdAt: s
 type KrEvidence = {
   krId: string;
   activities: Array<{ id: string; name: string; logs: number; minutes: number; linked?: boolean }>;
-  people: Array<{ name: string; logs: number; minutes: number }>;
+  people: Array<{ id?: string; name: string; logs: number; minutes: number }>;
   totals: { logs: number; minutes: number; people: number };
   worklogs: Array<{ id: string; date: string; authorName: string; minutes: number; snippet: string }>;
 };
@@ -25,6 +25,12 @@ function evidencePeriodLabel(month: string): string {
 }
 
 const fmtH = (min: number) => (min >= 60 ? `${Math.round(min / 6) / 10}h` : `${min}m`);
+
+// 노드 클릭 → 온톨로지 탐색기 딥링크 (새 탭 — 리포트 상태 유지)
+const openOntology = (type: string, id: string) => {
+  if (!id || id === '__none__') return;
+  window.open(`/process/ontology?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}`, '_blank');
+};
 
 // ── KPI 온톨로지 맵 (활동 → KPI ← 수행자, 선 굵기 ∝ 투입시간) ──
 function KpiOntoMap({ kr, ev, ach, periodLabel }: { kr: Kr; ev: KrEvidence; ach: number | null; periodLabel: string }) {
@@ -52,7 +58,8 @@ function KpiOntoMap({ kr, ev, ach, periodLabel }: { kr: Kr; ev: KrEvidence; ach:
         const y = nodeY(i, acts.length);
         const linked = a.linked !== false;
         return (
-          <g key={a.id}>
+          <g key={a.id} onClick={() => openOntology('activity', a.id)} style={{ cursor: a.id === '__none__' ? 'default' : 'pointer' }}>
+            <title>온톨로지 탐색기에서 열기</title>
             <rect x={6} y={y - 17} width={212} height={34} rx={9}
               fill={linked ? '#f5f3ff' : '#f8fafc'} stroke={linked ? '#ddd6fe' : '#cbd5e1'} strokeDasharray={linked ? undefined : '4 3'} />
             <text x={14} y={y - 3} fontSize={11.5} fontWeight={700} fill={linked ? '#5b21b6' : '#475569'}>{a.name.length > 18 ? a.name.slice(0, 18) + '…' : a.name}{linked ? '' : ' ◦'}</text>
@@ -63,15 +70,19 @@ function KpiOntoMap({ kr, ev, ach, periodLabel }: { kr: Kr; ev: KrEvidence; ach:
       {acts.length === 0 && <text x={110} y={cy} fontSize={12} fill="#94a3b8" textAnchor="middle">연결 활동 없음 (🎯 매칭 필요)</text>}
       {/* KPI 중심 노드 */}
       <rect x={330} y={cy - 34} width={60 + 0} height={0} fill="none" />
+      <g onClick={() => openOntology('keyResult', kr.id)} style={{ cursor: 'pointer' }}>
+      <title>온톨로지 탐색기에서 열기</title>
       <rect x={300} y={cy - 36} width={120} height={72} rx={14} fill="#0f3d73" />
       <text x={360} y={cy - 14} fontSize={12} fontWeight={800} fill="#fff" textAnchor="middle">{kr.title.length > 10 ? kr.title.slice(0, 10) + '…' : kr.title}</text>
       <text x={360} y={cy + 4} fontSize={11} fill="#bfdbfe" textAnchor="middle">{fmtH(ev.totals.minutes)} · {ev.totals.logs}건</text>
       <text x={360} y={cy + 22} fontSize={13} fontWeight={800} fill={ach == null ? '#94a3b8' : ach >= 100 ? '#4ade80' : ach >= 80 ? '#fbbf24' : '#f87171'} textAnchor="middle">{ach != null ? `달성 ${ach}%` : '실적 미입력'}</text>
+      </g>
       {/* 수행자 노드 (우) */}
       {ppl.map((pp, i) => {
         const y = nodeY(i, ppl.length);
         return (
-          <g key={`${pp.name}${i}`}>
+          <g key={`${pp.name}${i}`} onClick={() => pp.id && openOntology('user', pp.id)} style={{ cursor: pp.id ? 'pointer' : 'default' }}>
+            <title>온톨로지 탐색기에서 열기</title>
             <rect x={502} y={y - 17} width={212} height={34} rx={9} fill="#eff6ff" stroke="#bfdbfe" />
             <text x={512} y={y - 3} fontSize={11.5} fontWeight={700} fill="#1e40af">{pp.name}</text>
             <text x={512} y={y + 11} fontSize={10} fill="#3b82f6">일지 {pp.logs}건 · {fmtH(pp.minutes)}</text>
@@ -596,7 +607,7 @@ export function KpiReport() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 800, width: '100%', maxHeight: '82vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
               <b style={{ fontSize: 16 }}>🕸 {mapKr.title}</b>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · {evidencePeriodLabel(month)} 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간 · ◦점선 = 근거 일지에서 발견된 활동, 🎯 미연결)</span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · {evidencePeriodLabel(month)} 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간 · ◦점선 = 근거 일지에서 발견된 활동, 🎯 미연결 · 노드 클릭 = 온톨로지 탐색기)</span>
               <button type="button" onClick={() => setMapKr(null)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
             </div>
             <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={monthAchPct(mapKr, mapKr.monthly?.[selIdx] ?? null, selIdx)} periodLabel={evidencePeriodLabel(month)} />
