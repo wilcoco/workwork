@@ -497,7 +497,7 @@ export function KpiReport() {
                             {ev && (
                               <button type="button" onClick={() => setMapKr(kr)}
                                 style={{ marginLeft: 'auto', fontSize: 11, color: '#6d28d9', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
-                                🕸 온톨로지
+                                🕸 관련 업무 실적
                               </button>
                             )}
                           </div>
@@ -525,7 +525,7 @@ export function KpiReport() {
                                 </a>
                               ))}
                               {evOpen && ev.totals.logs > 6 && (
-                                <div style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.totals.logs - 6}건 — 전체는 🕸 온톨로지에서</div>
+                                <div style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.totals.logs - 6}건 — 전체는 🕸 관련 업무 실적에서</div>
                               )}
                             </>
                           )}
