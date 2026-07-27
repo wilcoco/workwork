@@ -86,6 +86,7 @@ type Kr = {
   id: string; title: string; unit?: string | null; target?: number | null; baseline?: number | null;
   year25Target?: number | null; weight?: number | null; direction?: 'AT_LEAST' | 'AT_MOST' | null;
   pillar?: Pillar | null; metric?: string | null; aggregation?: 'AVG' | 'SUM' | 'LAST' | null;
+  analysis25?: string | null; initiatives?: Array<{ id: string; title: string }>;
   latest?: number | null; latestMonth?: string | null;
   monthly?: (number | null)[]; // 선택 연도 1~12월 실적
 };
@@ -485,6 +486,11 @@ export function KpiReport() {
                               <option value="LAST">누계값 입력 (누적=최신값)</option>
                             </select>
                           </div>
+                          {kr.metric && (
+                            <div style={{ fontSize: 11.5, color: '#64748b', whiteSpace: 'pre-wrap', background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 8, padding: '5px 8px' }}>
+                              <span style={{ fontWeight: 700, color: '#475569' }}>산식·세부</span> {kr.metric}
+                            </div>
+                          )}
                           <div style={{ fontSize: 13, color: '#475569' }}>
                             목표 <b>{kr.target ?? '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
@@ -500,6 +506,12 @@ export function KpiReport() {
                             <span>26목표 {kr.target ?? '-'}</span>
                             <span>{kr.direction === 'AT_MOST' ? '↓ 이하 좋음' : '↑ 이상 좋음'}</span>
                           </div>
+                          {(kr.initiatives || []).length > 0 && (
+                            <div style={{ fontSize: 11.5, color: '#64748b' }}>
+                              <span style={{ fontWeight: 700, color: '#475569' }}>추진 계획</span>{' '}
+                              {(kr.initiatives || []).map((it) => it.title).filter(Boolean).join(' · ')}
+                            </div>
+                          )}
                         </div>
                         {/* ③ 실행 근거 + 온톨로지 (남은 폭 전체 사용) */}
                         <div style={{ flex: '1 1 280px', minWidth: 250, background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 10, padding: '10px 12px', display: 'grid', gap: 5, alignContent: 'start' }}>
