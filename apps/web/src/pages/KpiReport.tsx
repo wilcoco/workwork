@@ -27,6 +27,13 @@ function kstMonth(): string {
   return kst.toISOString().slice(0, 7);
 }
 
+// 리포트 기본월 = 전월 — 진행 중인 달은 실적이 미완이라 리포트 기준으로 부적합 (사용자는 월 선택으로 이동 가능)
+function kstPrevMonth(): string {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const d = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth() - 1, 1));
+  return d.toISOString().slice(0, 7);
+}
+
 // 값 v에 대한 달성률(%) — direction 반영
 function achOf(kr: Kr, v: number | null | undefined, target?: number | null): number | null {
   const t = target ?? kr.target;
@@ -152,7 +159,7 @@ export function KpiReport() {
   const [orgs, setOrgs] = useState<OrgUnit[]>([]);
   const [orgUnitId, setOrgUnitId] = useState('');
   const [myRole, setMyRole] = useState('');
-  const [month, setMonth] = useState(kstMonth());
+  const [month, setMonth] = useState(kstPrevMonth());
   const [krs, setKrs] = useState<Kr[]>([]);
   const [loading, setLoading] = useState(false);
 
