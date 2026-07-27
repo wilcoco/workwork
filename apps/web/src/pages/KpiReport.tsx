@@ -141,7 +141,7 @@ function cumModeOf(kr: Kr): 'avg' | 'sum' | 'last' {
 const CUM_LABEL: Record<string, string> = { avg: '평균', sum: '합계', last: '최신누계' };
 const MODE_BADGE: Record<string, { label: string; title: string }> = {
   avg: { label: '월별 독립측정', title: '매월 독립적으로 측정되는 지표 — 누적은 입력월 평균' },
-  sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적은 합산, 달성률은 목표×입력개월 대비' },
+  sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적은 합산, 달성률은 누적합산÷목표' },
   last: { label: '누계값 입력', title: '입력값 자체가 연초부터의 누계 — 누적은 최신 입력값, 달성률은 연간목표 대비' },
 };
 
@@ -160,11 +160,11 @@ function cumValue(kr: Kr, uptoIdx: number): { value: number | null; months: numb
   return { value: mode === 'avg' ? Math.round((sum / vals.length) * 100) / 100 : Math.round(sum * 100) / 100, months: vals.length, mode };
 }
 
-// 누적 달성률: 평균·최신누계는 목표 그대로, 합산형은 목표×입력개월 대비
+// 누적 달성률: 세 방식 모두 목표(연간) 대비 — 합산형도 누적합산을 목표에 그대로 대비
 function cumAch(kr: Kr, uptoIdx: number): number | null {
   const c = cumValue(kr, uptoIdx);
   if (c.value == null || kr.target == null) return null;
-  return c.mode === 'sum' ? achOf(kr, c.value, kr.target * c.months) : achOf(kr, c.value);
+  return achOf(kr, c.value);
 }
 
 // ── 미니 월별 바 차트 (SVG, 의존성 없음) ──────────────────────
