@@ -70,8 +70,8 @@ class UpdateKeyResultDto {
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
   cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
   @IsOptional() @IsString() analysis25?: string;
-  @IsOptional() @IsEnum({ AVG: 'AVG', SUM: 'SUM', LAST: 'LAST' } as any)
-  aggregation?: 'AVG' | 'SUM' | 'LAST';
+  @IsOptional() @IsEnum({ AVG: 'AVG', SUM: 'SUM', LAST: 'LAST', NONE: 'NONE' } as any) // NONE=자동추정으로 초기화
+  aggregation?: 'AVG' | 'SUM' | 'LAST' | 'NONE';
 }
 
 @Controller('okrs')
@@ -355,7 +355,7 @@ export class OkrsController {
       direction: (dto.direction as any) ?? undefined,
       cadence: (dto.cadence as any) ?? undefined,
       analysis25: typeof dto.analysis25 === 'string' ? dto.analysis25 : undefined,
-      aggregation: (dto as any).aggregation ?? undefined,
+      aggregation: (dto as any).aggregation === 'NONE' ? null : ((dto as any).aggregation ?? undefined),
     };
     const rec = await this.prisma.keyResult.update({ where: { id }, data });
     await this.audit.log('KeyResult', id, 'KrUpdated', userId, this.audit.diff(kr, dto, ['title', 'metric', 'target', 'unit', 'weight', 'type', 'pillar', 'baseline', 'year25Target', 'direction', 'cadence', 'analysis25']));

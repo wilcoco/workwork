@@ -11,6 +11,7 @@ type Kr = {
   target?: number | null;
   baseline?: number | null;
   direction?: 'AT_LEAST' | 'AT_MOST' | null;
+  aggregation?: 'AVG' | 'SUM' | 'LAST' | null;
   pillar?: Pillar | null;
   metric?: string | null;
   objectiveTitle?: string;
@@ -99,7 +100,7 @@ export function KpiResultInput() {
         for (const kr of (o.keyResults || [])) {
           flat.push({
             id: kr.id, title: kr.title, unit: kr.unit, target: kr.target, baseline: kr.baseline,
-            direction: kr.direction, pillar: kr.pillar || o.pillar, metric: kr.metric, objectiveTitle: o.title,
+            direction: kr.direction, aggregation: kr.aggregation ?? null, pillar: kr.pillar || o.pillar, metric: kr.metric, objectiveTitle: o.title,
           });
         }
       }
@@ -138,6 +139,21 @@ export function KpiResultInput() {
     if (value == null || kr.target == null || kr.target === 0) return null;
     const pct = kr.direction === 'AT_MOST' ? (kr.target / value) * 100 : (value / kr.target) * 100;
     return Math.round(pct * 10) / 10;
+  }
+
+  // 입력값 성격(누적 여부) 설정 — KR의 aggregation을 즉시 저장 (리포트 누적 계산에 반영)
+  async function saveAggregation(kr: Kr, val: string) {
+    const prev = kr.aggregation ?? null;
+    setKrs((list) => list.map((k) => (k.id === kr.id ? { ...k, aggregation: (val || null) as Kr['aggregation'] } : k)));
+    try {
+      await apiJson(`/api/okrs/krs/${encodeURIComponent(kr.id)}?userId=${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ aggregation: val || 'NONE' }),
+      });
+    } catch (e: any) {
+      setKrs((list) => list.map((k) => (k.id === kr.id ? { ...k, aggregation: prev } : k)));
+      alert(e?.message || '입력 방식 저장에 실패했습니다');
+    }
   }
 
   async function save(kr: Kr) {
@@ -240,8 +256,21 @@ export function KpiResultInput() {
                         value={inputVal}
                         onChange={(e) => setInputs((m) => ({ ...m, [kr.id]: e.target.value }))}
                         style={{ width: 90, padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 6, textAlign: 'right' }}
-                        placeholder="값"
+                        placeholder={kr.aggregation === 'LAST' ? '연초누계' : '이달 값'}
                       />
+                      <div style={{ marginTop: 3 }}>
+                        <select
+                          value={kr.aggregation ?? ''}
+                          onChange={(e) => void saveAggregation(kr, e.target.value)}
+                          title="이 칸에 적는 값의 성격입니다. 리포트의 누적·달성률 계산 방식이 함께 정해집니다."
+                          style={{ fontSize: 11, padding: '2px 4px', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: 6, maxWidth: 130 }}
+                        >
+                          <option value="">자동(%·율=평균)</option>
+                          <option value="AVG">월별값 · 누적=평균</option>
+                          <option value="SUM">월별값 · 누적=합산</option>
+                          <option value="LAST">누계값 입력(최신값)</option>
+                        </select>
+                      </div>
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: pct == null ? '#94a3b8' : pct >= 100 ? '#16a34a' : '#b45309' }}>
                       {pct != null ? `${pct}%` : '-'}
