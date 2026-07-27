@@ -414,86 +414,76 @@ export function KpiReport() {
                   {list.map((kr, i) => {
                     const mv = kr.monthly?.[selIdx] ?? null;
                     const a = achOf(kr, mv);
-                    const barPct = a == null ? 0 : Math.max(0, Math.min(a, 100));
                     const c = cumValue(kr, selIdx);
                     const ca = cumAch(kr, selIdx);
+                    const ev = evidence[kr.id];
+                    const hm = ev ? (ev.totals.minutes >= 60 ? `${Math.round(ev.totals.minutes / 6) / 10}h` : `${ev.totals.minutes}m`) : '';
                     return (
-                      <div key={kr.id} style={{ padding: '10px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', display: 'grid', gap: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                          <div style={{ fontWeight: 700, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                            {kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}
-                            {evidence[kr.id] && (
-                              <button type="button" onClick={() => setMapKr(kr)}
-                                style={{ fontSize: 11, color: '#6d28d9', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
-                                🕸 온톨로지 맵
-                              </button>
-                            )}
-                          </div>
+                      <div key={kr.id} style={{ padding: '12px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                        {/* ① 달성률 크게 */}
+                        <div style={{ width: 96, textAlign: 'center', flexShrink: 0 }}>
+                          <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}>{ca != null ? `${Math.round(ca)}%` : '-'}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>누적 달성</div>
+                          <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 1 }}>{month.slice(5, 7)}월 {a != null ? `${a}%` : '-'}</div>
+                        </div>
+                        {/* ② 지표 정보 + 월별 차트 */}
+                        <div style={{ flex: 1.2, minWidth: 300, display: 'grid', gap: 6 }}>
+                          <div style={{ fontWeight: 700 }}>{kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}</div>
                           <div style={{ fontSize: 13, color: '#475569' }}>
                             목표 <b>{kr.target ?? '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
                             {month.slice(5, 7)}월 실적 <b style={{ color: '#0f172a' }}>{mv != null ? mv.toLocaleString() : '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
                             누적{c.mode === 'avg' ? '(평균)' : '(합계)'} <b style={{ color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</b>
-                            {ca != null && <span style={{ marginLeft: 6, fontWeight: 800, color: achColor(ca) }}>{ca}%</span>}
                             {typeof kr.weight === 'number' ? <span style={{ marginLeft: 8, color: '#94a3b8' }}>비중 {kr.weight}%</span> : null}
                           </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                          {/* 월별 미니 차트 */}
                           <MiniBars kr={kr} selIdx={selIdx} />
-                          {/* 선택 월 달성률 바 */}
-                          <div style={{ flex: 1, minWidth: 180, display: 'grid', gap: 4 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div style={{ flex: 1, height: 10, background: '#eef2f7', borderRadius: 999, overflow: 'hidden' }}>
-                                <div style={{ width: `${barPct}%`, height: '100%', background: achColor(a), borderRadius: 999, transition: 'width .3s' }} />
-                              </div>
-                              <div style={{ minWidth: 56, textAlign: 'right', fontWeight: 800, color: achColor(a) }}>{a != null ? `${a}%` : '-'}</div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#94a3b8', flexWrap: 'wrap' }}>
-                              <span>25목표 {kr.year25Target ?? '-'}</span>
-                              <span>25실적 {kr.baseline ?? '-'}</span>
-                              <span>26목표 {kr.target ?? '-'}</span>
-                              <span>{kr.direction === 'AT_MOST' ? '↓ 이하 좋음' : '↑ 이상 좋음'}</span>
-                            </div>
-                            {(() => {
-                              const ev = evidence[kr.id];
-                              if (!ev) return null;
-                              if (ev.totals.logs === 0 && ev.activities.length === 0) {
-                                return <div style={{ fontSize: 11, color: '#dc2626', marginTop: 2 }}>📎 1~{parseInt(month.slice(5, 7), 10)}월 실행 근거 없음 — 이 지표를 뒷받침하는 일지가 없습니다</div>;
-                              }
-                              const hm = ev.totals.minutes >= 60 ? `${Math.round(ev.totals.minutes / 6) / 10}h` : `${ev.totals.minutes}m`;
-                              return (
-                                <div style={{ marginTop: 4, borderLeft: '3px solid #bfdbfe', paddingLeft: 10, display: 'grid', gap: 3 }}>
-                                  <div style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 600 }}>
-                                    📎 실행 근거 (1~{parseInt(month.slice(5, 7), 10)}월 누적): 일지 {ev.totals.logs}건 · {hm} · {ev.totals.people}명
-                                  </div>
-                                  {ev.activities.length > 0 && (
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                      {ev.activities.slice(0, 6).map((a) => (
-                                        <span key={a.id} style={{ fontSize: 11, background: a.linked !== false ? '#f5f3ff' : '#f8fafc', color: a.linked !== false ? '#6d28d9' : '#475569', border: a.linked !== false ? '1px solid #ddd6fe' : '1px dashed #cbd5e1', borderRadius: 10, padding: '1px 8px' }}>
-                                          {a.name} {a.logs > 0 ? <b>{a.logs}건·{fmtH(a.minutes)}</b> : <span style={{ color: '#c4b5fd' }}>누적 기록없음</span>}
-                                        </span>
-                                      ))}
-                                      {ev.activities.length > 6 && <span style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.activities.length - 6}</span>}
-                                    </div>
-                                  )}
-                                  {evOpen && ev.worklogs.map((w) => (
-                                    <a key={w.id} href={`/worklogs/${w.id}`} target="_blank" rel="noreferrer"
-                                      style={{ display: 'flex', gap: 8, fontSize: 12, color: '#334155', textDecoration: 'none', alignItems: 'baseline' }}>
-                                      <span style={{ color: '#94a3b8', minWidth: 40 }}>{new Date(w.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</span>
-                                      <b style={{ minWidth: 52 }}>{w.authorName}</b>
-                                      {w.minutes > 0 && <span style={{ color: '#7c3aed', minWidth: 34 }}>{Math.round(w.minutes / 6) / 10}h</span>}
-                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.snippet}</span>
-                                    </a>
-                                  ))}
-                                  {evOpen && ev.totals.logs > ev.worklogs.length && (
-                                    <div style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.totals.logs - ev.worklogs.length}건 더…</div>
-                                  )}
-                                </div>
-                              );
-                            })()}
+                          <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#94a3b8', flexWrap: 'wrap' }}>
+                            <span>25목표 {kr.year25Target ?? '-'}</span>
+                            <span>25실적 {kr.baseline ?? '-'}</span>
+                            <span>26목표 {kr.target ?? '-'}</span>
+                            <span>{kr.direction === 'AT_MOST' ? '↓ 이하 좋음' : '↑ 이상 좋음'}</span>
                           </div>
+                        </div>
+                        {/* ③ 실행 근거 + 온톨로지 */}
+                        <div style={{ flex: 1, minWidth: 250, background: '#f8fafc', border: '1px solid #eef2f7', borderRadius: 10, padding: '10px 12px', display: 'grid', gap: 5 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>📎 실행 근거 (1~{parseInt(month.slice(5, 7), 10)}월)</span>
+                            {ev && (
+                              <button type="button" onClick={() => setMapKr(kr)}
+                                style={{ marginLeft: 'auto', fontSize: 11, color: '#6d28d9', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
+                                🕸 온톨로지
+                              </button>
+                            )}
+                          </div>
+                          {!ev || (ev.totals.logs === 0 && ev.activities.length === 0) ? (
+                            <div style={{ fontSize: 12, color: '#dc2626' }}>근거 없음 — 이 지표를 뒷받침하는 일지가 없습니다</div>
+                          ) : (
+                            <>
+                              <div style={{ fontSize: 13, color: '#334155' }}>일지 <b>{ev.totals.logs}건</b> · <b>{hm}</b> · {ev.totals.people}명</div>
+                              {ev.activities.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                  {ev.activities.slice(0, 4).map((ac) => (
+                                    <span key={ac.id} style={{ fontSize: 11, background: ac.linked !== false ? '#f5f3ff' : '#fff', color: ac.linked !== false ? '#6d28d9' : '#475569', border: ac.linked !== false ? '1px solid #ddd6fe' : '1px dashed #cbd5e1', borderRadius: 10, padding: '1px 8px' }}>
+                                      {ac.name}{ac.logs > 0 ? ` ${ac.logs}건·${fmtH(ac.minutes)}` : ''}
+                                    </span>
+                                  ))}
+                                  {ev.activities.length > 4 && <span style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.activities.length - 4}</span>}
+                                </div>
+                              )}
+                              {evOpen && ev.worklogs.slice(0, 6).map((w) => (
+                                <a key={w.id} href={`/worklogs/${w.id}`} target="_blank" rel="noreferrer"
+                                  style={{ display: 'flex', gap: 6, fontSize: 12, color: '#334155', textDecoration: 'none', alignItems: 'baseline' }}>
+                                  <span style={{ color: '#94a3b8', minWidth: 38 }}>{new Date(w.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</span>
+                                  <b style={{ minWidth: 48 }}>{w.authorName}</b>
+                                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.snippet}</span>
+                                </a>
+                              ))}
+                              {evOpen && ev.totals.logs > 6 && (
+                                <div style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.totals.logs - 6}건 — 전체는 🕸 온톨로지에서</div>
+                              )}
+                            </>
+                          )}
                         </div>
                       </div>
                     );
