@@ -495,6 +495,8 @@ export function Home() {
                   const t = String(n.type || '');
                   const verb = t === 'ApprovalGranted' ? '최종 승인' : t === 'ApprovalRejected' ? '반려' : '의견';
                   const verbColor = t === 'ApprovalRejected' ? '#dc2626' : t === 'ApprovalGranted' ? '#16a34a' : '#7e22ce';
+                  // _summary = 서버가 조립한 "작성자 · [종류] 일자 제목" (알림함과 동일 소스)
+                  const docLine = String(n._summary || '') || (p.forRequester ? '내가 올린 결재' : '내가 결재한 문서');
                   return (
                     <div
                       key={n.id}
@@ -502,14 +504,19 @@ export function Home() {
                         apiJson(`/api/notifications/${n.id}/read`, { method: 'POST', body: JSON.stringify({ actorId: localStorage.getItem('userId') || '' }) }).catch(() => {});
                         nav(p.forRequester ? '/approvals/mine' : '/approvals/inbox');
                       }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, background: '#fff' }}
+                      style={{ display: 'grid', gap: 2, fontSize: 13, cursor: 'pointer', padding: '5px 8px', borderRadius: 6, background: '#fff' }}
                     >
-                      <span style={{ color: '#581c87', fontWeight: 600 }}>• {p.byName || '결재자'}</span>
-                      <b style={{ color: verbColor, fontSize: 12 }}>{verb}</b>
-                      <span style={{ color: '#6b21a8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {p.comment ? `“${String(p.comment).slice(0, 60)}”` : (p.forRequester ? '내가 올린 결재' : '내가 결재한 문서')}
-                      </span>
-                      <span style={{ fontSize: 11, color: '#9333ea' }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <b style={{ color: verbColor, fontSize: 12, flexShrink: 0 }}>{verb}</b>
+                        <span style={{ color: '#3b0764', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{docLine}</span>
+                        <span style={{ fontSize: 11, color: '#9333ea', flexShrink: 0 }}>{n.createdAt ? new Date(n.createdAt).toLocaleDateString() : ''}</span>
+                      </div>
+                      {(p.byName || p.comment) && (
+                        <div style={{ display: 'flex', gap: 6, fontSize: 12, color: '#6b21a8', paddingLeft: 2 }}>
+                          {p.byName && <span style={{ fontWeight: 600, flexShrink: 0 }}>{p.byName}</span>}
+                          {p.comment && <span style={{ color: t === 'ApprovalRejected' ? '#b91c1c' : '#6b21a8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`“${String(p.comment).slice(0, 80)}”`}</span>}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
