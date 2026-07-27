@@ -6,9 +6,9 @@ export type KrCalc = {
   unit?: string | null;
   target?: number | null;
   direction?: 'AT_LEAST' | 'AT_MOST' | string | null;
-  aggregation?: 'AVG' | 'SUM' | 'LAST' | string | null;
+  aggregation?: 'AVG' | 'SUM' | 'LAST' | 'PROGRESS' | string | null;
 };
-export type KpiMode = 'avg' | 'sum' | 'last';
+export type KpiMode = 'avg' | 'sum' | 'last' | 'progress';
 
 export const isRateKr = (kr: KrCalc) => /[%율]|ppm/i.test(String(kr.unit || '')); // 비율성 단위(%·율·PPM)=월별 독립 측정
 
@@ -16,6 +16,7 @@ export function kpiModeOf(kr: KrCalc): KpiMode {
   if (kr.aggregation === 'AVG') return 'avg';
   if (kr.aggregation === 'SUM') return 'sum';
   if (kr.aggregation === 'LAST') return 'last';
+  if (kr.aggregation === 'PROGRESS') return 'progress'; // 매월 진척율 입력 — 최신값을 목표에 그대로 대비(안분 없음)
   return isRateKr(kr) ? 'avg' : 'sum';
 }
 
@@ -42,7 +43,7 @@ export function monthTargetOf(kr: KrCalc, monthIdx: number): number | null {
   const mode = kpiModeOf(kr);
   if (mode === 'sum') return Math.round((kr.target / 12) * 100) / 100;
   if (mode === 'last') return Math.round(kr.target * ((monthIdx + 1) / 12) * 100) / 100;
-  return kr.target;
+  return kr.target; // avg·progress: 목표 그대로
 }
 
 export function monthAchPct(kr: KrCalc, v: number | null | undefined, monthIdx: number): number | null {
@@ -52,7 +53,8 @@ export function monthAchPct(kr: KrCalc, v: number | null | undefined, monthIdx: 
 // 누적(연초~uptoIdx) 기대 목표 — avg: 목표 그대로, sum·last: 연간목표×경과월/12
 export function cumTargetOf(kr: KrCalc, uptoIdx: number): number | null {
   if (kr.target == null) return null;
-  if (kpiModeOf(kr) === 'avg') return kr.target;
+  const mode = kpiModeOf(kr);
+  if (mode === 'avg' || mode === 'progress') return kr.target; // 진척율은 최종 도달 목표에 그대로 대비
   return Math.round(kr.target * ((uptoIdx + 1) / 12) * 100) / 100;
 }
 
@@ -66,7 +68,7 @@ export function cumValueOf(kr: KrCalc, monthly: (number | null)[] | undefined, u
     if (v != null) { vals.push(v); last = v; }
   }
   if (!vals.length) return { value: null, months: 0, mode };
-  if (mode === 'last') return { value: last, months: vals.length, mode };
+  if (mode === 'last' || mode === 'progress') return { value: last, months: vals.length, mode };
   const sum = vals.reduce((a, b) => a + b, 0);
   return { value: mode === 'avg' ? Math.round((sum / vals.length) * 100) / 100 : Math.round(sum * 100) / 100, months: vals.length, mode };
 }

@@ -86,7 +86,7 @@ function KpiOntoMap({ kr, ev, ach, periodLabel }: { kr: Kr; ev: KrEvidence; ach:
 type Kr = {
   id: string; title: string; unit?: string | null; target?: number | null; baseline?: number | null;
   year25Target?: number | null; weight?: number | null; direction?: 'AT_LEAST' | 'AT_MOST' | null;
-  pillar?: Pillar | null; metric?: string | null; aggregation?: 'AVG' | 'SUM' | 'LAST' | null;
+  pillar?: Pillar | null; metric?: string | null; aggregation?: 'AVG' | 'SUM' | 'LAST' | 'PROGRESS' | null;
   analysis25?: string | null; initiatives?: Array<{ id: string; title: string }>;
   latest?: number | null; latestMonth?: string | null;
   monthly?: (number | null)[]; // 선택 연도 1~12월 실적
@@ -118,11 +118,12 @@ const achColor = (p: number | null) => (p == null ? '#94a3b8' : p >= 100 ? '#16a
 const cumValue = (kr: Kr, uptoIdx: number) => cumValueOf(kr, kr.monthly, uptoIdx);
 const cumAch = (kr: Kr, uptoIdx: number) => cumAchPct(kr, kr.monthly, uptoIdx);
 
-const CUM_LABEL: Record<string, string> = { avg: '평균', sum: '합계', last: '최신누계' };
+const CUM_LABEL: Record<string, string> = { avg: '평균', sum: '합계', last: '최신누계', progress: '최신진척' };
 const MODE_BADGE: Record<string, { label: string; title: string }> = {
   avg: { label: '월별 독립측정', title: '매월 독립적으로 측정되는 지표 — 누적은 입력월 평균, 달성률은 목표 대비' },
   sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적은 합산, 달성률은 경과월 안분 목표 대비(6월=연간목표×6/12)' },
   last: { label: '누계값 입력', title: '입력값 자체가 연초부터의 누계 — 누적은 최신 입력값, 달성률은 경과월 안분 목표 대비' },
+  progress: { label: '진척율 입력', title: '매월 목표 대비 진척율을 입력 — 누적은 최신 진척율, 달성률은 목표에 그대로 대비(안분 없음)' },
 };
 
 // ── 미니 월별 바 차트 (SVG, 의존성 없음) ──────────────────────
@@ -435,12 +436,13 @@ export function KpiReport() {
                               value={kr.aggregation ?? ''}
                               onChange={(e) => void saveAggregation(kr.id, e.target.value)}
                               title={`${MODE_BADGE[c.mode].title} — 여기서 바꾸면 즉시 저장되고 누적·달성률이 재계산됩니다.`}
-                              style={{ fontSize: 10, fontWeight: 700, color: c.mode === 'avg' ? '#0369a1' : c.mode === 'sum' ? '#92400e' : '#166534', background: c.mode === 'avg' ? '#e0f2fe' : c.mode === 'sum' ? '#fef3c7' : '#dcfce7', borderRadius: 8, padding: '1px 4px', border: '1px solid transparent', cursor: 'pointer' }}
+                              style={{ fontSize: 10, fontWeight: 700, color: c.mode === 'avg' ? '#0369a1' : c.mode === 'sum' ? '#92400e' : c.mode === 'progress' ? '#6d28d9' : '#166534', background: c.mode === 'avg' ? '#e0f2fe' : c.mode === 'sum' ? '#fef3c7' : c.mode === 'progress' ? '#ede9fe' : '#dcfce7', borderRadius: 8, padding: '1px 4px', border: '1px solid transparent', cursor: 'pointer' }}
                             >
                               <option value="">{`자동 · ${MODE_BADGE[kpiModeOf({ ...kr, aggregation: null })].label}`}</option>
                               <option value="AVG">월별 독립측정 (누적=평균)</option>
                               <option value="SUM">월별 누계 (누적=합산)</option>
                               <option value="LAST">누계값 입력 (누적=최신값)</option>
+                              <option value="PROGRESS">진척율 입력 (최신값·목표 그대로 대비)</option>
                             </select>
                           </div>
                           {kr.metric && (
@@ -454,7 +456,7 @@ export function KpiReport() {
                             {month.slice(5, 7)}월 실적 <b style={{ color: '#0f172a' }}>{mv != null ? mv.toLocaleString() : '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
                             누적({CUM_LABEL[c.mode]}) <b style={{ color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</b>
-                            {c.mode !== 'avg' && c.value != null && kr.target != null && (
+                            {(c.mode === 'sum' || c.mode === 'last') && c.value != null && kr.target != null && (
                               <span style={{ marginLeft: 8, color: '#94a3b8', fontSize: 12 }}
                                 title={`달성률은 경과월 안분 목표(${cumTargetOf(kr, selIdx)?.toLocaleString()}) 대비 · 연간 목표(${kr.target.toLocaleString()}) 대비로는 ${achPct(kr, c.value) ?? '-'}%`}>
                                 연간 대비 {achPct(kr, c.value) ?? '-'}%

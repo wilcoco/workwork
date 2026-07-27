@@ -19,7 +19,7 @@ type KrRow = {
   target: number;
   weight: number | null;
   direction?: 'AT_LEAST' | 'AT_MOST' | null;
-  aggregation?: 'AVG' | 'SUM' | 'LAST' | null;
+  aggregation?: 'AVG' | 'SUM' | 'LAST' | 'PROGRESS' | null;
   analysis25?: string | null;
   initiatives: Array<{ id: string; title: string; startAt?: string | null; endAt?: string | null; done?: boolean }>;
   latestValue?: number | null;

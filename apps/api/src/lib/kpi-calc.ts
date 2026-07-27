@@ -8,7 +8,7 @@ export type KrCalc = {
   direction?: string | null;
   aggregation?: string | null;
 };
-export type KpiMode = 'avg' | 'sum' | 'last';
+export type KpiMode = 'avg' | 'sum' | 'last' | 'progress';
 
 export const isRateKr = (kr: KrCalc) => /[%율]|ppm/i.test(String(kr.unit || '')); // 비율성 단위(%·율·PPM)=월별 독립 측정
 
@@ -16,6 +16,7 @@ export function kpiModeOf(kr: KrCalc): KpiMode {
   if (kr.aggregation === 'AVG') return 'avg';
   if (kr.aggregation === 'SUM') return 'sum';
   if (kr.aggregation === 'LAST') return 'last';
+  if (kr.aggregation === 'PROGRESS') return 'progress'; // 매월 진척율 입력 — 최신값을 목표에 그대로 대비(안분 없음)
   return isRateKr(kr) ? 'avg' : 'sum';
 }
 
@@ -40,7 +41,7 @@ export function monthTargetOf(kr: KrCalc, monthIdx: number): number | null {
   const mode = kpiModeOf(kr);
   if (mode === 'sum') return Math.round((kr.target / 12) * 100) / 100;
   if (mode === 'last') return Math.round(kr.target * ((monthIdx + 1) / 12) * 100) / 100;
-  return kr.target;
+  return kr.target; // avg·progress: 목표 그대로
 }
 
 export function monthAchPct(kr: KrCalc, v: number | null | undefined, monthIdx: number): number | null {
@@ -66,8 +67,8 @@ export function kpiStatFromEntries(
   const latestValue = first.krValue as number;
   const mode = kpiModeOf(kr);
   let pct: number | null;
-  if (mode === 'avg') {
-    pct = achPct(kr, latestValue);
+  if (mode === 'avg' || mode === 'progress') {
+    pct = achPct(kr, latestValue); // progress: 최신 진척율을 목표에 그대로 대비
   } else {
     const mIdx = kstMonthIdx(first.periodStart);
     if (mode === 'last') {

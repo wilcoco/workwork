@@ -70,8 +70,8 @@ class UpdateKeyResultDto {
   @IsOptional() @IsEnum({ DAILY: 'DAILY', WEEKLY: 'WEEKLY', MONTHLY: 'MONTHLY', QUARTERLY: 'QUARTERLY', HALF_YEARLY: 'HALF_YEARLY', YEARLY: 'YEARLY' } as any)
   cadence?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'HALF_YEARLY' | 'YEARLY';
   @IsOptional() @IsString() analysis25?: string;
-  @IsOptional() @IsEnum({ AVG: 'AVG', SUM: 'SUM', LAST: 'LAST', NONE: 'NONE' } as any) // NONE=자동추정으로 초기화
-  aggregation?: 'AVG' | 'SUM' | 'LAST' | 'NONE';
+  @IsOptional() @IsEnum({ AVG: 'AVG', SUM: 'SUM', LAST: 'LAST', PROGRESS: 'PROGRESS', NONE: 'NONE' } as any) // NONE=자동추정으로 초기화
+  aggregation?: 'AVG' | 'SUM' | 'LAST' | 'PROGRESS' | 'NONE';
 }
 
 @Controller('okrs')

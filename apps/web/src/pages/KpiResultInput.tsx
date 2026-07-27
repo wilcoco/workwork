@@ -12,7 +12,7 @@ type Kr = {
   target?: number | null;
   baseline?: number | null;
   direction?: 'AT_LEAST' | 'AT_MOST' | null;
-  aggregation?: 'AVG' | 'SUM' | 'LAST' | null;
+  aggregation?: 'AVG' | 'SUM' | 'LAST' | 'PROGRESS' | null;
   pillar?: Pillar | null;
   metric?: string | null;
   objectiveTitle?: string;
@@ -252,7 +252,7 @@ export function KpiResultInput() {
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'right' }}>
                       {kr.target != null ? kr.target.toLocaleString() : '-'}
-                      {kr.target != null && kpiModeOf(kr) !== 'avg' && (
+                      {kr.target != null && ['sum', 'last'].includes(kpiModeOf(kr)) && (
                         <div style={{ fontSize: 10, color: '#94a3b8' }}>이달 기준 {monthTargetOf(kr, selMonthIdx)?.toLocaleString()}</div>
                       )}
                     </td>
@@ -262,7 +262,7 @@ export function KpiResultInput() {
                         value={inputVal}
                         onChange={(e) => setInputs((m) => ({ ...m, [kr.id]: e.target.value }))}
                         style={{ width: 90, padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: 6, textAlign: 'right' }}
-                        placeholder={kr.aggregation === 'LAST' ? '연초누계' : '이달 값'}
+                        placeholder={kr.aggregation === 'LAST' ? '연초누계' : kr.aggregation === 'PROGRESS' ? '진척율' : '이달 값'}
                       />
                       <div style={{ marginTop: 3 }}>
                         <select
@@ -275,6 +275,7 @@ export function KpiResultInput() {
                           <option value="AVG">월별값 · 누적=평균</option>
                           <option value="SUM">월별값 · 누적=합산</option>
                           <option value="LAST">누계값 입력(최신값)</option>
+                          <option value="PROGRESS">진척율 입력(최신값·목표대비)</option>
                         </select>
                       </div>
                     </td>
