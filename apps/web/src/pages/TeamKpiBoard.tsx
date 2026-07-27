@@ -299,6 +299,7 @@ export function TeamKpiBoard() {
     setEditTarget(typeof row.target === 'number' ? String(row.target) : '');
     setEditAnalysis25(row.analysis25 || '');
     setEditWeight(row.weight != null ? String(row.weight) : '');
+    setEditAggregation((row as any).aggregation || '');
     setEditInits((row.initiatives || []).map((ii) => ({ id: ii.id, title: ii.title })));
   }
 
@@ -311,6 +312,7 @@ export function TeamKpiBoard() {
         target: editTarget === '' ? undefined : Number(editTarget),
         analysis25: editAnalysis25 || undefined,
         weight: editWeight === '' ? undefined : Number(editWeight),
+        aggregation: editAggregation || undefined,
       };
       // 서버가 권한 판정(CEO/같은팀/산하팀 책임자)에 userId를 요구 — 누락 시 무조건 400 '저장 실패'
       const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -451,6 +453,15 @@ export function TeamKpiBoard() {
                   <div>
                     <label style={{ fontSize: 12, color: '#64748b' }}>평가비중(%)</label>
                     <input type="number" value={editWeight} onChange={(e) => setEditWeight(e.target.value)} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <span style={{ fontSize: 12, color: '#475569' }}>누적 집계 방식 (리포트의 누적·달성률 계산)</span>
+                    <select value={editAggregation} onChange={(e) => setEditAggregation(e.target.value)} style={{ padding: '6px 8px' }}>
+                      <option value="">자동 추정 (단위에 %·율 있으면 평균, 아니면 합산)</option>
+                      <option value="AVG">월별 독립 측정 — 누적=평균 (불량률·가동률 등)</option>
+                      <option value="SUM">월별 발생량 — 누적=합산 (절감액·건수 등)</option>
+                      <option value="LAST">누계값 직접 입력 — 누적=최신값 (연초부터 누계로 적는 지표)</option>
+                    </select>
                   </div>
                 </div>
               </div>

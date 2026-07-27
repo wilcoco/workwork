@@ -85,7 +85,7 @@ function KpiOntoMap({ kr, ev, ach, periodLabel }: { kr: Kr; ev: KrEvidence; ach:
 type Kr = {
   id: string; title: string; unit?: string | null; target?: number | null; baseline?: number | null;
   year25Target?: number | null; weight?: number | null; direction?: 'AT_LEAST' | 'AT_MOST' | null;
-  pillar?: Pillar | null; metric?: string | null;
+  pillar?: Pillar | null; metric?: string | null; aggregation?: 'AVG' | 'SUM' | 'LAST' | null;
   latest?: number | null; latestMonth?: string | null;
   monthly?: (number | null)[]; // 선택 연도 1~12월 실적
 };
@@ -129,27 +129,42 @@ function achOf(kr: Kr, v: number | null | undefined, target?: number | null): nu
 }
 const achColor = (p: number | null) => (p == null ? '#94a3b8' : p >= 100 ? '#16a34a' : p >= 80 ? '#d97706' : '#dc2626');
 
-// 누적 방식: %/율 지표는 평균, 수량 지표는 합계
+// 누적 집계 방식 — KPI별 명시 설정(aggregation) 우선, 없으면 단위로 추정(%·율=평균)
+// AVG=월별 독립 측정(평균) · SUM=월별 발생량(합산) · LAST=누계값 직접 입력(최신값)
 const isRateKr = (kr: Kr) => String(kr.unit || '').includes('%') || String(kr.unit || '').includes('율');
+function cumModeOf(kr: Kr): 'avg' | 'sum' | 'last' {
+  if (kr.aggregation === 'AVG') return 'avg';
+  if (kr.aggregation === 'SUM') return 'sum';
+  if (kr.aggregation === 'LAST') return 'last';
+  return isRateKr(kr) ? 'avg' : 'sum';
+}
+const CUM_LABEL: Record<string, string> = { avg: '평균', sum: '합계', last: '최신누계' };
+const MODE_BADGE: Record<string, { label: string; title: string }> = {
+  avg: { label: '월별 독립측정', title: '매월 독립적으로 측정되는 지표 — 누적은 입력월 평균' },
+  sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적은 합산, 달성률은 목표×입력개월 대비' },
+  last: { label: '누계값 입력', title: '입력값 자체가 연초부터의 누계 — 누적은 최신 입력값, 달성률은 연간목표 대비' },
+};
 
-// 선택월까지의 누적값 (avg | sum). 입력 없는 달은 제외.
-function cumValue(kr: Kr, uptoIdx: number): { value: number | null; months: number; mode: 'avg' | 'sum' } {
-  const mode: 'avg' | 'sum' = isRateKr(kr) ? 'avg' : 'sum';
+// 선택월까지의 누적값. 입력 없는 달은 제외.
+function cumValue(kr: Kr, uptoIdx: number): { value: number | null; months: number; mode: 'avg' | 'sum' | 'last' } {
+  const mode = cumModeOf(kr);
   const vals: number[] = [];
+  let last: number | null = null;
   for (let i = 0; i <= uptoIdx; i++) {
     const v = kr.monthly?.[i];
-    if (v != null) vals.push(v);
+    if (v != null) { vals.push(v); last = v; }
   }
   if (!vals.length) return { value: null, months: 0, mode };
+  if (mode === 'last') return { value: last, months: vals.length, mode };
   const sum = vals.reduce((a, b) => a + b, 0);
   return { value: mode === 'avg' ? Math.round((sum / vals.length) * 100) / 100 : Math.round(sum * 100) / 100, months: vals.length, mode };
 }
 
-// 누적 달성률: 평균형은 목표 그대로, 합계형은 목표×입력개월 대비
+// 누적 달성률: 평균·최신누계는 목표 그대로, 합산형은 목표×입력개월 대비
 function cumAch(kr: Kr, uptoIdx: number): number | null {
   const c = cumValue(kr, uptoIdx);
   if (c.value == null || kr.target == null) return null;
-  return c.mode === 'avg' ? achOf(kr, c.value) : achOf(kr, c.value, kr.target * c.months);
+  return c.mode === 'sum' ? achOf(kr, c.value, kr.target * c.months) : achOf(kr, c.value);
 }
 
 // ── 미니 월별 바 차트 (SVG, 의존성 없음) ──────────────────────
@@ -441,13 +456,16 @@ export function KpiReport() {
                         </div>
                         {/* ② 지표 정보 + 월별 차트 (고정폭 — 남는 공간은 근거 카드가 사용) */}
                         <div style={{ flex: '0 1 320px', minWidth: 300, display: 'grid', gap: 6 }}>
-                          <div style={{ fontWeight: 700 }}>{kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}</div>
+                          <div style={{ fontWeight: 700, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                            {kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}
+                            <span title={MODE_BADGE[c.mode].title} style={{ fontSize: 10, fontWeight: 700, color: c.mode === 'avg' ? '#0369a1' : c.mode === 'sum' ? '#92400e' : '#166534', background: c.mode === 'avg' ? '#e0f2fe' : c.mode === 'sum' ? '#fef3c7' : '#dcfce7', borderRadius: 8, padding: '1px 7px', cursor: 'help' }}>{MODE_BADGE[c.mode].label}</span>
+                          </div>
                           <div style={{ fontSize: 13, color: '#475569' }}>
                             목표 <b>{kr.target ?? '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
                             {month.slice(5, 7)}월 실적 <b style={{ color: '#0f172a' }}>{mv != null ? mv.toLocaleString() : '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
-                            누적{c.mode === 'avg' ? '(평균)' : '(합계)'} <b style={{ color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</b>
+                            누적({CUM_LABEL[c.mode]}) <b style={{ color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</b>
                             {typeof kr.weight === 'number' ? <span style={{ marginLeft: 8, color: '#94a3b8' }}>비중 {kr.weight}%</span> : null}
                           </div>
                           <MiniBars kr={kr} selIdx={selIdx} />

@@ -234,6 +234,8 @@ model KeyResult {
   cadence           Cadence?
   progressEntries   ProgressEntry[]
   direction         ThresholdDirection?
+  // 누적 집계 방식: AVG=월별 독립 측정(평균), SUM=월별 발생량(합산), LAST=누계값 직접 입력(최신값). null=단위로 자동추정
+  aggregation       String?
   assignments       KeyResultAssignment[]
   analysis25        String?
   activityId        String? // 온톨로지: 이 지표가 측정하는 활동
