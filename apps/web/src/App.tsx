@@ -6,6 +6,7 @@ import { apiUrl } from './lib/api';
 import { ToastContainer } from './components/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { initTeams, isInTeams, getTeamsSsoToken, teamsPopupLogin } from './lib/teams';
+import { clearSession, setSession } from './lib/auth';
 import { Home } from './pages/Home';
 import { WorklogNew } from './pages/WorklogNew';
 import { WorklogDetail } from './pages/WorklogDetail';
@@ -243,10 +244,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           const json: any = await res.json().catch(() => ({}));
           console.log('[teams-sso] server response:', res.status, json);
           if (res.ok && json?.token) {
-            localStorage.setItem('token', json.token);
-            if (json.user?.id) localStorage.setItem('userId', String(json.user.id));
-            if (json.user?.name) localStorage.setItem('userName', String(json.user.name));
-            if (json.user?.teamName !== undefined) localStorage.setItem('teamName', String(json.user.teamName || ''));
+            setSession({ token: json.token, userId: json.user?.id, userName: json.user?.name, teamName: json.user?.teamName });
             setToken(json.token);
             setMyUserId(String(json.user?.id || ''));
             loginDone = true;
@@ -528,13 +526,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
     })();
   }, []);
   const onLogout = () => {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('userId');
-      localStorage.removeItem('userName');
-      localStorage.removeItem('userLogin');
-      localStorage.removeItem('teamName');
-    }
+    clearSession();
     nav('/login');
   };
   const activeStyle: CSSProperties = { borderBottom: '2px solid #0F3D73', paddingBottom: 2 };

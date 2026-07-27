@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { setSession } from '../lib/auth';
 
 function safePath(raw?: string | null) {
   const s = String(raw || '').trim();
@@ -28,11 +29,7 @@ export function AuthEntraComplete() {
         return;
       }
 
-      localStorage.setItem('token', token);
-      if (userLogin) localStorage.setItem('userLogin', userLogin);
-      if (userId) localStorage.setItem('userId', userId);
-      if (userName) localStorage.setItem('userName', userName);
-      localStorage.setItem('teamName', teamName || '');
+      setSession({ token, userId, userName, teamName, userLogin });
 
       // 전체 새로고침으로 진입 — SPA nav()는 App의 token 상태를 갱신하지 못하고,
       // 옛 토큰으로 나간 비행 중 요청의 401이 새 세션을 지우는 레이스도 페이지 전환으로 끊는다

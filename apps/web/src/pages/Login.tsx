@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiUrl } from '../lib/api';
+import { setSession } from '../lib/auth';
 import { isInTeams } from '../lib/teams';
 
 type Mode = 'login' | 'signup';
@@ -55,10 +56,7 @@ export function Login() {
       const handler = (event: MessageEvent) => {
         if (event.data?.type === 'teams-auth-complete' && event.data?.token) {
           window.removeEventListener('message', handler);
-          localStorage.setItem('token', event.data.token);
-          if (event.data.userId) localStorage.setItem('userId', event.data.userId);
-          if (event.data.userName) localStorage.setItem('userName', event.data.userName);
-          if (event.data.teamName !== undefined) localStorage.setItem('teamName', event.data.teamName || '');
+          setSession({ token: event.data.token, userId: event.data.userId, userName: event.data.userName, teamName: event.data.teamName });
           // 전체 새로고침 — App token 상태 재평가 + 옛 토큰 잔류 요청 레이스 차단 (AuthEntraComplete와 동일)
           window.location.href = returnTo || '/';
         }
@@ -85,12 +83,8 @@ export function Login() {
       const token = String(payload?.token || '');
       const user = payload?.user || {};
       if (!token) throw new Error('토큰을 받지 못했습니다');
-      localStorage.setItem('token', token);
-      if (user?.id) localStorage.setItem('userId', String(user.id));
-      if (user?.name) localStorage.setItem('userName', String(user.name));
-      if (user?.teamName !== undefined) localStorage.setItem('teamName', String(user.teamName || ''));
       // Username (email) is what users typed; useful for display
-      if (username) localStorage.setItem('userLogin', username);
+      setSession({ token, userId: user?.id, userName: user?.name, teamName: user?.teamName, userLogin: username || undefined });
     } catch (e: any) {
       throw e instanceof Error ? e : new Error(String(e));
     }

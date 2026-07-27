@@ -1,4 +1,4 @@
-import { Body, Controller, Post, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Post, Req, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import * as bcrypt from 'bcryptjs';
@@ -169,6 +169,19 @@ export class AuthController {
     const team = user.orgUnitId ? await this.prisma.orgUnit.findUnique({ where: { id: user.orgUnitId } }) : null;
     const token = this.signToken(user.id);
     return { token, user: { id: user.id, name: user.name, teamName: team?.name || '' } };
+  }
+
+  // 토큰 자동 연장(sliding expiry): 유효한 토큰으로 호출하면 새 7일 토큰 발급.
+  // JwtAuthGuard가 검증하므로 만료/위조 토큰은 여기 도달하지 못함(=만료 후 연장 불가).
+  @Post('refresh')
+  async refresh(@Req() req: any) {
+    const userId = String(req?.jwtUser?.userId || '');
+    if (!userId) throw new UnauthorizedException();
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || String((user as any).status || 'ACTIVE') !== 'ACTIVE') {
+      throw new UnauthorizedException('비활성 계정');
+    }
+    return { token: this.signToken(user.id) };
   }
 
   private signToken(userId: string) {

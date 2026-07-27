@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { setSession } from '../lib/auth';
 
 /**
  * This page is loaded inside a popup window after OAuth completes.
@@ -27,10 +28,7 @@ export function AuthTeamsPopupComplete() {
       setTimeout(() => window.close(), 500);
     } else if (token) {
       // No opener (opened directly): store and redirect
-      localStorage.setItem('token', token);
-      if (userId) localStorage.setItem('userId', userId);
-      if (userName) localStorage.setItem('userName', userName);
-      localStorage.setItem('teamName', teamName || '');
+      setSession({ token, userId, userName, teamName });
       window.location.href = '/';
     } else {
       window.location.href = '/login?error=token_missing';
