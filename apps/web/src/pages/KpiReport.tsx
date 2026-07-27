@@ -20,6 +20,8 @@ const PILLARS: { key: Pillar; label: string; color: string; bg: string }[] = [
   { key: 'P', label: '역량 강화', color: '#db2777', bg: '#fdf2f8' },
 ];
 
+const kstYm = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600000).toISOString().slice(0, 7); // periodStart는 UTC — KST 월로 변환해 비교(월경계 버그 방지)
+
 function kstMonth(): string {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
   return kst.toISOString().slice(0, 7);
@@ -191,18 +193,18 @@ export function KpiReport() {
           const items = pr.items || []; // createdAt desc — 월별 첫 항목이 그 달의 최신값
           const monthly: (number | null)[] = Array(12).fill(null);
           for (const e of items) {
-            const ps = String(e.periodStart);
-            if (ps.slice(0, 4) !== year) continue;
-            const mi = parseInt(ps.slice(5, 7), 10) - 1;
+            const ym = kstYm(String(e.periodStart));
+            if (ym.slice(0, 4) !== year) continue;
+            const mi = parseInt(ym.slice(5, 7), 10) - 1;
             if (mi < 0 || mi > 11) continue;
             if (monthly[mi] == null && e.krValue != null) monthly[mi] = e.krValue;
           }
           kr.monthly = monthly;
           // 선택 월 값(없으면 최근값 표시용)
-          const m = items.find((e) => String(e.periodStart).slice(0, 7) === month);
+          const m = items.find((e) => kstYm(String(e.periodStart)) === month);
           const pick = m || items[0];
           kr.latest = pick?.krValue ?? null;
-          kr.latestMonth = pick ? String(pick.periodStart).slice(0, 7) : null;
+          kr.latestMonth = pick ? kstYm(String(pick.periodStart)) : null;
         } catch { kr.latest = null; kr.monthly = Array(12).fill(null); }
       }));
       setKrs(flat);

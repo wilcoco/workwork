@@ -20,6 +20,8 @@ type ProgressEntry = { id: string; krValue: number | null; periodStart: string; 
 
 const PILLAR_LABEL: Record<string, string> = { Q: '품질', C: '생산성', D: '납기', DEV: '개발', P: '역량' };
 
+const kstYm = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600000).toISOString().slice(0, 7); // periodStart는 UTC — KST 월로 변환해 비교(월경계 버그 방지)
+
 function kstMonth(): string {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
   return kst.toISOString().slice(0, 7);
@@ -93,7 +95,7 @@ export function KpiResultInput() {
       // 선택 월의 기존 값으로 입력 프리필
       const init: Record<string, string> = {};
       for (const kr of flat) {
-        const monthEntry = (pmap[kr.id] || []).find((e) => String(e.periodStart).slice(0, 7) === month);
+        const monthEntry = (pmap[kr.id] || []).find((e) => kstYm(String(e.periodStart)) === month);
         init[kr.id] = monthEntry?.krValue != null ? String(monthEntry.krValue) : '';
       }
       setInputs(init);
@@ -211,7 +213,7 @@ export function KpiResultInput() {
                       {pct != null ? `${pct}%` : '-'}
                     </td>
                     <td style={{ padding: '6px 8px', color: '#475569', fontSize: 12 }}>
-                      {last && last.krValue != null ? `${last.krValue.toLocaleString()} (${String(last.periodStart).slice(0, 7)})` : '-'}
+                      {last && last.krValue != null ? `${last.krValue.toLocaleString()} (${kstYm(String(last.periodStart))})` : '-'}
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <button type="button" className="btn btn-sm" disabled={savingId === kr.id} onClick={() => void save(kr)}>
