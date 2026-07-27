@@ -5,6 +5,13 @@ type OrgUnit = { id: string; name: string; type: string; parentId?: string | nul
 type Pillar = 'Q' | 'C' | 'D' | 'DEV' | 'P';
 type ProgressEntry = { krValue: number | null; periodStart: string; createdAt: string };
 
+type KrEvidence = {
+  krId: string;
+  activities: Array<{ id: string; name: string }>;
+  totals: { logs: number; minutes: number; people: number };
+  worklogs: Array<{ id: string; date: string; authorName: string; minutes: number; snippet: string }>;
+};
+
 type Kr = {
   id: string; title: string; unit?: string | null; target?: number | null; baseline?: number | null;
   year25Target?: number | null; weight?: number | null; direction?: 'AT_LEAST' | 'AT_MOST' | null;
@@ -162,6 +169,21 @@ export function KpiReport() {
   const [month, setMonth] = useState(kstPrevMonth());
   const [krs, setKrs] = useState<Kr[]>([]);
   const [loading, setLoading] = useState(false);
+  // 온톨로지 실행 근거 (연결 활동 + 근거 일지) — 보고서에 "숫자의 근거"를 함께 싣는다
+  const [evidence, setEvidence] = useState<Record<string, KrEvidence>>({});
+  const [evOpen, setEvOpen] = useState(false); // 근거 상세 전체 펼침 (인쇄용)
+
+  useEffect(() => {
+    if (!orgUnitId) { setEvidence({}); return; }
+    apiJson<{ items: KrEvidence[] }>(`/api/okrs/kpi-evidence?orgUnitId=${encodeURIComponent(orgUnitId)}&month=${encodeURIComponent(month)}&userId=${encodeURIComponent(userId)}`)
+      .then((r) => {
+        const map: Record<string, KrEvidence> = {};
+        for (const it of r.items || []) map[it.krId] = it;
+        setEvidence(map);
+      })
+      .catch(() => setEvidence({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgUnitId, month]);
 
   const teams = useMemo(() => orgs.filter((o) => o.type === 'TEAM'), [orgs]);
   const isExec = myRole === 'CEO' || myRole === 'EXEC';
@@ -272,6 +294,9 @@ export function KpiReport() {
             {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} style={{ padding: '6px 8px' }} />
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setEvOpen((v) => !v)}>
+            {evOpen ? '📎 근거 접기' : '📎 근거 펼치기'}
+          </button>
           <button type="button" className="btn btn-sm" onClick={() => window.print()}>🖨 인쇄</button>
         </div>
       </div>
@@ -362,6 +387,34 @@ export function KpiReport() {
                               <span>26목표 {kr.target ?? '-'}</span>
                               <span>{kr.direction === 'AT_MOST' ? '↓ 이하 좋음' : '↑ 이상 좋음'}</span>
                             </div>
+                            {(() => {
+                              const ev = evidence[kr.id];
+                              if (!ev) return null;
+                              if (ev.totals.logs === 0 && ev.activities.length === 0) {
+                                return <div style={{ fontSize: 11, color: '#dc2626', marginTop: 2 }}>📎 {month.slice(5, 7)}월 실행 근거 없음 — 이 지표를 뒷받침하는 일지가 없습니다</div>;
+                              }
+                              const hm = ev.totals.minutes >= 60 ? `${Math.round(ev.totals.minutes / 6) / 10}h` : `${ev.totals.minutes}m`;
+                              return (
+                                <div style={{ marginTop: 4, borderLeft: '3px solid #bfdbfe', paddingLeft: 10, display: 'grid', gap: 3 }}>
+                                  <div style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 600 }}>
+                                    📎 실행 근거: 일지 {ev.totals.logs}건 · {hm} · {ev.totals.people}명
+                                    {ev.activities.length > 0 && <span style={{ color: '#7c3aed', fontWeight: 400 }}> · 활동: {ev.activities.map((a) => a.name).slice(0, 4).join(', ')}{ev.activities.length > 4 ? ` 외 ${ev.activities.length - 4}` : ''}</span>}
+                                  </div>
+                                  {evOpen && ev.worklogs.map((w) => (
+                                    <a key={w.id} href={`/worklogs/${w.id}`} target="_blank" rel="noreferrer"
+                                      style={{ display: 'flex', gap: 8, fontSize: 12, color: '#334155', textDecoration: 'none', alignItems: 'baseline' }}>
+                                      <span style={{ color: '#94a3b8', minWidth: 40 }}>{new Date(w.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</span>
+                                      <b style={{ minWidth: 52 }}>{w.authorName}</b>
+                                      {w.minutes > 0 && <span style={{ color: '#7c3aed', minWidth: 34 }}>{Math.round(w.minutes / 6) / 10}h</span>}
+                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.snippet}</span>
+                                    </a>
+                                  ))}
+                                  {evOpen && ev.totals.logs > ev.worklogs.length && (
+                                    <div style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.totals.logs - ev.worklogs.length}건 더…</div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
