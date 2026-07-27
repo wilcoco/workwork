@@ -472,10 +472,10 @@ export class ActivitiesController {
     const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
 
     // Activity 는 관계(relation) 없는 독립 모델 — 조인 대신 별도 조회 후 Map 매핑
-    const [worklogs, entries, krs, kiLinks, actRows, kpiTags] = await Promise.all([
+    const [worklogs, entries, krs, kiLinks, actRows, kpiTags, kiRows] = await Promise.all([
       (this.prisma as any).worklog.findMany({
         where: { date: { gte: start, lt: end } },
-        select: { id: true, activityId: true, timeSpentMinutes: true, createdById: true, createdBy: { select: { orgUnit: { select: { name: true } } } } },
+        select: { id: true, activityId: true, timeSpentMinutes: true, createdById: true, createdBy: { select: { orgUnitId: true, orgUnit: { select: { name: true } } } } },
       }),
       (this.prisma as any).progressEntry.findMany({
         where: { periodStart: { gte: start, lt: end }, NOT: { keyResultId: null } },
@@ -486,12 +486,13 @@ export class ActivitiesController {
         where: { NOT: { objective: { title: { startsWith: 'Auto Objective' } } } },
         select: {
           id: true, title: true, unit: true, target: true, direction: true, pillar: true, activityId: true,
-          objective: { select: { title: true, pillar: true, orgUnit: { select: { name: true } } } },
+          objective: { select: { title: true, pillar: true, orgUnitId: true, orgUnit: { select: { name: true } } } },
         },
       }),
       (this.prisma as any).goalActivityLink.findMany({ select: { goalType: true, goalId: true, activityId: true } }),
       (this.prisma as any).activity.findMany({ select: { id: true, name: true, domain: true } }),
       (this.prisma as any).worklogGoalTag.findMany({ where: { goalType: 'KR' }, select: { worklogId: true, goalId: true } }),
+      (this.prisma as any).keyInitiative.findMany({ where: { NOT: { activityId: null } }, select: { id: true, activityId: true, orgUnitId: true } }),
     ]);
     const actInfo = new Map<string, { name: string; domain: string | null }>(
       (actRows as any[]).map((a) => [String(a.id), { name: a.name, domain: a.domain || null }]),
@@ -560,16 +561,19 @@ export class ActivitiesController {
       // 연결 활동들(다중) — 조인 테이블 + 레거시 컬럼 병합
       const aidSet = new Set<string>(krActIds.get(String(kr.id)) || []);
       if (kr.activityId) aidSet.add(String(kr.activityId));
+      // 조직도 기준: KPI 소속팀 구성원의 일지만 근거로 인정 (활동은 전사 공용이라 타팀 일지 유입 차단)
+      const krTeam = String(kr.objective?.orgUnitId || '');
+      const inTeam = (w: any) => !krTeam || String(w?.createdBy?.orgUnitId || '') === krTeam;
       const evidence = new Map<string, any>();
-      for (const aid of aidSet) for (const w of wlByActivity.get(aid) || []) evidence.set(String(w.id), w);
+      for (const aid of aidSet) for (const w of wlByActivity.get(aid) || []) { if (inTeam(w)) evidence.set(String(w.id), w); }
       for (const wid of entryWlByKr.get(String(kr.id)) || []) {
         const w = wlById.get(wid);
-        if (w) evidence.set(wid, w);
+        if (w && inTeam(w)) evidence.set(wid, w);
       }
       // ③ 분류 태그 경로 (해당 월 일지만 — wlById가 월 범위)
       for (const wid of tagWlByKr.get(String(kr.id)) || []) {
         const w = wlById.get(wid);
-        if (w) evidence.set(wid, w);
+        if (w && inTeam(w)) evidence.set(wid, w);
       }
       const evArr = Array.from(evidence.values());
       const minutes = evArr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
@@ -587,10 +591,28 @@ export class ActivitiesController {
       };
     }).sort((a: any, b: any) => b.minutes - a.minutes);
 
-    // 목표(지표·중점과제) 어딘가에 연결된 활동 집합 (조인 테이블 전체 + 레거시)
+    // 목표(지표·중점과제) 어딘가에 연결된 활동 집합 (조인 테이블 전체 + 레거시) — 미연결(lowContribution) 판정용
     const linkedActIds = new Set<string>();
     for (const l of kiLinks as any[]) linkedActIds.add(String(l.activityId));
     for (const k of krs) if (k.activityId) linkedActIds.add(String(k.activityId));
+    // 정렬률용 팀별 연결활동: 작성자 소속팀의 목표에 연결된 활동만 '정렬'로 인정 (조직도 기준)
+    const krTeamById = new Map<string, string>();
+    for (const k of krs) if (k.objective?.orgUnitId) krTeamById.set(String(k.id), String(k.objective.orgUnitId));
+    const kiTeamById = new Map<string, string>();
+    for (const ki of kiRows as any[]) if (ki.orgUnitId) kiTeamById.set(String(ki.id), String(ki.orgUnitId));
+    const teamLinkedActs = new Map<string, Set<string>>();
+    const addTeamAct = (team: string | undefined, act: string) => {
+      if (!team) return;
+      const s2 = teamLinkedActs.get(team) || new Set<string>();
+      s2.add(act);
+      teamLinkedActs.set(team, s2);
+    };
+    for (const l of kiLinks as any[]) {
+      if (l.goalType === 'KR') addTeamAct(krTeamById.get(String(l.goalId)), String(l.activityId));
+      else if (l.goalType === 'KI') addTeamAct(kiTeamById.get(String(l.goalId)), String(l.activityId));
+    }
+    for (const k of krs) if (k.activityId) addTeamAct(krTeamById.get(String(k.id)), String(k.activityId));
+    for (const ki of kiRows as any[]) if (ki.activityId) addTeamAct(kiTeamById.get(String(ki.id)), String(ki.activityId));
 
     // ② 시간多·기여低: 이번 달 투입시간 상위인데 어떤 목표에도 연결 안 된 활동
     const lowAgg = new Map<string, { name: string; domain: string | null; minutes: number; logs: number; people: Set<string> }>();
@@ -615,7 +637,8 @@ export class ActivitiesController {
     for (const w of worklogs) {
       const t = w.timeSpentMinutes || 0;
       totalMinutes += t;
-      const isLinked = (w.activityId && linkedActIds.has(String(w.activityId))) || entryLinkedWl.has(String(w.id)) || taggedWl.has(String(w.id));
+      const authorTeam = String(w.createdBy?.orgUnitId || '');
+      const isLinked = (w.activityId && teamLinkedActs.get(authorTeam)?.has(String(w.activityId))) || entryLinkedWl.has(String(w.id)) || taggedWl.has(String(w.id));
       if (isLinked) linkedMinutes += t;
       const tn = w.createdBy?.orgUnit?.name || '(팀없음)';
       const e = teamAgg.get(tn) || { totalMin: 0, linkedMin: 0, logs: 0 };

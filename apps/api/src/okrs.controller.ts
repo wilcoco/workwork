@@ -385,11 +385,13 @@ export class OkrsController {
     // 대상 KPI: krId 단건(현황판 셀 클릭) 또는 팀 전체(실적입력/리포트)
     const krIds: string[] = [];
     const legacyAct = new Map<string, string>();
+    let teamOfKr = new Map<string, string>(); // KPI 소속팀 — 근거는 그 팀 구성원의 일지만 (조직도 기준)
     if (krIdParam) {
-      const kr: any = await this.prisma.keyResult.findUnique({ where: { id: String(krIdParam) }, select: { id: true, activityId: true } as any });
+      const kr: any = await this.prisma.keyResult.findUnique({ where: { id: String(krIdParam) }, select: { id: true, activityId: true, objective: { select: { orgUnitId: true } } } as any });
       if (!kr) return { month, items: [] };
       krIds.push(String(kr.id));
       if (kr.activityId) legacyAct.set(String(kr.id), String(kr.activityId));
+      if (kr.objective?.orgUnitId) teamOfKr.set(String(kr.id), String(kr.objective.orgUnitId));
     } else {
       const objs = await this.prisma.objective.findMany({
         where: { orgUnitId: String(orgUnitId) },
@@ -400,6 +402,7 @@ export class OkrsController {
         for (const kr of o.keyResults) {
           krIds.push(kr.id);
           if ((kr as any).activityId) legacyAct.set(kr.id, String((kr as any).activityId));
+          teamOfKr.set(kr.id, String(orgUnitId));
         }
       }
     }
@@ -434,7 +437,7 @@ export class OkrsController {
     }
     const monthWls = await (this.prisma as any).worklog.findMany({
       where: { date: { gte: start, lt: end } },
-      select: { id: true, date: true, note: true, timeSpentMinutes: true, activityId: true, visibility: true, createdById: true, createdBy: { select: { name: true } } },
+      select: { id: true, date: true, note: true, timeSpentMinutes: true, activityId: true, visibility: true, createdById: true, createdBy: { select: { name: true, orgUnitId: true } } },
     });
     const wlById = new Map(monthWls.map((w: any) => [String(w.id), w]));
     const wlByAct = new Map<string, any[]>();
@@ -446,16 +449,20 @@ export class OkrsController {
     }
 
     const items = krIds.map((kid) => {
+      // 조직도 기준: KPI 소속팀 구성원의 일지만 근거로 인정 (활동은 전사 공용 객체라
+      // 타 팀 일지가 같은 활동에 붙어 딸려 들어오는 것을 차단 — 예: 출하직행률에 설계팀 인력)
+      const krTeam = teamOfKr.get(kid) || '';
+      const inTeam = (w: any) => !krTeam || String(w?.createdBy?.orgUnitId || '') === krTeam;
       const evidence = new Map<string, any>();
-      for (const aid of actByKr.get(kid) || []) for (const w of wlByAct.get(aid) || []) evidence.set(String(w.id), w);
-      for (const wid of tagWlByKr.get(kid) || []) { const w = wlById.get(wid); if (w) evidence.set(wid, w); }
-      for (const wid of entryWlByKr.get(kid) || []) { const w = wlById.get(wid); if (w) evidence.set(wid, w); }
+      for (const aid of actByKr.get(kid) || []) for (const w of wlByAct.get(aid) || []) { if (inTeam(w)) evidence.set(String(w.id), w); }
+      for (const wid of tagWlByKr.get(kid) || []) { const w = wlById.get(wid); if (w && inTeam(w)) evidence.set(wid, w); }
+      for (const wid of entryWlByKr.get(kid) || []) { const w = wlById.get(wid); if (w && inTeam(w)) evidence.set(wid, w); }
       const evArr = Array.from(evidence.values()).sort((a, b) => (b.timeSpentMinutes || 0) - (a.timeSpentMinutes || 0));
       const minutes = evArr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
       const people = new Set(evArr.map((w) => w.createdById)).size;
       // 활동별 통계 (해당 월, 이 KPI 연결 활동들) — 온톨로지 맵/활동 통계용
       const actStats = Array.from(actByKr.get(kid) || []).map((aid) => {
-        const ws = wlByAct.get(aid) || [];
+        const ws = (wlByAct.get(aid) || []).filter(inTeam);
         return { id: aid, name: actName.get(aid) || '(활동)', logs: ws.length, minutes: ws.reduce((s: number, w: any) => s + (w.timeSpentMinutes || 0), 0) };
       }).sort((a, b) => b.minutes - a.minutes).slice(0, 10);
       // 수행 구성원 통계 (근거 일지 기준)
