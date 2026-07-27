@@ -453,9 +453,24 @@ export class OkrsController {
       const evArr = Array.from(evidence.values()).sort((a, b) => (b.timeSpentMinutes || 0) - (a.timeSpentMinutes || 0));
       const minutes = evArr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
       const people = new Set(evArr.map((w) => w.createdById)).size;
+      // 활동별 통계 (해당 월, 이 KPI 연결 활동들) — 온톨로지 맵/활동 통계용
+      const actStats = Array.from(actByKr.get(kid) || []).map((aid) => {
+        const ws = wlByAct.get(aid) || [];
+        return { id: aid, name: actName.get(aid) || '(활동)', logs: ws.length, minutes: ws.reduce((s: number, w: any) => s + (w.timeSpentMinutes || 0), 0) };
+      }).sort((a, b) => b.minutes - a.minutes).slice(0, 10);
+      // 수행 구성원 통계 (근거 일지 기준)
+      const peopleAgg = new Map<string, { name: string; logs: number; minutes: number }>();
+      for (const w of evArr) {
+        const key = String(w.createdById);
+        const e = peopleAgg.get(key) || { name: w.createdBy?.name || '', logs: 0, minutes: 0 };
+        e.logs++; e.minutes += w.timeSpentMinutes || 0;
+        peopleAgg.set(key, e);
+      }
+      const peopleStats = Array.from(peopleAgg.values()).sort((a, b) => b.minutes - a.minutes).slice(0, 8);
       return {
         krId: kid,
-        activities: Array.from(actByKr.get(kid) || []).map((aid) => ({ id: aid, name: actName.get(aid) || '(활동)' })).slice(0, 8),
+        activities: actStats,
+        people: peopleStats,
         totals: { logs: evArr.length, minutes, people },
         worklogs: evArr.slice(0, krIdParam ? 15 : 8).map((w) => {
           const visible = canSee(String(w.visibility || 'ALL'), String(w.createdById));

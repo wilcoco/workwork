@@ -7,10 +7,68 @@ type ProgressEntry = { krValue: number | null; periodStart: string; createdAt: s
 
 type KrEvidence = {
   krId: string;
-  activities: Array<{ id: string; name: string }>;
+  activities: Array<{ id: string; name: string; logs: number; minutes: number }>;
+  people: Array<{ name: string; logs: number; minutes: number }>;
   totals: { logs: number; minutes: number; people: number };
   worklogs: Array<{ id: string; date: string; authorName: string; minutes: number; snippet: string }>;
 };
+
+const fmtH = (min: number) => (min >= 60 ? `${Math.round(min / 6) / 10}h` : `${min}m`);
+
+// ── KPI 온톨로지 맵 (활동 → KPI ← 수행자, 선 굵기 ∝ 투입시간) ──
+function KpiOntoMap({ kr, ev, ach }: { kr: Kr; ev: KrEvidence; ach: number | null }) {
+  const acts = ev.activities.slice(0, 8);
+  const ppl = ev.people.slice(0, 8);
+  const rows = Math.max(acts.length, ppl.length, 1);
+  const W = 720, ROW = 46, TOP = 24, H = Math.max(rows * ROW + TOP * 2, 200);
+  const maxMin = Math.max(...acts.map((a) => a.minutes), ...ppl.map((p) => p.minutes), 1);
+  const lw = (m: number) => Math.max(1.5, (m / maxMin) * 8);
+  const nodeY = (i: number, n: number) => TOP + (H - TOP * 2) * (n <= 1 ? 0.5 : i / (n - 1));
+  const cy = H / 2;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      {/* 연결선 */}
+      {acts.map((a, i) => {
+        const y = nodeY(i, acts.length);
+        return <path key={`la${a.id}`} d={`M 218 ${y} C 270 ${y}, 290 ${cy}, 330 ${cy}`} fill="none" stroke="#a78bfa" strokeWidth={lw(a.minutes)} opacity={0.55} />;
+      })}
+      {ppl.map((pp, i) => {
+        const y = nodeY(i, ppl.length);
+        return <path key={`lp${pp.name}${i}`} d={`M 502 ${y} C 450 ${y}, 430 ${cy}, 390 ${cy}`} fill="none" stroke="#60a5fa" strokeWidth={lw(pp.minutes)} opacity={0.55} />;
+      })}
+      {/* 활동 노드 (좌) */}
+      {acts.map((a, i) => {
+        const y = nodeY(i, acts.length);
+        return (
+          <g key={a.id}>
+            <rect x={6} y={y - 17} width={212} height={34} rx={9} fill="#f5f3ff" stroke="#ddd6fe" />
+            <text x={14} y={y - 3} fontSize={11.5} fontWeight={700} fill="#5b21b6">{a.name.length > 20 ? a.name.slice(0, 20) + '…' : a.name}</text>
+            <text x={14} y={y + 11} fontSize={10} fill="#7c3aed">{a.logs > 0 ? `일지 ${a.logs}건 · ${fmtH(a.minutes)}` : '이 달 기록 없음'}</text>
+          </g>
+        );
+      })}
+      {acts.length === 0 && <text x={110} y={cy} fontSize={12} fill="#94a3b8" textAnchor="middle">연결 활동 없음 (🎯 매칭 필요)</text>}
+      {/* KPI 중심 노드 */}
+      <rect x={330} y={cy - 34} width={60 + 0} height={0} fill="none" />
+      <rect x={300} y={cy - 36} width={120} height={72} rx={14} fill="#0f3d73" />
+      <text x={360} y={cy - 14} fontSize={12} fontWeight={800} fill="#fff" textAnchor="middle">{kr.title.length > 10 ? kr.title.slice(0, 10) + '…' : kr.title}</text>
+      <text x={360} y={cy + 4} fontSize={11} fill="#bfdbfe" textAnchor="middle">{fmtH(ev.totals.minutes)} · {ev.totals.logs}건</text>
+      <text x={360} y={cy + 22} fontSize={13} fontWeight={800} fill={ach == null ? '#94a3b8' : ach >= 100 ? '#4ade80' : ach >= 80 ? '#fbbf24' : '#f87171'} textAnchor="middle">{ach != null ? `달성 ${ach}%` : '실적 미입력'}</text>
+      {/* 수행자 노드 (우) */}
+      {ppl.map((pp, i) => {
+        const y = nodeY(i, ppl.length);
+        return (
+          <g key={`${pp.name}${i}`}>
+            <rect x={502} y={y - 17} width={212} height={34} rx={9} fill="#eff6ff" stroke="#bfdbfe" />
+            <text x={512} y={y - 3} fontSize={11.5} fontWeight={700} fill="#1e40af">{pp.name}</text>
+            <text x={512} y={y + 11} fontSize={10} fill="#3b82f6">일지 {pp.logs}건 · {fmtH(pp.minutes)}</text>
+          </g>
+        );
+      })}
+      {ppl.length === 0 && <text x={608} y={cy} fontSize={12} fill="#94a3b8" textAnchor="middle">이 달 수행 기록 없음</text>}
+    </svg>
+  );
+}
 
 type Kr = {
   id: string; title: string; unit?: string | null; target?: number | null; baseline?: number | null;
@@ -172,6 +230,7 @@ export function KpiReport() {
   // 온톨로지 실행 근거 (연결 활동 + 근거 일지) — 보고서에 "숫자의 근거"를 함께 싣는다
   const [evidence, setEvidence] = useState<Record<string, KrEvidence>>({});
   const [evOpen, setEvOpen] = useState(false); // 근거 상세 전체 펼침 (인쇄용)
+  const [mapKr, setMapKr] = useState<Kr | null>(null); // 온톨로지 맵 모달 대상
 
   useEffect(() => {
     if (!orgUnitId) { setEvidence({}); return; }
@@ -359,7 +418,15 @@ export function KpiReport() {
                     return (
                       <div key={kr.id} style={{ padding: '10px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', display: 'grid', gap: 8 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                          <div style={{ fontWeight: 700 }}>{kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}</div>
+                          <div style={{ fontWeight: 700, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                            {kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}
+                            {evidence[kr.id] && (
+                              <button type="button" onClick={() => setMapKr(kr)}
+                                style={{ fontSize: 11, color: '#6d28d9', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '2px 8px', cursor: 'pointer', fontWeight: 600 }}>
+                                🕸 온톨로지 맵
+                              </button>
+                            )}
+                          </div>
                           <div style={{ fontSize: 13, color: '#475569' }}>
                             목표 <b>{kr.target ?? '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
@@ -398,8 +465,17 @@ export function KpiReport() {
                                 <div style={{ marginTop: 4, borderLeft: '3px solid #bfdbfe', paddingLeft: 10, display: 'grid', gap: 3 }}>
                                   <div style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 600 }}>
                                     📎 실행 근거: 일지 {ev.totals.logs}건 · {hm} · {ev.totals.people}명
-                                    {ev.activities.length > 0 && <span style={{ color: '#7c3aed', fontWeight: 400 }}> · 활동: {ev.activities.map((a) => a.name).slice(0, 4).join(', ')}{ev.activities.length > 4 ? ` 외 ${ev.activities.length - 4}` : ''}</span>}
                                   </div>
+                                  {ev.activities.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                      {ev.activities.slice(0, 5).map((a) => (
+                                        <span key={a.id} style={{ fontSize: 11, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe', borderRadius: 10, padding: '1px 8px' }}>
+                                          {a.name} {a.logs > 0 ? <b>{a.logs}건·{fmtH(a.minutes)}</b> : <span style={{ color: '#c4b5fd' }}>기록없음</span>}
+                                        </span>
+                                      ))}
+                                      {ev.activities.length > 5 && <span style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.activities.length - 5}</span>}
+                                    </div>
+                                  )}
                                   {evOpen && ev.worklogs.map((w) => (
                                     <a key={w.id} href={`/worklogs/${w.id}`} target="_blank" rel="noreferrer"
                                       style={{ display: 'flex', gap: 8, fontSize: 12, color: '#334155', textDecoration: 'none', alignItems: 'baseline' }}>
@@ -471,6 +547,34 @@ export function KpiReport() {
             </div>
           </details>
         </>
+      )}
+
+      {/* 🕸 KPI 온톨로지 맵 모달: 활동 → KPI ← 수행자 (선 굵기 = 투입시간) */}
+      {mapKr && evidence[mapKr.id] && (
+        <div onClick={() => setMapKr(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 800, width: '100%', maxHeight: '82vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <b style={{ fontSize: 16 }}>🕸 {mapKr.title}</b>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · {month} · 활동 → KPI ← 수행자 (선 굵기 = 투입시간)</span>
+              <button type="button" onClick={() => setMapKr(null)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
+            </div>
+            <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={achOf(mapKr, mapKr.monthly?.[selIdx] ?? null)} />
+            {evidence[mapKr.id].worklogs.length > 0 && (
+              <div style={{ display: 'grid', gap: 3, borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>근거 일지</div>
+                {evidence[mapKr.id].worklogs.map((w) => (
+                  <a key={w.id} href={`/worklogs/${w.id}`} target="_blank" rel="noreferrer"
+                    style={{ display: 'flex', gap: 8, fontSize: 12, color: '#334155', textDecoration: 'none', alignItems: 'baseline' }}>
+                    <span style={{ color: '#94a3b8', minWidth: 40 }}>{new Date(w.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</span>
+                    <b style={{ minWidth: 52 }}>{w.authorName}</b>
+                    {w.minutes > 0 && <span style={{ color: '#7c3aed', minWidth: 34 }}>{fmtH(w.minutes)}</span>}
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.snippet}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
