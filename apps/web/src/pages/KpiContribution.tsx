@@ -119,6 +119,28 @@ export function KpiContribution() {
 
   const maxMin = Math.max(...(data?.goals || []).map((g) => g.minutes), 1);
 
+  // ② 미연결 활동 → KPI 수동 연결 (팀별 그룹 드롭다운, 선택 즉시 저장)
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const kpiOptions = useMemo(() => {
+    const byTeam = new Map<string, Goal[]>();
+    for (const g of data?.goals || []) {
+      const t = g.teamName || '(팀 미지정)';
+      (byTeam.get(t) || byTeam.set(t, []).get(t)!).push(g);
+    }
+    return [...byTeam.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [data]);
+  async function linkActivityToKpi(activityId: string, krId: string) {
+    if (!krId) return;
+    setLinkingId(activityId);
+    try {
+      await apiJson(`/api/activities/${encodeURIComponent(activityId)}/link-goal`, {
+        method: 'POST', body: JSON.stringify({ actorId: userId, goalType: 'KR', goalId: krId }),
+      });
+      await load(); // 연결되면 ②에서 빠지고 ①의 해당 KPI로 시간이 잡힌다
+    } catch (e: any) { alert(e?.message || '연결 실패'); }
+    finally { setLinkingId(null); }
+  }
+
   return (
     <div className="content" style={{ display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -216,11 +238,22 @@ export function KpiContribution() {
             ) : (
               <div style={{ display: 'grid', gap: 4 }}>
                 {data.lowContribution.map((a, i) => (
-                  <div key={a.activityId} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 10px', borderRadius: 8, background: i < 3 ? '#fffbeb' : '#fff', border: '1px solid #f1f5f9', fontSize: 13 }}>
+                  <div key={a.activityId} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 10px', borderRadius: 8, background: i < 3 ? '#fffbeb' : '#fff', border: '1px solid #f1f5f9', fontSize: 13, flexWrap: 'wrap' }}>
                     <span style={{ minWidth: 20, color: '#94a3b8', fontWeight: 700 }}>{i + 1}</span>
-                    <span style={{ flex: 1, fontWeight: 600 }}>{a.name}</span>
+                    <span style={{ flex: 1, fontWeight: 600, minWidth: 160 }}>{a.name}</span>
                     {a.domain && <span style={{ fontSize: 11, color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: 20 }}>{a.domain}</span>}
                     <span style={{ minWidth: 130, textAlign: 'right', color: '#b45309' }}><b>{fmtH(a.minutes)}</b> · 일지 {a.logs} · {a.people}명</span>
+                    <select value="" disabled={linkingId === a.activityId}
+                      onChange={(e) => void linkActivityToKpi(a.activityId, e.target.value)}
+                      title="이 활동을 KPI에 연결하면 투입시간이 그 KPI의 실행 근거로 잡힙니다"
+                      style={{ fontSize: 12, padding: '4px 6px', border: '1px solid #fcd34d', borderRadius: 8, background: '#fffbeb', color: '#92400e', maxWidth: 210 }}>
+                      <option value="">{linkingId === a.activityId ? '연결 중…' : '🎯 KPI에 연결…'}</option>
+                      {kpiOptions.map(([team, list]) => (
+                        <optgroup key={team} label={team}>
+                          {list.map((g) => <option key={g.krId} value={g.krId}>{g.title}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
                   </div>
                 ))}
               </div>

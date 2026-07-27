@@ -46,6 +46,23 @@ export class ActivitiesController {
     return { id: a.id, status: a.status };
   }
 
+  /** 활동을 목표(KPI/중점과제)에 수동 연결 — KPI 기여 분석 ②(미연결 활동)에서 사용 (임원 이상) */
+  @Post(':id/link-goal')
+  async linkGoal(@Param('id') id: string, @Body() body: { actorId?: string; goalType?: 'KR' | 'KI'; goalId?: string }) {
+    await this.assertExec(String(body?.actorId || ''));
+    const goalId = String(body?.goalId || '');
+    const goalType = body?.goalType === 'KI' ? 'KI' : 'KR';
+    if (!goalId) throw new BadRequestException('goalId required');
+    const act = await (this.prisma as any).activity.findUnique({ where: { id }, select: { id: true } });
+    if (!act) throw new BadRequestException('activity not found');
+    await (this.prisma as any).goalActivityLink.upsert({
+      where: { goalType_goalId_activityId: { goalType, goalId, activityId: id } },
+      update: {},
+      create: { goalType, goalId, activityId: id },
+    });
+    return { ok: true };
+  }
+
   /** 대상(설비·차종·고객사·부품·시스템) 채굴 — 일지에서 두 번째 객체 타입 추출 (임원 이상) */
   @Post('mine-entities')
   async mineEntities(@Body() body: { actorId?: string; days?: number; limit?: number }) {
