@@ -365,8 +365,8 @@ export class OkrsController {
    * 일지 본문은 공개범위(visibility)에 따라 마스킹.
    */
   @Get('kpi-evidence')
-  async kpiEvidence(@Query('orgUnitId') orgUnitId?: string, @Query('month') monthStr?: string, @Query('userId') userId?: string) {
-    if (!orgUnitId) throw new BadRequestException('orgUnitId required');
+  async kpiEvidence(@Query('orgUnitId') orgUnitId?: string, @Query('month') monthStr?: string, @Query('userId') userId?: string, @Query('krId') krIdParam?: string) {
+    if (!orgUnitId && !krIdParam) throw new BadRequestException('orgUnitId or krId required');
     const viewer = userId ? await this.prisma.user.findUnique({ where: { id: String(userId) }, select: { role: true, id: true } }) : null;
     const role = String(viewer?.role || '').toUpperCase();
     const canSee = (vis: string, authorId: string) => {
@@ -382,18 +382,25 @@ export class OkrsController {
     const start = new Date(`${month}-01T00:00:00+09:00`);
     const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
 
-    // 팀의 진성 KPI
-    const objs = await this.prisma.objective.findMany({
-      where: { orgUnitId: String(orgUnitId) },
-      select: { title: true, pillar: true, keyResults: { select: { id: true, activityId: true } } },
-    });
+    // 대상 KPI: krId 단건(현황판 셀 클릭) 또는 팀 전체(실적입력/리포트)
     const krIds: string[] = [];
     const legacyAct = new Map<string, string>();
-    for (const o of objs) {
-      if (!o.pillar || String(o.title || '').startsWith('Auto Objective')) continue;
-      for (const kr of o.keyResults) {
-        krIds.push(kr.id);
-        if ((kr as any).activityId) legacyAct.set(kr.id, String((kr as any).activityId));
+    if (krIdParam) {
+      const kr: any = await this.prisma.keyResult.findUnique({ where: { id: String(krIdParam) }, select: { id: true, activityId: true } as any });
+      if (!kr) return { month, items: [] };
+      krIds.push(String(kr.id));
+      if (kr.activityId) legacyAct.set(String(kr.id), String(kr.activityId));
+    } else {
+      const objs = await this.prisma.objective.findMany({
+        where: { orgUnitId: String(orgUnitId) },
+        select: { title: true, pillar: true, keyResults: { select: { id: true, activityId: true } } },
+      });
+      for (const o of objs) {
+        if (!o.pillar || String(o.title || '').startsWith('Auto Objective')) continue;
+        for (const kr of o.keyResults) {
+          krIds.push(kr.id);
+          if ((kr as any).activityId) legacyAct.set(kr.id, String((kr as any).activityId));
+        }
       }
     }
     if (!krIds.length) return { month, items: [] };
@@ -450,7 +457,7 @@ export class OkrsController {
         krId: kid,
         activities: Array.from(actByKr.get(kid) || []).map((aid) => ({ id: aid, name: actName.get(aid) || '(활동)' })).slice(0, 8),
         totals: { logs: evArr.length, minutes, people },
-        worklogs: evArr.slice(0, 8).map((w) => {
+        worklogs: evArr.slice(0, krIdParam ? 15 : 8).map((w) => {
           const visible = canSee(String(w.visibility || 'ALL'), String(w.createdById));
           return {
             id: w.id,

@@ -9,6 +9,12 @@ import { apiJson } from '../lib/api';
 type Goal = { krId: string; title: string; pillar: string | null; teamName: string; minutes: number; logs: number; people: number; ach: number | null; value: number | null; unit: string; target: number | null };
 type Team = { name: string; totalMin: number; linkedMin: number; logs: number; pct: number | null };
 type Trend = { month: string; totalMinutes: number; linkedMinutes: number; pct: number | null };
+type KrEvidence = {
+  krId: string;
+  activities: Array<{ id: string; name: string }>;
+  totals: { logs: number; minutes: number; people: number };
+  worklogs: Array<{ id: string; date: string; authorName: string; minutes: number; snippet: string }>;
+};
 type Pulse = {
   month: string;
   align: { totalMinutes: number; linkedMinutes: number; pct: number | null };
@@ -32,7 +38,7 @@ const kstMonth = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0,
 const achColor = (p: number | null) => (p == null ? '#94a3b8' : p >= 100 ? '#16a34a' : p >= 80 ? '#d97706' : '#dc2626');
 
 // ── 모자이크: 세로 = 기둥(시간 비례), 가로 = KPI(시간 비례) ──
-function Mosaic({ goals }: { goals: Goal[] }) {
+function Mosaic({ goals, onSelect }: { goals: Goal[]; onSelect: (g: Goal) => void }) {
   const W = 960, H = 420, GAP = 3, LABELW = 118;
   const byPillar = PORDER
     .map((p) => ({ p, info: PILLARS[p], list: goals.filter((g) => g.pillar === p && g.minutes > 0).sort((a, b) => b.minutes - a.minutes) }))
@@ -63,7 +69,8 @@ function Mosaic({ goals }: { goals: Goal[] }) {
               const mid = w > 46;
               return (
                 <g key={g.krId}>
-                  <rect x={x0} y={y0} width={Math.max(w, 2)} height={bandH} rx={6} fill={info.light} opacity={0.92}>
+                  <rect x={x0} y={y0} width={Math.max(w, 2)} height={bandH} rx={6} fill={info.light} opacity={0.92}
+                    style={{ cursor: 'pointer' }} onClick={() => onSelect(g)}>
                     <title>{`[${info.label}] ${g.title} (${g.teamName})\n${h(g.minutes)}h · 일지 ${g.logs}건 · ${g.people}명${g.ach != null ? `\n달성률 ${g.ach}%` : ''}`}</title>
                   </rect>
                   {/* 달성률 인디케이터 바 */}
@@ -133,6 +140,18 @@ export function CompanyPulse() {
   const [d, setD] = useState<Pulse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 근거 연계: 모자이크 셀/랭킹 클릭 → 해당 KPI의 연결 활동 + 근거 일지
+  const [selGoal, setSelGoal] = useState<Goal | null>(null);
+  const [selEv, setSelEv] = useState<KrEvidence | null>(null);
+  const [evLoading, setEvLoading] = useState(false);
+
+  function openEvidence(g: Goal) {
+    setSelGoal(g); setSelEv(null); setEvLoading(true);
+    apiJson<{ items: KrEvidence[] }>(`/api/okrs/kpi-evidence?krId=${encodeURIComponent(g.krId)}&month=${encodeURIComponent(month)}&userId=${encodeURIComponent(userId)}`)
+      .then((r) => setSelEv((r.items || [])[0] || null))
+      .catch(() => setSelEv(null))
+      .finally(() => setEvLoading(false));
+  }
 
   useEffect(() => {
     if (!userId) return;
@@ -179,10 +198,10 @@ export function CompanyPulse() {
           <div style={panel}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
               <div style={{ fontWeight: 800, fontSize: 16 }}>회사의 시간, 어디로 흘렀나</div>
-              <div style={{ fontSize: 12, color: '#94a3b8' }}>면적 = KPI 연결 투입시간 · 하단 바 = 달성률 (셀에 마우스를 올려보세요)</div>
+              <div style={{ fontSize: 12, color: '#94a3b8' }}>면적 = KPI 연결 투입시간 · 하단 바 = 달성률 (셀 클릭 = 근거 일지 보기)</div>
             </div>
             <div style={{ marginTop: 10 }}>
-              <Mosaic goals={d.goals} />
+              <Mosaic goals={d.goals} onSelect={openEvidence} />
             </div>
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 10 }}>
               {pillarSum.map((x) => (
@@ -238,13 +257,61 @@ export function CompanyPulse() {
             <div style={{ ...panel, borderLeft: '4px solid #16a34a' }}>
               <div style={{ fontWeight: 800, color: '#15803d', marginBottom: 6 }}>🏆 최다 투입 KPI</div>
               {d.goals.filter((g) => g.minutes > 0).slice(0, 3).map((g, i) => (
-                <div key={g.krId} style={{ fontSize: 13, padding: '3px 0', color: '#475569' }}>
-                  {i + 1}. <b>{g.title}</b> <span style={{ color: '#94a3b8' }}>({g.teamName})</span> — {h(g.minutes)}h · {g.people}명
+                <div key={g.krId} onClick={() => openEvidence(g)} style={{ fontSize: 13, padding: '3px 0', color: '#475569', cursor: 'pointer' }}>
+                  {i + 1}. <b>{g.title}</b> <span style={{ color: '#94a3b8' }}>({g.teamName})</span> — {h(g.minutes)}h · {g.people}명 <span style={{ color: '#2563eb', fontSize: 11 }}>근거 →</span>
                 </div>
               ))}
             </div>
           </div>
         </>
+      )}
+
+      {/* 근거 연계 모달: KPI ← 활동 ← 일지 증거사슬 */}
+      {selGoal && (
+        <div onClick={() => setSelGoal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 640, width: '100%', maxHeight: '78vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              {selGoal.pillar && PILLARS[selGoal.pillar] && (
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: PILLARS[selGoal.pillar].color, padding: '2px 8px', borderRadius: 12 }}>{PILLARS[selGoal.pillar].label}</span>
+              )}
+              <b style={{ fontSize: 16 }}>{selGoal.title}</b>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{selGoal.teamName}</span>
+              <button type="button" onClick={() => setSelGoal(null)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
+            </div>
+            <div style={{ fontSize: 13, color: '#475569' }}>
+              {month} 실행: <b>{h(selGoal.minutes)}h</b> · 일지 {selGoal.logs}건 · {selGoal.people}명
+              {selGoal.value != null && <span> · 실적 <b>{selGoal.value.toLocaleString()}</b>{selGoal.unit || ''} / 목표 {selGoal.target ?? '-'}{selGoal.ach != null ? ` (${selGoal.ach}%)` : ''}</span>}
+            </div>
+            {evLoading ? <div style={{ color: '#94a3b8', fontSize: 13 }}>근거 불러오는 중…</div> : !selEv ? (
+              <div style={{ color: '#94a3b8', fontSize: 13 }}>근거를 불러올 수 없습니다.</div>
+            ) : (
+              <>
+                {selEv.activities.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {selEv.activities.map((a) => (
+                      <span key={a.id} style={{ fontSize: 12, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe', borderRadius: 12, padding: '2px 10px' }}>{a.name}</span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: 'grid', gap: 4 }}>
+                  {selEv.worklogs.map((w) => (
+                    <a key={w.id} href={`/worklogs/${w.id}`} target="_blank" rel="noreferrer"
+                      style={{ display: 'flex', gap: 8, fontSize: 13, color: '#334155', textDecoration: 'none', alignItems: 'baseline', padding: '5px 8px', borderRadius: 8, background: '#f8fafc' }}>
+                      <span style={{ color: '#94a3b8', minWidth: 42 }}>{new Date(w.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</span>
+                      <b style={{ minWidth: 56 }}>{w.authorName}</b>
+                      {w.minutes > 0 && <span style={{ color: '#7c3aed', minWidth: 36 }}>{Math.round(w.minutes / 6) / 10}h</span>}
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.snippet}</span>
+                    </a>
+                  ))}
+                  {selEv.totals.logs > selEv.worklogs.length && (
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>외 {selEv.totals.logs - selEv.worklogs.length}건 더…</div>
+                  )}
+                  {selEv.worklogs.length === 0 && <div style={{ fontSize: 13, color: '#dc2626' }}>이 달 실행 근거 일지가 없습니다.</div>}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
