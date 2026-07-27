@@ -167,8 +167,12 @@ function MiniBars({ kr, selIdx }: { kr: Kr; selIdx: number }) {
 // ── 팀 추이 라인차트 (월별/누적 가중 달성률) ──────────────────
 function TrendChart({ monthlySeries, cumSeries, selIdx }: { monthlySeries: (number | null)[]; cumSeries: (number | null)[]; selIdx: number }) {
   const W = 680, H = 150, L = 34, R = 10, T = 12, B = 22;
-  const maxY = Math.max(...[...monthlySeries, ...cumSeries].filter((v): v is number => v != null), 100) * 1.05;
-  const x = (i: number) => L + (i / 11) * (W - L - R);
+  // 기준월까지만 표시 — 이후 달은 실적이 없어 빈 축만 차지한다
+  const N = Math.max(selIdx + 1, 2);
+  const monthly = monthlySeries.slice(0, N);
+  const cum = cumSeries.slice(0, N);
+  const maxY = Math.max(...[...monthly, ...cum].filter((v): v is number => v != null), 100) * 1.05;
+  const x = (i: number) => L + (i / (N - 1)) * (W - L - R);
   const y = (v: number) => T + (1 - v / maxY) * (H - T - B);
   const path = (s: (number | null)[]) => {
     let d = ''; let started = false;
@@ -188,17 +192,17 @@ function TrendChart({ monthlySeries, cumSeries, selIdx }: { monthlySeries: (numb
           <text x={L - 5} y={y(g) + 3} fontSize={9} fill="#94a3b8" textAnchor="end">{g}%</text>
         </g>
       ))}
-      {Array.from({ length: 12 }, (_, i) => (
+      {Array.from({ length: N }, (_, i) => (
         <text key={i} x={x(i)} y={H - 6} fontSize={9} fill={i === selIdx ? '#0f172a' : '#94a3b8'} fontWeight={i === selIdx ? 700 : 400} textAnchor="middle">{i + 1}월</text>
       ))}
       {selIdx >= 0 && <line x1={x(selIdx)} x2={x(selIdx)} y1={T} y2={H - B} stroke="#0f172a" strokeWidth={1} opacity={0.15} />}
       {/* 월별(막대 느낌의 점+선), 누적(굵은 선) */}
-      <path d={path(monthlySeries)} fill="none" stroke="#60a5fa" strokeWidth={2} />
-      <path d={path(cumSeries)} fill="none" stroke="#0f3d73" strokeWidth={2.5} />
-      {monthlySeries.map((v, i) => v != null && (
+      <path d={path(monthly)} fill="none" stroke="#60a5fa" strokeWidth={2} />
+      <path d={path(cum)} fill="none" stroke="#0f3d73" strokeWidth={2.5} />
+      {monthly.map((v, i) => v != null && (
         <circle key={`m${i}`} cx={x(i)} cy={y(v)} r={3} fill="#60a5fa"><title>{`${i + 1}월 가중 달성률 ${v}%`}</title></circle>
       ))}
-      {cumSeries.map((v, i) => v != null && (
+      {cum.map((v, i) => v != null && (
         <circle key={`c${i}`} cx={x(i)} cy={y(v)} r={3.5} fill="#0f3d73"><title>{`${i + 1}월 누적 가중 달성률 ${v}%`}</title></circle>
       ))}
     </svg>
@@ -547,7 +551,7 @@ export function KpiReport() {
                   <tr>
                     <th style={thS}>KPI</th>
                     <th style={thS}>목표</th>
-                    {Array.from({ length: 12 }, (_, i) => (
+                    {Array.from({ length: selIdx + 1 }, (_, i) => (
                       <th key={i} style={{ ...thS, textAlign: 'right', background: i === selIdx ? '#eff6ff' : undefined }}>{i + 1}월</th>
                     ))}
                     <th style={{ ...thS, textAlign: 'right', color: '#0f3d73' }}>누적</th>
@@ -556,15 +560,15 @@ export function KpiReport() {
                 </thead>
                 <tbody>
                   {krs.map((kr) => {
-                    const c = cumValue(kr, 11); // 연간 누적(전체)
-                    const ca = cumAch(kr, 11);
+                    const c = cumValue(kr, selIdx); // 기준월까지 누적 — 표가 기준월까지만 보이므로 합계도 동일 기준
+                    const ca = cumAch(kr, selIdx);
                     return (
                       <tr key={kr.id}>
                         <td style={{ ...tdS, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }} title={kr.title}>
                           {kr.title}{kr.unit ? ` (${kr.unit})` : ''}
                         </td>
                         <td style={{ ...tdS, textAlign: 'right', color: '#64748b' }}>{kr.target ?? '-'}</td>
-                        {Array.from({ length: 12 }, (_, i) => {
+                        {Array.from({ length: selIdx + 1 }, (_, i) => {
                           const v = kr.monthly?.[i] ?? null;
                           const a = monthAchPct(kr, v, i);
                           return (
