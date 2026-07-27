@@ -1,5 +1,6 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { kpiStatFromEntries } from './lib/kpi-calc';
 
 // 정량(KPI 지표) / 정성(OKR 과제·중점추진과제) 통합 대시보드 API
 // - GET /api/goals-dashboard/my?userId=        : 개인 업무 과제 (내 정량 지표 + 정성 과제 + 중점과제)
@@ -8,20 +9,7 @@ import { PrismaService } from './prisma.service';
 export class GoalsDashboardController {
   constructor(private prisma: PrismaService) {}
 
-  // 최신값 vs 목표값 (direction 반영) — TeamKpiBoard와 동일 규약
-  private krStatus(latestValue: number | null, target: number | null, direction?: string | null): 'OK' | 'WARN' | 'NONE' {
-    if (latestValue == null || target == null) return 'NONE';
-    const dir = direction === 'AT_MOST' ? 'AT_MOST' : 'AT_LEAST';
-    const violate = dir === 'AT_LEAST' ? latestValue < target : latestValue > target;
-    return violate ? 'WARN' : 'OK';
-  }
-
-  private krAchievementPct(latestValue: number | null, target: number | null, direction?: string | null): number | null {
-    if (latestValue == null || target == null || target === 0) return null;
-    const dir = direction === 'AT_MOST' ? 'AT_MOST' : 'AT_LEAST';
-    const pct = dir === 'AT_LEAST' ? (latestValue / target) * 100 : (target / Math.max(latestValue, 0.000001)) * 100;
-    return Math.round(pct * 10) / 10;
-  }
+  // 달성률·상태 판정은 공용 유틸(lib/kpi-calc.ts kpiStatFromEntries) 사용 — 집계방식(AVG/SUM/LAST) 인지
 
   private isAutoObjective(title?: string | null) {
     return String(title || '').toLowerCase().includes('auto objective');
@@ -53,9 +41,11 @@ export class GoalsDashboardController {
         })
       : [];
     const latestByKr: Record<string, any> = {};
+    const listByKr: Record<string, any[]> = {};
     const myLastByKr: Record<string, Date> = {};
     for (const e of entries) {
       if (e.keyResultId && !latestByKr[e.keyResultId]) latestByKr[e.keyResultId] = e;
+      if (e.keyResultId) (listByKr[e.keyResultId] ||= []).push(e);
       if (e.keyResultId && e.actorId === userId && !myLastByKr[e.keyResultId]) myLastByKr[e.keyResultId] = e.createdAt;
     }
 
@@ -63,6 +53,7 @@ export class GoalsDashboardController {
       const kr = krMap[id];
       const latest = latestByKr[id] || null;
       const latestValue = latest?.krValue ?? null;
+      const stat = kpiStatFromEntries(kr, listByKr[id] || []);
       return {
         krId: id,
         krTitle: kr.title,
@@ -77,8 +68,8 @@ export class GoalsDashboardController {
         cadence: kr.cadence || 'MONTHLY',
         latestValue,
         latestAt: latest?.createdAt || null,
-        achievementPct: this.krAchievementPct(latestValue, kr.target, kr.direction),
-        status: this.krStatus(latestValue, kr.target, kr.direction),
+        achievementPct: stat.pct,
+        status: stat.status,
         myLastInputAt: myLastByKr[id] || null,
       };
     });
@@ -179,8 +170,10 @@ export class GoalsDashboardController {
         })
       : [];
     const latestByKr: Record<string, any> = {};
+    const listByKr: Record<string, any[]> = {};
     for (const e of entries) {
       if (e.keyResultId && !latestByKr[e.keyResultId]) latestByKr[e.keyResultId] = e;
+      if (e.keyResultId) (listByKr[e.keyResultId] ||= []).push(e);
     }
 
     // 정성(OKR): pillar 없는 Objective + 하위 과제 상태 (Auto Objective 제외)
@@ -244,6 +237,7 @@ export class GoalsDashboardController {
         o.keyResults.map((k) => {
           const latest = latestByKr[k.id] || null;
           const latestValue = latest?.krValue ?? null;
+          const stat = kpiStatFromEntries(k, listByKr[k.id] || []);
           return {
             krId: k.id,
             title: k.title,
@@ -253,8 +247,8 @@ export class GoalsDashboardController {
             direction: k.direction || 'AT_LEAST',
             latestValue,
             latestAt: latest?.createdAt || null,
-            achievementPct: this.krAchievementPct(latestValue, k.target, k.direction),
-            status: this.krStatus(latestValue, k.target, k.direction),
+            achievementPct: stat.pct,
+            status: stat.status,
           };
         }),
       );
@@ -306,8 +300,7 @@ export class GoalsDashboardController {
           for (const kid of myKrIds) {
             const k = krInfoById[kid];
             if (!k) continue;
-            const latest = latestByKr[kid] || null;
-            const st = this.krStatus(latest?.krValue ?? null, k.target, k.direction);
+            const st = kpiStatFromEntries(k, listByKr[kid] || []).status;
             if (st === 'OK') ok += 1; else if (st === 'WARN') warn += 1; else noData += 1;
           }
           const qi = initsByUser[u.id] || { active: 0, done: 0, total: 0 };
@@ -384,6 +377,7 @@ export class GoalsDashboardController {
 
     const latest = entries.length ? entries[entries.length - 1] : null;
     const latestValue = latest?.krValue ?? null;
+    const stat = kpiStatFromEntries(kr, [...entries].reverse()); // asc → desc
 
     // 개인별: 마지막 입력값 / 입력일 / 입력 횟수 (개인 계획 + 실행 합산)
     const byUser: Record<string, { lastValue: number | null; lastAt: Date | null; count: number }> = {};
@@ -447,8 +441,8 @@ export class GoalsDashboardController {
       result: {
         latestValue,
         latestAt: latest?.createdAt || null,
-        achievementPct: this.krAchievementPct(latestValue, kr.target, kr.direction),
-        status: this.krStatus(latestValue, kr.target, kr.direction),
+        achievementPct: stat.pct,
+        status: stat.status,
         entryCount: entries.length,
       },
       people,

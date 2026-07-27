@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { mineWorklogActivities } from './lib/activity-miner';
+import { monthAchPct } from './lib/kpi-calc';
 import { mergeSimilarActivities } from './lib/activity-merge';
 import { mineWorklogEntities } from './lib/entity-miner';
 import { mapWorklogsToTeamKpis } from './lib/worklog-kpi-mapper';
@@ -485,7 +486,7 @@ export class ActivitiesController {
       (this.prisma as any).keyResult.findMany({
         where: { NOT: { objective: { title: { startsWith: 'Auto Objective' } } } },
         select: {
-          id: true, title: true, unit: true, target: true, direction: true, pillar: true, activityId: true,
+          id: true, title: true, unit: true, target: true, direction: true, pillar: true, activityId: true, aggregation: true,
           objective: { select: { title: true, pillar: true, orgUnitId: true, orgUnit: { select: { name: true } } } },
         },
       }),
@@ -541,19 +542,8 @@ export class ActivitiesController {
     }
     const wlById = new Map(worklogs.map((w: any) => [String(w.id), w]));
 
-    const achOf = (kr: any, v: number | null): number | null => {
-      if (v == null || kr.target == null) return null;
-      let pct: number;
-      if (kr.direction === 'AT_MOST') {
-        if (v <= 0) return 100;
-        if (kr.target === 0) return 0;
-        pct = (kr.target / v) * 100;
-      } else {
-        if (kr.target === 0) return null;
-        pct = (v / kr.target) * 100;
-      }
-      return Number.isFinite(pct) ? Math.round(pct * 10) / 10 : null;
-    };
+    // 달성률: 공용 유틸(lib/kpi-calc) — 집계방식 인지(합산형 ÷12, 누계형 안분). m은 조회월(1~12).
+    const achOf = (kr: any, v: number | null): number | null => monthAchPct(kr, v, m - 1);
 
     // KPI(필러 있는 지표)만 대상
     const kpiKrs = krs.filter((k: any) => k.pillar || k.objective?.pillar);

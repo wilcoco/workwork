@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { achPct, cumAchPct, cumTargetOf, cumValueOf, kpiModeOf, monthAchPct, monthTargetOf } from '../lib/kpiCalc';
 
 type OrgUnit = { id: string; name: string; type: string; parentId?: string | null };
 type Pillar = 'Q' | 'C' | 'D' | 'DEV' | 'P';
@@ -112,75 +113,24 @@ function kstPrevMonth(): string {
   return d.toISOString().slice(0, 7);
 }
 
-// 값 v에 대한 달성률(%) — direction 반영
-function achOf(kr: Kr, v: number | null | undefined, target?: number | null): number | null {
-  const t = target ?? kr.target;
-  if (v == null || t == null) return null;
-  let pct: number;
-  if (kr.direction === 'AT_MOST') {
-    if (v <= 0) return 100;
-    if (t === 0) return 0;
-    pct = (t / v) * 100;
-  } else {
-    if (t === 0) return null;
-    pct = (v / t) * 100;
-  }
-  if (!Number.isFinite(pct)) return null;
-  return Math.round(pct * 10) / 10;
-}
+// 달성률·누적 계산은 공용 유틸(lib/kpiCalc.ts) 사용 — 화면별 사본 금지
 const achColor = (p: number | null) => (p == null ? '#94a3b8' : p >= 100 ? '#16a34a' : p >= 80 ? '#d97706' : '#dc2626');
+const cumValue = (kr: Kr, uptoIdx: number) => cumValueOf(kr, kr.monthly, uptoIdx);
+const cumAch = (kr: Kr, uptoIdx: number) => cumAchPct(kr, kr.monthly, uptoIdx);
 
-// 누적 집계 방식 — KPI별 명시 설정(aggregation) 우선, 없으면 단위로 추정(%·율=평균)
-// AVG=월별 독립 측정(평균) · SUM=월별 발생량(합산) · LAST=누계값 직접 입력(최신값)
-const isRateKr = (kr: Kr) => String(kr.unit || '').includes('%') || String(kr.unit || '').includes('율');
-function cumModeOf(kr: Kr): 'avg' | 'sum' | 'last' {
-  if (kr.aggregation === 'AVG') return 'avg';
-  if (kr.aggregation === 'SUM') return 'sum';
-  if (kr.aggregation === 'LAST') return 'last';
-  return isRateKr(kr) ? 'avg' : 'sum';
-}
 const CUM_LABEL: Record<string, string> = { avg: '평균', sum: '합계', last: '최신누계' };
 const MODE_BADGE: Record<string, { label: string; title: string }> = {
-  avg: { label: '월별 독립측정', title: '매월 독립적으로 측정되는 지표 — 누적은 입력월 평균' },
+  avg: { label: '월별 독립측정', title: '매월 독립적으로 측정되는 지표 — 누적은 입력월 평균, 달성률은 목표 대비' },
   sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적은 합산, 달성률은 경과월 안분 목표 대비(6월=연간목표×6/12)' },
   last: { label: '누계값 입력', title: '입력값 자체가 연초부터의 누계 — 누적은 최신 입력값, 달성률은 경과월 안분 목표 대비' },
 };
-
-// 선택월까지의 누적값. 입력 없는 달은 제외.
-function cumValue(kr: Kr, uptoIdx: number): { value: number | null; months: number; mode: 'avg' | 'sum' | 'last' } {
-  const mode = cumModeOf(kr);
-  const vals: number[] = [];
-  let last: number | null = null;
-  for (let i = 0; i <= uptoIdx; i++) {
-    const v = kr.monthly?.[i];
-    if (v != null) { vals.push(v); last = v; }
-  }
-  if (!vals.length) return { value: null, months: 0, mode };
-  if (mode === 'last') return { value: last, months: vals.length, mode };
-  const sum = vals.reduce((a, b) => a + b, 0);
-  return { value: mode === 'avg' ? Math.round((sum / vals.length) * 100) / 100 : Math.round(sum * 100) / 100, months: vals.length, mode };
-}
-
-// 누적 달성률 — 평균형은 목표 그대로 대비.
-// 합산·누계형은 연간 목표를 경과월로 안분한 기대치 대비(6월이면 목표×6/12):
-// 연중에 연간 목표 전체로 나누면 항상 과소평가되기 때문(예: 연 5회 목표, 상반기 1회 → 2.5회 기대 대비 40%).
-function proratedTarget(kr: Kr, uptoIdx: number): number | null {
-  if (kr.target == null) return null;
-  return Math.round(kr.target * ((uptoIdx + 1) / 12) * 100) / 100;
-}
-function cumAch(kr: Kr, uptoIdx: number): number | null {
-  const c = cumValue(kr, uptoIdx);
-  if (c.value == null || kr.target == null) return null;
-  if (c.mode === 'avg') return achOf(kr, c.value);
-  return achOf(kr, c.value, proratedTarget(kr, uptoIdx));
-}
 
 // ── 미니 월별 바 차트 (SVG, 의존성 없음) ──────────────────────
 function MiniBars({ kr, selIdx }: { kr: Kr; selIdx: number }) {
   const W = 300, H = 64, PAD = 2, GAP = 3;
   const monthly = kr.monthly || Array(12).fill(null);
   const vals = monthly.filter((v): v is number => v != null);
-  const t = kr.target ?? null;
+  const t = monthTargetOf(kr, 11); // 목표선 — 합산형은 월 안분(÷12), 누계형은 연간, 평균형은 목표 그대로
   const maxV = Math.max(...vals.map((v) => Math.abs(v)), t != null ? Math.abs(t) : 0, 1) * 1.1;
   const bw = (W - PAD * 2 - GAP * 11) / 12;
   const y = (v: number) => H - 12 - Math.max(0, (Math.abs(v) / maxV) * (H - 16));
@@ -195,7 +145,7 @@ function MiniBars({ kr, selIdx }: { kr: Kr; selIdx: number }) {
         if (v == null) {
           return <rect key={i} x={x} y={H - 14} width={bw} height={2} fill="#e2e8f0" rx={1} />;
         }
-        const a = achOf(kr, v);
+        const a = monthAchPct(kr, v, i);
         const barY = y(v);
         return (
           <g key={i}>
@@ -357,7 +307,7 @@ export function KpiReport() {
     let wsum = 0, wach = 0, done = 0, cwsum = 0, cwach = 0;
     for (const kr of krs) {
       const w = typeof kr.weight === 'number' && kr.weight > 0 ? kr.weight : 0;
-      const a = achOf(kr, kr.monthly?.[selIdx]);
+      const a = monthAchPct(kr, kr.monthly?.[selIdx], selIdx);
       const ca = cumAch(kr, selIdx);
       if (a != null) done++;
       if (w > 0 && a != null) { wsum += w; wach += w * Math.min(a, 100); }
@@ -380,7 +330,7 @@ export function KpiReport() {
       for (const kr of krs) {
         const w = typeof kr.weight === 'number' && kr.weight > 0 ? kr.weight : 0;
         if (w <= 0) continue;
-        const a = achOf(kr, kr.monthly?.[mi]);
+        const a = monthAchPct(kr, kr.monthly?.[mi], mi);
         if (a != null) { wsum += w; wach += w * Math.min(a, 100); }
         const ca = cumAch(kr, mi);
         if (ca != null) { cwsum += w; cwach += w * Math.min(ca, 100); }
@@ -464,7 +414,7 @@ export function KpiReport() {
                 <div style={{ display: 'grid', gap: 0 }}>
                   {list.map((kr, i) => {
                     const mv = kr.monthly?.[selIdx] ?? null;
-                    const a = achOf(kr, mv);
+                    const a = monthAchPct(kr, mv, selIdx);
                     const c = cumValue(kr, selIdx);
                     const ca = cumAch(kr, selIdx);
                     const ev = evidence[kr.id];
@@ -487,7 +437,7 @@ export function KpiReport() {
                               title={`${MODE_BADGE[c.mode].title} — 여기서 바꾸면 즉시 저장되고 누적·달성률이 재계산됩니다.`}
                               style={{ fontSize: 10, fontWeight: 700, color: c.mode === 'avg' ? '#0369a1' : c.mode === 'sum' ? '#92400e' : '#166534', background: c.mode === 'avg' ? '#e0f2fe' : c.mode === 'sum' ? '#fef3c7' : '#dcfce7', borderRadius: 8, padding: '1px 4px', border: '1px solid transparent', cursor: 'pointer' }}
                             >
-                              <option value="">{`자동 · ${MODE_BADGE[cumModeOf({ ...kr, aggregation: null })].label}`}</option>
+                              <option value="">{`자동 · ${MODE_BADGE[kpiModeOf({ ...kr, aggregation: null })].label}`}</option>
                               <option value="AVG">월별 독립측정 (누적=평균)</option>
                               <option value="SUM">월별 누계 (누적=합산)</option>
                               <option value="LAST">누계값 입력 (누적=최신값)</option>
@@ -506,8 +456,8 @@ export function KpiReport() {
                             누적({CUM_LABEL[c.mode]}) <b style={{ color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</b>
                             {c.mode !== 'avg' && c.value != null && kr.target != null && (
                               <span style={{ marginLeft: 8, color: '#94a3b8', fontSize: 12 }}
-                                title={`달성률은 경과월 안분 목표(${proratedTarget(kr, selIdx)?.toLocaleString()}) 대비 · 연간 목표(${kr.target.toLocaleString()}) 대비로는 ${achOf(kr, c.value) ?? '-'}%`}>
-                                연간 대비 {achOf(kr, c.value) ?? '-'}%
+                                title={`달성률은 경과월 안분 목표(${cumTargetOf(kr, selIdx)?.toLocaleString()}) 대비 · 연간 목표(${kr.target.toLocaleString()}) 대비로는 ${achPct(kr, c.value) ?? '-'}%`}>
+                                연간 대비 {achPct(kr, c.value) ?? '-'}%
                               </span>
                             )}
                             {typeof kr.weight === 'number' ? <span style={{ marginLeft: 8, color: '#94a3b8' }}>비중 {kr.weight}%</span> : null}
@@ -602,7 +552,7 @@ export function KpiReport() {
                         <td style={{ ...tdS, textAlign: 'right', color: '#64748b' }}>{kr.target ?? '-'}</td>
                         {Array.from({ length: 12 }, (_, i) => {
                           const v = kr.monthly?.[i] ?? null;
-                          const a = achOf(kr, v);
+                          const a = monthAchPct(kr, v, i);
                           return (
                             <td key={i} style={{ ...tdS, textAlign: 'right', background: i === selIdx ? '#eff6ff' : undefined, color: v == null ? '#cbd5e1' : achColor(a), fontWeight: v == null ? 400 : 600 }}>
                               {v != null ? v.toLocaleString() : '·'}
@@ -631,7 +581,7 @@ export function KpiReport() {
               <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · {evidencePeriodLabel(month)} 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간 · ◦점선 = 근거 일지에서 발견된 활동, 🎯 미연결)</span>
               <button type="button" onClick={() => setMapKr(null)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
             </div>
-            <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={achOf(mapKr, mapKr.monthly?.[selIdx] ?? null)} periodLabel={evidencePeriodLabel(month)} />
+            <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={monthAchPct(mapKr, mapKr.monthly?.[selIdx] ?? null, selIdx)} periodLabel={evidencePeriodLabel(month)} />
             {evidence[mapKr.id].worklogs.length > 0 && (
               <div style={{ display: 'grid', gap: 3, borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>근거 일지</div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { kstMonthIdx, monthTargetOf } from '../lib/kpiCalc';
 // TeamKpiBoard: 최근 실적 셀 레이아웃 조정용 빌드 트리거 주석
 
 type Pillar = 'Q' | 'C' | 'D' | 'DEV' | 'P';
@@ -156,12 +157,13 @@ export function TeamKpiBoard() {
             const latestValue = latest?.krValue ?? null;
             const latestPeriodEnd = latest?.periodEnd ?? null;
             const latestCreatedAt = latest?.createdAt ?? null;
-            // Compute warnings: only based on latest vs target and direction
+            // 경고: 최신값 vs 그 달의 유효 목표(집계방식 인지 — 합산형 ÷12, 누계형 안분) — 공용 유틸
             let warn = false;
             let bg: 'red' | 'orange' | null = null;
-            if (latestValue != null) {
+            const effTarget = latest?.periodStart != null ? monthTargetOf(row as any, kstMonthIdx(latest.periodStart)) : row.target;
+            if (latestValue != null && effTarget != null) {
               const dir = row.direction || 'AT_LEAST';
-              const violate = dir === 'AT_LEAST' ? (latestValue < row.target) : (latestValue > row.target);
+              const violate = dir === 'AT_LEAST' ? (latestValue < effTarget) : (latestValue > effTarget);
               if (violate) { bg = 'orange'; warn = true; }
             }
             // group by cadence period label and take latest per period (list already desc by createdAt)
@@ -191,10 +193,10 @@ export function TeamKpiBoard() {
             const stalenessDays = latestCreatedAt ? Math.floor((Date.now() - new Date(latestCreatedAt).getTime()) / (1000*60*60*24)) : null;
             // status by variance threshold
             let status: 'On Track' | 'At Risk' | 'Off Track' | '-' = '-';
-            if (latestValue != null && typeof row.target === 'number' && row.target !== 0) {
+            if (latestValue != null && typeof effTarget === 'number' && effTarget !== 0) {
               const dir = row.direction || 'AT_LEAST';
-              const diff = dir === 'AT_LEAST' ? (latestValue - row.target) : (row.target - latestValue);
-              const pct = diff / Math.abs(row.target);
+              const diff = dir === 'AT_LEAST' ? (latestValue - effTarget) : (effTarget - latestValue);
+              const pct = diff / Math.abs(effTarget);
               status = pct >= 0 ? 'On Track' : (pct >= -0.10 ? 'At Risk' : 'Off Track');
             }
             // coverage this month: active initiatives with worklogs / total initiatives
@@ -278,13 +280,13 @@ export function TeamKpiBoard() {
     if (!defined.length) return <span>-</span>;
     const w = 200, he = 40, pad = 4;
     const min = Math.min(...defined, 0);
-    const max = Math.max(...defined, row.target || 0);
+    const max = Math.max(...defined, monthTargetOf(row as any, 11) ?? (row.target || 0));
     const scaleY = (v: number) => {
       if (max === min) return he / 2;
       return he - pad - ((v - min) / (max - min)) * (he - pad * 2);
     };
     const pts = defined.map((v, i) => `${(i * (w / Math.max(defined.length - 1, 1))).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
-    const tgtY = scaleY(row.target || 0);
+    const tgtY = scaleY(monthTargetOf(row as any, 11) ?? (row.target || 0)); // 목표선 — 합산형은 월 안분(÷12)
     return (
       <div style={{ minWidth: w }}>
         <svg width={w} height={he}>

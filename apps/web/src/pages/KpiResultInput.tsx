@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
+import { kpiModeOf, monthAchPct, monthTargetOf } from '../lib/kpiCalc';
 
 type OrgUnit = { id: string; name: string; type: string; parentId?: string | null };
 type Pillar = 'Q' | 'C' | 'D' | 'DEV' | 'P';
@@ -135,10 +136,10 @@ export function KpiResultInput() {
     return list.length ? list[0] : null; // 서버가 createdAt desc 정렬
   }
 
+  // 방식 인지형 월 달성률 — 합산형은 연간목표÷12, 누계형은 안분목표 대비 (공용 유틸)
+  const selMonthIdx = parseInt(month.slice(5, 7), 10) - 1;
   function achievement(kr: Kr, value: number | null | undefined): number | null {
-    if (value == null || kr.target == null || kr.target === 0) return null;
-    const pct = kr.direction === 'AT_MOST' ? (kr.target / value) * 100 : (value / kr.target) * 100;
-    return Math.round(pct * 10) / 10;
+    return monthAchPct(kr, value, selMonthIdx);
   }
 
   // 입력값 성격(누적 여부) 설정 — KR의 aggregation을 즉시 저장 (리포트 누적 계산에 반영)
@@ -249,7 +250,12 @@ export function KpiResultInput() {
                         );
                       })()}
                     </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{kr.target != null ? kr.target.toLocaleString() : '-'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                      {kr.target != null ? kr.target.toLocaleString() : '-'}
+                      {kr.target != null && kpiModeOf(kr) !== 'avg' && (
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>이달 기준 {monthTargetOf(kr, selMonthIdx)?.toLocaleString()}</div>
+                      )}
+                    </td>
                     <td style={{ padding: '6px 8px', textAlign: 'right' }}>
                       <input
                         inputMode="decimal"
