@@ -421,7 +421,7 @@ export class OkrsController {
     for (const l of links) actByKr.get(String(l.goalId))?.add(String(l.activityId));
     const allActIds = Array.from(new Set(Array.from(actByKr.values()).flatMap((s) => Array.from(s))));
     const acts = allActIds.length ? await (this.prisma as any).activity.findMany({ where: { id: { in: allActIds } }, select: { id: true, name: true } }) : [];
-    const actName = new Map(acts.map((a: any) => [String(a.id), String(a.name)]));
+    const actName = new Map<string, string>(acts.map((a: any) => [String(a.id), String(a.name)] as [string, string]));
 
     // 해당 월 일지 (팀 무관 — 활동/태그가 가리키는 일지)
     const tagWlByKr = new Map<string, Set<string>>();
@@ -441,6 +441,12 @@ export class OkrsController {
       where: { date: { gte: start, lt: end } },
       select: { id: true, date: true, note: true, timeSpentMinutes: true, activityId: true, visibility: true, createdById: true, createdBy: { select: { name: true, orgUnitId: true } } },
     });
+    // 근거 일지들이 수행한 활동명 일괄 보강 (연결 안 된 활동도 맵/통계에 표시하기 위함)
+    const wlActIds = Array.from(new Set(monthWls.map((w: any) => String(w.activityId || '')).filter((x: string) => x && !actName.has(x))));
+    if (wlActIds.length) {
+      const extraActs = await (this.prisma as any).activity.findMany({ where: { id: { in: wlActIds } }, select: { id: true, name: true } });
+      for (const a of extraActs) actName.set(String(a.id), String(a.name));
+    }
     const wlById = new Map(monthWls.map((w: any) => [String(w.id), w]));
     const wlByAct = new Map<string, any[]>();
     for (const w of monthWls) {
@@ -462,11 +468,30 @@ export class OkrsController {
       const evArr = Array.from(evidence.values()).sort((a, b) => (b.timeSpentMinutes || 0) - (a.timeSpentMinutes || 0));
       const minutes = evArr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
       const people = new Set(evArr.map((w) => w.createdById)).size;
-      // 활동별 통계 (해당 월, 이 KPI 연결 활동들) — 온톨로지 맵/활동 통계용
-      const actStats = Array.from(actByKr.get(kid) || []).map((aid) => {
-        const ws = (wlByAct.get(aid) || []).filter(inTeam);
-        return { id: aid, name: actName.get(aid) || '(활동)', logs: ws.length, minutes: ws.reduce((s: number, w: any) => s + (w.timeSpentMinutes || 0), 0) };
-      }).sort((a, b) => b.minutes - a.minutes).slice(0, 10);
+      // 활동별 통계 — ①KPI 연결(🎯) 활동 + ②근거 일지들이 실제 수행한 활동(연결 안 됐어도)
+      // 근거 일지가 있는데 연결 활동만 보여주면 '기록 없음'으로 오해됨 → 일지에서 역구성
+      const evActAgg = new Map<string, { logs: number; minutes: number }>();
+      let unassignedLogs = 0, unassignedMin = 0;
+      for (const w of evArr) {
+        if (w.activityId) {
+          const e = evActAgg.get(String(w.activityId)) || { logs: 0, minutes: 0 };
+          e.logs++; e.minutes += w.timeSpentMinutes || 0;
+          evActAgg.set(String(w.activityId), e);
+        } else { unassignedLogs++; unassignedMin += w.timeSpentMinutes || 0; }
+      }
+      const linkedSet = actByKr.get(kid) || new Set<string>();
+      const actStats: Array<{ id: string; name: string; logs: number; minutes: number; linked: boolean }> = [];
+      for (const aid of linkedSet) {
+        const e = evActAgg.get(aid);
+        actStats.push({ id: aid, name: actName.get(aid) || '(활동)', logs: e?.logs || 0, minutes: e?.minutes || 0, linked: true });
+      }
+      for (const [aid, e] of evActAgg) {
+        if (linkedSet.has(aid)) continue;
+        actStats.push({ id: aid, name: actName.get(aid) || '(활동)', logs: e.logs, minutes: e.minutes, linked: false });
+      }
+      if (unassignedLogs > 0) actStats.push({ id: '__none__', name: '활동 미귀속 일지', logs: unassignedLogs, minutes: unassignedMin, linked: false });
+      actStats.sort((a, b) => b.minutes - a.minutes);
+      const actStatsTop = actStats.slice(0, 12);
       // 수행 구성원 통계 (근거 일지 기준)
       const peopleAgg = new Map<string, { name: string; logs: number; minutes: number }>();
       for (const w of evArr) {
@@ -478,7 +503,7 @@ export class OkrsController {
       const peopleStats = Array.from(peopleAgg.values()).sort((a, b) => b.minutes - a.minutes).slice(0, 8);
       return {
         krId: kid,
-        activities: actStats,
+        activities: actStatsTop,
         people: peopleStats,
         totals: { logs: evArr.length, minutes, people },
         worklogs: evArr.slice(0, krIdParam ? 15 : 8).map((w) => {

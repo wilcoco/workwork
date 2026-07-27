@@ -7,7 +7,7 @@ type ProgressEntry = { krValue: number | null; periodStart: string; createdAt: s
 
 type KrEvidence = {
   krId: string;
-  activities: Array<{ id: string; name: string; logs: number; minutes: number }>;
+  activities: Array<{ id: string; name: string; logs: number; minutes: number; linked?: boolean }>;
   people: Array<{ name: string; logs: number; minutes: number }>;
   totals: { logs: number; minutes: number; people: number };
   worklogs: Array<{ id: string; date: string; authorName: string; minutes: number; snippet: string }>;
@@ -39,11 +39,13 @@ function KpiOntoMap({ kr, ev, ach, periodLabel }: { kr: Kr; ev: KrEvidence; ach:
       {/* 활동 노드 (좌) */}
       {acts.map((a, i) => {
         const y = nodeY(i, acts.length);
+        const linked = a.linked !== false;
         return (
           <g key={a.id}>
-            <rect x={6} y={y - 17} width={212} height={34} rx={9} fill="#f5f3ff" stroke="#ddd6fe" />
-            <text x={14} y={y - 3} fontSize={11.5} fontWeight={700} fill="#5b21b6">{a.name.length > 20 ? a.name.slice(0, 20) + '…' : a.name}</text>
-            <text x={14} y={y + 11} fontSize={10} fill="#7c3aed">{a.logs > 0 ? `일지 ${a.logs}건 · ${fmtH(a.minutes)}` : `${periodLabel} 기록 없음`}</text>
+            <rect x={6} y={y - 17} width={212} height={34} rx={9}
+              fill={linked ? '#f5f3ff' : '#f8fafc'} stroke={linked ? '#ddd6fe' : '#cbd5e1'} strokeDasharray={linked ? undefined : '4 3'} />
+            <text x={14} y={y - 3} fontSize={11.5} fontWeight={700} fill={linked ? '#5b21b6' : '#475569'}>{a.name.length > 18 ? a.name.slice(0, 18) + '…' : a.name}{linked ? '' : ' ◦'}</text>
+            <text x={14} y={y + 11} fontSize={10} fill={linked ? '#7c3aed' : '#64748b'}>{a.logs > 0 ? `일지 ${a.logs}건 · ${fmtH(a.minutes)}` : `${periodLabel} 기록 없음`}</text>
           </g>
         );
       })}
@@ -468,12 +470,12 @@ export function KpiReport() {
                                   </div>
                                   {ev.activities.length > 0 && (
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                      {ev.activities.slice(0, 5).map((a) => (
-                                        <span key={a.id} style={{ fontSize: 11, background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe', borderRadius: 10, padding: '1px 8px' }}>
+                                      {ev.activities.slice(0, 6).map((a) => (
+                                        <span key={a.id} style={{ fontSize: 11, background: a.linked !== false ? '#f5f3ff' : '#f8fafc', color: a.linked !== false ? '#6d28d9' : '#475569', border: a.linked !== false ? '1px solid #ddd6fe' : '1px dashed #cbd5e1', borderRadius: 10, padding: '1px 8px' }}>
                                           {a.name} {a.logs > 0 ? <b>{a.logs}건·{fmtH(a.minutes)}</b> : <span style={{ color: '#c4b5fd' }}>누적 기록없음</span>}
                                         </span>
                                       ))}
-                                      {ev.activities.length > 5 && <span style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.activities.length - 5}</span>}
+                                      {ev.activities.length > 6 && <span style={{ fontSize: 11, color: '#94a3b8' }}>외 {ev.activities.length - 6}</span>}
                                     </div>
                                   )}
                                   {evOpen && ev.worklogs.map((w) => (
@@ -555,7 +557,7 @@ export function KpiReport() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 800, width: '100%', maxHeight: '82vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
               <b style={{ fontSize: 16 }}>🕸 {mapKr.title}</b>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · 1~{parseInt(month.slice(5, 7), 10)}월 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간)</span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · 1~{parseInt(month.slice(5, 7), 10)}월 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간 · ◦점선 = 근거 일지에서 발견된 활동, 🎯 미연결)</span>
               <button type="button" onClick={() => setMapKr(null)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
             </div>
             <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={achOf(mapKr, mapKr.monthly?.[selIdx] ?? null)} periodLabel={`1~${parseInt(month.slice(5, 7), 10)}월`} />
