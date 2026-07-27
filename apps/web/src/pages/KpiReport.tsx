@@ -422,10 +422,22 @@ export function KpiReport() {
                     const hm = ev ? (ev.totals.minutes >= 60 ? `${Math.round(ev.totals.minutes / 6) / 10}h` : `${ev.totals.minutes}m`) : '';
                     return (
                       <div key={kr.id} style={{ padding: '12px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                        {/* ① 달성률 크게 */}
+                        {/* ① 달성률 크게 — 합산·누계형은 경과월 안분 목표 기준. 100% 초과면 페이스 초과임을 연간 대비와 함께 명시 */}
                         <div style={{ width: 96, textAlign: 'center', flexShrink: 0 }}>
                           <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}>{ca != null ? `${Math.round(ca)}%` : '-'}</div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>누적 달성</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                            누적 달성{(c.mode === 'sum' || c.mode === 'last') ? <span style={{ display: 'block', fontSize: 9.5 }}>(~{parseInt(month.slice(5, 7), 10)}월 목표 기준)</span> : null}
+                          </div>
+                          {(() => {
+                            if (!(c.mode === 'sum' || c.mode === 'last') || ca == null || ca <= 100) return null;
+                            const annual = achPct(kr, c.value);
+                            return (
+                              <div style={{ fontSize: 10, fontWeight: 800, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '2px 4px', marginTop: 2 }}
+                                title={`경과월 안분 목표(${cumTargetOf(kr, selIdx)?.toLocaleString()}) 대비 초과 달성 — 연간 목표(${kr.target?.toLocaleString()}) 기준으로는 ${annual ?? '-'}% 진행`}>
+                                페이스 초과 · 연간 {annual ?? '-'}%
+                              </div>
+                            );
+                          })()}
                           <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 1 }}>{month.slice(5, 7)}월 {a != null ? `${a}%` : '-'}</div>
                         </div>
                         {/* ② 지표 정보 + 월별 차트 (고정폭 — 남는 공간은 근거 카드가 사용) */}
