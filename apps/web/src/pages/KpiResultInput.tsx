@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 
 type OrgUnit = { id: string; name: string; type: string; parentId?: string | null };
@@ -17,6 +17,12 @@ type Kr = {
 };
 
 type ProgressEntry = { id: string; krValue: number | null; periodStart: string; periodEnd: string; createdAt: string };
+type KrEvidence = {
+  krId: string;
+  activities: Array<{ id: string; name: string }>;
+  totals: { logs: number; minutes: number; people: number };
+  worklogs: Array<{ id: string; date: string; authorName: string; minutes: number; snippet: string }>;
+};
 
 const PILLAR_LABEL: Record<string, string> = { Q: '품질', C: '생산성', D: '납기', DEV: '개발', P: '역량' };
 
@@ -65,6 +71,21 @@ export function KpiResultInput() {
   }, [userId]);
 
   const monthStart = `${month}-01`;
+  // 온톨로지 실행 근거: KPI별 연결 활동·근거 일지 (실적 숫자와 실행의 대사)
+  const [evidence, setEvidence] = useState<Record<string, KrEvidence>>({});
+  const [openEv, setOpenEv] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!orgUnitId) { setEvidence({}); return; }
+    apiJson<{ items: KrEvidence[] }>(`/api/okrs/kpi-evidence?orgUnitId=${encodeURIComponent(orgUnitId)}&month=${encodeURIComponent(month)}&userId=${encodeURIComponent(userId)}`)
+      .then((r) => {
+        const map: Record<string, KrEvidence> = {};
+        for (const it of r.items || []) map[it.krId] = it;
+        setEvidence(map);
+      })
+      .catch(() => setEvidence({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgUnitId, month]);
 
   async function load() {
     if (!orgUnitId) { setKrs([]); return; }
@@ -191,13 +212,26 @@ export function KpiResultInput() {
                 const numVal = inputVal.trim() === '' ? null : Number(inputVal.replace(/,/g, ''));
                 const pct = achievement(kr, numVal);
                 return (
-                  <tr key={kr.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <React.Fragment key={kr.id}>
+                  <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '6px 8px' }}>
                       <span style={{ fontSize: 11, background: '#eef2ff', color: '#3730a3', borderRadius: 6, padding: '1px 6px' }}>{kr.pillar ? (PILLAR_LABEL[kr.pillar] || kr.pillar) : '-'}</span>
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <div style={{ fontWeight: 600 }}>{kr.title}{kr.unit ? ` (${kr.unit})` : ''}</div>
                       {kr.metric && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'pre-wrap', maxWidth: 320 }}>{kr.metric}</div>}
+                      {(() => {
+                        const ev = evidence[kr.id];
+                        if (!ev || (ev.totals.logs === 0 && ev.activities.length === 0)) return (
+                          <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 3 }}>📎 이번 달 실행 근거 없음</div>
+                        );
+                        return (
+                          <button type="button" onClick={() => setOpenEv((m) => ({ ...m, [kr.id]: !m[kr.id] }))}
+                            style={{ marginTop: 3, fontSize: 11, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '2px 8px', cursor: 'pointer' }}>
+                            📎 실행 근거: 일지 {ev.totals.logs}건 · {ev.totals.minutes >= 60 ? `${Math.round(ev.totals.minutes / 6) / 10}h` : `${ev.totals.minutes}m`} · {ev.totals.people}명 {openEv[kr.id] ? '▲' : '▼'}
+                          </button>
+                        );
+                      })()}
                     </td>
                     <td style={{ padding: '6px 8px', textAlign: 'right' }}>{kr.target != null ? kr.target.toLocaleString() : '-'}</td>
                     <td style={{ padding: '6px 8px', textAlign: 'right' }}>
@@ -221,6 +255,32 @@ export function KpiResultInput() {
                       </button>
                     </td>
                   </tr>
+                  {openEv[kr.id] && evidence[kr.id] && (
+                    <tr style={{ background: '#f8fafc' }}>
+                      <td colSpan={7} style={{ padding: '8px 14px' }}>
+                        {evidence[kr.id].activities.length > 0 && (
+                          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
+                            연결 활동: {evidence[kr.id].activities.map((a) => a.name).join(' · ')}
+                          </div>
+                        )}
+                        <div style={{ display: 'grid', gap: 3 }}>
+                          {evidence[kr.id].worklogs.map((w) => (
+                            <a key={w.id} href={`/worklogs/${w.id}`} target="_blank" rel="noreferrer"
+                              style={{ display: 'flex', gap: 8, fontSize: 12, color: '#334155', textDecoration: 'none', alignItems: 'baseline' }}>
+                              <span style={{ color: '#94a3b8', minWidth: 42 }}>{new Date(w.date).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' })}</span>
+                              <b style={{ minWidth: 52 }}>{w.authorName}</b>
+                              {w.minutes > 0 && <span style={{ color: '#7c3aed', minWidth: 36 }}>{Math.round(w.minutes / 6) / 10}h</span>}
+                              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.snippet}</span>
+                            </a>
+                          ))}
+                          {evidence[kr.id].totals.logs > evidence[kr.id].worklogs.length && (
+                            <div style={{ fontSize: 11, color: '#94a3b8' }}>외 {evidence[kr.id].totals.logs - evidence[kr.id].worklogs.length}건 더…</div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
                 );
               })}
             </tbody>

@@ -359,6 +359,112 @@ export class OkrsController {
     return rec;
   }
 
+  /**
+   * KPI 실행 근거 (온톨로지): 팀의 각 KPI에 대해 해당 월의 연결 활동·근거 일지·투입시간을 반환.
+   * 실적 입력 화면에서 "숫자와 실행의 대사(對査)"용 — 근거=활동링크 ∪ 일지분류태그 ∪ 실적입력 일지.
+   * 일지 본문은 공개범위(visibility)에 따라 마스킹.
+   */
+  @Get('kpi-evidence')
+  async kpiEvidence(@Query('orgUnitId') orgUnitId?: string, @Query('month') monthStr?: string, @Query('userId') userId?: string) {
+    if (!orgUnitId) throw new BadRequestException('orgUnitId required');
+    const viewer = userId ? await this.prisma.user.findUnique({ where: { id: String(userId) }, select: { role: true, id: true } }) : null;
+    const role = String(viewer?.role || '').toUpperCase();
+    const canSee = (vis: string, authorId: string) => {
+      if (viewer?.id === authorId) return true;
+      if (role === 'CEO') return true;
+      if (vis === 'ALL') return true;
+      if (vis === 'MANAGER_PLUS') return ['MANAGER', 'EXEC'].includes(role);
+      if (vis === 'EXEC_PLUS') return role === 'EXEC';
+      return false; // CEO_ONLY 등
+    };
+    const month = /^\d{4}-\d{2}$/.test(String(monthStr || '')) ? String(monthStr) : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+    const [y, m] = month.split('-').map(Number);
+    const start = new Date(`${month}-01T00:00:00+09:00`);
+    const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
+
+    // 팀의 진성 KPI
+    const objs = await this.prisma.objective.findMany({
+      where: { orgUnitId: String(orgUnitId) },
+      select: { title: true, pillar: true, keyResults: { select: { id: true, activityId: true } } },
+    });
+    const krIds: string[] = [];
+    const legacyAct = new Map<string, string>();
+    for (const o of objs) {
+      if (!o.pillar || String(o.title || '').startsWith('Auto Objective')) continue;
+      for (const kr of o.keyResults) {
+        krIds.push(kr.id);
+        if ((kr as any).activityId) legacyAct.set(kr.id, String((kr as any).activityId));
+      }
+    }
+    if (!krIds.length) return { month, items: [] };
+
+    const [links, tags, entries] = await Promise.all([
+      (this.prisma as any).goalActivityLink.findMany({ where: { goalType: 'KR', goalId: { in: krIds } }, select: { goalId: true, activityId: true } }),
+      (this.prisma as any).worklogGoalTag.findMany({ where: { goalType: 'KR', goalId: { in: krIds } }, select: { goalId: true, worklogId: true } }),
+      this.prisma.progressEntry.findMany({ where: { keyResultId: { in: krIds }, periodStart: { gte: start, lt: end }, NOT: { worklogId: null } }, select: { keyResultId: true, worklogId: true } }),
+    ]);
+    // KR별 활동 집합
+    const actByKr = new Map<string, Set<string>>();
+    for (const kid of krIds) actByKr.set(kid, new Set(legacyAct.has(kid) ? [legacyAct.get(kid)!] : []));
+    for (const l of links) actByKr.get(String(l.goalId))?.add(String(l.activityId));
+    const allActIds = Array.from(new Set(Array.from(actByKr.values()).flatMap((s) => Array.from(s))));
+    const acts = allActIds.length ? await (this.prisma as any).activity.findMany({ where: { id: { in: allActIds } }, select: { id: true, name: true } }) : [];
+    const actName = new Map(acts.map((a: any) => [String(a.id), String(a.name)]));
+
+    // 해당 월 일지 (팀 무관 — 활동/태그가 가리키는 일지)
+    const tagWlByKr = new Map<string, Set<string>>();
+    for (const t of tags) {
+      const s = tagWlByKr.get(String(t.goalId)) || new Set<string>();
+      s.add(String(t.worklogId));
+      tagWlByKr.set(String(t.goalId), s);
+    }
+    const entryWlByKr = new Map<string, Set<string>>();
+    for (const e of entries) {
+      if (!e.worklogId) continue;
+      const s = entryWlByKr.get(String(e.keyResultId)) || new Set<string>();
+      s.add(String(e.worklogId));
+      entryWlByKr.set(String(e.keyResultId), s);
+    }
+    const monthWls = await (this.prisma as any).worklog.findMany({
+      where: { date: { gte: start, lt: end } },
+      select: { id: true, date: true, note: true, timeSpentMinutes: true, activityId: true, visibility: true, createdById: true, createdBy: { select: { name: true } } },
+    });
+    const wlById = new Map(monthWls.map((w: any) => [String(w.id), w]));
+    const wlByAct = new Map<string, any[]>();
+    for (const w of monthWls) {
+      if (!w.activityId) continue;
+      const arr = wlByAct.get(String(w.activityId)) || [];
+      arr.push(w);
+      wlByAct.set(String(w.activityId), arr);
+    }
+
+    const items = krIds.map((kid) => {
+      const evidence = new Map<string, any>();
+      for (const aid of actByKr.get(kid) || []) for (const w of wlByAct.get(aid) || []) evidence.set(String(w.id), w);
+      for (const wid of tagWlByKr.get(kid) || []) { const w = wlById.get(wid); if (w) evidence.set(wid, w); }
+      for (const wid of entryWlByKr.get(kid) || []) { const w = wlById.get(wid); if (w) evidence.set(wid, w); }
+      const evArr = Array.from(evidence.values()).sort((a, b) => (b.timeSpentMinutes || 0) - (a.timeSpentMinutes || 0));
+      const minutes = evArr.reduce((s, w) => s + (w.timeSpentMinutes || 0), 0);
+      const people = new Set(evArr.map((w) => w.createdById)).size;
+      return {
+        krId: kid,
+        activities: Array.from(actByKr.get(kid) || []).map((aid) => ({ id: aid, name: actName.get(aid) || '(활동)' })).slice(0, 8),
+        totals: { logs: evArr.length, minutes, people },
+        worklogs: evArr.slice(0, 8).map((w) => {
+          const visible = canSee(String(w.visibility || 'ALL'), String(w.createdById));
+          return {
+            id: w.id,
+            date: w.date,
+            authorName: w.createdBy?.name || '',
+            minutes: w.timeSpentMinutes || 0,
+            snippet: visible ? String(w.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 90) : '(비공개 일지)',
+          };
+        }),
+      };
+    });
+    return { month, items };
+  }
+
   @Get('krs/:id')
   async getKr(@Param('id') id: string) {
     const kr = await this.prisma.keyResult.findUnique({
