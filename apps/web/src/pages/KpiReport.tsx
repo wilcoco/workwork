@@ -234,7 +234,7 @@ export function KpiReport() {
 
   useEffect(() => {
     if (!orgUnitId) { setEvidence({}); return; }
-    apiJson<{ items: KrEvidence[] }>(`/api/okrs/kpi-evidence?orgUnitId=${encodeURIComponent(orgUnitId)}&month=${encodeURIComponent(month)}&userId=${encodeURIComponent(userId)}`)
+    apiJson<{ items: KrEvidence[] }>(`/api/okrs/kpi-evidence?orgUnitId=${encodeURIComponent(orgUnitId)}&month=${encodeURIComponent(month)}&userId=${encodeURIComponent(userId)}&cumulative=1`)
       .then((r) => {
         const map: Record<string, KrEvidence> = {};
         for (const it of r.items || []) map[it.krId] = it;
@@ -458,13 +458,13 @@ export function KpiReport() {
                               const ev = evidence[kr.id];
                               if (!ev) return null;
                               if (ev.totals.logs === 0 && ev.activities.length === 0) {
-                                return <div style={{ fontSize: 11, color: '#dc2626', marginTop: 2 }}>📎 {month.slice(5, 7)}월 실행 근거 없음 — 이 지표를 뒷받침하는 일지가 없습니다</div>;
+                                return <div style={{ fontSize: 11, color: '#dc2626', marginTop: 2 }}>📎 1~{parseInt(month.slice(5, 7), 10)}월 실행 근거 없음 — 이 지표를 뒷받침하는 일지가 없습니다</div>;
                               }
                               const hm = ev.totals.minutes >= 60 ? `${Math.round(ev.totals.minutes / 6) / 10}h` : `${ev.totals.minutes}m`;
                               return (
                                 <div style={{ marginTop: 4, borderLeft: '3px solid #bfdbfe', paddingLeft: 10, display: 'grid', gap: 3 }}>
                                   <div style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 600 }}>
-                                    📎 실행 근거: 일지 {ev.totals.logs}건 · {hm} · {ev.totals.people}명
+                                    📎 실행 근거 (1~{parseInt(month.slice(5, 7), 10)}월 누적): 일지 {ev.totals.logs}건 · {hm} · {ev.totals.people}명
                                   </div>
                                   {ev.activities.length > 0 && (
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -555,7 +555,7 @@ export function KpiReport() {
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 800, width: '100%', maxHeight: '82vh', overflow: 'auto', padding: 20, display: 'grid', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
               <b style={{ fontSize: 16 }}>🕸 {mapKr.title}</b>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · {month} · 활동 → KPI ← 수행자 (선 굵기 = 투입시간)</span>
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>{teamName} · 1~{parseInt(month.slice(5, 7), 10)}월 누적 · 활동 → KPI ← 수행자 (선 굵기 = 투입시간)</span>
               <button type="button" onClick={() => setMapKr(null)} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer', color: '#94a3b8' }}>✕</button>
             </div>
             <KpiOntoMap kr={mapKr} ev={evidence[mapKr.id]} ach={achOf(mapKr, mapKr.monthly?.[selIdx] ?? null)} />

@@ -365,7 +365,7 @@ export class OkrsController {
    * 일지 본문은 공개범위(visibility)에 따라 마스킹.
    */
   @Get('kpi-evidence')
-  async kpiEvidence(@Query('orgUnitId') orgUnitId?: string, @Query('month') monthStr?: string, @Query('userId') userId?: string, @Query('krId') krIdParam?: string) {
+  async kpiEvidence(@Query('orgUnitId') orgUnitId?: string, @Query('month') monthStr?: string, @Query('userId') userId?: string, @Query('krId') krIdParam?: string, @Query('cumulative') cumulative?: string) {
     if (!orgUnitId && !krIdParam) throw new BadRequestException('orgUnitId or krId required');
     const viewer = userId ? await this.prisma.user.findUnique({ where: { id: String(userId) }, select: { role: true, id: true } }) : null;
     const role = String(viewer?.role || '').toUpperCase();
@@ -379,7 +379,9 @@ export class OkrsController {
     };
     const month = /^\d{4}-\d{2}$/.test(String(monthStr || '')) ? String(monthStr) : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
     const [y, m] = month.split('-').map(Number);
-    const start = new Date(`${month}-01T00:00:00+09:00`);
+    // cumulative=1 (리포트용): 연초~선택월 누적 근거. 기본은 선택월만 (실적입력/현황판)
+    const isCum = cumulative === '1' || cumulative === 'true';
+    const start = isCum ? new Date(`${y}-01-01T00:00:00+09:00`) : new Date(`${month}-01T00:00:00+09:00`);
     const end = new Date(`${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01T00:00:00+09:00`);
 
     // 대상 KPI: krId 단건(현황판 셀 클릭) 또는 팀 전체(실적입력/리포트)
