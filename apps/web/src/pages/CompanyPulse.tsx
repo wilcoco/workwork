@@ -186,7 +186,8 @@ export function CompanyPulse() {
           <div style={{ borderRadius: 18, padding: '26px 28px', background: 'linear-gradient(120deg,#0b1f3a 0%,#0f3d73 55%,#1d4ed8 100%)', color: '#fff', display: 'flex', gap: 34, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ flex: 1, minWidth: 220 }}>
               <div style={{ fontSize: 13, opacity: 0.8, letterSpacing: 1 }}>CAMS EXECUTION PULSE · {d.month}</div>
-              <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.25, marginTop: 4 }}>회사의 시간이<br />전략을 향해 흐르고 있는가</div>
+              <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.25, marginTop: 4 }}>이번 달, 우리의 실행</div>
+              <div style={{ fontSize: 14, opacity: 0.85, marginTop: 6 }}>전사 업무 시간이 어느 전략·KPI에 투입되었는지 한눈에 봅니다</div>
               <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>업무일지 {d.teams.reduce((s, t) => s + t.logs, 0).toLocaleString()}건의 실행 데이터 · AI+본인확정 분류 기반</div>
             </div>
             <Stat label="이번 달 총 실행" value={`${h(d.align.totalMinutes).toLocaleString()}h`} />
