@@ -451,14 +451,16 @@ export function KpiReport() {
                         <div style={{ width: 96, textAlign: 'center', flexShrink: 0 }}>
                           <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}
                             title={`누적 ${c.value != null ? c.value.toLocaleString() : '-'} ÷ 연간 목표 ${kr.target?.toLocaleString() ?? '-'}`}>{ca != null ? `${Math.round(ca)}%` : '-'}</div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>연간 목표 대비</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>연간 목표대비 달성률</div>
                           {(() => {
                             const fc = cumForecast(kr, selIdx);
                             if (fc == null) return null;
+                            const pLabel = selIdx === 5 ? '상반기' : selIdx === 11 ? '연간' : `~${selIdx + 1}월`;
                             return (
-                              <div style={{ fontSize: 10, fontWeight: 800, color: fc >= 100 ? '#16a34a' : '#b45309', background: fc >= 100 ? '#f0fdf4' : '#fffbeb', border: `1px solid ${fc >= 100 ? '#bbf7d0' : '#fde68a'}`, borderRadius: 6, padding: '2px 4px', marginTop: 3 }}
-                                title={`~${parseInt(month.slice(5, 7), 10)}월 실적 추세를 연말까지 유지할 때 예상되는 연간 달성률 (안분 목표 ${cumTargetOf(kr, selIdx)?.toLocaleString()} 대비 현재 페이스)`}>
-                                추세 유지 시 연말 {Math.round(fc)}%
+                              <div style={{ marginTop: 4, borderTop: '1px dashed #e2e8f0', paddingTop: 4 }}
+                                title={`${pLabel} 목표(연간 목표×${selIdx + 1}/12 = ${cumTargetOf(kr, selIdx)?.toLocaleString()}) 대비 달성률 — 이 추세를 유지하면 연말에 도달할 연간 달성률과 같습니다`}>
+                                <div style={{ fontSize: 19, fontWeight: 900, lineHeight: 1, color: achColor(fc) }}>{Math.round(fc)}%</div>
+                                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{pLabel} 목표대비 달성률</div>
                               </div>
                             );
                           })()}
