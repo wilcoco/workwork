@@ -132,12 +132,10 @@ const cumAch = (kr: Kr, uptoIdx: number) => {
   const c = cumValueOf(kr, kr.monthly, uptoIdx);
   return c.value == null ? null : achPct(kr, c.value);
 };
-// 연말 전망(추세 환산): 경과월 페이스를 그대로 유지하면 연말에 도달할 연간 달성률 (합산·누계·진척형만 의미 있음)
-const cumForecast = (kr: Kr, uptoIdx: number) => {
-  const mode = kpiModeOf(kr);
-  if (mode === 'avg') return null; // 평균형은 현재 평균이 곧 전망
-  return cumAchPct(kr, kr.monthly, uptoIdx); // 안분 목표 대비 = 페이스 → 연말 환산 전망과 동일
-};
+// 기간 달성률(페이스): 경과월 안분 목표 대비 — 상반기(6월)면 '상반기 달성률'. 평균형은 연간 진행율과 동일 값.
+const periodAch = (kr: Kr, uptoIdx: number) => cumAchPct(kr, kr.monthly, uptoIdx);
+// 기간 이름: 6월=상반기, 12월=연간, 그 외 ~N월
+const periodName = (uptoIdx: number) => (uptoIdx === 5 ? '상반기' : uptoIdx === 11 ? '연간' : `~${uptoIdx + 1}월`);
 
 const CUM_LABEL: Record<string, string> = { avg: '평균', sum: '합계', last: '최신누계', progress: '최신진척' };
 const MODE_BADGE: Record<string, { label: string; title: string }> = {
@@ -224,7 +222,7 @@ function TrendChart({ monthlySeries, cumSeries, selIdx }: { monthlySeries: (numb
         <circle key={`m${i}`} cx={x(i)} cy={y(v)} r={3} fill="#60a5fa"><title>{`${i + 1}월 가중 달성률 ${v}%`}</title></circle>
       ))}
       {cum.map((v, i) => v != null && (
-        <circle key={`c${i}`} cx={x(i)} cy={y(v)} r={3.5} fill="#0f3d73"><title>{`${i + 1}월 누적 가중 달성률 ${v}%`}</title></circle>
+        <circle key={`c${i}`} cx={x(i)} cy={y(v)} r={3.5} fill="#0f3d73"><title>{`${i + 1}월 연간 진행율(가중) ${v}%`}</title></circle>
       ))}
     </svg>
   );
@@ -328,22 +326,22 @@ export function KpiReport() {
     }
   }
 
-  // 선택 월 가중 달성률 + 누적 가중 달성률
+  // 팀 가중 요약: 기간(상반기) 달성률 + 연간 진행율 — 지표별 100% 캡 후 비중 가중
   const summary = useMemo(() => {
-    let wsum = 0, wach = 0, done = 0, cwsum = 0, cwach = 0;
+    let done = 0, hsum = 0, hach = 0, awsum = 0, awach = 0;
     for (const kr of krs) {
       const w = typeof kr.weight === 'number' && kr.weight > 0 ? kr.weight : 0;
-      const a = monthAchPct(kr, kr.monthly?.[selIdx], selIdx);
-      const ca = cumAch(kr, selIdx);
-      if (a != null) done++;
-      if (w > 0 && a != null) { wsum += w; wach += w * Math.min(a, 100); }
-      if (w > 0 && ca != null) { cwsum += w; cwach += w * Math.min(ca, 100); }
+      if (monthAchPct(kr, kr.monthly?.[selIdx], selIdx) != null) done++;
+      const ha = periodAch(kr, selIdx);
+      const aa = cumAch(kr, selIdx);
+      if (w > 0 && ha != null) { hsum += w; hach += w * Math.min(ha, 100); }
+      if (w > 0 && aa != null) { awsum += w; awach += w * Math.min(aa, 100); }
     }
     return {
       total: krs.length,
       done,
-      weighted: wsum > 0 ? Math.round((wach / wsum) * 10) / 10 : null,
-      cumWeighted: cwsum > 0 ? Math.round((cwach / cwsum) * 10) / 10 : null,
+      half: hsum > 0 ? Math.round((hach / hsum) * 10) / 10 : null,
+      annual: awsum > 0 ? Math.round((awach / awsum) * 10) / 10 : null,
     };
   }, [krs, selIdx]);
 
@@ -405,13 +403,13 @@ export function KpiReport() {
               <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>KPI {summary.total}개 · {month.slice(5, 7)}월 실적 입력 {summary.done}개</div>
             </div>
             <div style={{ display: 'flex', gap: 26 }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 12, opacity: 0.85 }}>{month.slice(5, 7)}월 가중 달성률</div>
-                <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.1 }}>{summary.weighted != null ? `${summary.weighted}%` : '-'}</div>
+              <div style={{ textAlign: 'center' }} title={`${periodName(selIdx)} 안분 목표(연간 목표×${selIdx + 1}/12) 대비 누적 실적 — 100%면 페이스 정상 (지표별 100% 캡 후 비중 가중)`}>
+                <div style={{ fontSize: 12, opacity: 0.85 }}>{periodName(selIdx)} 달성률 (가중)</div>
+                <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.1 }}>{summary.half != null ? `${summary.half}%` : '-'}</div>
               </div>
-              <div style={{ textAlign: 'center', borderLeft: '1px solid rgba(255,255,255,.3)', paddingLeft: 26 }}>
-                <div style={{ fontSize: 12, opacity: 0.85 }}>연간 누적 달성률</div>
-                <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.1 }}>{summary.cumWeighted != null ? `${summary.cumWeighted}%` : '-'}</div>
+              <div style={{ textAlign: 'center', borderLeft: '1px solid rgba(255,255,255,.3)', paddingLeft: 26 }} title="연간 목표 전체 대비 누적 진척 — 연말 100%를 향해 올라갑니다 (지표별 100% 캡 후 비중 가중)">
+                <div style={{ fontSize: 12, opacity: 0.85 }}>연간 진행율 (가중)</div>
+                <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.1 }}>{summary.annual != null ? `${summary.annual}%` : '-'}</div>
               </div>
             </div>
           </div>
@@ -422,7 +420,7 @@ export function KpiReport() {
               <div style={{ fontWeight: 800 }}>월별 달성률 추이</div>
               <div style={{ display: 'flex', gap: 14, fontSize: 12, color: '#475569' }}>
                 <span><span style={{ display: 'inline-block', width: 18, height: 3, background: '#60a5fa', verticalAlign: 'middle', marginRight: 4 }} />월별</span>
-                <span><span style={{ display: 'inline-block', width: 18, height: 3, background: '#0f3d73', verticalAlign: 'middle', marginRight: 4 }} />누적</span>
+                <span><span style={{ display: 'inline-block', width: 18, height: 3, background: '#0f3d73', verticalAlign: 'middle', marginRight: 4 }} />연간 진행율</span>
               </div>
             </div>
             <TrendChart monthlySeries={trend.monthlySeries} cumSeries={trend.cumSeries} selIdx={selIdx} />
@@ -447,24 +445,23 @@ export function KpiReport() {
                     const hm = ev ? (ev.totals.minutes >= 60 ? `${Math.round(ev.totals.minutes / 6) / 10}h` : `${ev.totals.minutes}m`) : '';
                     return (
                       <div key={kr.id} style={{ padding: '12px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                        {/* ① 달성률 크게 — 연간 목표 대비 진척. 아래에 경과월 추세 환산 연말 전망 */}
-                        <div style={{ width: 96, textAlign: 'center', flexShrink: 0 }}>
-                          <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}
-                            title={`누적 ${c.value != null ? c.value.toLocaleString() : '-'} ÷ 연간 목표 ${kr.target?.toLocaleString() ?? '-'}`}>{ca != null ? `${Math.round(ca)}%` : '-'}</div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>연간 목표대비 달성률</div>
+                        {/* ① 두 수치: 기간(상반기) 달성률 크게 + 연간 진행율 */}
+                        <div style={{ width: 100, textAlign: 'center', flexShrink: 0 }}>
                           {(() => {
-                            const fc = cumForecast(kr, selIdx);
-                            if (fc == null) return null;
-                            const pLabel = selIdx === 5 ? '상반기' : selIdx === 11 ? '연간' : `~${selIdx + 1}월`;
+                            const ha = periodAch(kr, selIdx);
                             return (
-                              <div style={{ marginTop: 4, borderTop: '1px dashed #e2e8f0', paddingTop: 4 }}
-                                title={`${pLabel} 목표(연간 목표×${selIdx + 1}/12 = ${cumTargetOf(kr, selIdx)?.toLocaleString()}) 대비 달성률 — 이 추세를 유지하면 연말에 도달할 연간 달성률과 같습니다`}>
-                                <div style={{ fontSize: 19, fontWeight: 900, lineHeight: 1, color: achColor(fc) }}>{Math.round(fc)}%</div>
-                                <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{pLabel} 목표대비 달성률</div>
+                              <div title={`${periodName(selIdx)} 안분 목표(${cumTargetOf(kr, selIdx)?.toLocaleString() ?? '-'}) 대비 누적 실적 — 100%면 페이스 정상`}>
+                                <div style={{ fontSize: 32, fontWeight: 900, lineHeight: 1, color: achColor(ha) }}>{ha != null ? `${Math.round(ha)}%` : '-'}</div>
+                                <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>{periodName(selIdx)} 달성률</div>
                               </div>
                             );
                           })()}
-                          <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 2 }}>{month.slice(5, 7)}월 {a != null ? `${a}%` : '-'}</div>
+                          <div style={{ marginTop: 5, borderTop: '1px dashed #e2e8f0', paddingTop: 5 }}
+                            title={`누적 ${c.value != null ? c.value.toLocaleString() : '-'} ÷ 연간 목표 ${kr.target?.toLocaleString() ?? '-'} — 연간 목표 중 진척된 비율`}>
+                            <div style={{ fontSize: 21, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}>{ca != null ? `${Math.round(ca)}%` : '-'}</div>
+                            <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>연간 진행율</div>
+                          </div>
+                          <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 4 }}>{month.slice(5, 7)}월 {a != null ? `${a}%` : '-'}</div>
                         </div>
                         {/* ② 지표 정보 + 월별 차트 (고정폭 — 남는 공간은 근거 카드가 사용) */}
                         <div style={{ flex: '0 1 320px', minWidth: 300, display: 'grid', gap: 6 }}>
@@ -571,7 +568,8 @@ export function KpiReport() {
                       <th key={i} style={{ ...thS, textAlign: 'right', background: i === selIdx ? '#eff6ff' : undefined }}>{i + 1}월</th>
                     ))}
                     <th style={{ ...thS, textAlign: 'right', color: '#0f3d73' }}>누적</th>
-                    <th style={{ ...thS, textAlign: 'right', color: '#0f3d73' }}>달성률</th>
+                    <th style={{ ...thS, textAlign: 'right', color: '#0f3d73' }}>{periodName(selIdx)} 달성률</th>
+                    <th style={{ ...thS, textAlign: 'right', color: '#0f3d73' }}>연간 진행율</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -594,6 +592,7 @@ export function KpiReport() {
                           );
                         })}
                         <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</td>
+                        <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, color: achColor(periodAch(kr, selIdx)) }}>{periodAch(kr, selIdx) != null ? `${periodAch(kr, selIdx)}%` : '-'}</td>
                         <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, color: achColor(ca) }}>{ca != null ? `${ca}%` : '-'}</td>
                       </tr>
                     );
