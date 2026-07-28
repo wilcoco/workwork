@@ -34,6 +34,7 @@ import { ProcessTemplatesController } from './process-templates.controller';
 import { ProcessesController } from './processes.controller';
 import { ActivitiesController } from './activities.controller';
 import { OntologyController } from './ontology.controller';
+import { GaContactsController } from './ga-contacts.controller';
 import { MastersController } from './masters.controller';
 import { WorklogEvalsController } from './worklog-evals.controller';
 import { TeamsNotificationService } from './teams-notification.service';
@@ -100,6 +101,7 @@ import { AuditLogService } from './audit-log.service';
     ProcessesController,
     ActivitiesController,
     OntologyController,
+    GaContactsController,
     MastersController,
     WorklogEvalsController,
     KnowledgeBaseController,

@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS "GaContact" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "category" TEXT NOT NULL,
+  "task" TEXT NOT NULL,
+  "deptName" TEXT NOT NULL DEFAULT '',
+  "managerName" TEXT NOT NULL DEFAULT '',
+  "phone" TEXT NOT NULL DEFAULT '',
+  "vendorName" TEXT NOT NULL DEFAULT '',
+  "vendorPhone" TEXT NOT NULL DEFAULT '',
+  "note" TEXT NOT NULL DEFAULT '',
+  "orderHint" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "GaContact_category_idx" ON "GaContact"("category");

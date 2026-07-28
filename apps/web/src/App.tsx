@@ -70,6 +70,7 @@ import { ActivityMap } from './pages/ActivityMap';
 import { StrategyMap } from './pages/StrategyMap';
 import { OntologyExplorer } from './pages/OntologyExplorer';
 import { CompanyAtlas } from './pages/CompanyAtlas';
+import { GaContacts } from './pages/GaContacts';
 import { KpiContribution } from './pages/KpiContribution';
 import { CompanyPulse } from './pages/CompanyPulse';
 import { ProcessInbox } from './pages/ProcessInbox';
@@ -438,6 +439,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/process/strategy-map" element={<StrategyMap />} />
           <Route path="/process/ontology" element={<OntologyExplorer />} />
           <Route path="/process/atlas" element={<CompanyAtlas />} />
+          <Route path="/ga-contacts" element={<GaContacts />} />
           <Route path="/process/kpi-contribution" element={<KpiContribution />} />
           <Route path="/process/company-pulse" element={<CompanyPulse />} />
           <Route path="/process/my" element={<ProcessMy />} />
@@ -596,6 +598,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/manuals/mine">내 매뉴얼 입력</Link>
           <Link to="/manuals">업무 메뉴얼 조회</Link>
           {canEvaluate && <Link to="/manuals/coverage">매뉴얼 입력 현황 (전사)</Link>}
+          <Link to="/ga-contacts">총무 비상연락망</Link>
         </NavDropdown>
         <NavDropdown label="프로세스 관리" active={location.pathname.startsWith('/process')}>
           <Link to={`/process/start?return=${encodeURIComponent(location.pathname + location.search)}`}>새 프로세스 시작</Link>
@@ -881,6 +884,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/manuals/mine', label: '내 매뉴얼 입력' },
         { to: '/manuals', label: '업무 메뉴얼 조회' },
         ...(canEvaluate ? [{ to: '/manuals/coverage', label: '매뉴얼 입력 현황 (전사)' }] : []),
+        { to: '/ga-contacts', label: '총무 비상연락망' },
       ];
     }
     if (path.startsWith('/process')) {

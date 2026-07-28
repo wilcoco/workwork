@@ -1683,3 +1683,21 @@ model WorklogGoalTag {
   @@index([goalType, goalId])
   @@index([worklogId])
 }
+
+/// 총무 비상연락망 — 총무성 업무별 담당자·업체 연락처 디렉터리 (대표 등록 2026-07-29)
+model GaContact {
+  id          String   @id @default(cuid())
+  category    String // 구분 (법인차량관리, 사택관리 ...)
+  task        String // 내용
+  deptName    String   @default("") // 부서
+  managerName String   @default("") // 담당자
+  phone       String   @default("") // 담당자 전화
+  vendorName  String   @default("") // 업체명
+  vendorPhone String   @default("") // 업체 전화
+  note        String   @default("") // 비고
+  orderHint   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}
