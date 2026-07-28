@@ -147,13 +147,15 @@ const MODE_BADGE: Record<string, { label: string; title: string }> = {
 
 // ── 미니 월별 바 차트 (SVG, 의존성 없음) ──────────────────────
 function MiniBars({ kr, selIdx }: { kr: Kr; selIdx: number }) {
-  const W = 300, H = 64, PAD = 2, GAP = 3;
+  const W = 300, H = 74, PAD = 2, GAP = 3; // 상단 10px = 값 라벨 공간
   const monthly = kr.monthly || Array(12).fill(null);
   const vals = monthly.filter((v): v is number => v != null);
   const t = monthTargetOf(kr, 11); // 목표선 — 합산형은 월 안분(÷12), 누계형은 연간, 평균형은 목표 그대로
   const maxV = Math.max(...vals.map((v) => Math.abs(v)), t != null ? Math.abs(t) : 0, 1) * 1.1;
   const bw = (W - PAD * 2 - GAP * 11) / 12;
-  const y = (v: number) => H - 12 - Math.max(0, (Math.abs(v) / maxV) * (H - 16));
+  const y = (v: number) => H - 12 - Math.max(0, (Math.abs(v) / maxV) * (H - 26));
+  // 값 라벨: 좁은 칸에 맞게 축약 (10000↑ → 10k, 소수는 유효자리 유지)
+  const short = (v: number) => (Math.abs(v) >= 10000 ? `${Math.round(v / 1000)}k` : Math.abs(v) >= 100 ? String(Math.round(v)) : String(Math.round(v * 100) / 100));
   const targetY = t != null ? y(t) : null;
   return (
     <svg width={W} height={H} style={{ display: 'block' }}>
@@ -172,6 +174,7 @@ function MiniBars({ kr, selIdx }: { kr: Kr; selIdx: number }) {
             <rect x={x} y={barY} width={bw} height={H - 12 - barY} fill={achColor(a)} opacity={i === selIdx ? 1 : 0.55} rx={2}>
               <title>{`${i + 1}월: ${v.toLocaleString()}${kr.unit || ''}${a != null ? ` (달성 ${a}%)` : ''}`}</title>
             </rect>
+            <text x={x + bw / 2} y={Math.max(barY - 2.5, 8)} textAnchor="middle" fontSize={7.5} fontWeight={700} fill="#475569">{short(v)}</text>
             {i === selIdx && <rect x={x - 1} y={2} width={bw + 2} height={H - 14} fill="none" stroke="#0f172a" strokeWidth={1} rx={3} opacity={0.35} />}
           </g>
         );
