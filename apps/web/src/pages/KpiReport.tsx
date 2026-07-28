@@ -75,7 +75,7 @@ function KpiOntoMap({ kr, ev, ach, periodLabel }: { kr: Kr; ev: KrEvidence; ach:
       <rect x={300} y={cy - 36} width={120} height={72} rx={14} fill="#0f3d73" />
       <text x={360} y={cy - 14} fontSize={12} fontWeight={800} fill="#fff" textAnchor="middle">{kr.title.length > 10 ? kr.title.slice(0, 10) + '…' : kr.title}</text>
       <text x={360} y={cy + 4} fontSize={11} fill="#bfdbfe" textAnchor="middle">{fmtH(ev.totals.minutes)} · {ev.totals.logs}건</text>
-      <text x={360} y={cy + 22} fontSize={13} fontWeight={800} fill={ach == null ? '#94a3b8' : ach >= 100 ? '#4ade80' : ach >= 80 ? '#fbbf24' : '#f87171'} textAnchor="middle">{ach != null ? `달성 ${ach}%` : '실적 미입력'}</text>
+      <text x={360} y={cy + 22} fontSize={13} fontWeight={800} fill={ach == null ? '#94a3b8' : ach >= 100 ? '#4ade80' : ach >= 80 ? '#fbbf24' : '#f87171'} textAnchor="middle">{ach != null ? `달성 ${ach > 100 ? '100%+' : Math.round(ach) + '%'}` : '실적 미입력'}</text>
       </g>
       {/* 수행자 노드 (우) */}
       {ppl.map((pp, i) => {
@@ -126,6 +126,8 @@ function kstPrevMonth(): string {
 
 // 달성률·누적 계산은 공용 유틸(lib/kpiCalc.ts) 사용 — 화면별 사본 금지
 const achColor = (p: number | null) => (p == null ? '#94a3b8' : p >= 100 ? '#16a34a' : p >= 80 ? '#d97706' : '#dc2626');
+// 달성률 표기: 100% 초과는 '100%+' (실값은 툴팁으로)
+const fmtAch = (p: number | null) => (p == null ? '-' : p > 100 ? '100%+' : `${Math.round(p)}%`);
 const cumValue = (kr: Kr, uptoIdx: number) => cumValueOf(kr, kr.monthly, uptoIdx);
 // 누적 달성률(연간 기준): 누적값을 연간 목표에 그대로 대비 — 리포트의 대표 숫자
 const cumAch = (kr: Kr, uptoIdx: number) => {
@@ -454,17 +456,17 @@ export function KpiReport() {
                             const ha = periodAch(kr, selIdx);
                             return (
                               <div title={`${periodName(selIdx)} 안분 목표(${cumTargetOf(kr, selIdx)?.toLocaleString() ?? '-'}) 대비 누적 실적 — 100%면 페이스 정상`}>
-                                <div style={{ fontSize: 32, fontWeight: 900, lineHeight: 1, color: achColor(ha) }}>{ha != null ? `${Math.round(ha)}%` : '-'}</div>
+                                <div style={{ fontSize: 32, fontWeight: 900, lineHeight: 1, color: achColor(ha) }}>{fmtAch(ha)}</div>
                                 <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>{periodName(selIdx)} 달성률</div>
                               </div>
                             );
                           })()}
                           <div style={{ marginTop: 5, borderTop: '1px dashed #e2e8f0', paddingTop: 5 }}
                             title={`누적 ${c.value != null ? c.value.toLocaleString() : '-'} ÷ 연간 목표 ${kr.target?.toLocaleString() ?? '-'} — 연간 목표 중 진척된 비율`}>
-                            <div style={{ fontSize: 21, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}>{ca != null ? `${Math.round(ca)}%` : '-'}</div>
+                            <div style={{ fontSize: 21, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}>{fmtAch(ca)}</div>
                             <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>연간 진행율</div>
                           </div>
-                          <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 4 }}>{month.slice(5, 7)}월 {a != null ? `${a}%` : '-'}</div>
+                          <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 4 }}>{month.slice(5, 7)}월 {fmtAch(a)}</div>
                         </div>
                         {/* ② 지표 정보 + 월별 차트 (고정폭 — 남는 공간은 근거 카드가 사용) */}
                         <div style={{ flex: '0 1 320px', minWidth: 300, display: 'grid', gap: 6 }}>
@@ -595,8 +597,8 @@ export function KpiReport() {
                           );
                         })}
                         <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</td>
-                        <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, color: achColor(periodAch(kr, selIdx)) }}>{periodAch(kr, selIdx) != null ? `${periodAch(kr, selIdx)}%` : '-'}</td>
-                        <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, color: achColor(ca) }}>{ca != null ? `${ca}%` : '-'}</td>
+                        <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, color: achColor(periodAch(kr, selIdx)) }}>{fmtAch(periodAch(kr, selIdx))}</td>
+                        <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, color: achColor(ca) }}>{fmtAch(ca)}</td>
                       </tr>
                     );
                   })}
