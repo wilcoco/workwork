@@ -127,13 +127,23 @@ function kstPrevMonth(): string {
 // 달성률·누적 계산은 공용 유틸(lib/kpiCalc.ts) 사용 — 화면별 사본 금지
 const achColor = (p: number | null) => (p == null ? '#94a3b8' : p >= 100 ? '#16a34a' : p >= 80 ? '#d97706' : '#dc2626');
 const cumValue = (kr: Kr, uptoIdx: number) => cumValueOf(kr, kr.monthly, uptoIdx);
-const cumAch = (kr: Kr, uptoIdx: number) => cumAchPct(kr, kr.monthly, uptoIdx);
+// 누적 달성률(연간 기준): 누적값을 연간 목표에 그대로 대비 — 리포트의 대표 숫자
+const cumAch = (kr: Kr, uptoIdx: number) => {
+  const c = cumValueOf(kr, kr.monthly, uptoIdx);
+  return c.value == null ? null : achPct(kr, c.value);
+};
+// 연말 전망(추세 환산): 경과월 페이스를 그대로 유지하면 연말에 도달할 연간 달성률 (합산·누계·진척형만 의미 있음)
+const cumForecast = (kr: Kr, uptoIdx: number) => {
+  const mode = kpiModeOf(kr);
+  if (mode === 'avg') return null; // 평균형은 현재 평균이 곧 전망
+  return cumAchPct(kr, kr.monthly, uptoIdx); // 안분 목표 대비 = 페이스 → 연말 환산 전망과 동일
+};
 
 const CUM_LABEL: Record<string, string> = { avg: '평균', sum: '합계', last: '최신누계', progress: '최신진척' };
 const MODE_BADGE: Record<string, { label: string; title: string }> = {
   avg: { label: '월별 독립측정', title: '매월 독립적으로 측정되는 지표 — 누적은 입력월 평균, 달성률은 목표 대비' },
-  sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적은 합산, 달성률은 경과월 안분 목표 대비(6월=연간목표×6/12)' },
-  last: { label: '누계값 입력', title: '입력값 자체가 연초부터의 누계 — 누적은 최신 입력값, 달성률은 경과월 안분 목표 대비' },
+  sum: { label: '월별 누계(합산)', title: '월별 발생량이 쌓이는 지표 — 누적=합산, 큰 달성률=연간 목표 대비, 전망=경과월 추세 환산' },
+  last: { label: '누계값 입력', title: '입력값 자체가 연초부터의 누계 — 누적=최신 입력값, 큰 달성률=연간 목표 대비, 전망=추세 환산' },
   progress: { label: '진척율 입력', title: '매월 목표 대비 진척율을 입력 — 누적은 최신 진척율, 달성률은 목표에 그대로 대비(안분 없음)' },
 };
 
@@ -437,23 +447,22 @@ export function KpiReport() {
                     const hm = ev ? (ev.totals.minutes >= 60 ? `${Math.round(ev.totals.minutes / 6) / 10}h` : `${ev.totals.minutes}m`) : '';
                     return (
                       <div key={kr.id} style={{ padding: '12px 14px', borderTop: i ? '1px solid #f1f5f9' : 'none', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                        {/* ① 달성률 크게 — 합산·누계형은 경과월 안분 목표 기준. 100% 초과면 페이스 초과임을 연간 대비와 함께 명시 */}
+                        {/* ① 달성률 크게 — 연간 목표 대비 진척. 아래에 경과월 추세 환산 연말 전망 */}
                         <div style={{ width: 96, textAlign: 'center', flexShrink: 0 }}>
-                          <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}>{ca != null ? `${Math.round(ca)}%` : '-'}</div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
-                            누적 달성{(c.mode === 'sum' || c.mode === 'last') ? <span style={{ display: 'block', fontSize: 9.5 }}>(~{parseInt(month.slice(5, 7), 10)}월 목표 기준)</span> : null}
-                          </div>
+                          <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: achColor(ca) }}
+                            title={`누적 ${c.value != null ? c.value.toLocaleString() : '-'} ÷ 연간 목표 ${kr.target?.toLocaleString() ?? '-'}`}>{ca != null ? `${Math.round(ca)}%` : '-'}</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>연간 목표 대비</div>
                           {(() => {
-                            if (!(c.mode === 'sum' || c.mode === 'last') || ca == null || ca <= 100) return null;
-                            const annual = achPct(kr, c.value);
+                            const fc = cumForecast(kr, selIdx);
+                            if (fc == null) return null;
                             return (
-                              <div style={{ fontSize: 10, fontWeight: 800, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '2px 4px', marginTop: 2 }}
-                                title={`경과월 안분 목표(${cumTargetOf(kr, selIdx)?.toLocaleString()}) 대비 초과 달성 — 연간 목표(${kr.target?.toLocaleString()}) 기준으로는 ${annual ?? '-'}% 진행`}>
-                                페이스 초과 · 연간 {annual ?? '-'}%
+                              <div style={{ fontSize: 10, fontWeight: 800, color: fc >= 100 ? '#16a34a' : '#b45309', background: fc >= 100 ? '#f0fdf4' : '#fffbeb', border: `1px solid ${fc >= 100 ? '#bbf7d0' : '#fde68a'}`, borderRadius: 6, padding: '2px 4px', marginTop: 3 }}
+                                title={`~${parseInt(month.slice(5, 7), 10)}월 실적 추세를 연말까지 유지할 때 예상되는 연간 달성률 (안분 목표 ${cumTargetOf(kr, selIdx)?.toLocaleString()} 대비 현재 페이스)`}>
+                                추세 유지 시 연말 {Math.round(fc)}%
                               </div>
                             );
                           })()}
-                          <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 1 }}>{month.slice(5, 7)}월 {a != null ? `${a}%` : '-'}</div>
+                          <div style={{ fontSize: 11, color: achColor(a), fontWeight: 700, marginTop: 2 }}>{month.slice(5, 7)}월 {a != null ? `${a}%` : '-'}</div>
                         </div>
                         {/* ② 지표 정보 + 월별 차트 (고정폭 — 남는 공간은 근거 카드가 사용) */}
                         <div style={{ flex: '0 1 320px', minWidth: 300, display: 'grid', gap: 6 }}>
@@ -483,12 +492,6 @@ export function KpiReport() {
                             {month.slice(5, 7)}월 실적 <b style={{ color: '#0f172a' }}>{mv != null ? mv.toLocaleString() : '-'}</b>
                             <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
                             누적({CUM_LABEL[c.mode]}) <b style={{ color: '#0f3d73' }}>{c.value != null ? c.value.toLocaleString() : '-'}</b>
-                            {(c.mode === 'sum' || c.mode === 'last') && c.value != null && kr.target != null && (
-                              <span style={{ marginLeft: 8, color: '#94a3b8', fontSize: 12 }}
-                                title={`달성률은 경과월 안분 목표(${cumTargetOf(kr, selIdx)?.toLocaleString()}) 대비 · 연간 목표(${kr.target.toLocaleString()}) 대비로는 ${achPct(kr, c.value) ?? '-'}%`}>
-                                연간 대비 {achPct(kr, c.value) ?? '-'}%
-                              </span>
-                            )}
                             {typeof kr.weight === 'number' ? <span style={{ marginLeft: 8, color: '#94a3b8' }}>비중 {kr.weight}%</span> : null}
                           </div>
                           <MiniBars kr={kr} selIdx={selIdx} />
