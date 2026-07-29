@@ -207,7 +207,21 @@ export class AttendanceController {
           };
           const wk1 = getWeekKey(workDateUtc);
           const wk2 = getWeekKey(restDateUtc);
-          if (wk1 !== wk2) throw new BadRequestException('대체 휴일은 같은 주(토~금) 안의 평일이어야 합니다');
+          if (wk1 !== wk2) {
+            // 예외 (대표 지시 2026-07-29): 근무일이 속한 주의 평일(월~금)이 전부 등록 휴일
+            // (전사 하계휴가·명절 공동연차 등)이면 같은 주에 쉴 날이 없으므로 다음 주 평일까지 허용
+            const satMs = new Date(`${wk1}T00:00:00.000Z`).getTime();
+            const weekdays = [2, 3, 4, 5, 6].map((i) => new Date(satMs + i * 86400000)); // 월~금
+            const holCnt = await (tx as any).holiday.count({ where: { date: { in: weekdays } } });
+            const nextWeekKey = new Date(satMs + 7 * 86400000).toISOString().slice(0, 10);
+            if (!(holCnt >= 5 && wk2 === nextWeekKey)) {
+              throw new BadRequestException(
+                holCnt >= 5
+                  ? '근무일이 속한 주가 전사 휴가 주간입니다 — 대체 휴일은 다음 주(토~금)의 평일 중에서 선택해 주세요'
+                  : '대체 휴일은 같은 주(토~금) 안의 평일이어야 합니다',
+              );
+            }
+          }
 
           const dowRest = restDateUtc.getUTCDay();
           const holidayRest = await (tx as any).holiday.findUnique({ where: { date: restDateUtc } });
