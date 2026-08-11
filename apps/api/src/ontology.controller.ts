@@ -92,7 +92,22 @@ export class OntologyController {
       }
     }
 
-    const context = `${summaryLines.join('\n')}${objLines.length ? `\n\n[질문 관련 객체]\n${objLines.join('\n')}` : ''}`;
+    // 3) 질문과 유사한 🏅 인증 지식 본문 발췌 — 방법·원인·노하우형 질문에 실제 지식으로 답하기 위한 컨텍스트
+    const big = (t: string) => { const out = new Set<string>(); for (const w of String(t || '').replace(/<[^>]+>/g, ' ').toLowerCase().replace(/[^가-힣a-z0-9]+/g, ' ').split(' ')) { if (w.length < 2) continue; for (let i = 0; i < w.length - 1; i++) out.add(w.slice(i, i + 2)); } return out; };
+    const sim = (a: Set<string>, b: Set<string>) => { if (!a.size || !b.size) return 0; let n = 0; for (const g of a) if (b.has(g)) n++; return n / Math.min(a.size, b.size); };
+    const qb = big(q);
+    const kbRows = await p.worklog.findMany({
+      where: { kbBadge: true, visibility: 'ALL' }, orderBy: { date: 'desc' }, take: 400,
+      select: { id: true, note: true, date: true, createdBy: { select: { name: true } } },
+    });
+    const kbTop = kbRows.map((r: any) => ({ r, s: sim(qb, big(r.note)) })).filter((x: any) => x.s >= 0.15).sort((a: any, b: any) => b.s - a.s).slice(0, 5);
+    const kbLines = kbTop.map(({ r }: any) => {
+      const d = new Date(new Date(r.date).getTime() + 9 * 3600000).toISOString().slice(0, 10);
+      return `- (${r.createdBy?.name || '?'} · ${d}) ${String(r.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 500)}`;
+    });
+    for (const { r } of kbTop) matched.push({ type: 'worklog', id: r.id, label: `🏅 ${String(r.note || '').replace(/<[^>]+>/g, ' ').trim().slice(0, 24)}…`, sub: r.createdBy?.name || '' });
+
+    const context = `${summaryLines.join('\n')}${objLines.length ? `\n\n[질문 관련 객체]\n${objLines.join('\n')}` : ''}${kbLines.length ? `\n\n[관련 인증 지식 — 일지 발췌]\n${kbLines.join('\n')}` : ''}`;
     const result = await callAI({
       model: 'claude',
       system: `너는 자동차 부품 제조사(캠스)의 온톨로지(활동·KPI·조직·실행 데이터) 분석 비서다.
@@ -100,6 +115,7 @@ export class OntologyController {
 - 아래 [데이터]에 있는 수치와 사실만으로 답하라. 데이터에 없으면 "데이터에 없습니다"라고 말하라. 추측 금지.
 - 시간 단위는 h, 팀·활동·KPI 이름은 데이터의 표기 그대로.
 - 3~6문장, 핵심 수치를 인용해 간결하게. 필요하면 확인할 화면(조감도/탐색기/현황판)을 한 줄 권하라.
+- 방법·원인·노하우를 묻는 질문이면 [관련 인증 지식] 발췌를 근거로 구체적으로 답하고, 출처(작성자·날짜)를 문장 끝에 표기하라.
 - 시간 수치는 자기신고 기반이며 KPI별 합산은 중복 계상될 수 있음을 필요시 짧게 부기하라.`,
       user: `[데이터]\n${context}\n\n[질문]\n${q}`,
       temperature: 0.2, maxTokens: 1200,

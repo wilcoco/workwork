@@ -1696,6 +1696,86 @@ export class WorklogsController {
    * 내 일지 KPI 분류 확정 — 해당 일지의 태그를 통째로 교체(USER가 정본).
    * krIds 빈 배열 = '해당 KPI 없음' 확정. 이후 AI 배치는 이 일지를 건드리지 않는다.
    */
+  // ── 지식 추천/KPI 추천용 텍스트 유사도 (바이그램) ──
+  private kbBigrams(t: string): Set<string> {
+    const norm = String(t || '').replace(/<[^>]+>/g, ' ').toLowerCase().replace(/[^가-힣a-z0-9]+/g, ' ').trim();
+    const out = new Set<string>();
+    for (const w of norm.split(' ')) {
+      if (w.length < 2) continue;
+      for (let i = 0; i < w.length - 1; i++) out.add(w.slice(i, i + 2));
+    }
+    return out;
+  }
+  private kbSim(a: Set<string>, b: Set<string>): number {
+    if (!a.size || !b.size) return 0;
+    let hit = 0;
+    for (const g of a) if (b.has(g)) hit++;
+    return hit / Math.min(a.size, b.size);
+  }
+
+  /** 작성 중 본문과 유사한 🏅 인증 지식 추천 — 재사용 노출(체화 1단계). 공개(ALL) 일지만. */
+  @Get('kb-suggest')
+  async kbSuggest(@Query('q') qRaw?: string, @Query('userId') _userId?: string) {
+    const q = String(qRaw || '').replace(/<[^>]+>/g, ' ').trim().slice(0, 2000);
+    if (q.length < 10) return { items: [] };
+    const qb = this.kbBigrams(q);
+    const rows = await (this.prisma as any).worklog.findMany({
+      where: { kbBadge: true, visibility: 'ALL' },
+      orderBy: { date: 'desc' }, take: 400,
+      select: { id: true, note: true, date: true, activityId: true, createdBy: { select: { name: true } } },
+    });
+    const actIds = [...new Set(rows.map((r: any) => r.activityId).filter(Boolean))] as string[];
+    const acts = actIds.length ? await (this.prisma as any).activity.findMany({ where: { id: { in: actIds } }, select: { id: true, name: true } }) : [];
+    const actName = new Map(acts.map((a: any) => [a.id, a.name]));
+    const scored = rows
+      .map((r: any) => ({ r, s: this.kbSim(qb, this.kbBigrams(r.note || '')) }))
+      .filter((x: any) => x.s >= 0.18)
+      .sort((a: any, b: any) => b.s - a.s)
+      .slice(0, 3);
+    return {
+      items: scored.map(({ r }: any) => ({
+        id: r.id,
+        date: r.date,
+        authorName: r.createdBy?.name || '',
+        activityName: r.activityId ? actName.get(r.activityId) || null : null,
+        snippet: String(r.note || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140),
+      })),
+    };
+  }
+
+  /** 저장 직후 KPI 추천 — 작성자 팀 KPI 중 본문과 유사한 순. 팝업에서 본인 확정(USER 태그) 유도. */
+  @Get(':id/kpi-suggest')
+  async kpiSuggest(@Param('id') id: string, @Query('userId') userId?: string) {
+    const uid = String(userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const wl = await (this.prisma as any).worklog.findUnique({
+      where: { id }, select: { note: true, createdById: true, createdBy: { select: { orgUnitId: true } } },
+    });
+    if (!wl) throw new BadRequestException('worklog not found');
+    if (wl.createdById !== uid) throw new ForbiddenException('본인 일지만 조회할 수 있습니다');
+    const orgUnitId = wl.createdBy?.orgUnitId;
+    if (!orgUnitId) return { kpis: [], suggested: [], current: [], hasUserTag: false };
+    const objs = await (this.prisma as any).objective.findMany({
+      where: { orgUnitId, pillar: { not: null }, NOT: { title: { startsWith: 'Auto Objective' } } },
+      select: { keyResults: { select: { id: true, title: true, unit: true, metric: true } } },
+    });
+    const kpis = objs.flatMap((o: any) => o.keyResults || []).filter((k: any) => String(k.title || '').trim().length >= 2);
+    const nb = this.kbBigrams(wl.note || '');
+    const suggested = kpis
+      .map((k: any) => ({ id: k.id, s: this.kbSim(nb, this.kbBigrams(`${k.title} ${k.metric || ''}`)) }))
+      .sort((a: any, b: any) => b.s - a.s)
+      .filter((x: any) => x.s > 0.08)
+      .slice(0, 3)
+      .map((x: any) => x.id);
+    const tags = await (this.prisma as any).worklogGoalTag.findMany({ where: { worklogId: id }, select: { goalType: true, goalId: true, source: true } });
+    return {
+      kpis: kpis.map((k: any) => ({ id: k.id, title: k.title, unit: k.unit || '' })),
+      suggested,
+      current: tags.filter((t: any) => t.goalType === 'KR').map((t: any) => t.goalId),
+      hasUserTag: tags.some((t: any) => t.source === 'USER'),
+    };
+  }
+
   @Put(':id/kpi-tags')
   async setKpiTags(@Param('id') id: string, @Body() body: { userId?: string; krIds?: string[] }) {
     const uid = String(body?.userId || '').trim();

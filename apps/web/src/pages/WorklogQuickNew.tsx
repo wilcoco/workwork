@@ -58,6 +58,36 @@ export function WorklogQuickNew() {
   const editorEl = useRef<HTMLDivElement | null>(null);
   const [plainMode, setPlainMode] = useState(false);
   const [contentPlain, setContentPlain] = useState('');
+  // 작성 중 관련 인증 지식 추천 + 저장 후 KPI 추천 팝업
+  const [kbSug, setKbSug] = useState<Array<{ id: string; date: string; authorName: string; activityName: string | null; snippet: string }>>([]);
+  const [kpiSug, setKpiSug] = useState<{ wlId: string; kpis: Array<{ id: string; title: string; unit: string }>; picked: Set<string> } | null>(null);
+  const [kpiSaving, setKpiSaving] = useState(false);
+
+  // 본문과 유사한 인증 지식 추천 (1.2s 디바운스, 10자 이상)
+  useEffect(() => {
+    const text = (plainMode ? contentPlain : stripHtml(contentHtml)).trim();
+    if (text.length < 10) { setKbSug([]); return; }
+    const t = window.setTimeout(async () => {
+      try {
+        const r = await apiJson<{ items: any[] }>(`/api/worklogs/kb-suggest?q=${encodeURIComponent(text.slice(0, 1500))}&userId=${encodeURIComponent(localStorage.getItem('userId') || '')}`);
+        setKbSug(r.items || []);
+      } catch { /* 추천 실패는 무시 */ }
+    }, 1200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentPlain, contentHtml, plainMode]);
+
+  async function saveKpiTags(krIds: string[]) {
+    if (!kpiSug) return;
+    setKpiSaving(true);
+    try {
+      await apiJson(`/api/worklogs/${encodeURIComponent(kpiSug.wlId)}/kpi-tags`, {
+        method: 'PUT', body: JSON.stringify({ userId: localStorage.getItem('userId') || '', krIds }),
+      });
+      toast(krIds.length ? 'KPI 분류가 저장되었습니다.' : '해당 KPI 없음으로 기록했습니다.', 'success', 2500);
+    } catch (e: any) { toast(e?.message || 'KPI 분류 저장 실패', 'error'); }
+    finally { const wlId = kpiSug.wlId; setKpiSaving(false); setKpiSug(null); setAiFollowupId(wlId); }
+  }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<'ALL' | 'MANAGER_PLUS' | 'EXEC_PLUS' | 'CEO_ONLY'>('ALL');
@@ -784,7 +814,15 @@ export function WorklogQuickNew() {
         }
       }
       toast('업무일지가 저장되었습니다.', 'success', 4000);
-      // AI 보완 질문 → 지식 배지 심사 후 목록으로 이동
+      // KPI 추천 팝업 → 닫히면 AI 보완 질문 → 지식 배지 심사 후 목록으로 이동
+      try {
+        const sug = await apiJson<{ kpis: any[]; suggested: string[]; current: string[]; hasUserTag: boolean }>(
+          `/api/worklogs/${encodeURIComponent(wl.id)}/kpi-suggest?userId=${encodeURIComponent(localStorage.getItem('userId') || '')}`);
+        if ((sug.kpis || []).length && !sug.hasUserTag) {
+          setKpiSug({ wlId: wl.id, kpis: sug.kpis, picked: new Set((sug.suggested.length ? sug.suggested : sug.current) as string[]) });
+          return;
+        }
+      } catch { /* 추천 실패 시 기존 흐름 */ }
       setAiFollowupId(wl.id);
       return;
     } catch (err: any) {
@@ -878,6 +916,46 @@ export function WorklogQuickNew() {
 
   return (
     <div className="content" style={{ display: 'grid', gap: 16, maxWidth: 760, margin: '24px auto' }}>
+      {/* 🏅 작성 중 관련 지식 추천 — 본문과 유사한 인증 지식 */}
+      {kbSug.length > 0 && !kpiSug && !aiFollowupId && (
+        <div style={{ position: 'fixed', right: 16, bottom: 16, width: 340, zIndex: 60, background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: '10px 12px', boxShadow: '0 8px 24px rgba(15,23,42,.15)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+            <b style={{ fontSize: 13, color: '#92400e' }}>🏅 비슷한 작업의 인증 지식</b>
+            <button type="button" onClick={() => setKbSug([])} style={{ marginLeft: 'auto', border: 'none', background: 'transparent', cursor: 'pointer', color: '#b45309' }}>✕</button>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {kbSug.map((k) => (
+              <a key={k.id} href={`/worklogs/${k.id}`} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: 12, color: '#334155', textDecoration: 'none', background: '#fff', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 8px' }}>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{k.snippet}</div>
+                <div style={{ fontSize: 10.5, color: '#94a3b8', marginTop: 2 }}>{k.authorName}{k.activityName ? ` · ${k.activityName}` : ''} · {new Date(k.date).toLocaleDateString('ko-KR')}</div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* KPI 추천 팝업 — 저장 직후, 본인 확정(USER) 유도 */}
+      {kpiSug && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.5)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 14, maxWidth: 460, width: '100%', maxHeight: '80vh', overflow: 'auto', padding: 18, display: 'grid', gap: 10 }}>
+            <b style={{ fontSize: 15 }}>🎯 이 일지는 어떤 팀 KPI에 해당하나요?</b>
+            <div style={{ fontSize: 12, color: '#64748b' }}>내용과 비슷한 KPI를 추천해 미리 선택해뒀습니다. 확정하면 KPI 리포트의 실행 근거로 잡힙니다.</div>
+            <div style={{ display: 'grid', gap: 4 }}>
+              {kpiSug.kpis.map((k) => (
+                <label key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '6px 8px', borderRadius: 8, background: kpiSug.picked.has(k.id) ? '#eff6ff' : '#fafafa', border: `1px solid ${kpiSug.picked.has(k.id) ? '#93c5fd' : '#f1f5f9'}`, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={kpiSug.picked.has(k.id)}
+                    onChange={(e) => setKpiSug((prev) => { if (!prev) return prev; const next = new Set(prev.picked); if (e.target.checked) next.add(k.id); else next.delete(k.id); return { ...prev, picked: next }; })} />
+                  <span style={{ flex: 1 }}>{k.title}{k.unit ? ` (${k.unit})` : ''}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-sm btn-ghost" disabled={kpiSaving} onClick={() => { const wlId = kpiSug.wlId; setKpiSug(null); setAiFollowupId(wlId); }}>나중에</button>
+              <button type="button" className="btn btn-sm btn-outline" disabled={kpiSaving} onClick={() => void saveKpiTags([])}>해당 KPI 없음</button>
+              <button type="button" className="btn btn-sm btn-primary" disabled={kpiSaving || kpiSug.picked.size === 0} onClick={() => void saveKpiTags([...kpiSug.picked])}>{kpiSaving ? '저장 중…' : '이 KPI로 확정'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {aiFollowupId && <WorklogAiFollowup worklogId={aiFollowupId} onDone={() => nav('/search?mode=list')} />}
       <div className="card elevated accent">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, color: '#475569' }}>
