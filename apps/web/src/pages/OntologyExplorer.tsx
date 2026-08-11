@@ -35,17 +35,16 @@ export function OntologyExplorer() {
   const [trail, setTrail] = useState<Chip[]>([]); // 탐색 경로 (빵부스러기)
   const [viewMode, setViewMode] = useState<'graph' | 'card'>('graph');
   const [sp] = useSearchParams();
-  // 온톨로지 자연어 질의
-  const [askQ, setAskQ] = useState('');
+  // 온톨로지 자연어 질의 (검색창과 통합 — 같은 입력으로 Enter/질문 버튼)
   const [asking, setAsking] = useState(false);
   const [askResult, setAskResult] = useState<{ answer: string; matched: Chip[]; month: string } | null>(null);
 
   async function runAsk() {
-    if (!askQ.trim() || asking) return;
-    setAsking(true);
+    if (!q.trim() || asking) return;
+    setAsking(true); setResults([]);
     try {
       const r = await apiJson<{ answer: string; matched: Chip[]; month: string }>(`/api/ontology/ask`, {
-        method: 'POST', body: JSON.stringify({ question: askQ.trim(), actorId: userId }),
+        method: 'POST', body: JSON.stringify({ question: q.trim(), actorId: userId }),
       });
       setAskResult(r);
     } catch (e: any) { setAskResult({ answer: e?.message || '질의 실패', matched: [], month: '' }); }
@@ -199,10 +198,14 @@ export function OntologyExplorer() {
         </div>
       </div>
 
-      {/* 검색 */}
+      {/* 검색 + 질문 통합 입력 — 이름을 치면 즉시 객체 검색, 문장으로 묻고 Enter/질문 버튼이면 AI가 지식으로 답변 */}
       <div style={{ position: 'relative' }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔍 예: 구매원가, 품질 혁신, 사출기, 현대차, SP2, 홍길동..."
-          style={{ width: '100%', padding: '10px 14px', fontSize: 14, border: '2px solid #cbd5e1', borderRadius: 10, boxSizing: 'border-box' }} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runAsk(); }}
+            placeholder="🔍💬 검색 또는 질문 — 이름(사출기, 홍길동…)은 바로 찾아주고, 문장(품질에 시간 제일 쓴 팀은? 불량 원인 뭐였지?)은 Enter로 AI가 답합니다"
+            style={{ flex: 1, padding: '10px 14px', fontSize: 14, border: '2px solid #cbd5e1', borderRadius: 10, boxSizing: 'border-box' }} />
+          <button className="btn btn-primary" disabled={asking || !q.trim()} onClick={() => void runAsk()} style={{ flexShrink: 0 }}>{asking ? '분석 중…' : '💬 질문'}</button>
+        </div>
         {(results.length > 0 || searching) && (
           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, marginTop: 4, maxHeight: 380, overflow: 'auto', boxShadow: '0 8px 24px rgba(15,23,42,0.12)' }}>
             {searching && <div style={{ padding: 10, fontSize: 12, color: '#94a3b8' }}>검색 중...</div>}
@@ -219,14 +222,9 @@ export function OntologyExplorer() {
         )}
       </div>
 
-      {/* 온톨로지에게 질문 */}
+      {/* AI 답변 (질문 결과) */}
+      {askResult && (
       <div style={{ border: '1px solid #e0e7ff', background: '#f8faff', borderRadius: 12, padding: '10px 14px', display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input value={askQ} onChange={(e) => setAskQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runAsk(); }}
-            placeholder="💬 온톨로지에게 질문 — 예: 이번 달 품질에 시간을 제일 많이 쓴 팀은? 현대차 관련 일은 어느 팀이 하나?"
-            style={{ flex: 1, padding: '8px 12px', fontSize: 13, border: '1px solid #c7d2fe', borderRadius: 8 }} />
-          <button className="btn btn-sm btn-primary" disabled={asking || !askQ.trim()} onClick={() => void runAsk()}>{asking ? '분석 중…' : '질문'}</button>
-        </div>
         {askResult && (
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{askResult.answer}</div>
@@ -242,6 +240,7 @@ export function OntologyExplorer() {
           </div>
         )}
       </div>
+      )}
 
       {/* 탐색 경로 */}
       {trail.length > 0 && (
