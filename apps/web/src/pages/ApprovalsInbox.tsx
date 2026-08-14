@@ -379,11 +379,9 @@ export function ApprovalsInbox() {
                 {reqName && <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, flexShrink: 0 }}>{reqName}</span>}
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{title}</span>
                 <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{when ? new Date(when).toLocaleDateString() : ''}</span>
+                {/* 목록 즉시 승인 제거(대표 지시) — 내용 확인을 거치도록 상세 모달을 열고 그 안에서 승인/반려 */}
                 {a.status === 'PENDING' && mine && (
-                  <>
-                    <LoadingButton loading={actionLoading === a.id + ':approve'} disabled={actionLoading != null} onClick={(e) => { e.stopPropagation(); approve(a.id); }} style={compactPrimaryBtn}>승인</LoadingButton>
-                    <LoadingButton loading={actionLoading === a.id + ':reject'} disabled={actionLoading != null} onClick={(e) => { e.stopPropagation(); reject(a.id); }} style={compactGhostBtn}>반려</LoadingButton>
-                  </>
+                  <LoadingButton loading={false} disabled={actionLoading != null} onClick={(e) => { e.stopPropagation(); setActive(a); }} style={compactPrimaryBtn}>결재하기</LoadingButton>
                 )}
               </div>
               <div style={{ marginTop: 6 }}>
