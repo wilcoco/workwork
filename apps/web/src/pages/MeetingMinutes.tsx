@@ -234,6 +234,9 @@ export function MeetingMinutes() {
   const recorder = useAudioRecorder(active?.id || null);
   // 편집·녹음·AI·삭제는 작성자만 (임원/공유 대상은 열람 전용)
   const isOwner = !!active && active.createdBy?.id === userId;
+  // 모달 안 반응(로딩·성공/실패) — 에러 배너가 모달에 가려 안 보이던 문제 보완
+  const [actionBusy, setActionBusy] = useState<'save' | 'finalize' | 'delete' | null>(null);
+  const [modalNote, setModalNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   // ─── 공유 모달 ───
   const [shareFor, setShareFor] = useState<Meeting | null>(null);
@@ -320,6 +323,7 @@ export function MeetingMinutes() {
     try {
       const m = await apiJson<Meeting>(`/api/meeting-minutes/${id}?viewerId=${encodeURIComponent(userId)}`);
       setActive(m);
+      setModalNote(null); setActionBusy(null);
       setEditTranscript(m.transcript || '');
       setEditing(false);
       setActionAssignees({});
@@ -336,6 +340,7 @@ export function MeetingMinutes() {
 
   async function handleSave() {
     if (!active) return;
+    setActionBusy('save'); setModalNote(null);
     try {
       // Merge assignees into action items
       const updatedItems = active.actionItems
@@ -349,10 +354,10 @@ export function MeetingMinutes() {
         body: JSON.stringify({ actionItems: updatedItems, editedById: userId }),
       });
       setActive({ ...active, actionItems: updatedItems });
-      alert('저장되었습니다.');
+      setModalNote({ ok: true, text: '저장되었습니다.' });
     } catch (e: any) {
-      setError(e?.message || '저장 실패');
-    }
+      setModalNote({ ok: false, text: e?.message || '저장 실패' });
+    } finally { setActionBusy(null); }
   }
 
   async function createPlannerTasks() {
@@ -493,16 +498,18 @@ export function MeetingMinutes() {
 
   async function handleFinalize() {
     if (!active) return;
+    setActionBusy('finalize'); setModalNote(null);
     try {
       await apiJson(`/api/meeting-minutes/${active.id}`, {
         method: 'PUT',
         body: JSON.stringify({ status: 'finalized', editedById: userId }),
       });
       setActive({ ...active, status: 'finalized' });
+      setModalNote({ ok: true, text: '확정되었습니다.' });
       await load();
     } catch (e: any) {
-      setError(e?.message || '확정 실패');
-    }
+      setModalNote({ ok: false, text: e?.message || '확정 실패' });
+    } finally { setActionBusy(null); }
   }
 
   async function handleAddOneDriveFiles(files: { url: string; name: string }[]) {
@@ -537,13 +544,15 @@ export function MeetingMinutes() {
 
   async function handleDelete(id: string) {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
+    setActionBusy('delete'); setModalNote(null);
     try {
       await apiJson(`/api/meeting-minutes/${id}?actorId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
       setActive(null);
       await load();
     } catch (e: any) {
+      setModalNote({ ok: false, text: e?.message || '삭제 실패' });
       setError(e?.message || '삭제 실패');
-    }
+    } finally { setActionBusy(null); }
   }
 
   return (
@@ -942,12 +951,17 @@ export function MeetingMinutes() {
             </div>
 
             {/* Actions */}
+            {modalNote && (
+              <div style={{ marginBottom: 8, fontSize: 13, padding: '8px 12px', borderRadius: 8, background: modalNote.ok ? '#f0fdf4' : '#fef2f2', color: modalNote.ok ? '#166534' : '#b91c1c', border: `1px solid ${modalNote.ok ? '#bbf7d0' : '#fecaca'}` }}>
+                {modalNote.ok ? '✓ ' : '⚠ '}{modalNote.text}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              {isOwner && <button style={primaryBtn} onClick={handleSave}>저장</button>}
+              {isOwner && <button style={{ ...primaryBtn, opacity: actionBusy ? 0.6 : 1 }} disabled={!!actionBusy} onClick={handleSave}>{actionBusy === 'save' ? '저장 중…' : '저장'}</button>}
               {isOwner && active.summary && active.status !== 'finalized' && (
-                <button style={{ ...primaryBtn, background: '#059669' }} onClick={handleFinalize}>확정</button>
+                <button style={{ ...primaryBtn, background: '#059669', opacity: actionBusy ? 0.6 : 1 }} disabled={!!actionBusy} onClick={handleFinalize}>{actionBusy === 'finalize' ? '확정 중…' : '확정'}</button>
               )}
-              {isOwner && <button style={dangerBtn} onClick={() => handleDelete(active.id)}>삭제</button>}
+              {isOwner && <button style={{ ...dangerBtn, opacity: actionBusy ? 0.6 : 1 }} disabled={!!actionBusy} onClick={() => handleDelete(active.id)}>{actionBusy === 'delete' ? '삭제 중…' : '삭제'}</button>}
               <button style={ghostBtn} onClick={() => { if (!recorder.recording) setActive(null); }}>닫기</button>
             </div>
           </div>
