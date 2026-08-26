@@ -30,7 +30,8 @@ const ASSISTANT_INSTRUCTIONS_SUMMARY = `당신은 회사의 통계 및 경영 �
 - 한국어로 답변하세요.`;
 
 const ASSISTANT_INSTRUCTIONS_DEEP = `당신은 **㈜캠스(CAMS)** 의 품질·개발 부문을 지원하는 사내 전문 컨설턴트입니다.
-- 분석 대상 회사는 항상 캠스(CAMS)이며, 자료는 캠스 내부 SharePoint·업무일지에서 수집된 것입니다.
+- 분석 대상 회사는 항상 캠스(CAMS)이며, 자료는 캠스 내부 SharePoint·업무일지·결재 서류(근태·출장·배차·물류)에서 수집된 것입니다.
+- [결재 현황] 블록이 있으면 근태·출장·배차 등 실제 결재 데이터를 근거로 답하고, 집계 수치와 신청자·상태를 인용하세요.
 - [★AI 지식인증 업무일지] 표시가 있는 자료는 내부 심사를 통과한 검증된 지식입니다. 관련 질문에는 이를 최우선 근거로 인용하고, 인용 시 작성자를 함께 밝히십시오.
 - 따라서 보고서 제목·본문은 모두 **캠스(CAMS) 관점**에서 작성하십시오.
   예) "캠스 NQ6 프로젝트 품질 관리 시스템 분석", "캠스 RFQ 프로세스 개선 검토", "캠스 SP3 차종 FR UPR 부품 품질 이슈 분석"
@@ -1303,6 +1304,11 @@ export class CompanyDataController {
           debug.kbWorklogCount = kbLogs.length;
         }
       } catch { /* 내부 일지 검색 실패는 답변 흐름에 영향 없음 */ }
+      // 6.9 결재 서류(근태·출장·배차·물류) 요약을 컨텍스트에 추가 — 회사 전체 파악
+      try {
+        const approvalCtx = await this.buildApprovalContext(body.question);
+        if (approvalCtx) docContents.push(approvalCtx);
+      } catch { /* 결재 컨텍스트 실패는 답변 흐름에 영향 없음 */ }
       debug.extractedCount = docContents.length;
 
       // 7. If no content found, fallback to DB
@@ -1356,6 +1362,45 @@ export class CompanyDataController {
   }
 
   // Fallback: use DB content directly when no SharePoint content
+  // 결재 서류(근태·출장·배차·물류)를 회사 파악용 컨텍스트로 요약 — 임원 전용 화면이라 사유·신청자 포함 허용.
+  // 최근 90일 집계 + 질문 키워드로 매칭된 개별 건. 반환은 텍스트 블록(없으면 빈 문자열).
+  private async buildApprovalContext(question: string): Promise<string> {
+    try {
+      const p = this.prisma as any;
+      const since = new Date(Date.now() - 90 * 86400000);
+      const fmtD = (d: any) => (d ? new Date(new Date(d).getTime() + 9 * 3600000).toISOString().slice(5, 10).replace('-', '/') : '');
+      const stKo = (s: string) => (s === 'APPROVED' ? '승인' : s === 'REJECTED' ? '반려' : s === 'PENDING' ? '대기' : s);
+      const ATT_KO: Record<string, string> = { OT: 'OT', VACATION: '휴가', PARENTAL_LEAVE: '육아휴직', PUBLIC_DUTY: '공가', EARLY_LEAVE: '조퇴', FLEXIBLE: '유연근무', HOLIDAY_WORK: '휴일근무', HOLIDAY_REST: '대체휴무' };
+      const tokens = [...new Set(String(question).split(/[^가-힣a-zA-Z0-9]+/).filter((t) => t.length >= 2))].slice(0, 6);
+      const nameOr = tokens.map((t) => ({ requester: { name: { contains: t } } }));
+      const nameOrUser = tokens.map((t) => ({ user: { name: { contains: t } } }));
+      const textOr = (fields: string[]) => tokens.flatMap((t) => fields.map((f) => ({ [f]: { contains: t } })));
+
+      // ① 최근 90일 유형×상태 집계
+      const grp = await p.approvalRequest.groupBy({ by: ['subjectType', 'status'], where: { createdAt: { gte: since } }, _count: true }).catch(() => []);
+      const SUB_KO: Record<string, string> = { ATTENDANCE: '근태', BUSINESS_TRIP: '출장', CAR_DISPATCH: '배차', LOGISTICS_DISPATCH: '물류배차', WORKLOG: '일지결재', PROCESS: '프로세스' };
+      const aggMap = new Map<string, Record<string, number>>();
+      for (const g of grp) { const k = SUB_KO[g.subjectType] || g.subjectType; (aggMap.get(k) || aggMap.set(k, {}).get(k))![stKo(g.status)] = g._count; }
+      const aggLines = [...aggMap.entries()].map(([k, v]) => `${k}: ${Object.entries(v).map(([s, n]) => `${s} ${n}`).join(', ')}`);
+
+      // ② 질문 매칭 개별 건 (유형별 소량)
+      const [atts, trips, cars, logis] = await Promise.all([
+        p.attendanceRequest.findMany({ where: { OR: [...nameOrUser, ...textOr(['reason'])] }, orderBy: { date: 'desc' }, take: 8, select: { type: true, date: true, reason: true, status: true, user: { select: { name: true } } } }).catch(() => []),
+        p.businessTripRequest.findMany({ where: { OR: [...nameOr, ...textOr(['destination', 'purpose'])] }, orderBy: { departureAt: 'desc' }, take: 6, select: { destination: true, purpose: true, departureAt: true, status: true, requester: { select: { name: true } } } }).catch(() => []),
+        p.carDispatchRequest.findMany({ where: { OR: [...nameOr, ...textOr(['destination', 'purpose'])] }, orderBy: { startAt: 'desc' }, take: 6, select: { destination: true, purpose: true, startAt: true, status: true, requester: { select: { name: true } } } }).catch(() => []),
+        p.logisticsDispatchRequest.findMany({ where: { OR: [...nameOr, ...textOr(['loadingPlace', 'unloadingPlace'])] }, orderBy: { loadingAt: 'desc' }, take: 5, select: { loadingPlace: true, unloadingPlace: true, loadingAt: true, status: true, requester: { select: { name: true } } } }).catch(() => []),
+      ]);
+      const detail: string[] = [];
+      for (const a of atts) detail.push(`- [근태·${stKo(a.status)}] ${a.user?.name || ''} ${ATT_KO[a.type] || a.type} ${fmtD(a.date)}${a.reason ? ` (${a.reason})` : ''}`);
+      for (const t of trips) detail.push(`- [출장·${stKo(t.status)}] ${t.requester?.name || ''} ${fmtD(t.departureAt)} ${t.destination}${t.purpose ? ` — ${t.purpose}` : ''}`);
+      for (const c of cars) detail.push(`- [배차·${stKo(c.status)}] ${c.requester?.name || ''} ${fmtD(c.startAt)} ${c.destination}${c.purpose ? ` — ${c.purpose}` : ''}`);
+      for (const l of logis) detail.push(`- [물류·${stKo(l.status)}] ${l.requester?.name || ''} ${fmtD(l.loadingAt)} ${l.loadingPlace}→${l.unloadingPlace}`);
+
+      if (!aggLines.length && !detail.length) return '';
+      return `[결재 현황 — 최근 90일 집계]\n${aggLines.join('\n')}${detail.length ? `\n\n[질문 관련 결재 건]\n${detail.slice(0, 20).join('\n')}` : ''}`;
+    } catch { return ''; }
+  }
+
   private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' | 'claude-opus' = 'openai', systemPrompt: string = ASSISTANT_INSTRUCTIONS_DEEP, source?: string) {
     const dataSources = await this.prisma.companyData.findMany({
       where: { content: { not: null } },
@@ -1374,7 +1419,8 @@ export class CompanyDataController {
       used += body.length;
       parts.push(`[자료 ${i + 1}: ${d.title}]\n${body}`);
     }
-    const context = parts.join('\n\n---\n\n');
+    const approvalCtx = await this.buildApprovalContext(question); // 결재 서류(근태·출장·배차·물류) 요약
+    const context = [parts.join('\n\n---\n\n'), approvalCtx ? `\n\n---\n\n${approvalCtx}` : ''].join('');
 
     let userPrompt: string;
     let dataIds: string[];
