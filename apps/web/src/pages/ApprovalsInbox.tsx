@@ -6,6 +6,9 @@ import { ProcessDocument } from '../components/ProcessDocument';
 import { UserAvatar } from '../components/UserAvatar';
 import { ApprovalStepLadder, turnBadge, type ApprovalStep } from '../components/ApprovalSteps';
 
+const REQUEST_SUBJECTS = ['CAR_DISPATCH', 'LOGISTICS_DISPATCH', 'ATTENDANCE', 'BUSINESS_TRIP'];
+const compactRejectBtn: React.CSSProperties = { background: 'transparent', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 12px', fontSize: 12, fontWeight: 600, flexShrink: 0 };
+
 const PAGE_SIZE = 20;
 
 export function ApprovalsInbox() {
@@ -29,10 +32,37 @@ export function ApprovalsInbox() {
   const [memberNames, setMemberNames] = useState<string[]>([]); // 드롭다운용 구성원 이름 목록
   const loadSeq = useRef(0); // 최신 로드만 반영(오래된 응답 무시)
 
+  const [isSuper, setIsSuper] = useState(false);
   useEffect(() => {
     const uid = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
     if (uid) setUserId(uid);
+    if (uid) {
+      apiJson<any>(`/api/users/me?userId=${encodeURIComponent(uid)}`)
+        .then((me) => setIsSuper(String(me?.email || '').trim().toLowerCase() === 'json@cams2002.onmicrosoft.com'))
+        .catch(() => {});
+    }
   }, []);
+
+  // 슈퍼유저: 완료된 결재 강제 변경 / 삭제
+  async function superOverride(reqId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
+    const cmt = window.prompt(`강제 ${status === 'APPROVED' ? '승인' : status === 'REJECTED' ? '반려' : '대기 전환'} 사유 (선택)`) ?? undefined;
+    setActionLoading(reqId + ':super');
+    try {
+      await apiJson(`/api/approvals/${reqId}/super-override`, { method: 'POST', body: JSON.stringify({ actorId: userId, status, comment: cmt }) });
+      setActive(null); await load();
+    } catch (e: any) { window.alert(e?.message || '변경 실패'); }
+    finally { setActionLoading(null); }
+  }
+  async function superDelete(reqId: string) {
+    const revert = window.confirm('결재를 삭제합니다.\n확인=원문 신청을 "대기"로 되돌리고 삭제 / 취소를 누르면 삭제하지 않습니다.');
+    if (!revert) return;
+    setActionLoading(reqId + ':super');
+    try {
+      await apiJson(`/api/approvals/${reqId}/super?actorId=${encodeURIComponent(userId)}&revertSubject=1`, { method: 'DELETE' });
+      setActive(null); await load();
+    } catch (e: any) { window.alert(e?.message || '삭제 실패'); }
+    finally { setActionLoading(null); }
+  }
 
   // 구성원 이름 목록(드롭다운/자동완성용) 로드
   useEffect(() => {
@@ -379,9 +409,19 @@ export function ApprovalsInbox() {
                 {reqName && <span style={{ fontSize: 13, color: '#334155', fontWeight: 600, flexShrink: 0 }}>{reqName}</span>}
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{title}</span>
                 <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{when ? new Date(when).toLocaleDateString() : ''}</span>
-                {/* 목록 즉시 승인 제거(대표 지시) — 내용 확인을 거치도록 상세 모달을 열고 그 안에서 승인/반려 */}
+                {/* 신청류(근태·배차·출장·물류)는 제목에 내용이 다 보이므로 목록에서 바로 승인/반려.
+                    일반 결재(업무일지·프로세스)는 내용 확인이 필요하므로 상세 모달에서 처리 (대표 지시 2026-08-26) */}
                 {a.status === 'PENDING' && mine && (
-                  <LoadingButton loading={false} disabled={actionLoading != null} onClick={(e) => { e.stopPropagation(); setActive(a); }} style={compactPrimaryBtn}>결재하기</LoadingButton>
+                  REQUEST_SUBJECTS.includes(stNorm) ? (
+                    <>
+                      <LoadingButton loading={actionLoading === a.id + ':approve'} disabled={actionLoading != null}
+                        onClick={(e) => { e.stopPropagation(); void approve(a.id); }} style={compactPrimaryBtn}>승인</LoadingButton>
+                      <LoadingButton loading={actionLoading === a.id + ':reject'} disabled={actionLoading != null}
+                        onClick={(e) => { e.stopPropagation(); void reject(a.id); }} style={compactRejectBtn}>반려</LoadingButton>
+                    </>
+                  ) : (
+                    <LoadingButton loading={false} disabled={actionLoading != null} onClick={(e) => { e.stopPropagation(); setActive(a); }} style={compactPrimaryBtn}>결재하기</LoadingButton>
+                  )
                 )}
               </div>
               <div style={{ marginTop: 6 }}>
@@ -610,6 +650,17 @@ export function ApprovalsInbox() {
                       )}
                       <button onClick={() => { setComment(''); setActive(null); }} style={ghostBtn}>닫기</button>
                     </div>
+                    {isSuper && (
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed #e2e8f0' }}>
+                        <div style={{ fontSize: 11, color: '#92400e', fontWeight: 700, marginBottom: 6 }}>⚡ 슈퍼유저 — 완료된 결재도 강제 변경/삭제 (홍정수 전용)</div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as any }}>
+                          {n.status !== 'APPROVED' && <button disabled={actionLoading != null} onClick={() => void superOverride(active.id, 'APPROVED')} style={{ ...ghostBtn, color: '#16a34a', borderColor: '#86efac' }}>강제 승인</button>}
+                          {n.status !== 'REJECTED' && <button disabled={actionLoading != null} onClick={() => void superOverride(active.id, 'REJECTED')} style={{ ...ghostBtn, color: '#dc2626', borderColor: '#fca5a5' }}>강제 반려</button>}
+                          {n.status !== 'PENDING' && <button disabled={actionLoading != null} onClick={() => void superOverride(active.id, 'PENDING')} style={ghostBtn}>대기로 되돌리기</button>}
+                          <button disabled={actionLoading != null} onClick={() => void superDelete(active.id)} style={{ ...ghostBtn, color: '#dc2626', borderColor: '#dc2626' }}>결재 삭제</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

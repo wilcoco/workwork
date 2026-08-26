@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
 import { IsArray, IsDateString, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PrismaService } from './prisma.service';
@@ -790,5 +790,57 @@ export class ApprovalsController {
     }
 
     return { fixed, total: approvals.length };
+  }
+
+  /** 슈퍼유저(홍정수) 판정 — 완료된 결재도 강제 수정/삭제 가능 */
+  private async assertSuper(actorId?: string) {
+    const id = String(actorId || '').trim();
+    if (!id) throw new BadRequestException('actorId required');
+    const u = await this.prisma.user.findUnique({ where: { id }, select: { email: true } });
+    if (String(u?.email || '').trim().toLowerCase() !== 'json@cams2002.onmicrosoft.com') {
+      throw new ForbiddenException('슈퍼유저만 사용할 수 있습니다');
+    }
+  }
+
+  /** subject 상태 동기화 헬퍼 (결재 상태 → 원문 상태) */
+  private async syncSubjectStatus(tx: any, subjectType: string, subjectId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
+    const map: Record<string, string> = { ATTENDANCE: 'attendanceRequest', CAR_DISPATCH: 'carDispatchRequest', LOGISTICS_DISPATCH: 'logisticsDispatchRequest', BUSINESS_TRIP: 'businessTripRequest' };
+    const model = map[String(subjectType || '').toUpperCase()];
+    if (model) await tx[model].update({ where: { id: subjectId }, data: { status: status as any } }).catch(() => {});
+  }
+
+  /** 슈퍼유저: 완료된 결재의 상태를 강제 변경 (승인↔반려↔대기) */
+  @Post(':id/super-override')
+  async superOverride(@Param('id') id: string, @Body() body: { actorId?: string; status?: string; comment?: string }) {
+    await this.assertSuper(body?.actorId);
+    const status = String(body?.status || '').toUpperCase();
+    if (!['APPROVED', 'REJECTED', 'PENDING'].includes(status)) throw new BadRequestException('status must be APPROVED/REJECTED/PENDING');
+    const req = await this.prisma.approvalRequest.findUnique({ where: { id }, include: { steps: true } });
+    if (!req) throw new BadRequestException('request not found');
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await (tx as any).approvalRequest.update({ where: { id }, data: { status } });
+      // 다단계면 모든 스텝을 목표 상태로 맞춤 (PENDING은 스텝 초기화)
+      if (req.steps?.length) {
+        await (tx as any).approvalStep.updateMany({ where: { requestId: id }, data: { status: status === 'PENDING' ? 'PENDING' : status, comment: body?.comment || '슈퍼유저 강제 변경', actedAt: status === 'PENDING' ? null : new Date() } });
+      }
+      await this.syncSubjectStatus(tx, updated.subjectType, updated.subjectId, status as any);
+      await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalSuperOverride', userId: body!.actorId, attrs: { requestId: id, status, comment: body?.comment } } }).catch(() => {});
+      return updated;
+    });
+  }
+
+  /** 슈퍼유저: 결재 삭제 (스텝 포함). revertSubject=true면 원문도 대기(PENDING)로 되돌림 */
+  @Delete(':id/super')
+  async superDelete(@Param('id') id: string, @Query('actorId') actorId?: string, @Query('revertSubject') revertSubject?: string) {
+    await this.assertSuper(actorId);
+    const req = await this.prisma.approvalRequest.findUnique({ where: { id } });
+    if (!req) throw new BadRequestException('request not found');
+    await this.prisma.$transaction(async (tx) => {
+      if (String(revertSubject || '') === '1') await this.syncSubjectStatus(tx, req.subjectType, req.subjectId, 'PENDING');
+      await (tx as any).approvalStep.deleteMany({ where: { requestId: id } });
+      await (tx as any).approvalRequest.delete({ where: { id } });
+      await (tx as any).event.create({ data: { subjectType: req.subjectType, subjectId: req.subjectId, activity: 'ApprovalSuperDeleted', userId: actorId, attrs: { requestId: id } } }).catch(() => {});
+    });
+    return { ok: true };
   }
 }
