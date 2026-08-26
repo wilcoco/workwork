@@ -40,8 +40,14 @@ export class MeetingMinutesController {
     return false; // PRIVATE
   }
 
+  // 임원 이상(EXEC/CEO/EXTERNAL)은 공개 범위·지정과 무관하게 모든 회의록 열람 (대표 정책)
+  private isExecPlus(role?: string | null): boolean {
+    return ['EXEC', 'CEO', 'EXTERNAL'].includes(String(role || '').toUpperCase());
+  }
+
   private canView(m: any, viewer: { id?: string | null; role?: string | null } | null): boolean {
     if (!m) return false;
+    if (this.isExecPlus(viewer?.role)) return true; // 임원 이상 전체 열람
     if (viewer?.id && m.createdById === viewer.id) return true; // 작성자
     const shared: string[] = Array.isArray(m.sharedUserIds) ? m.sharedUserIds : [];
     const parts: string[] = Array.isArray(m.participantUserIds) ? m.participantUserIds : [];
@@ -57,17 +63,20 @@ export class MeetingMinutesController {
     if (q.viewerId) {
       const viewer = await (this.prisma as any).user.findUnique({ where: { id: q.viewerId }, select: { id: true, role: true } });
       const r = String(viewer?.role || '').toUpperCase();
+      const execPlus = this.isExecPlus(r); // 임원 이상은 전체
       const visOr: string[] = ['ORG'];
       if (['MANAGER', 'EXEC', 'CEO', 'EXTERNAL'].includes(r)) visOr.push('MANAGER_PLUS');
-      if (['EXEC', 'CEO', 'EXTERNAL'].includes(r)) visOr.push('EXEC_PLUS');
-      const where: any = {
-        OR: [
-          { createdById: q.viewerId },
-          { sharedUserIds: { array_contains: q.viewerId } },
-          { participantUserIds: { array_contains: q.viewerId } },
-          { visibility: { in: visOr } },
-        ],
-      };
+      if (execPlus) visOr.push('EXEC_PLUS');
+      const where: any = execPlus
+        ? {}
+        : {
+            OR: [
+              { createdById: q.viewerId },
+              { sharedUserIds: { array_contains: q.viewerId } },
+              { participantUserIds: { array_contains: q.viewerId } },
+              { visibility: { in: visOr } },
+            ],
+          };
       if (q.status) where.status = q.status;
       const items = await this.prisma.meetingMinutes.findMany({
         where, orderBy: { date: 'desc' }, take: Number(q.limit) || 100,

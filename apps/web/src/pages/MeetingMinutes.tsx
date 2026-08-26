@@ -974,7 +974,7 @@ export function MeetingMinutes() {
                   </button>
                 ))}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>범위에 해당하는 구성원은 자동으로 이 회의록을 볼 수 있습니다.</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>범위에 해당하는 구성원은 자동으로 이 회의록을 볼 수 있습니다. <b style={{ color: '#64748b' }}>임원 이상은 공개 범위와 무관하게 모든 회의록을 열람할 수 있습니다.</b></div>
             </div>
 
             {/* ②③ 지정/참석자 공유 — 구성원 선택 */}
