@@ -31,10 +31,50 @@ class UpdateMeetingDto {
 export class MeetingMinutesController {
   constructor(private prisma: PrismaService) {}
 
+  // 공개 범위(visibility)와 역할로 열람 판정 — 업무일지 규칙과 동일 계층(팀장이상/임원이상/전사)
+  private roleAllows(vis: string, role?: string | null): boolean {
+    const r = String(role || '').toUpperCase();
+    if (vis === 'ORG') return true; // 로그인 구성원 전체
+    if (vis === 'MANAGER_PLUS') return ['MANAGER', 'EXEC', 'CEO', 'EXTERNAL'].includes(r);
+    if (vis === 'EXEC_PLUS') return ['EXEC', 'CEO', 'EXTERNAL'].includes(r);
+    return false; // PRIVATE
+  }
+
+  private canView(m: any, viewer: { id?: string | null; role?: string | null } | null): boolean {
+    if (!m) return false;
+    if (viewer?.id && m.createdById === viewer.id) return true; // 작성자
+    const shared: string[] = Array.isArray(m.sharedUserIds) ? m.sharedUserIds : [];
+    const parts: string[] = Array.isArray(m.participantUserIds) ? m.participantUserIds : [];
+    if (viewer?.id && (shared.includes(viewer.id) || parts.includes(viewer.id))) return true; // 지정/참석자 공유
+    return this.roleAllows(String(m.visibility || 'PRIVATE'), viewer?.role);
+  }
+
   // ─── CRUD ──────────────────────────────────────────────────
 
   @Get()
-  async list(@Query() q: { createdById?: string; status?: string; limit?: string }) {
+  async list(@Query() q: { createdById?: string; viewerId?: string; status?: string; limit?: string }) {
+    // viewerId가 있으면 '내가 볼 수 있는 회의록' 전체(내가 만든 것 + 지정/참석자 공유 + 공개범위 허용)를 반환
+    if (q.viewerId) {
+      const viewer = await (this.prisma as any).user.findUnique({ where: { id: q.viewerId }, select: { id: true, role: true } });
+      const r = String(viewer?.role || '').toUpperCase();
+      const visOr: string[] = ['ORG'];
+      if (['MANAGER', 'EXEC', 'CEO', 'EXTERNAL'].includes(r)) visOr.push('MANAGER_PLUS');
+      if (['EXEC', 'CEO', 'EXTERNAL'].includes(r)) visOr.push('EXEC_PLUS');
+      const where: any = {
+        OR: [
+          { createdById: q.viewerId },
+          { sharedUserIds: { array_contains: q.viewerId } },
+          { participantUserIds: { array_contains: q.viewerId } },
+          { visibility: { in: visOr } },
+        ],
+      };
+      if (q.status) where.status = q.status;
+      const items = await this.prisma.meetingMinutes.findMany({
+        where, orderBy: { date: 'desc' }, take: Number(q.limit) || 100,
+        include: { createdBy: { select: { id: true, name: true } } },
+      });
+      return { items: items.map((m: any) => ({ ...m, mine: m.createdById === q.viewerId })) };
+    }
     const where: any = {};
     if (q.createdById) where.createdById = q.createdById;
     if (q.status) where.status = q.status;
@@ -47,14 +87,49 @@ export class MeetingMinutesController {
     return { items };
   }
 
+  @Get('by-token/:token')
+  async getByToken(@Param('token') token: string) {
+    if (!token || token.length < 8) throw new BadRequestException('invalid token');
+    const m = await (this.prisma as any).meetingMinutes.findUnique({
+      where: { shareToken: token },
+      include: { createdBy: { select: { id: true, name: true } } },
+    });
+    if (!m) throw new BadRequestException('Meeting not found');
+    return m; // 링크 소지자 열람 (읽기 전용은 프론트에서 처리)
+  }
+
   @Get(':id')
-  async get(@Param('id') id: string) {
-    const m = await this.prisma.meetingMinutes.findUnique({
+  async get(@Param('id') id: string, @Query('viewerId') viewerId?: string) {
+    const m = await (this.prisma as any).meetingMinutes.findUnique({
       where: { id },
       include: { createdBy: { select: { id: true, name: true } } },
     });
     if (!m) throw new BadRequestException('Meeting not found');
+    const viewer = viewerId ? await (this.prisma as any).user.findUnique({ where: { id: viewerId }, select: { id: true, role: true } }) : null;
+    if (!this.canView(m, viewer)) throw new BadRequestException('열람 권한이 없습니다');
     return m;
+  }
+
+  // 공유 설정 — 작성자만. visibility/지정공유/참석자 구성원/링크토큰 발급
+  @Post(':id/share')
+  async share(@Param('id') id: string, @Body() dto: { actorId?: string; visibility?: string; sharedUserIds?: string[]; participantUserIds?: string[]; enableLink?: boolean }) {
+    const m = await (this.prisma as any).meetingMinutes.findUnique({ where: { id }, select: { createdById: true, shareToken: true } });
+    if (!m) throw new BadRequestException('Meeting not found');
+    if (!dto?.actorId || dto.actorId !== m.createdById) throw new BadRequestException('작성자만 공유를 설정할 수 있습니다');
+    const data: any = {};
+    if (dto.visibility !== undefined) {
+      const v = String(dto.visibility).toUpperCase();
+      if (!['PRIVATE', 'MANAGER_PLUS', 'EXEC_PLUS', 'ORG'].includes(v)) throw new BadRequestException('visibility 값 오류');
+      data.visibility = v;
+    }
+    if (dto.sharedUserIds !== undefined) data.sharedUserIds = Array.from(new Set((dto.sharedUserIds || []).filter(Boolean))).slice(0, 200);
+    if (dto.participantUserIds !== undefined) data.participantUserIds = Array.from(new Set((dto.participantUserIds || []).filter(Boolean))).slice(0, 200);
+    if (dto.enableLink === true && !m.shareToken) {
+      data.shareToken = `mtg_${id.slice(0, 6)}${Math.abs(Array.from(id).reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7)).toString(36)}${Date.now().toString(36)}`;
+    }
+    if (dto.enableLink === false) data.shareToken = null;
+    const updated = await (this.prisma as any).meetingMinutes.update({ where: { id }, data });
+    return { ok: true, visibility: updated.visibility, sharedUserIds: updated.sharedUserIds || [], participantUserIds: updated.participantUserIds || [], shareToken: updated.shareToken || null };
   }
 
   @Post()

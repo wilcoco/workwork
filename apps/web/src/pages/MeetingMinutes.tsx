@@ -19,7 +19,15 @@ interface Meeting {
   attachments: any[] | null;
   createdBy: { id: string; name: string };
   createdAt: string;
+  visibility?: string;
+  sharedUserIds?: string[] | null;
+  participantUserIds?: string[] | null;
+  shareToken?: string | null;
+  mine?: boolean;
 }
+
+type Member = { id: string; name: string; role?: string; orgName?: string };
+const VIS_LABEL: Record<string, string> = { PRIVATE: '나만 보기', MANAGER_PLUS: '팀장 이상', EXEC_PLUS: '임원 이상', ORG: '전사 공개' };
 
 // ─── Styles ──────────────────────────────────────────────────
 const card: CSSProperties = { border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, cursor: 'pointer', transition: 'box-shadow .15s', background: '#fff' };
@@ -225,12 +233,57 @@ export function MeetingMinutes() {
 
   const recorder = useAudioRecorder(active?.id || null);
 
+  // ─── 공유 모달 ───
+  const [shareFor, setShareFor] = useState<Meeting | null>(null);
+  const [shareVis, setShareVis] = useState('PRIVATE');
+  const [shareUserIds, setShareUserIds] = useState<string[]>([]);
+  const [sharePartIds, setSharePartIds] = useState<string[]>([]);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareSaving, setShareSaving] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [memberQ, setMemberQ] = useState('');
+  useEffect(() => { apiJson<{ items: Member[] }>('/api/users').then((r) => setMembers(r.items || [])).catch(() => {}); }, []);
+
+  function openShare(m: Meeting) {
+    setShareFor(m);
+    setShareVis(m.visibility || 'PRIVATE');
+    setShareUserIds(Array.isArray(m.sharedUserIds) ? m.sharedUserIds : []);
+    setSharePartIds(Array.isArray(m.participantUserIds) ? m.participantUserIds : []);
+    setShareToken(m.shareToken || null);
+    setMemberQ('');
+  }
+  async function saveShare(enableLink?: boolean) {
+    if (!shareFor) return;
+    setShareSaving(true);
+    try {
+      const r = await apiJson<{ visibility: string; sharedUserIds: string[]; participantUserIds: string[]; shareToken: string | null }>(
+        `/api/meeting-minutes/${shareFor.id}/share`,
+        { method: 'POST', body: JSON.stringify({ actorId: userId, visibility: shareVis, sharedUserIds: shareUserIds, participantUserIds: sharePartIds, ...(enableLink !== undefined ? { enableLink } : {}) }) });
+      setShareToken(r.shareToken);
+      setShareFor((prev) => prev ? { ...prev, visibility: r.visibility, sharedUserIds: r.sharedUserIds, participantUserIds: r.participantUserIds, shareToken: r.shareToken } : prev);
+      if (active && shareFor && active.id === shareFor.id) setActive({ ...active, visibility: r.visibility, sharedUserIds: r.sharedUserIds, participantUserIds: r.participantUserIds, shareToken: r.shareToken });
+      if (enableLink === undefined) { setShareFor(null); await load(); }
+    } catch (e: any) { setError(e?.message || '공유 설정 실패'); }
+    finally { setShareSaving(false); }
+  }
+
   useEffect(() => { if (userId) load(); }, [userId]);
+
+  // 링크 열람: /meetings?share=토큰 → 해당 회의록을 바로 연다
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('share');
+    if (!token) return;
+    apiJson<Meeting>(`/api/meeting-minutes/by-token/${encodeURIComponent(token)}`)
+      .then((m) => { setActive(m); setEditTranscript(m.transcript || ''); setEditing(false); })
+      .catch((e) => setError(e?.message || '링크로 회의록을 열 수 없습니다'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function load() {
     setLoading(true);
     try {
-      const res = await apiJson<{ items: Meeting[] }>(`/api/meeting-minutes?createdById=${userId}`);
+      // viewerId 기준 = 내가 만든 것 + 공유받은 것 + 공개범위 허용
+      const res = await apiJson<{ items: Meeting[] }>(`/api/meeting-minutes?viewerId=${encodeURIComponent(userId)}`);
       setMeetings(res.items || []);
     } catch (e: any) {
       setError(e?.message || '로드 실패');
@@ -263,7 +316,7 @@ export function MeetingMinutes() {
 
   async function openDetail(id: string) {
     try {
-      const m = await apiJson<Meeting>(`/api/meeting-minutes/${id}`);
+      const m = await apiJson<Meeting>(`/api/meeting-minutes/${id}?viewerId=${encodeURIComponent(userId)}`);
       setActive(m);
       setEditTranscript(m.transcript || '');
       setEditing(false);
@@ -548,6 +601,8 @@ export function MeetingMinutes() {
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b style={{ flex: 1, fontSize: 15 }}>{m.title}</b>
+                {m.createdBy?.id !== userId && <span style={{ fontSize: 11, color: '#6d28d9', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '1px 7px' }}>공유받음 · {m.createdBy?.name}</span>}
+                {m.createdBy?.id === userId && m.visibility && m.visibility !== 'PRIVATE' && <span style={{ fontSize: 11, color: '#0369a1', background: '#e0f2fe', borderRadius: 8, padding: '1px 7px' }}>{VIS_LABEL[m.visibility]}</span>}
                 <span style={statusColors[m.status] || statusColors.draft}>{statusLabel[m.status] || m.status}</span>
                 <span style={{ fontSize: 12, color: '#64748b' }}>{new Date(m.date).toLocaleDateString('ko-KR')}</span>
               </div>
@@ -568,6 +623,11 @@ export function MeetingMinutes() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
               <h2 style={{ margin: 0, flex: 1, fontSize: 18 }}>{active.title}</h2>
               <span style={statusColors[active.status] || statusColors.draft}>{statusLabel[active.status] || active.status}</span>
+              {active.createdBy?.id === userId ? (
+                <button onClick={() => openShare(active)} style={{ ...ghostBtn, padding: '8px 14px' }} title="다른 사람과 공유">🔗 공유</button>
+              ) : (
+                <span style={{ fontSize: 12, color: '#64748b', background: '#f1f5f9', borderRadius: 8, padding: '4px 10px' }}>{active.createdBy?.name} 님이 공유</span>
+              )}
               <button
                 onClick={() => { if (!recorder.recording) setActive(null); }}
                 style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 36, height: 36, cursor: 'pointer', fontSize: 18, fontWeight: 700, color: '#475569', display: 'grid', placeItems: 'center', flexShrink: 0 }}
@@ -892,6 +952,88 @@ export function MeetingMinutes() {
           }}
           onClose={() => setShowFilePicker(false)}
         />
+      )}
+
+      {/* 공유 설정 모달 — 4가지 방식 모두 */}
+      {shareFor && (
+        <div style={modalOverlay} onClick={() => setShareFor(null)}>
+          <div style={{ ...modalBody, maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <h2 style={{ margin: 0, flex: 1, fontSize: 17 }}>🔗 회의록 공유 — {shareFor.title}</h2>
+              <button onClick={() => setShareFor(null)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontWeight: 700, color: '#475569' }}>✕</button>
+            </div>
+
+            {/* ① 공개 범위 */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>공개 범위</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {(['PRIVATE', 'MANAGER_PLUS', 'EXEC_PLUS', 'ORG'] as const).map((v) => (
+                  <button key={v} onClick={() => setShareVis(v)}
+                    style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${shareVis === v ? '#0F3D73' : '#cbd5e1'}`, background: shareVis === v ? '#0F3D73' : '#fff', color: shareVis === v ? '#fff' : '#334155', cursor: 'pointer', fontSize: 13 }}>
+                    {VIS_LABEL[v]}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>범위에 해당하는 구성원은 자동으로 이 회의록을 볼 수 있습니다.</div>
+            </div>
+
+            {/* ②③ 지정/참석자 공유 — 구성원 선택 */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>구성원 지정 공유 · 참석자</div>
+              <input value={memberQ} onChange={(e) => setMemberQ(e.target.value)} placeholder="이름·팀으로 검색해 추가" style={{ ...input, marginBottom: 8 }} />
+              {memberQ.trim() && (
+                <div style={{ maxHeight: 160, overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 8 }}>
+                  {members.filter((m) => m.id !== userId && (m.name.includes(memberQ.trim()) || (m.orgName || '').includes(memberQ.trim()))).slice(0, 12).map((m) => {
+                    const isShare = shareUserIds.includes(m.id); const isPart = sharePartIds.includes(m.id);
+                    return (
+                      <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                        <span style={{ flex: 1 }}>{m.name} <span style={{ color: '#94a3b8', fontSize: 11 }}>{m.orgName}</span></span>
+                        <button onClick={() => setSharePartIds((p) => isPart ? p.filter((x) => x !== m.id) : [...p, m.id])}
+                          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: '1px solid #ddd6fe', background: isPart ? '#ede9fe' : '#fff', color: '#6d28d9', cursor: 'pointer' }}>참석자</button>
+                        <button onClick={() => setShareUserIds((p) => isShare ? p.filter((x) => x !== m.id) : [...p, m.id])}
+                          style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, border: '1px solid #bfdbfe', background: isShare ? '#dbeafe' : '#fff', color: '#1d4ed8', cursor: 'pointer' }}>{isShare ? '공유중' : '공유'}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {(shareUserIds.length > 0 || sharePartIds.length > 0) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {[...new Set([...sharePartIds, ...shareUserIds])].map((id) => {
+                    const m = members.find((x) => x.id === id); const asPart = sharePartIds.includes(id);
+                    return (
+                      <span key={id} style={{ fontSize: 12, background: asPart ? '#ede9fe' : '#dbeafe', color: asPart ? '#6d28d9' : '#1d4ed8', borderRadius: 14, padding: '2px 8px', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                        {asPart ? '👤' : '🔗'}{m?.name || id}
+                        <button onClick={() => { setShareUserIds((p) => p.filter((x) => x !== id)); setSharePartIds((p) => p.filter((x) => x !== id)); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'inherit' }}>✕</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>👤 참석자 · 🔗 지정 공유 — 지정된 사람은 자기 회의록 목록에서 바로 봅니다.</div>
+            </div>
+
+            {/* ④ 링크 열람 */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155', marginBottom: 6 }}>링크로 열람</div>
+              {shareToken ? (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input readOnly value={`${window.location.origin}/meetings?share=${shareToken}`} style={{ ...input, flex: 1, fontSize: 12, background: '#f8fafc' }} onFocus={(e) => e.currentTarget.select()} />
+                  <button onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/meetings?share=${shareToken}`); }} style={{ ...ghostBtn }}>복사</button>
+                  <button onClick={() => void saveShare(false)} disabled={shareSaving} style={{ ...ghostBtn, color: '#dc2626', borderColor: '#fecaca' }}>링크 해제</button>
+                </div>
+              ) : (
+                <button onClick={() => void saveShare(true)} disabled={shareSaving} style={ghostBtn}>🔗 열람 링크 만들기</button>
+              )}
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>로그인한 구성원이 이 링크로 회의록을 열 수 있습니다(읽기 전용).</div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: 12 }}>
+              <button onClick={() => setShareFor(null)} style={ghostBtn}>취소</button>
+              <button onClick={() => void saveShare()} disabled={shareSaving} style={primaryBtn}>{shareSaving ? '저장 중…' : '공유 저장'}</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Pulse animation for recording indicator */}

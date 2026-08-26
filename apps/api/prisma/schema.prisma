@@ -1265,6 +1265,11 @@ model MeetingMinutes {
   createdById   String
   createdBy     User                 @relation("MeetingMinutesCreatedBy", fields: [createdById], references: [id])
   summaryEdits  MeetingSummaryEdit[]
+  // 공유: visibility=PRIVATE(나만)/MANAGER_PLUS(팀장이상)/EXEC_PLUS(임원이상)/ORG(전사) · 지정공유 · 참석자 자동공유 · 링크토큰
+  visibility         String  @default("PRIVATE")
+  sharedUserIds      Json? // 지정 공유 대상 userId 배열
+  participantUserIds Json? // 참석자를 실제 구성원으로 선택 시 userId 배열 (자동 공유)
+  shareToken         String? @unique // 링크 열람 토큰
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
