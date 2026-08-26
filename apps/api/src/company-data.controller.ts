@@ -16,6 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
+import { ActivitiesController } from './activities.controller';
 import * as XLSX from 'xlsx';
 import * as mammoth from 'mammoth';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -32,6 +33,8 @@ const ASSISTANT_INSTRUCTIONS_SUMMARY = `당신은 회사의 통계 및 경영 �
 const ASSISTANT_INSTRUCTIONS_DEEP = `당신은 **㈜캠스(CAMS)** 의 품질·개발 부문을 지원하는 사내 전문 컨설턴트입니다.
 - 분석 대상 회사는 항상 캠스(CAMS)이며, 자료는 캠스 내부 SharePoint·업무일지·결재 서류(근태·출장·배차·물류)에서 수집된 것입니다.
 - [결재 현황] 블록이 있으면 근태·출장·배차 등 실제 결재 데이터를 근거로 답하고, 집계 수치와 신청자·상태를 인용하세요.
+- [확정 집계] 블록과 표(CSV/엑셀) 자료의 수치는 DB·원본에서 나온 정확한 실제 값이다. 이 수치는 그대로 인용하고, 계산이 필요하면 이 값들만 사용하며, 추정·반올림·창작을 하지 마라. 표에 없는 값은 '자료에 없음'이라고 답하라.
+- [온톨로지 실행 현황]은 이번 달 활동·KPI·팀 투입시간 요약이다. 실행/성과 질문에 함께 활용하라.
 - [★AI 지식인증 업무일지] 표시가 있는 자료는 내부 심사를 통과한 검증된 지식입니다. 관련 질문에는 이를 최우선 근거로 인용하고, 인용 시 작성자를 함께 밝히십시오.
 - 따라서 보고서 제목·본문은 모두 **캠스(CAMS) 관점**에서 작성하십시오.
   예) "캠스 NQ6 프로젝트 품질 관리 시스템 분석", "캠스 RFQ 프로세스 개선 검토", "캠스 SP3 차종 FR UPR 부품 품질 이슈 분석"
@@ -1304,11 +1307,15 @@ export class CompanyDataController {
           debug.kbWorklogCount = kbLogs.length;
         }
       } catch { /* 내부 일지 검색 실패는 답변 흐름에 영향 없음 */ }
-      // 6.9 결재 서류(근태·출장·배차·물류) 요약을 컨텍스트에 추가 — 회사 전체 파악
+      // 6.9 결재·확정집계·온톨로지 요약을 컨텍스트에 추가 — 회사 전체 파악(두 AI 통합)
       try {
-        const approvalCtx = await this.buildApprovalContext(body.question);
-        if (approvalCtx) docContents.push(approvalCtx);
-      } catch { /* 결재 컨텍스트 실패는 답변 흐름에 영향 없음 */ }
+        const [approvalCtx, statsCtx, ontoCtx] = await Promise.all([
+          this.buildApprovalContext(body.question),
+          this.buildDeterministicStats(body.question),
+          this.buildOntologySummary(),
+        ]);
+        for (const c of [statsCtx, ontoCtx, approvalCtx]) if (c) docContents.push(c);
+      } catch { /* 부가 컨텍스트 실패는 답변 흐름에 영향 없음 */ }
       debug.extractedCount = docContents.length;
 
       // 7. If no content found, fallback to DB
@@ -1401,6 +1408,70 @@ export class CompanyDataController {
     } catch { return ''; }
   }
 
+  // 확정 집계: DB에서 직접 계산한 정확한 수치(추정 아님). 랭킹·건수 질문의 정답 근거.
+  private async buildDeterministicStats(question: string): Promise<string> {
+    try {
+      const p = this.prisma as any;
+      const q = String(question);
+      const wantsRank = /많이|최다|가장|1위|랭킹|순위|top|누가|제일/i.test(q);
+      const since = new Date(Date.now() - 90 * 86400000);
+      const lines: string[] = [];
+
+      // 근태·출장·배차 신청자별 건수(최근 90일) — 랭킹/집계 질문이면 정확 수치 제공
+      if (wantsRank || /출장|배차|근태|신청|건수|몇 ?건|현황/i.test(q)) {
+        const rankOf = async (model: string, idField: string, label: string) => {
+          const rows = await p[model].groupBy({ by: [idField], where: { createdAt: { gte: since } }, _count: true }).catch(() => []);
+          if (!rows.length) return;
+          const top = rows.sort((a: any, b: any) => b._count - a._count).slice(0, 8);
+          const ids = top.map((r: any) => r[idField]);
+          const users = await p.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+          const nm = new Map(users.map((u: any) => [u.id, u.name]));
+          const total = rows.reduce((s: number, r: any) => s + r._count, 0);
+          lines.push(`${label}(최근90일, 총 ${total}건) 신청자별: ${top.map((r: any) => `${nm.get(r[idField]) || '?'} ${r._count}`).join(', ')}`);
+        };
+        await rankOf('businessTripRequest', 'requesterId', '출장');
+        await rankOf('carDispatchRequest', 'requesterId', '배차');
+        await rankOf('attendanceRequest', 'userId', '근태');
+      }
+
+      // KPI 스냅샷 — 목표/달성/실적/KPI 관련 질문
+      if (/kpi|목표|달성|실적|성과/i.test(q)) {
+        const [krCount, teamObjs] = await Promise.all([
+          p.keyResult.count({ where: { objective: { pillar: { not: null } } } }).catch(() => 0),
+          p.objective.count({ where: { pillar: { not: null } } }).catch(() => 0),
+        ]);
+        lines.push(`팀 KPI 지표 총 ${krCount}개 · 정량 목표 ${teamObjs}개 (상세·달성률은 KPI 리포트 화면 기준)`);
+      }
+
+      // 업무일지·지식 규모
+      if (/일지|지식|활동|업무/i.test(q)) {
+        const [wl, kb] = await Promise.all([
+          p.worklog.count().catch(() => 0),
+          p.worklog.count({ where: { kbBadge: true } }).catch(() => 0),
+        ]);
+        lines.push(`업무일지 누적 ${wl}건 · AI 지식인증 ${kb}건`);
+      }
+
+      return lines.length ? `[확정 집계 — DB 직접 계산, 정확 수치]\n${lines.join('\n')}` : '';
+    } catch { return ''; }
+  }
+
+  // 온톨로지 요약(이번 달 실행: 활동·KPI·팀 시간) — 데이터 AI를 회사 전체 파악 브레인으로 통합
+  private async buildOntologySummary(): Promise<string> {
+    try {
+      const month = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+      const actCtl: any = new ActivitiesController(this.prisma as any);
+      const pulse: any = await actCtl.computeMonthContribution(month);
+      const h = (min: number) => Math.round((min || 0) / 60);
+      const lines = [
+        `[${month} 실행 요약] 총 ${h(pulse.align?.totalMinutes)}h, 목표 정렬 ${pulse.align?.pct ?? '?'}% (KPI ${pulse.coverage?.totalGoals}개 중 증거 ${pulse.coverage?.withEvidence})`,
+        `팀별 시간: ${(pulse.teams || []).slice(0, 12).map((t: any) => `${t.name} ${h(t.totalMin)}h`).join(', ')}`,
+        `KPI 상위(시간순): ${(pulse.goals || []).slice(0, 8).map((g: any) => `${g.title}[${g.teamName}] ${h(g.minutes)}h·일지${g.logs}${g.ach != null ? `·달성${g.ach}%` : ''}`).join(' / ')}`,
+      ];
+      return `[온톨로지 실행 현황]\n${lines.join('\n')}`;
+    } catch { return ''; }
+  }
+
   private async askFallback(question: string, userId: string, provider: 'openai' | 'claude' | 'claude-opus' = 'openai', systemPrompt: string = ASSISTANT_INSTRUCTIONS_DEEP, source?: string) {
     const dataSources = await this.prisma.companyData.findMany({
       where: { content: { not: null } },
@@ -1419,8 +1490,14 @@ export class CompanyDataController {
       used += body.length;
       parts.push(`[자료 ${i + 1}: ${d.title}]\n${body}`);
     }
-    const approvalCtx = await this.buildApprovalContext(question); // 결재 서류(근태·출장·배차·물류) 요약
-    const context = [parts.join('\n\n---\n\n'), approvalCtx ? `\n\n---\n\n${approvalCtx}` : ''].join('');
+    // 회사 전체 파악: 파일 + 결재 + 확정 집계 + 온톨로지 실행 현황을 한 컨텍스트로 (두 AI 통합)
+    const [approvalCtx, statsCtx, ontoCtx] = await Promise.all([
+      this.buildApprovalContext(question),
+      this.buildDeterministicStats(question),
+      this.buildOntologySummary(),
+    ]);
+    const extra = [statsCtx, ontoCtx, approvalCtx].filter(Boolean).join('\n\n---\n\n');
+    const context = [parts.join('\n\n---\n\n'), extra ? `\n\n---\n\n${extra}` : ''].join('');
 
     let userPrompt: string;
     let dataIds: string[];

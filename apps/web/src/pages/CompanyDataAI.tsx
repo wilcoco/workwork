@@ -248,13 +248,9 @@ export function CompanyDataAI() {
         <div>
           {/* Status indicator */}
           <div style={{ marginBottom: 12, padding: 10, background: '#f8fafc', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 13, color: '#64748b' }}>
-            {oaiCount > 0 ? (
-              <span style={{ color: '#16a34a' }}>AI에 {oaiCount}개 자료 등록됨 — 질문하면 자동으로 모든 자료를 검색합니다</span>
-            ) : contentCount > 0 ? (
-              <span style={{ color: '#d97706' }}>DB에 {contentCount}개 자료 내용 있음 (텍스트 기반 분석)</span>
-            ) : (
-              <span style={{ color: '#94a3b8' }}>등록된 자료가 없습니다. "자료 관리" 탭에서 먼저 등록하세요.</span>
-            )}
+            <div style={{ marginBottom: 4, color: '#0f3d73', fontWeight: 700 }}>회사 전체를 아는 통합 AI</div>
+            업로드 자료{oaiCount > 0 ? ` ${oaiCount}건` : contentCount > 0 ? ` ${contentCount}건` : ''} · 결재(근태·출장·배차·물류) · 업무일지·지식 · KPI·활동을 함께 읽고 답합니다.
+            엑셀·표의 수치와 [확정 집계]는 정확한 실제 값으로 답합니다.
           </div>
 
           {/* Question input */}
@@ -264,7 +260,7 @@ export function CompanyDataAI() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAsk(); } }}
-              placeholder="회사 데이터에 대해 질문하세요..."
+              placeholder="회사 무엇이든 물어보세요 — 예: 지난달 출장 누가 제일 많이 갔나 / 반려된 결재 사유 / 이번 달 품질에 시간 많이 쓴 팀 / (엑셀 올린 뒤) 3월 매출 합계"
               style={{ ...inputStyle, flex: 1 }}
               disabled={asking}
             />
