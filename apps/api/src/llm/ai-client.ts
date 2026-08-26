@@ -64,9 +64,8 @@ async function callOpenAI(opts: CallAIOptions): Promise<CallAIResult> {
   const raw = String(data?.choices?.[0]?.message?.content || '').trim();
   if (!raw) throw new Error('OpenAI returned empty response');
 
-  let parsed: any;
-  try { parsed = JSON.parse(raw); } catch { throw new Error('OpenAI did not return valid JSON'); }
-
+  const parsed = extractJson(raw);
+  if (parsed === undefined) throw new Error(`OpenAI did not return valid JSON: ${raw.slice(0, 160)}`);
   return { parsed, raw, model: 'openai' };
 }
 
@@ -145,12 +144,28 @@ async function callClaude(opts: CallAIOptions): Promise<CallAIResult> {
   // Text response fallback
   const textBlock = contentBlocks.find((b: any) => b.type === 'text');
   const raw = String(textBlock?.text || '').trim();
-  if (!raw) throw new Error('Claude returned empty response');
+  const stopReason = String(data?.stop_reason || '');
+  if (!raw) throw new Error(`Claude returned empty response (stop_reason=${stopReason || 'unknown'})`);
 
-  let parsed: any;
-  try { parsed = JSON.parse(raw); } catch { throw new Error('Claude did not return valid JSON'); }
-
+  const parsed = extractJson(raw);
+  if (parsed === undefined) {
+    // 응답이 순수 JSON이 아님(마크다운 감싸기/설명 첨부) 또는 max_tokens로 잘림
+    const hint = stopReason === 'max_tokens' ? ' (max_tokens 초과로 응답이 잘렸습니다 — maxTokens를 늘리세요)' : '';
+    throw new Error(`Claude did not return valid JSON${hint}: ${raw.slice(0, 160)}`);
+  }
   return { parsed, raw, model: 'claude', thinkingText };
+}
+
+// 관대한 JSON 추출: 순수 JSON → ```json 펜스 제거 → 첫 { … 마지막 } 구간. 실패 시 undefined.
+function extractJson(raw: string): any {
+  const tryParse = (s: string) => { try { return JSON.parse(s); } catch { return undefined; } };
+  let v = tryParse(raw);
+  if (v !== undefined) return v;
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) { v = tryParse(fence[1].trim()); if (v !== undefined) return v; }
+  const i = raw.indexOf('{'); const j = raw.lastIndexOf('}');
+  if (i >= 0 && j > i) { v = tryParse(raw.slice(i, j + 1)); if (v !== undefined) return v; }
+  return undefined;
 }
 
 // ─── Vision: 계기판(적산거리계) 사진에서 주행거리(km) 추출 ──

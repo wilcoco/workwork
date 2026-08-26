@@ -232,6 +232,8 @@ export function MeetingMinutes() {
   const [creatingTasks, setCreatingTasks] = useState(false);
 
   const recorder = useAudioRecorder(active?.id || null);
+  // 편집·녹음·AI·삭제는 작성자만 (임원/공유 대상은 열람 전용)
+  const isOwner = !!active && active.createdBy?.id === userId;
 
   // ─── 공유 모달 ───
   const [shareFor, setShareFor] = useState<Meeting | null>(null);
@@ -344,7 +346,7 @@ export function MeetingMinutes() {
         : [];
       await apiJson(`/api/meeting-minutes/${active.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ actionItems: updatedItems }),
+        body: JSON.stringify({ actionItems: updatedItems, editedById: userId }),
       });
       setActive({ ...active, actionItems: updatedItems });
       alert('저장되었습니다.');
@@ -431,7 +433,7 @@ export function MeetingMinutes() {
     try {
       await apiJson(`/api/meeting-minutes/${active.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ transcript: editTranscript }),
+        body: JSON.stringify({ transcript: editTranscript, editedById: userId }),
       });
       setActive({ ...active, transcript: editTranscript });
       setEditing(false);
@@ -494,7 +496,7 @@ export function MeetingMinutes() {
     try {
       await apiJson(`/api/meeting-minutes/${active.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ status: 'finalized' }),
+        body: JSON.stringify({ status: 'finalized', editedById: userId }),
       });
       setActive({ ...active, status: 'finalized' });
       await load();
@@ -510,7 +512,7 @@ export function MeetingMinutes() {
     try {
       await apiJson(`/api/meeting-minutes/${active.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ attachments: updated }),
+        body: JSON.stringify({ attachments: updated, editedById: userId }),
       });
       setActive({ ...active, attachments: updated });
     } catch (err: any) {
@@ -525,7 +527,7 @@ export function MeetingMinutes() {
     try {
       await apiJson(`/api/meeting-minutes/${active.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ attachments: prev }),
+        body: JSON.stringify({ attachments: prev, editedById: userId }),
       });
       setActive({ ...active, attachments: prev });
     } catch (err: any) {
@@ -536,7 +538,7 @@ export function MeetingMinutes() {
   async function handleDelete(id: string) {
     if (!window.confirm('정말 삭제하시겠습니까?')) return;
     try {
-      await apiJson(`/api/meeting-minutes/${id}`, { method: 'DELETE' });
+      await apiJson(`/api/meeting-minutes/${id}?actorId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
       setActive(null);
       await load();
     } catch (e: any) {
@@ -646,7 +648,8 @@ export function MeetingMinutes() {
               {active.duration && <div>녹음 시간: {formatDuration(active.duration)}</div>}
             </div>
 
-            {/* Recording Section */}
+            {/* Recording Section — 작성자만 */}
+            {isOwner && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16, background: recorder.recording ? '#fef2f2' : '#f8fafc' }}>
               <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>음성 녹음</h3>
               {recorder.recording ? (
@@ -675,25 +678,26 @@ export function MeetingMinutes() {
                 긴 회의도 자동으로 5분 단위로 분할 저장됩니다. 녹음을 시작하면 마이크 접근 권한이 필요합니다.
               </div>
             </div>
+            )}
 
             {/* Transcription Section */}
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>녹취록</h3>
-                {active.audioChunks && (active.audioChunks as any[]).length > 0 && !active.transcript && (
+                {isOwner && active.audioChunks && (active.audioChunks as any[]).length > 0 && !active.transcript && (
                   <button style={primaryBtn} onClick={handleTranscribe} disabled={transcribing}>
                     {transcribing ? 'AI 전사중…' : 'AI 음성 전사'}
                   </button>
                 )}
-                {active.transcript && !editing && (
+                {isOwner && active.transcript && !editing && (
                   <button style={primaryBtn} onClick={handleRefine} disabled={refining || transcribing}>
                     {refining ? 'AI 정제중…' : 'AI 녹취 정제'}
                   </button>
                 )}
-                {active.transcript && !editing && (
+                {isOwner && active.transcript && !editing && (
                   <button style={ghostBtn} onClick={() => setEditing(true)}>편집</button>
                 )}
-                {editing && (
+                {isOwner && editing && (
                   <button style={primaryBtn} onClick={handleSaveTranscript}>저장</button>
                 )}
               </div>
@@ -751,17 +755,17 @@ export function MeetingMinutes() {
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>AI 요약</h3>
-                {active.transcript && !editingSummary && (
+                {isOwner && active.transcript && !editingSummary && (
                   <button style={primaryBtn} onClick={handleSummarize} disabled={summarizing}>
                     {summarizing ? 'AI 요약중…' : (active.summary ? 'AI 재요약' : 'AI 요약 생성')}
                   </button>
                 )}
-                {active.summary && !editingSummary && (
+                {isOwner && active.summary && !editingSummary && (
                   <button style={ghostBtn} onClick={() => { setEditSummary(active.summary || ''); setEditingSummary(true); }}>
                     편집
                   </button>
                 )}
-                {editingSummary && (
+                {isOwner && editingSummary && (
                   <>
                     <button style={ghostBtn} onClick={() => setEditingSummary(false)}>취소</button>
                     <button style={primaryBtn} onClick={handleSaveSummary}>저장</button>
@@ -905,13 +909,17 @@ export function MeetingMinutes() {
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 15, flex: 1 }}>첨부파일</h3>
-                <button style={ghostBtn} onClick={() => setShowFilePicker(true)}>
-                  📁 원드라이브에서 추가 (내부 문서)
-                </button>
+                {isOwner && (
+                  <button style={ghostBtn} onClick={() => setShowFilePicker(true)}>
+                    📁 원드라이브에서 추가 (내부 문서)
+                  </button>
+                )}
               </div>
-              <div style={{ marginBottom: 12 }}>
-                <MobilePhotoButton onUploaded={(files) => void handleAddOneDriveFiles(files.map((f) => ({ url: f.url, name: f.name || f.url })))} />
-              </div>
+              {isOwner && (
+                <div style={{ marginBottom: 12 }}>
+                  <MobilePhotoButton onUploaded={(files) => void handleAddOneDriveFiles(files.map((f) => ({ url: f.url, name: f.name || f.url })))} />
+                </div>
+              )}
               {active.attachments && (active.attachments as any[]).length > 0 ? (
                 <div style={{ display: 'grid', gap: 6 }}>
                   {(active.attachments as any[]).map((att: any, i: number) => {
@@ -923,7 +931,7 @@ export function MeetingMinutes() {
                           {att.name || att.url}
                         </a>
                         <span style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'nowrap' }}>{sizeStr}</span>
-                        <button type="button" style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', fontSize: 13, fontWeight: 700, padding: '2px 6px' }} onClick={() => handleRemoveAttachment(i)}>삭제</button>
+                        {isOwner && <button type="button" style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', fontSize: 13, fontWeight: 700, padding: '2px 6px' }} onClick={() => handleRemoveAttachment(i)}>삭제</button>}
                       </div>
                     );
                   })}
@@ -935,11 +943,11 @@ export function MeetingMinutes() {
 
             {/* Actions */}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-              <button style={primaryBtn} onClick={handleSave}>저장</button>
-              {active.summary && active.status !== 'finalized' && (
+              {isOwner && <button style={primaryBtn} onClick={handleSave}>저장</button>}
+              {isOwner && active.summary && active.status !== 'finalized' && (
                 <button style={{ ...primaryBtn, background: '#059669' }} onClick={handleFinalize}>확정</button>
               )}
-              <button style={dangerBtn} onClick={() => handleDelete(active.id)}>삭제</button>
+              {isOwner && <button style={dangerBtn} onClick={() => handleDelete(active.id)}>삭제</button>}
               <button style={ghostBtn} onClick={() => { if (!recorder.recording) setActive(null); }}>닫기</button>
             </div>
           </div>

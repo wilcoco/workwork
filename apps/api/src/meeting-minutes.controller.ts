@@ -155,8 +155,16 @@ export class MeetingMinutesController {
     return m;
   }
 
+  // 편집(녹취·요약·제목 등)은 작성자만 — 임원은 열람만, 편집 불가 (대표 정책)
+  private async assertAuthor(id: string, actorId?: string | null) {
+    const m = await (this.prisma as any).meetingMinutes.findUnique({ where: { id }, select: { createdById: true } });
+    if (!m) throw new BadRequestException('Meeting not found');
+    if (!actorId || actorId !== m.createdById) throw new BadRequestException('작성자만 수정할 수 있습니다');
+  }
+
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateMeetingDto) {
+    await this.assertAuthor(id, dto.editedById);
     const data: any = {};
     if (dto.title !== undefined) data.title = dto.title;
     if (dto.date !== undefined) data.date = new Date(dto.date);
@@ -206,7 +214,8 @@ export class MeetingMinutesController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Query('actorId') actorId?: string) {
+    await this.assertAuthor(id, actorId);
     await this.prisma.meetingMinutes.delete({ where: { id } });
     return { ok: true };
   }
@@ -666,7 +675,21 @@ ${transcript}
   ]
 }`;
 
-    const result = await callAI({ system, user, model: 'claude', maxTokens: 4096 });
+    let result: any;
+    try {
+      // 요약은 출력이 길어(요약+논의+결정+액션+교정) 토큰 잘림이 잦다 → 넉넉히
+      result = await callAI({ system, user, model: 'claude', maxTokens: 8000 });
+    } catch (e: any) {
+      const msg = String(e?.message || e);
+      // 원인을 사용자에게 드러내 재시도/충전 판단이 가능하게 (기존엔 무조건 500)
+      if (/credit|billing|402|invalid_request.*balance/i.test(msg)) {
+        throw new BadRequestException('AI 사용 크레딧이 부족합니다. 관리자에게 충전을 요청해 주세요.');
+      }
+      if (/max_tokens|valid JSON|empty response/i.test(msg)) {
+        throw new BadRequestException(`AI 요약 응답 처리에 실패했습니다. 다시 시도해 주세요. (${msg.slice(0, 120)})`);
+      }
+      throw new BadRequestException(`AI 요약에 실패했습니다: ${msg.slice(0, 160)}`);
+    }
 
     const parsed = result.parsed || {};
     const corrections: Array<{ from?: string; to?: string; reason?: string }> = Array.isArray(parsed.corrections)
