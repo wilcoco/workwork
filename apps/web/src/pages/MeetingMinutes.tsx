@@ -606,9 +606,10 @@ export function MeetingMinutes() {
                 <span style={statusColors[m.status] || statusColors.draft}>{statusLabel[m.status] || m.status}</span>
                 <span style={{ fontSize: 12, color: '#64748b' }}>{new Date(m.date).toLocaleDateString('ko-KR')}</span>
               </div>
-              {m.participants && (m.participants as string[]).length > 0 && (
-                <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>참석: {(m.participants as string[]).join(', ')}</div>
-              )}
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                작성 {m.createdBy?.name || '-'}
+                {m.participants && (m.participants as string[]).length > 0 && ` · 참석: ${(m.participants as string[]).join(', ')}`}
+              </div>
               {m.duration && <span style={{ fontSize: 12, color: '#94a3b8' }}>녹음: {formatDuration(m.duration)}</span>}
             </div>
           ))}
@@ -636,7 +637,9 @@ export function MeetingMinutes() {
             </div>
 
             <div style={{ display: 'grid', gap: 6, fontSize: 13, color: '#475569', marginBottom: 16 }}>
-              <div>일시: {new Date(active.date).toLocaleDateString('ko-KR')}</div>
+              <div>회의 일자: {new Date(active.date).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}</div>
+              {active.createdBy?.name && <div>작성/녹음: <b style={{ color: '#334155' }}>{active.createdBy.name}</b></div>}
+              {active.createdAt && <div>기록 시각: {new Date(active.createdAt).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>}
               {active.participants && (active.participants as string[]).length > 0 && (
                 <div>참석자: {(active.participants as string[]).join(', ')}</div>
               )}
