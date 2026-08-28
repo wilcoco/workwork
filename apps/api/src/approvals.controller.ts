@@ -803,10 +803,32 @@ export class ApprovalsController {
   }
 
   /** subject 상태 동기화 헬퍼 (결재 상태 → 원문 상태) */
-  private async syncSubjectStatus(tx: any, subjectType: string, subjectId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
+  private async syncSubjectStatus(tx: any, subjectType: string, subjectId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING' | 'CANCELLED') {
     const map: Record<string, string> = { ATTENDANCE: 'attendanceRequest', CAR_DISPATCH: 'carDispatchRequest', LOGISTICS_DISPATCH: 'logisticsDispatchRequest', BUSINESS_TRIP: 'businessTripRequest' };
     const model = map[String(subjectType || '').toUpperCase()];
     if (model) await tx[model].update({ where: { id: subjectId }, data: { status: status as any } }).catch(() => {});
+  }
+
+  /** 신청자 본인 취소 — 승인 시작 전(어느 결재자도 승인하지 않음)에만. 결재를 제거하고 원문서를 CANCELLED로. */
+  @Post(':id/cancel')
+  async cancel(@Param('id') id: string, @Body() body: { actorId?: string }) {
+    const actorId = String(body?.actorId || '');
+    if (!actorId) throw new BadRequestException('actorId required');
+    const req = await (this.prisma as any).approvalRequest.findUnique({ where: { id }, include: { steps: true } });
+    if (!req) throw new BadRequestException('request not found');
+    if (req.requestedById !== actorId) throw new ForbiddenException('본인이 올린 결재만 취소할 수 있습니다');
+    if (String(req.status).toUpperCase() !== 'PENDING') throw new BadRequestException('이미 처리된 결재는 취소할 수 없습니다');
+    const anyActed = (req.steps || []).some((s: any) => String(s.status).toUpperCase() === 'APPROVED' || String(s.status).toUpperCase() === 'REJECTED');
+    if (anyActed) throw new BadRequestException('이미 승인/반려가 진행되어 취소할 수 없습니다. 담당 결재자에게 반려를 요청하세요.');
+    await this.prisma.$transaction(async (tx) => {
+      await this.syncSubjectStatus(tx as any, req.subjectType, req.subjectId, 'CANCELLED');
+      await (tx as any).approvalStep.deleteMany({ where: { requestId: id } });
+      await (tx as any).approvalRequest.delete({ where: { id } });
+      await (tx as any).event.create({ data: { subjectType: req.subjectType, subjectId: req.subjectId, activity: 'ApprovalCancelled', userId: actorId, attrs: { requestId: id } } }).catch(() => {});
+      // 대기 중이던 결재자 알림 정리(있으면)
+      await (tx as any).notification.deleteMany({ where: { type: 'ApprovalRequested', subjectType: req.subjectType, subjectId: req.subjectId } }).catch(() => {});
+    });
+    return { ok: true };
   }
 
   /** 슈퍼유저: 완료된 결재의 상태를 강제 변경 (승인↔반려↔대기) */

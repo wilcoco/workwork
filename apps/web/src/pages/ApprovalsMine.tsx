@@ -31,6 +31,27 @@ export function ApprovalsMine() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, statusFilter, subjectTypeFilter, titleQuery]);
 
+  const [cancelling, setCancelling] = useState(false);
+  // 신청자 본인 취소 — 승인 시작 전에만 가능(서버가 재검증)
+  async function cancelRequest(it: any) {
+    if (!window.confirm('이 결재 신청을 취소하시겠습니까? 취소하면 결재선에서 사라지고 신청은 취소 처리됩니다.')) return;
+    setCancelling(true);
+    try {
+      await apiJson(`/api/approvals/${it.id}/cancel`, { method: 'POST', body: JSON.stringify({ actorId: userId }) });
+      setActive(null);
+      await load(userId);
+    } catch (e: any) {
+      window.alert(e?.message || '취소에 실패했습니다.');
+    } finally { setCancelling(false); }
+  }
+  // 취소 가능: 본인 신청 + 전체 PENDING + 어떤 단계도 승인/반려 안 됨
+  function canCancel(it: any): boolean {
+    if (!it || String(it.requestedBy?.id || '') !== userId) return false;
+    if (String(it.status || '').toUpperCase() !== 'PENDING') return false;
+    const steps: any[] = Array.isArray(it.steps) ? it.steps : [];
+    return !steps.some((s) => ['APPROVED', 'REJECTED'].includes(String(s.status).toUpperCase()));
+  }
+
   async function load(reqUserId?: string) {
     const uid = reqUserId || userId;
     if (!uid) return;
@@ -188,6 +209,12 @@ export function ApprovalsMine() {
                 <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.docTitle || '문서 정보 없음'}</span>
                 {currentApproverName && <span style={{ fontSize: 12, color: '#64748b', flexShrink: 0 }}>현재 결재자: {currentApproverName}</span>}
                 <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>신청 {new Date(it.createdAt).toLocaleDateString()}</span>
+                {canCancel(it) && (
+                  <button type="button" disabled={cancelling} onClick={(e) => { e.stopPropagation(); void cancelRequest(it); }}
+                    style={{ flexShrink: 0, background: 'transparent', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 6, padding: '3px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                    취소
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -260,6 +287,11 @@ export function ApprovalsMine() {
                     </div>
                   ) : null}
                   <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                    {canCancel(it) && (
+                      <button type="button" disabled={cancelling} style={{ ...primaryBtn, background: '#fff', color: '#dc2626', border: '1px solid #fca5a5', marginRight: 'auto' }} onClick={() => void cancelRequest(it)}>
+                        {cancelling ? '취소 중…' : '신청 취소'}
+                      </button>
+                    )}
                     <button type="button" style={{ ...primaryBtn, background: '#fff', color: '#0F3D73', border: '1px solid #0F3D73' }} onClick={printActive}>
                       🖨 인쇄 / PDF 저장
                     </button>
