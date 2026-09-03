@@ -213,13 +213,13 @@ export class AttendanceController {
             const satMs = new Date(`${wk1}T00:00:00.000Z`).getTime();
             const weekdays = [2, 3, 4, 5, 6].map((i) => new Date(satMs + i * 86400000)); // 월~금
             const holCnt = await (tx as any).holiday.count({ where: { date: { in: weekdays } } });
-            // 허용 창: 이전 1주(당겨쓰기) ~ 이후 8주(약 2개월 — 하계휴가 근무를 9월 말까지 사용 가능, 대표 지시 2026-08-18)
+            // 허용 창: 이전 1주(당겨쓰기) ~ 이후 13주(약 3개월 — 하계휴가 근무를 10월 말까지 사용 가능, 대표 지시 2026-09-03)
             const allowedWeeks = new Set<string>();
-            for (const off of [-1, 1, 2, 3, 4, 5, 6, 7, 8]) allowedWeeks.add(new Date(satMs + off * 7 * 86400000).toISOString().slice(0, 10));
+            for (const off of [-1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]) allowedWeeks.add(new Date(satMs + off * 7 * 86400000).toISOString().slice(0, 10));
             if (!(holCnt >= 5 && allowedWeeks.has(wk2))) {
               throw new BadRequestException(
                 holCnt >= 5
-                  ? '근무일이 속한 주가 전사 휴가 주간입니다 — 대체 휴일은 이전 1주 ~ 이후 8주(약 2개월) 안의 평일 중에서 선택해 주세요'
+                  ? '근무일이 속한 주가 전사 휴가 주간입니다 — 대체 휴일은 이전 1주 ~ 이후 약 3개월(10월 말) 안의 평일 중에서 선택해 주세요'
                   : '대체 휴일은 같은 주(토~금) 안의 평일이어야 합니다',
               );
             }
