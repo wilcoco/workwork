@@ -999,7 +999,7 @@ export class CarDispatchController {
         chaplace: r.destination || '',                // CHAPLACE: 행선지
         charsn: r.purpose || '',                      // CHARSN: 사유(자유 텍스트)
         chagbn: r.purposeCategory || '',              // CHAGBN: 구분(시내/시외/교육/기타)
-        chacsrt: r.car?.type || '',                   // CHACSRT: 차량 종류(SUV/디젤/EV/탑차/LPI)
+        chacsrt: r.car?.name ? (r.car?.type ? `${r.car.name}(${r.car.type})` : r.car.name) : '', // CHACSRT: "봉고(EV)" 형태 전체 문자열
         carName: r.car?.name || '', plateNo: r.car?.plateNo || '',
         startAt: r.startAt, endAt: r.endAt,
         dispatchType: r.dispatchType,
