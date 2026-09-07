@@ -28,3 +28,16 @@ WorkWork에서 **배차가 최종 승인**되면 그 건이 클라우드에 `PEN
 ## 롤백/안전
 - 실패 건은 자동으로 클라우드에 error 기록 + PENDING 유지 → 다음 폴링에 재시도.
 - 오라클 계정은 이 테이블 INSERT 권한만 부여(다른 테이블/DELETE·UPDATE 불가) 권장.
+
+## EXE로 만들기 (Windows, 1회)
+파이썬 설치 없이 배포하고 싶으면 exe로 묶으면 된다. **Windows PC에서** 한 번만:
+1. Python 3.10+ 설치 (python.org, "Add to PATH" 체크)
+2. 이 폴더(dispatch_sync.py 있는 곳)에서 `build_exe.bat` 더블클릭
+3. `dist\dispatch_sync.exe` 생성됨
+4. `dist\dispatch_sync.exe` 와 `.env` 를 같은 폴더에 두고 `RUN_dispatch_sync.bat` 실행
+   (또는 작업 스케줄러에 `dispatch_sync.exe --once` 를 1분마다 등록)
+
+주의:
+- exe는 **반드시 Windows에서 빌드**해야 한다(Mac/Linux에서 만든 것은 Windows에서 안 돎).
+- **비밀번호·토큰은 exe에 넣지 말 것.** 항상 옆의 `.env` 파일로만 관리(유출 방지).
+- 구버전 오라클/한글이면 `.env` 에 `ORACLE_THICK=1` + Instant Client 필요(README 상단 참고).
