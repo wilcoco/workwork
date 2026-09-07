@@ -825,8 +825,16 @@ model CarDispatchRequest {
   usageRegisteredAt    DateTime? // 사용 전후 등록 시각
   usageRegisteredById  String? // 등록한 운전자 id
 
+  // 오라클 ERP(INSA.T_GA_CHA3_1) 반영 — 사내 에이전트(scripts/dispatch_sync.py)가 폴링해 INSERT
+  oracleSync     String? // null=대상아님(과거건), PENDING=반영대기, SYNCED=완료
+  oracleSyncedAt DateTime? // 오라클 기록 완료 시각
+  oracleSeq      Int? // 오라클에 기록된 순번(CHASEQ)
+  oracleError    String? // 마지막 반영 오류(있으면 재시도 대상)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([oracleSync])
 }
 
 // 팀 과제 관리 (과제 → 항목 → 마일스톤 재귀 트리)

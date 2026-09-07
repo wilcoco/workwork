@@ -543,7 +543,7 @@ export class ApprovalsController {
       return this.prisma.$transaction(async (tx) => {
         const updated = await (tx as any).approvalRequest.update({ where: { id }, data: { status: 'APPROVED' } });
         if (updated.subjectType === 'CAR_DISPATCH') {
-          await (tx as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
+          await (tx as any).carDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any, oracleSync: 'PENDING', oracleError: null } });
         }
         if (updated.subjectType === 'LOGISTICS_DISPATCH') {
           await (tx as any).logisticsDispatchRequest.update({ where: { id: updated.subjectId }, data: { status: 'APPROVED' as any } });
@@ -578,7 +578,7 @@ export class ApprovalsController {
             await (tx as any).attendanceRequest.update({ where: { id: req.subjectId }, data: { status: 'APPROVED' as any } });
           }
           if (req.subjectType === 'CAR_DISPATCH') {
-            await (tx as any).carDispatchRequest.update({ where: { id: req.subjectId }, data: { status: 'APPROVED' as any } });
+            await (tx as any).carDispatchRequest.update({ where: { id: req.subjectId }, data: { status: 'APPROVED' as any, oracleSync: 'PENDING', oracleError: null } });
           }
           if (req.subjectType === 'LOGISTICS_DISPATCH') {
             await (tx as any).logisticsDispatchRequest.update({ where: { id: req.subjectId }, data: { status: 'APPROVED' as any } });

@@ -3,6 +3,7 @@ import { IsArray, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { PrismaService } from './prisma.service';
+import { Public } from './jwt-auth.guard';
 import { extractOdometerFromImage } from './llm/ai-client';
 
 class CreateCarDispatchDto {
@@ -953,6 +954,74 @@ export class CarDispatchController {
       return u;
     });
     return updated;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 오라클 ERP(INSA.T_GA_CHA3_1) 동기화 — 사내 에이전트(scripts/dispatch_sync.py)가 폴링
+  // 인증: 공유 토큰(ORACLE_SYNC_TOKEN) 헤더/쿼리. 방화벽 인바운드 불필요(에이전트가 outbound).
+  // ═══════════════════════════════════════════════════════════════════
+  private assertSyncToken(token?: string) {
+    const expected = String(process.env.ORACLE_SYNC_TOKEN || '').trim();
+    if (!expected) throw new BadRequestException('ORACLE_SYNC_TOKEN 미설정 (서버 환경변수 필요)');
+    if (String(token || '').trim() !== expected) throw new BadRequestException('invalid sync token');
+  }
+
+  /** 반영 대기(오라클 미기록) 승인 배차 목록 — 에이전트가 이 값으로 INSERT 컬럼을 채운다 */
+  @Public()
+  @Get('oracle/pending')
+  async oraclePending(@Query('token') token?: string, @Query('limit') limitStr?: string) {
+    this.assertSyncToken(token);
+    const take = Math.min(Math.max(parseInt(String(limitStr || '50'), 10) || 50, 1), 200);
+    const rows = await (this.prisma as any).carDispatchRequest.findMany({
+      where: { oracleSync: 'PENDING', status: 'APPROVED' },
+      orderBy: { updatedAt: 'asc' },
+      take,
+      include: {
+        requester: { select: { name: true, email: true, orgUnit: { select: { name: true } } } },
+        car: { select: { name: true, type: true, plateNo: true } },
+      },
+    });
+    // 파워앱 Patch 매핑에 맞춘 필드 (CHASEQ·코드값은 에이전트에서 최종 결정)
+    return {
+      items: rows.map((r: any) => ({
+        id: r.id,
+        chanm: [r.requester?.name || '', r.coRiders || ''].filter(Boolean).join(' ').trim(), // CHANM: 신청자+동승자
+        chadpt: r.requester?.orgUnit?.name || '',   // CHADPT: 부서
+        requesterEmail: r.requester?.email || '',    // 부서/사번 매핑 보조
+        chaymd: r.startAt,                            // CHAYMD: 배차 일자
+        chaplace: r.destination || '',                // CHAPLACE: 행선지
+        charsn: r.purpose || '',                      // CHARSN: 사유
+        carName: r.car?.name || '', carType: r.car?.type || '', plateNo: r.car?.plateNo || '',
+        startAt: r.startAt, endAt: r.endAt,
+        dispatchType: r.dispatchType,
+      })),
+    };
+  }
+
+  /** 오라클 기록 완료 표시 */
+  @Public()
+  @Post('oracle/mark')
+  async oracleMark(@Body() body: { token?: string; id?: string; oracleSeq?: number }) {
+    this.assertSyncToken(body?.token);
+    if (!body?.id) throw new BadRequestException('id required');
+    await (this.prisma as any).carDispatchRequest.update({
+      where: { id: body.id },
+      data: { oracleSync: 'SYNCED', oracleSyncedAt: new Date(), oracleSeq: typeof body.oracleSeq === 'number' ? body.oracleSeq : null, oracleError: null },
+    });
+    return { ok: true };
+  }
+
+  /** 오라클 기록 실패 기록 — PENDING 유지(다음 폴링에 재시도) */
+  @Public()
+  @Post('oracle/error')
+  async oracleError(@Body() body: { token?: string; id?: string; error?: string }) {
+    this.assertSyncToken(body?.token);
+    if (!body?.id) throw new BadRequestException('id required');
+    await (this.prisma as any).carDispatchRequest.update({
+      where: { id: body.id },
+      data: { oracleError: String(body.error || '').slice(0, 500) },
+    });
+    return { ok: true };
   }
 }
 
