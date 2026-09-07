@@ -48,6 +48,7 @@ export function CarDispatchCorporate() {
   const [coRiders, setCoRiders] = useState('');
   const [destination, setDestination] = useState('');
   const [purpose, setPurpose] = useState('');
+  const [purposeCategory, setPurposeCategory] = useState('시내'); // 구분(오라클 CHAGBN)
   const [submitting, setSubmitting] = useState(false);
 
   const userId = typeof localStorage !== 'undefined' ? (localStorage.getItem('userId') || '') : '';
@@ -285,6 +286,7 @@ export function CarDispatchCorporate() {
           endAt: endAtIso,
           destination,
           purpose,
+          purposeCategory,
         }),
       });
       await loadCalendar();
@@ -296,7 +298,7 @@ export function CarDispatchCorporate() {
         setCoUseNote('');
         setConflict({
           c: body.conflict,
-          payload: { carId, requesterId: userId, approverId: approverId || undefined, coRiders: coRiders || undefined, startAt: startAtIso, endAt: endAtIso, destination, purpose, conflictDispatchId: body.conflict.id },
+          payload: { carId, requesterId: userId, approverId: approverId || undefined, coRiders: coRiders || undefined, startAt: startAtIso, endAt: endAtIso, destination, purpose, purposeCategory, conflictDispatchId: body.conflict.id },
         });
       } else {
         alert(e?.message || '배차 신청에 실패했습니다');
@@ -436,6 +438,15 @@ export function CarDispatchCorporate() {
           <label style={{ display: 'grid', gap: 4 }}>
             <span>목적지</span>
             <input type="text" value={destination} onChange={(e) => setDestination(e.target.value)} />
+          </label>
+          <label style={{ display: 'grid', gap: 4 }}>
+            <span>구분</span>
+            <select value={purposeCategory} onChange={(e) => setPurposeCategory(e.target.value)}>
+              <option value="시내">시내</option>
+              <option value="시외">시외</option>
+              <option value="교육">교육</option>
+              <option value="기타">기타</option>
+            </select>
           </label>
           <label style={{ display: 'grid', gap: 4 }}>
             <span>목적</span>

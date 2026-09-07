@@ -93,39 +93,37 @@ def mark_error(dispatch_id: str, msg: str):
         pass
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 순번(CHASEQ) 채번 — ⚠️ 파워앱 Label32 규칙과 반드시 일치시킬 것.
-# 기본 구현: 같은 CHAYMD(배차일) 내 MAX(CHASEQ)+1. PK가 (CHAYMD, CHASEQ)라는 가정.
-# 실제 규칙(부서별/전체/시퀀스객체 등)이 다르면 이 함수만 고치면 된다.
-# ─────────────────────────────────────────────────────────────────────────────
-def next_seq(cur, chaymd: str) -> int:
+# CHAYMD(배차일) — 파워앱이 Date 로 보내던 그 날짜. Oracle DATE 컬럼 가정 → 파이썬 date 로 바인드.
+#   (ERP가 문자열 YYYYMMDD 컬럼이면 .date() 대신 .strftime("%Y%m%d") 로 바꾸고 next_seq 도 맞출 것)
+def to_chaymd(iso: str):
+    dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    kst = datetime.utcfromtimestamp(dt.timestamp() + 9 * 3600)
+    return kst.date()
+
+
+# 순번(CHASEQ) — 파워앱은 RandBetween(1,99999) 난수(중복 위험)였으나, 여기선 "날짜별 순번"으로.
+#   같은 배차일(CHAYMD) 안에서 MAX(CHASEQ)+1. PK가 (CHAYMD, CHASEQ)라는 가정 → 중복 없음.
+def next_seq(cur, chaymd) -> int:
     cur.execute(
-        "SELECT NVL(MAX(CHASEQ),0)+1 FROM INSA.T_GA_CHA3_1 WHERE CHAYMD = :ymd",
+        "SELECT NVL(MAX(CHASEQ),0)+1 FROM INSA.T_GA_CHA3_1 WHERE TRUNC(CHAYMD) = TRUNC(:ymd)",
         {"ymd": chaymd},
     )
     return int(cur.fetchone()[0])
 
 
-def to_chaymd(iso: str) -> str:
-    # WorkWork startAt(UTC ISO) → KST 날짜 문자열. ERP 저장 형식에 맞춰 조정(YYYYMMDD or YYYY-MM-DD).
-    dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    kst = dt.timestamp() + 9 * 3600
-    return datetime.utcfromtimestamp(kst).strftime("%Y%m%d")  # 예: 20260907 — ERP 형식 확인 필요
-
-
 def insert_one(cur, item: dict) -> int:
     chaymd = to_chaymd(item["chaymd"])
     seq = next_seq(cur, chaymd)
-    # ⚠️ 컬럼 매핑 — 파워앱 Patch 기준. CHACSRT/CHAGBN(코드값)과 NOT NULL 컬럼은 실제 테이블에 맞춰 채울 것.
+    # 컬럼 매핑 — 파워앱 Patch 기준. NOT NULL 컬럼이 더 있으면(등록자/등록일시 등) 여기에 추가.
     binds = {
-        "CHANM": item.get("chanm", ""),
-        "CHADPT": item.get("chadpt", ""),
-        "CHAYMD": chaymd,
-        "CHASEQ": seq,
-        "CHAPLACE": item.get("chaplace", ""),
-        "CHARSN": item.get("charsn", ""),
-        # "CHACSRT": ...,  # TODO: 차량/차종 구분 코드 (파워앱 DataCardValue252_1)
-        # "CHAGBN": ...,   # TODO: 용도 구분 코드 (파워앱 DataCardValue260)
+        "CHANM": item.get("chanm", ""),      # 신청자 + 동승자
+        "CHADPT": item.get("chadpt", ""),     # 부서
+        "CHACSRT": item.get("chacsrt", ""),   # 차량 종류 (SUV/디젤/EV/탑차/LPI)
+        "CHAGBN": item.get("chagbn", ""),     # 구분 (시내/시외/교육/기타)
+        "CHAYMD": chaymd,                      # 배차일 (DATE)
+        "CHASEQ": seq,                         # 날짜별 순번
+        "CHAPLACE": item.get("chaplace", ""), # 행선지
+        "CHARSN": item.get("charsn", ""),     # 사유(자유 텍스트)
     }
     cols = ", ".join(binds.keys())
     vals = ", ".join(f":{k}" for k in binds.keys())

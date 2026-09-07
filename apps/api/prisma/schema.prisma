@@ -798,6 +798,7 @@ model CarDispatchRequest {
   conflictDispatchId String? // 협의 대상이 된 선점 배차 id
 
   dispatchType String         @default("CORPORATE") // CORPORATE | LOGISTICS
+  purposeCategory String? // 구분(오라클 CHAGBN): 시내 | 시외 | 교육 | 기타
   cargoDetails String? // 화물 내용 (물류 전용)
   status       DispatchStatus @default(PENDING)
 

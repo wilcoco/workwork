@@ -35,6 +35,10 @@ class CreateCarDispatchDto {
 
   @IsOptional()
   @IsString()
+  purposeCategory?: string; // 시내 | 시외 | 교육 | 기타 (오라클 CHAGBN)
+
+  @IsOptional()
+  @IsString()
   dispatchType?: string; // CORPORATE | LOGISTICS
 
   @IsOptional()
@@ -141,6 +145,7 @@ class CoUseDto {
   @IsString() endAt!: string;
   @IsString() destination!: string;
   @IsString() purpose!: string;
+  @IsOptional() @IsString() purposeCategory?: string; // 시내|시외|교육|기타
   @IsString() conflictDispatchId!: string; // 선점 배차 id
   @IsOptional() @IsString() note?: string;  // 협의 메모 (남는 시간/교환 등)
 }
@@ -198,6 +203,7 @@ export class CarDispatchController {
           startAt, endAt,
           destination: dto.destination,
           purpose: dto.purpose,
+          purposeCategory: dto.purposeCategory,
           dispatchType: 'CORPORATE',
           status: 'PENDING' as any,
           coUse: true,
@@ -358,6 +364,7 @@ export class CarDispatchController {
             endAt,
             destination: dto.destination,
             purpose: dto.purpose,
+            purposeCategory: dto.purposeCategory,
             dispatchType: dto.dispatchType || 'CORPORATE',
             cargoDetails: dto.cargoDetails,
           },
@@ -990,8 +997,10 @@ export class CarDispatchController {
         requesterEmail: r.requester?.email || '',    // 부서/사번 매핑 보조
         chaymd: r.startAt,                            // CHAYMD: 배차 일자
         chaplace: r.destination || '',                // CHAPLACE: 행선지
-        charsn: r.purpose || '',                      // CHARSN: 사유
-        carName: r.car?.name || '', carType: r.car?.type || '', plateNo: r.car?.plateNo || '',
+        charsn: r.purpose || '',                      // CHARSN: 사유(자유 텍스트)
+        chagbn: r.purposeCategory || '',              // CHAGBN: 구분(시내/시외/교육/기타)
+        chacsrt: r.car?.type || '',                   // CHACSRT: 차량 종류(SUV/디젤/EV/탑차/LPI)
+        carName: r.car?.name || '', plateNo: r.car?.plateNo || '',
         startAt: r.startAt, endAt: r.endAt,
         dispatchType: r.dispatchType,
       })),
