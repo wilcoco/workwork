@@ -22,6 +22,7 @@
 """
 
 import argparse
+import random
 import logging
 import os
 import sys
@@ -93,46 +94,59 @@ def mark_error(dispatch_id: str, msg: str):
         pass
 
 
-# CHAYMD(배차일) — 파워앱이 Date 로 보내던 그 날짜. Oracle DATE 컬럼 가정 → 파이썬 date 로 바인드.
-#   (ERP가 문자열 YYYYMMDD 컬럼이면 .date() 대신 .strftime("%Y%m%d") 로 바꾸고 next_seq 도 맞출 것)
-def to_chaymd(iso: str):
+# 복합 PK(NOT NULL): CHAYMD, CHASEQ, CHADPT, CHANM, CHACSRT, CHAGBN — 하나라도 빈값이면 INSERT 불가.
+PK_COLS = ["CHAYMD", "CHASEQ", "CHADPT", "CHANM", "CHACSRT", "CHAGBN"]
+SEQ_MAX = 99999  # CHASEQ NUMBER(5)
+
+# CHAYMD — VARCHAR2(8) 문자열 "YYYYMMDD" (파워앱 Date 를 이 형식 문자열로). KST 기준.
+def to_chaymd(iso: str) -> str:
     dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     kst = datetime.utcfromtimestamp(dt.timestamp() + 9 * 3600)
-    return kst.date()
+    return kst.strftime("%Y%m%d")
 
 
-# 순번(CHASEQ) — 파워앱은 RandBetween(1,99999) 난수(중복 위험)였으나, 여기선 "날짜별 순번"으로.
-#   같은 배차일(CHAYMD) 안에서 MAX(CHASEQ)+1. PK가 (CHAYMD, CHASEQ)라는 가정 → 중복 없음.
-def next_seq(cur, chaymd) -> int:
-    cur.execute(
-        "SELECT NVL(MAX(CHASEQ),0)+1 FROM INSA.T_GA_CHA3_1 WHERE TRUNC(CHAYMD) = TRUNC(:ymd)",
-        {"ymd": chaymd},
-    )
-    return int(cur.fetchone()[0])
+# 순번(CHASEQ) — 같은 CHAYMD 안에서 MAX+1(날짜별 순번). NUMBER(5) 초과나 레거시 난수 충돌 대비 폴백.
+def next_seq(cur, chaymd: str) -> int:
+    cur.execute("SELECT NVL(MAX(CHASEQ),0)+1 FROM INSA.T_GA_CHA3_1 WHERE CHAYMD = :ymd", {"ymd": chaymd})
+    n = int(cur.fetchone()[0])
+    if n <= SEQ_MAX:
+        return n
+    return random.randint(1, SEQ_MAX)  # 그날 순번이 5자리를 넘으면(레거시 난수 등) 난수 폴백
 
 
 def insert_one(cur, item: dict) -> int:
     chaymd = to_chaymd(item["chaymd"])
-    seq = next_seq(cur, chaymd)
-    # 컬럼 매핑 — 파워앱 Patch 기준. NOT NULL 컬럼이 더 있으면(등록자/등록일시 등) 여기에 추가.
-    binds = {
-        "CHANM": item.get("chanm", ""),      # 신청자 + 동승자
-        "CHADPT": item.get("chadpt", ""),     # 부서
-        "CHACSRT": item.get("chacsrt", ""),   # 차량 종류 (SUV/디젤/EV/탑차/LPI)
-        "CHAGBN": item.get("chagbn", ""),     # 구분 (시내/시외/교육/기타)
-        "CHAYMD": chaymd,                      # 배차일 (DATE)
-        "CHASEQ": seq,                         # 날짜별 순번
-        "CHAPLACE": item.get("chaplace", ""), # 행선지
-        "CHARSN": item.get("charsn", ""),     # 사유(자유 텍스트)
+    base = {
+        "CHANM": (item.get("chanm") or "").strip(),      # 신청자 + 동승자
+        "CHADPT": (item.get("chadpt") or "").strip(),     # 부서
+        "CHACSRT": (item.get("chacsrt") or "").strip(),   # 차량 "봉고(EV)" 형태 전체
+        "CHAGBN": (item.get("chagbn") or "").strip(),     # 구분 (시내/시외/교육/기타)
+        "CHAYMD": chaymd,                                  # 배차일 VARCHAR2(8)
+        "CHAPLACE": (item.get("chaplace") or "").strip(), # 행선지 (NULL 허용)
+        "CHARSN": (item.get("charsn") or "").strip(),     # 사유 (NULL 허용)
     }
-    cols = ", ".join(binds.keys())
-    vals = ", ".join(f":{k}" for k in binds.keys())
-    sql = f"INSERT INTO INSA.T_GA_CHA3_1 ({cols}) VALUES ({vals})"
-    if DRY_RUN:
-        log.info(f"[DRY_RUN] {sql}  binds={binds}")
-    else:
-        cur.execute(sql, binds)
-    return seq
+    # PK 컬럼(CHASEQ 제외) 빈값 검사 — 비면 NOT NULL·PK 위반이므로 아예 시도하지 않고 명확히 실패
+    missing = [c for c in PK_COLS if c != "CHASEQ" and not base.get(c)]
+    if missing:
+        raise ValueError(f"PK 필수값 누락: {', '.join(missing)} (배차 신청 정보 확인 필요)")
+
+    cols = list(base.keys()) + ["CHASEQ"]
+    # PK 중복/순번 충돌 시 순번을 다시 뽑아 최대 5회 재시도
+    for attempt in range(5):
+        seq = next_seq(cur, chaymd)
+        binds = {**base, "CHASEQ": seq}
+        vals = ", ".join(f":{k}" for k in cols)
+        sql = f"INSERT INTO INSA.T_GA_CHA3_1 ({', '.join(cols)}) VALUES ({vals})"
+        if DRY_RUN:
+            log.info(f"[DRY_RUN] {sql}  binds={binds}")
+            return seq
+        try:
+            cur.execute(sql, binds)
+            return seq
+        except oracledb.IntegrityError:
+            if attempt == 4:
+                raise
+            continue  # 순번 충돌 → 재채번
 
 
 def run_once():

@@ -992,14 +992,14 @@ export class CarDispatchController {
     return {
       items: rows.map((r: any) => ({
         id: r.id,
-        chanm: [r.requester?.name || '', r.coRiders || ''].filter(Boolean).join(' ').trim(), // CHANM: 신청자+동승자
-        chadpt: r.requester?.orgUnit?.name || '',   // CHADPT: 부서
+        chanm: ([r.requester?.name || '', r.coRiders || ''].filter(Boolean).join(' ').trim()).slice(0, 200), // CHANM VARCHAR2(200)
+        chadpt: (r.requester?.orgUnit?.name || '').slice(0, 30),   // CHADPT VARCHAR2(30) PK — 팀명(없으면 빈값→에이전트가 보류)
         requesterEmail: r.requester?.email || '',    // 부서/사번 매핑 보조
         chaymd: r.startAt,                            // CHAYMD: 배차 일자
         chaplace: r.destination || '',                // CHAPLACE: 행선지
         charsn: r.purpose || '',                      // CHARSN: 사유(자유 텍스트)
-        chagbn: r.purposeCategory || '',              // CHAGBN: 구분(시내/시외/교육/기타)
-        chacsrt: r.car?.name ? (r.car?.type ? `${r.car.name}(${r.car.type})` : r.car.name) : '', // CHACSRT: "봉고(EV)" 형태 전체 문자열
+        chagbn: (r.purposeCategory || '').slice(0, 10),  // CHAGBN VARCHAR2(10) 구분(시내/시외/교육/기타)
+        chacsrt: (r.car?.name ? (r.car?.type ? `${r.car.name}(${r.car.type})` : r.car.name) : '').slice(0, 30), // CHACSRT VARCHAR2(30) "봉고(EV)"
         carName: r.car?.name || '', plateNo: r.car?.plateNo || '',
         startAt: r.startAt, endAt: r.endAt,
         dispatchType: r.dispatchType,
