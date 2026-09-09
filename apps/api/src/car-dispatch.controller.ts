@@ -232,7 +232,7 @@ export class CarDispatchController {
 
     // 선점자 동의 = 즉시 확정 (별도 결재 없이 진행)
     await this.prisma.$transaction(async (tx) => {
-      await tx.carDispatchRequest.update({ where: { id }, data: { negotiationStatus: 'AGREED', status: 'APPROVED' as any } as any });
+      await tx.carDispatchRequest.update({ where: { id }, data: { negotiationStatus: 'AGREED', status: 'APPROVED' as any, oracleSync: 'PENDING' } as any });
       await tx.event.create({
         data: { subjectType: 'CAR_DISPATCH', subjectId: id, activity: 'Approved', userId: dto.actorId, attrs: { coUseAgreed: true } },
       });
@@ -388,7 +388,7 @@ export class CarDispatchController {
           });
         }
         await tx.approvalRequest.update({ where: { id: approval.id }, data: { status: 'APPROVED' as any } });
-        await tx.carDispatchRequest.update({ where: { id: dispatch.id }, data: { status: 'APPROVED' as any } });
+        await tx.carDispatchRequest.update({ where: { id: dispatch.id }, data: { status: 'APPROVED' as any, oracleSync: 'PENDING' } });
         await tx.event.create({
           data: { subjectType: 'CAR_DISPATCH', subjectId: dispatch.id, activity: 'Approved', userId: dto.requesterId, attrs: { auto: true, requestId: approval.id } },
         });
@@ -689,6 +689,7 @@ export class CarDispatchController {
         purpose: dto.purpose,
         dispatchType: 'CORPORATE',
         status: 'APPROVED' as any, // 긴급 등록은 즉시 승인 상태
+        oracleSync: 'PENDING' as any,
       },
       include: { car: true, requester: true },
     });
