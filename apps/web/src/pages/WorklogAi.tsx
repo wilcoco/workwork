@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { apiJson } from '../lib/api';
@@ -100,7 +100,10 @@ export function WorklogAi() {
     } finally { setDeletingId(null); }
   }
 
+  const loadingRef = useRef(false);
   async function load() {
+    if (loadingRef.current) return; // 렌더 전 연타로 인한 중복 실행 방지
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -127,6 +130,7 @@ export function WorklogAi() {
       setError(e?.message || '로드 실패');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   }
 

@@ -118,6 +118,29 @@ function DeployBanner() {
 export function App() {
   const SHOW_APPROVALS = (import.meta.env.VITE_SHOW_APPROVALS ?? 'true') === 'true';
   const SHOW_COOPS = (import.meta.env.VITE_SHOW_COOPS ?? 'true') === 'true';
+
+  // 전역 연타 방지: 같은 버튼을 짧은 시간 안에 다시 누르면 중복 실행 차단.
+  // (렌더 전 disabled 미반영 틈으로 새는 이중 클릭을 캡처 단계에서 삼킨다)
+  // data-allow-rapid 속성이 있는 버튼(증감·페이징 등)은 제외.
+  useEffect(() => {
+    let lastEl: Element | null = null;
+    let lastAt = 0;
+    const onClick = (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement)?.closest?.('button');
+      if (!btn || btn.hasAttribute('data-allow-rapid') || (btn as HTMLButtonElement).disabled) return;
+      const now = Date.now();
+      if (btn === lastEl && now - lastAt < 600) {
+        e.preventDefault();
+        e.stopImmediatePropagation(); // React 핸들러까지 도달 차단
+        return;
+      }
+      lastEl = btn;
+      lastAt = now;
+    };
+    document.addEventListener('click', onClick, true); // 캡처 단계
+    return () => document.removeEventListener('click', onClick, true);
+  }, []);
+
   return (
     <ErrorBoundary>
       <BrowserRouter>
