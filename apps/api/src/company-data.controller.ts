@@ -1550,4 +1550,22 @@ export class CompanyDataController {
       include: { user: { select: { id: true, name: true } } },
     });
   }
+
+  /** 분석 결과(대화) 삭제 — 작성자 본인 또는 임원 이상 */
+  @Delete('chats/:id')
+  async deleteChat(@Param('id') id: string, @Query('userId') userId?: string) {
+    const uid = String(userId || '').trim();
+    if (!uid) throw new BadRequestException('userId required');
+    const chat = await this.prisma.companyDataChat.findUnique({ where: { id }, select: { userId: true } });
+    if (!chat) return { ok: true }; // 이미 없음
+    if (String(chat.userId) !== uid) {
+      // 작성자가 아니면 임원 이상만
+      const u = await (this.prisma as any).user.findUnique({ where: { id: uid }, select: { role: true } });
+      if (!['CEO', 'EXEC'].includes(String(u?.role || '').toUpperCase())) {
+        throw new ForbiddenException('작성자 본인 또는 임원만 삭제할 수 있습니다');
+      }
+    }
+    await this.prisma.companyDataChat.delete({ where: { id } });
+    return { ok: true };
+  }
 }

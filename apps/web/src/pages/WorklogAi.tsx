@@ -87,6 +87,19 @@ export function WorklogAi() {
     loadHistory();
   }, []);
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  async function deleteChat(id: string) {
+    if (!window.confirm('이 분석 결과를 삭제하시겠습니까? 되돌릴 수 없습니다.')) return;
+    setDeletingId(id);
+    try {
+      await apiJson(`/api/company-data/chats/${encodeURIComponent(id)}?userId=${encodeURIComponent(myUserId)}`, { method: 'DELETE' });
+      setHistory((prev) => prev.filter((m) => m.id !== id));
+      if (expandedId === id) setExpandedId(null);
+    } catch (e: any) {
+      window.alert(e?.message || '삭제에 실패했습니다.');
+    } finally { setDeletingId(null); }
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -319,7 +332,7 @@ export function WorklogAi() {
             .trim()
             .slice(0, 180);
           return (
-            <div key={msg.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff' }}>
+            <div key={msg.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, background: '#fff', position: 'relative' }}>
               <button
                 type="button"
                 onClick={() => setExpandedId(isOpen ? null : msg.id)}
@@ -332,7 +345,7 @@ export function WorklogAi() {
                       작성자: {msg.user.name}{msg.user.id === myUserId ? ' (나)' : ''}
                     </span>
                   )}
-                  <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 12 }}>{isOpen ? '▲ 접기' : '▼ 펼치기'}</span>
+                  <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: 12, paddingRight: (msg.user?.id === myUserId || me?.role === 'CEO' || me?.role === 'EXEC') ? 24 : 0 }}>{isOpen ? '▲ 접기' : '▼ 펼치기'}</span>
                 </div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#1d4ed8', whiteSpace: 'normal' as any }}>{msg.question}</div>
                 {!isOpen && (
@@ -341,6 +354,17 @@ export function WorklogAi() {
                   </div>
                 )}
               </button>
+              {(msg.user?.id === myUserId || me?.role === 'CEO' || me?.role === 'EXEC') && (
+                <button
+                  type="button"
+                  title="분석 결과 삭제"
+                  disabled={deletingId === msg.id}
+                  onClick={(e) => { e.stopPropagation(); void deleteChat(msg.id); }}
+                  style={{ position: 'absolute', top: 10, right: 12, background: 'transparent', border: 'none', cursor: 'pointer', color: '#cbd5e1', fontSize: 15, lineHeight: 1, padding: 2 }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+                >{deletingId === msg.id ? '…' : '🗑'}</button>
+              )}
               {isOpen && (
                 <div style={{ padding: '0 14px 14px' }}>
                   <div style={{ border: '2px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
