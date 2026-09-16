@@ -20,6 +20,7 @@ type WorkManualDto = {
   reviewedAt?: string | null;
   reviewComment?: string | null;
   qualityScore?: number;
+  attachments?: Array<{ url: string; name: string }> | null;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -1201,6 +1202,16 @@ export function WorkManuals() {
                 <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontWeight: 700, marginBottom: 8 }}>{selected.title || '(업무명 없음)'}</div>
                   <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.6, color: '#0f172a', margin: 0, maxHeight: 400, overflow: 'auto' }}>{String(selected.content || '').trim() || '(내용 없음)'}</pre>
+                  {(selected.attachments?.length ?? 0) > 0 && (
+                    <div style={{ marginTop: 10, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4 }}>📎 첨부파일</div>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        {selected.attachments!.map((f, i) => (
+                          <a key={`${f.url}-${i}`} href={f.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: '#0F3D73', textDecoration: 'underline', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.url}</a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {(() => { const v = validateManual(String(selected.content || '')); const musts = v.issues.filter(x => x.severity === 'MUST'); return musts.length > 0 ? (
                   <div style={{ background: '#FEF2F2', borderRadius: 8, padding: 10, display: 'grid', gap: 4 }}>

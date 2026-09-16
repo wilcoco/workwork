@@ -399,6 +399,7 @@ model WorkManual {
   options        Json?
   phaseData      Json?
   currentPhase   Int          @default(1)
+  attachments    Json? // OneDrive 첨부 [{ url, name }]
   version        Int          @default(1)
   versionUpAt    DateTime     @default(now())
   status         ManualStatus @default(DRAFT)

@@ -34,6 +34,9 @@ class CreateWorkManualDto {
   @IsOptional()
   phaseData?: any;
 
+  @IsOptional()
+  attachments?: any; // OneDrive [{ url, name }]
+
   currentPhase?: number;
 }
 
@@ -64,6 +67,9 @@ class UpdateWorkManualDto {
 
   @IsOptional()
   phaseData?: any;
+
+  @IsOptional()
+  attachments?: any; // OneDrive [{ url, name }]
 
   currentPhase?: number;
 }
@@ -334,7 +340,7 @@ export class WorkManualsController {
         orderBy: { name: 'asc' },
       }),
       (this.prisma as any).workManual.findMany({
-        select: { id: true, userId: true, title: true, status: true, qualityScore: true, createdAt: true, updatedAt: true },
+        select: { id: true, userId: true, title: true, status: true, qualityScore: true, attachments: true, createdAt: true, updatedAt: true },
       }),
       (this.prisma as any).processTemplate.findMany({
         where: { sourceManualId: { not: null } },
@@ -400,10 +406,10 @@ export class WorkManualsController {
     }
     const m = await (this.prisma as any).workManual.findUnique({
       where: { id: manualId },
-      select: { id: true, title: true, content: true, status: true, qualityScore: true, updatedAt: true, user: { select: { name: true } } },
+      select: { id: true, title: true, content: true, status: true, qualityScore: true, attachments: true, updatedAt: true, user: { select: { name: true } } },
     });
     if (!m) throw new BadRequestException('manual not found');
-    return { id: m.id, title: m.title, content: m.content || '', status: m.status, qualityScore: m.qualityScore ?? 0, updatedAt: m.updatedAt, authorName: m.user?.name || '' };
+    return { id: m.id, title: m.title, content: m.content || "", status: m.status, qualityScore: m.qualityScore ?? 0, attachments: m.attachments ?? [], updatedAt: m.updatedAt, authorName: m.user?.name || "" };
   }
 
   /**
@@ -493,7 +499,7 @@ export class WorkManualsController {
     const phaseData = dto.phaseData != null ? dto.phaseData : undefined;
     const currentPhase = typeof dto.currentPhase === 'number' ? dto.currentPhase : 1;
     const created = await (this.prisma as any).workManual.create({
-      data: { userId: uid, title, content, authorName, authorTeamName, department, baseType, options, phaseData, currentPhase },
+      data: { userId: uid, title, content, authorName, authorTeamName, department, baseType, options, phaseData, attachments: (dto as any).attachments ?? undefined, currentPhase },
     });
     void this.linkManualActivity(created.id, String(dto.title || '')).catch(() => {}); // 온톨로지: 제목 기준 활동 결정론 연결 (AI 불필요)
     return created;
@@ -543,6 +549,7 @@ export class WorkManualsController {
     if (wantsBaseType) data.baseType = String(dto.baseType).trim();
     if (wantsOptions) data.options = dto.options;
     if (wantsPhaseData) data.phaseData = dto.phaseData;
+    if ((dto as any).attachments !== undefined) data.attachments = (dto as any).attachments;
     if (wantsCurrentPhase) data.currentPhase = Number(dto.currentPhase);
 
     return (this.prisma as any).workManual.update({

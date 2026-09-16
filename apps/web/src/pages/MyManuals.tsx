@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
+import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 
 /**
  * 내 업무 매뉴얼 — 전 구성원이 자기 업무를 자연어 매뉴얼로 입력하고,
  * 곧장 "프로세스 만들기"로 이어지는 진입점.
  */
-type Manual = { id: string; title: string; content?: string; status: string; qualityScore?: number; createdAt: string; updatedAt: string };
+type Attach = { url: string; name: string };
+type Manual = { id: string; title: string; content?: string; status: string; qualityScore?: number; attachments?: Attach[] | null; createdAt: string; updatedAt: string };
 
 const STD_TEMPLATE = [
   '### STEP S1 | (단계 이름)',
@@ -32,6 +34,8 @@ export function MyManuals() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [attachments, setAttachments] = useState<Attach[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
   // 가이드라인 점검 모달: 저장 직후 빠진 항목을 대화로 보완
   const [check, setCheck] = useState<null | { manualId: string; thenProcess: boolean; phase: 'loading' | 'ask'; checklist: Array<{ key: string; ok: boolean; note: string }>; questions: Array<{ id: number; category: string; question: string }> }>(null);
   const [checkAnswers, setCheckAnswers] = useState<Record<number, string>>({});
@@ -107,9 +111,9 @@ export function MyManuals() {
     try {
       const created = await apiJson<{ id: string }>(`/api/work-manuals`, {
         method: 'POST',
-        body: JSON.stringify({ userId, title: title.trim(), content: content.trim() }),
+        body: JSON.stringify({ userId, title: title.trim(), content: content.trim(), attachments }),
       });
-      setTitle(''); setContent('');
+      setTitle(''); setContent(''); setAttachments([]);
       toast('매뉴얼이 저장되었습니다. 가이드라인 점검 중...', 'success');
       if (created?.id) { void runGuidelineCheck(created.id, thenProcess); return; }
       await load();
@@ -135,6 +139,23 @@ export function MyManuals() {
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="업무명 (예: 구매 발주 처리)" />
         <textarea rows={10} value={content} onChange={(e) => setContent(e.target.value)}
           placeholder={'예: 자재가 필요하면 발주 요청서를 작성한다. 팀장이 승인하고, 반려되면 다시 작성한다...\n\n단계·담당·결재선·반려 시 처리·기한이 들어 있을수록 정확한 프로세스가 됩니다.'} />
+        <div style={{ display: 'grid', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>첨부파일 (OneDrive)</span>
+            <button type="button" className="btn btn-sm btn-outline" onClick={() => setShowPicker(true)}>📁 파일 추가</button>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>내부 문서는 OneDrive에서 선택합니다.</span>
+          </div>
+          {attachments.length > 0 && (
+            <div style={{ display: 'grid', gap: 4 }}>
+              {attachments.map((f, i) => (
+                <div key={`${f.url}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 8px' }}>
+                  <a href={f.url} target="_blank" rel="noreferrer" style={{ flex: 1, color: '#0F3D73', textDecoration: 'underline', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.url}</a>
+                  <button type="button" onClick={() => setAttachments((a) => a.filter((_, idx) => idx !== i))} style={{ border: 'none', background: 'transparent', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>삭제</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <button type="button" className="btn btn-sm btn-outline"
             onClick={() => setContent((prev) => (prev.trim() ? prev + '\n\n' + STD_TEMPLATE : STD_TEMPLATE))}>📋 표준 양식 넣기</button>
@@ -153,7 +174,7 @@ export function MyManuals() {
           const processed = processedIds.has(m.id);
           return (
             <div key={m.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, flex: 1, minWidth: 160 }}>{m.title}</span>
+              <span style={{ fontWeight: 700, flex: 1, minWidth: 160 }}>{m.title}{(m.attachments?.length ?? 0) > 0 ? <span style={{ marginLeft: 6, fontSize: 12, color: '#0F3D73' }}>📎{m.attachments!.length}</span> : null}</span>
               {processed ? (
                 <span style={{ fontSize: 11, color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 999, padding: '2px 8px' }}>✓ 프로세스화 완료</span>
               ) : (
@@ -210,6 +231,14 @@ export function MyManuals() {
             )}
           </div>
         </div>
+      )}
+      {showPicker && (
+        <OneDriveFilePicker
+          userId={userId}
+          multiple
+          onSelect={(files) => setAttachments((a) => [...a, ...files.map((f) => ({ url: f.url, name: f.name || f.url }))])}
+          onClose={() => setShowPicker(false)}
+        />
       )}
     </div>
   );
