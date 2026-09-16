@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { KbBadge, KbAuthorCount } from '../components/KbBadge';
 import { apiJson, apiUrl } from '../lib/api';
@@ -94,6 +94,8 @@ export function Home() {
   const [worklogTotal, setWorklogTotal] = useState(0);
   // Like summary for the currently displayed worklog page: { worklogId: {count, liked} }
   const [likeMap, setLikeMap] = useState<Record<string, { count: number; liked: boolean; names?: string[] }>>({});
+  // 업무일지 열람자 명단(임원 이상에게만 서버가 채워줌): { worklogId: [{name, at}] }
+  const [viewersMap, setViewersMap] = useState<Record<string, Array<{ name: string; at: string }>>>({});
   // Team/name filter options come from a one-time sample fetch so the
   // dropdowns are not limited to the current page's entries.
   const [facetSample, setFacetSample] = useState<WL[]>([]);
@@ -190,6 +192,12 @@ export function Home() {
                 },
               );
               if (!ignore) setLikeMap(res.items || {});
+              // 열람자 명단 — 서버가 임원 이상에게만 채워줌(그 외 빈 응답)
+              try {
+                const vr = await apiJson<{ items: Record<string, Array<{ name: string; at: string }>> }>(
+                  '/api/document-views/worklog-viewers', { method: 'POST', body: JSON.stringify({ viewerId, ids }) });
+                if (!ignore) setViewersMap(vr.items || {});
+              } catch { if (!ignore) setViewersMap({}); }
             } else if (!ignore) {
               setLikeMap({});
             }
@@ -951,11 +959,18 @@ export function Home() {
                             onClick={(e) => e.stopPropagation()}
                             style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8, display: 'grid', gap: 8 }}
                           >
+                            <ViewTracker worklogId={w.id} />
                             <LikeButton
                               worklogId={w.id}
                               initial={likeMap[w.id] || { count: 0, liked: false }}
                               onChange={(next) => setLikeMap((m) => ({ ...m, [w.id]: next }))}
                             />
+                            {(viewersMap[w.id]?.length ?? 0) > 0 && (
+                              <div style={{ fontSize: 12, color: '#64748b' }}>
+                                <span style={{ color: '#94a3b8' }}>👀 본 사람 </span>
+                                {(() => { const vs = viewersMap[w.id].map(v => v.name).filter(Boolean); const head = vs.slice(0,5).join(', '); return vs.length>5?`${head} 외 ${vs.length-5}명`:head; })()}
+                              </div>
+                            )}
                             <CommentsBox
                               worklogId={w.id}
                               worklogAuthorId={w.userId}
@@ -1048,11 +1063,18 @@ export function Home() {
                             onClick={(e) => e.stopPropagation()}
                             style={{ marginTop: 4, borderTop: '1px solid #e5e7eb', paddingTop: 8, display: 'grid', gap: 8 }}
                           >
+                            <ViewTracker worklogId={w.id} />
                             <LikeButton
                               worklogId={w.id}
                               initial={likeMap[w.id] || { count: 0, liked: false }}
                               onChange={(next) => setLikeMap((m) => ({ ...m, [w.id]: next }))}
                             />
+                            {(viewersMap[w.id]?.length ?? 0) > 0 && (
+                              <div style={{ fontSize: 12, color: '#64748b' }}>
+                                <span style={{ color: '#94a3b8' }}>👀 본 사람 </span>
+                                {(() => { const vs = viewersMap[w.id].map(v => v.name).filter(Boolean); const head = vs.slice(0,5).join(', '); return vs.length>5?`${head} 외 ${vs.length-5}명`:head; })()}
+                              </div>
+                            )}
                             <CommentsBox
                               worklogId={w.id}
                               worklogAuthorId={w.userId}
@@ -1715,6 +1737,30 @@ function CommentsBox({
  * Inline like (heart) button. Optimistically toggles, syncs with server,
  * and pops a modal listing every user who liked when the count is clicked.
  */
+// 열람 추적: 카드가 화면에 50%+로 1초 이상 머물면 1회 열람 기록(본인 일지는 서버가 제외).
+function ViewTracker({ worklogId }: { worklogId: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current?.parentElement;
+    const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+    if (!el || !uid) return;
+    let timer: any = null; let done = false;
+    const io = new IntersectionObserver((entries) => {
+      const e = entries[0];
+      if (e.isIntersecting && e.intersectionRatio >= 0.5) {
+        if (!done && !timer) timer = setTimeout(() => {
+          done = true;
+          apiJson('/api/document-views/worklog', { method: 'POST', body: JSON.stringify({ userId: uid, worklogId }) }).catch(() => {});
+          io.disconnect();
+        }, 1000); // 1초 이상 머물면 열람
+      } else if (timer) { clearTimeout(timer); timer = null; }
+    }, { threshold: [0, 0.5, 1] });
+    io.observe(el);
+    return () => { if (timer) clearTimeout(timer); io.disconnect(); };
+  }, [worklogId]);
+  return <span ref={ref} style={{ display: 'none' }} aria-hidden />;
+}
+
 function LikeButton({
   worklogId,
   initial,
@@ -1722,21 +1768,24 @@ function LikeButton({
 }: {
   worklogId: string;
   initial?: { count: number; liked: boolean; names?: string[] };
-  onChange?: (next: { count: number; liked: boolean }) => void;
+  onChange?: (next: { count: number; liked: boolean; names?: string[] }) => void;
 }) {
   const [count, setCount] = useState<number>(initial?.count ?? 0);
   const [liked, setLiked] = useState<boolean>(initial?.liked ?? false);
+  const [names, setNames] = useState<string[]>(initial?.names ?? []); // 인라인 표시용 (토글 시 내 이름 즉시 반영)
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [likers, setLikers] = useState<Array<{ userId: string; name: string; createdAt: string }>>([]);
   const [likersLoading, setLikersLoading] = useState(false);
+  const myName = typeof localStorage !== 'undefined' ? (localStorage.getItem('userName') || '나') : '나';
 
   useEffect(() => {
     if (initial) {
       setCount(initial.count);
       setLiked(initial.liked);
+      setNames(initial.names ?? []);
     }
-  }, [initial?.count, initial?.liked]);
+  }, [initial?.count, initial?.liked, (initial?.names || []).join(',')]);
 
   async function toggle() {
     if (busy) return;
@@ -1746,12 +1795,14 @@ function LikeButton({
       return;
     }
     setBusy(true);
-    // Optimistic update
-    const prev = { count, liked };
+    // Optimistic update — 내 이름도 즉시 목록에 넣고/빼기
+    const prev = { count, liked, names };
     const nextLiked = !liked;
     const nextCount = Math.max(0, count + (nextLiked ? 1 : -1));
+    const nextNames = nextLiked ? (names.includes(myName) ? names : [...names, myName]) : names.filter((n) => n !== myName);
     setLiked(nextLiked);
     setCount(nextCount);
+    setNames(nextNames);
     try {
       const r = await apiJson<{ liked: boolean; count: number }>('/api/likes/toggle', {
         method: 'POST',
@@ -1759,11 +1810,12 @@ function LikeButton({
       });
       setLiked(r.liked);
       setCount(r.count);
-      onChange?.({ count: r.count, liked: r.liked });
+      onChange?.({ count: r.count, liked: r.liked, names: nextNames });
     } catch {
       // Revert on failure
       setLiked(prev.liked);
       setCount(prev.count);
+      setNames(prev.names);
       alert('좋아요 처리 실패');
     } finally {
       setBusy(false);
@@ -1788,7 +1840,7 @@ function LikeButton({
 
   return (
     <>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <button
           type="button"
           onClick={toggle}
@@ -1827,13 +1879,13 @@ function LikeButton({
         >
           {count}명
         </button>
-        {(initial?.names?.length ?? 0) > 0 && (
+        {names.filter(Boolean).length > 0 && (
           <span onClick={openLikers} title="좋아요 누른 사람 전체 보기"
-            style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+            style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer', whiteSpace: 'normal', wordBreak: 'break-word' }}>
             {(() => {
-              const ns = (initial!.names || []).filter(Boolean);
-              const head = ns.slice(0, 3).join(', ');
-              return ns.length > 3 ? `${head} 외 ${ns.length - 3}명` : head;
+              const ns = names.filter(Boolean);
+              const head = ns.slice(0, 5).join(', ');
+              return ns.length > 5 ? `${head} 외 ${ns.length - 5}명` : head;
             })()}
           </span>
         )}
