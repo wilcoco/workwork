@@ -531,9 +531,11 @@ export class WorkManualsController {
     const wantsOptions = dto.options != null;
     const wantsPhaseData = dto.phaseData != null;
     const wantsCurrentPhase = dto.currentPhase != null;
+    const wantsAttachments = (dto as any).attachments !== undefined
+      && JSON.stringify((dto as any).attachments ?? []) !== JSON.stringify(existing?.attachments ?? []);
 
     const changed = titleChanged || contentChanged || authorNameChanged || authorTeamChanged
-      || wantsDept || wantsBaseType || wantsOptions || wantsPhaseData || wantsCurrentPhase;
+      || wantsDept || wantsBaseType || wantsOptions || wantsPhaseData || wantsCurrentPhase || wantsAttachments;
 
     if (!changed) return existing;
 
