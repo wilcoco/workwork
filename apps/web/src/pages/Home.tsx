@@ -59,6 +59,7 @@ export function Home() {
   const [pendingSwaps, setPendingSwaps] = useState<any[]>([]); // 내게 온 차량 교환 요청 (대기중)
   const [approvalNotices, setApprovalNotices] = useState<any[]>([]); // 결재 소식: 의견/최종 승인·반려 (안 읽은 것)
   const [weeklyDigest, setWeeklyDigest] = useState<any | null>(null); // 온톨로지 주간 리포트 (안 읽은 것)
+  const [staleWriters, setStaleWriters] = useState<Array<{ userId: string; name: string; team: string; lastAt: string | null }>>([]); // 3일+ 일지 미작성(임원용)
   const [myName, setMyName] = useState('');
   // 결재 알림 예외 계정 (대표 지시): 숨김 활성 계정에게는 결재 섹션 자체를 표시하지 않음
   const hideApproval = ['김정중', '김선구'].includes(myName);
@@ -313,6 +314,13 @@ export function Home() {
       try {
         const me = await apiJson<any>(`/api/users/me?userId=${encodeURIComponent(viewerId)}`);
         setMyName(String(me?.name || ''));
+        // 임원 이상: 3일+ 일지 미작성자 명단 (서버가 권한·임원제외 처리)
+        if (['CEO', 'EXEC', 'EXTERNAL'].includes(String(me?.role || '').toUpperCase())) {
+          try {
+            const r = await apiJson<{ items: any[] }>(`/api/users/stale-worklog-writers?viewerId=${encodeURIComponent(viewerId)}&days=3`);
+            setStaleWriters(r.items || []);
+          } catch { setStaleWriters([]); }
+        }
       } catch {}
       // 내가 결재해야 할 건 (현재 내 차례인 것만, 최대 3건 표시 + 총 건수)
       try {
@@ -433,12 +441,25 @@ export function Home() {
         </div>
       )}
       {/* 알림 배너 */}
-      {(!hideApproval || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0) && (
+      {(!hideApproval || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || staleWriters.length > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
             <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>{(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0) ? '처리가 필요한 항목이 있습니다' : '오늘의 알림'}</span>
           </div>
+          {staleWriters.length > 0 && (
+            <div style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, color: '#9a3412', marginBottom: 6, fontSize: 13 }}>📝 3일 이상 업무일지 미작성 ({staleWriters.length}명) · 임원 제외</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {staleWriters.map((u) => (
+                  <span key={u.userId} title={u.lastAt ? `마지막 작성 ${new Date(u.lastAt).toLocaleDateString('ko-KR')}` : '작성 이력 없음'}
+                    style={{ fontSize: 12, background: '#fff', border: '1px solid #fed7aa', color: '#9a3412', borderRadius: 14, padding: '2px 9px' }}>
+                    {u.name}{u.team ? ` · ${u.team}` : ''}{u.lastAt ? '' : ' (없음)'}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {weeklyDigest && (
             <div
               onClick={() => {

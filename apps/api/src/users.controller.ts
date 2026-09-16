@@ -221,6 +221,36 @@ export class UsersController {
     return actor;
   }
 
+  // 3일 이상(기본) 업무일지 미작성자 — 임원(EXEC/CEO)·외부·경비·숨김계정 제외. 임원 이상만 조회.
+  @Get('stale-worklog-writers')
+  async staleWorklogWriters(@Query('viewerId') viewerId: string, @Query('days') daysStr?: string) {
+    if (!viewerId) throw new BadRequestException('viewerId required');
+    const viewer = await this.prisma.user.findUnique({ where: { id: viewerId }, select: { role: true } });
+    const vrole = String(viewer?.role || '').toUpperCase();
+    if (!['CEO', 'EXEC', 'EXTERNAL'].includes(vrole)) return { items: [], days: 0 }; // 임원 이상만
+    const days = Math.min(Math.max(parseInt(String(daysStr || '3'), 10) || 3, 1), 30);
+    const cutoff = new Date(Date.now() - days * 86400000);
+    const HIDDEN = ['cmouna6bf01w0xjhgf6imupg5', 'cmoknhiqj0av02rtgo5eou86t']; // 김정중·김선구
+    // 대상: 활성 + 조직 배정됨 + 일반/팀장(임원·외부·경비 제외)
+    const users = await (this.prisma as any).user.findMany({
+      where: {
+        status: 'ACTIVE', NOT: { orgUnitId: null }, id: { notIn: HIDDEN },
+        role: { in: ['INDIVIDUAL', 'MANAGER'] },
+      },
+      select: { id: true, name: true, orgUnit: { select: { name: true } } },
+    });
+    if (!users.length) return { items: [], days };
+    const last = await (this.prisma as any).worklog.groupBy({
+      by: ['createdById'], where: { createdById: { in: users.map((u: any) => u.id) } }, _max: { date: true },
+    });
+    const lastMap = new Map<string, Date | null>(last.map((r: any) => [r.createdById, r._max.date]));
+    const items = users
+      .map((u: any) => ({ userId: u.id, name: u.name, team: u.orgUnit?.name || '', lastAt: lastMap.get(u.id) || null }))
+      .filter((u: any) => !u.lastAt || new Date(u.lastAt) < cutoff)
+      .sort((a: any, b: any) => (a.lastAt ? new Date(a.lastAt).getTime() : 0) - (b.lastAt ? new Date(b.lastAt).getTime() : 0));
+    return { items, days };
+  }
+
   @Get('me')
   async me(@Query('userId') userId: string) {
     if (!userId) throw new BadRequestException('userId required');
