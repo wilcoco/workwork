@@ -68,8 +68,9 @@ export class LikesController {
     const ids = Array.isArray(body?.ids) ? body!.ids!.filter((x) => typeof x === 'string' && x.trim()) : [];
     const viewerId = body?.viewerId ? String(body.viewerId) : '';
     if (!subjectType || ids.length === 0) return { items: {} };
+    const HIDDEN = ['cmouna6bf01w0xjhgf6imupg5', 'cmoknhiqj0av02rtgo5eou86t']; // 김정중·김선구 (명단 노출 제외)
     const rows = await (this.prisma as any).like.findMany({
-      where: { subjectType, subjectId: { in: ids } },
+      where: { subjectType, subjectId: { in: ids }, userId: { notIn: HIDDEN } },
       orderBy: { createdAt: 'asc' },
       select: { subjectId: true, userId: true, user: { select: { name: true } } },
     });

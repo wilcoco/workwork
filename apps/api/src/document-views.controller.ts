@@ -65,8 +65,9 @@ export class DocumentViewsController {
     if (!viewerId || !ids.length) return { items: {} };
     const viewer = await prisma.user.findUnique({ where: { id: viewerId }, select: { role: true } });
     if (!['CEO', 'EXEC', 'EXTERNAL'].includes(String(viewer?.role || '').toUpperCase())) return { items: {} }; // 임원 이상만
+    const HIDDEN = ['cmouna6bf01w0xjhgf6imupg5', 'cmoknhiqj0av02rtgo5eou86t']; // 김정중·김선구 (명단 노출 제외)
     const rows = await prisma.documentViewLog.findMany({
-      where: { docType: 'worklog', docId: { in: ids } },
+      where: { docType: 'worklog', docId: { in: ids }, userId: { notIn: HIDDEN } },
       orderBy: { viewedAt: 'desc' },
       include: { user: { select: { name: true } } },
     });
