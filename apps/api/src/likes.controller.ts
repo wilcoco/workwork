@@ -70,13 +70,15 @@ export class LikesController {
     if (!subjectType || ids.length === 0) return { items: {} };
     const rows = await (this.prisma as any).like.findMany({
       where: { subjectType, subjectId: { in: ids } },
-      select: { subjectId: true, userId: true },
+      orderBy: { createdAt: 'asc' },
+      select: { subjectId: true, userId: true, user: { select: { name: true } } },
     });
-    const items: Record<string, { count: number; liked: boolean }> = {};
-    for (const id of ids) items[id] = { count: 0, liked: false };
+    const items: Record<string, { count: number; liked: boolean; names: string[] }> = {};
+    for (const id of ids) items[id] = { count: 0, liked: false, names: [] };
     for (const r of rows) {
-      const cur = items[r.subjectId] || (items[r.subjectId] = { count: 0, liked: false });
+      const cur = items[r.subjectId] || (items[r.subjectId] = { count: 0, liked: false, names: [] });
       cur.count += 1;
+      cur.names.push(r.user?.name || '');
       if (viewerId && r.userId === viewerId) cur.liked = true;
     }
     return { items };

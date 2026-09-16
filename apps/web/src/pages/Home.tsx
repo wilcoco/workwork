@@ -92,7 +92,7 @@ export function Home() {
   const [worklogPage, setWorklogPage] = useState(1);
   const [worklogTotal, setWorklogTotal] = useState(0);
   // Like summary for the currently displayed worklog page: { worklogId: {count, liked} }
-  const [likeMap, setLikeMap] = useState<Record<string, { count: number; liked: boolean }>>({});
+  const [likeMap, setLikeMap] = useState<Record<string, { count: number; liked: boolean; names?: string[] }>>({});
   // Team/name filter options come from a one-time sample fetch so the
   // dropdowns are not limited to the current page's entries.
   const [facetSample, setFacetSample] = useState<WL[]>([]);
@@ -181,7 +181,7 @@ export function Home() {
           try {
             const ids = (wl.items || []).map((x: any) => x.id).filter(Boolean);
             if (ids.length) {
-              const res = await apiJson<{ items: Record<string, { count: number; liked: boolean }> }>(
+              const res = await apiJson<{ items: Record<string, { count: number; liked: boolean; names?: string[] }> }>(
                 '/api/likes/by-subjects',
                 {
                   method: 'POST',
@@ -1700,7 +1700,7 @@ function LikeButton({
   onChange,
 }: {
   worklogId: string;
-  initial?: { count: number; liked: boolean };
+  initial?: { count: number; liked: boolean; names?: string[] };
   onChange?: (next: { count: number; liked: boolean }) => void;
 }) {
   const [count, setCount] = useState<number>(initial?.count ?? 0);
@@ -1806,6 +1806,16 @@ function LikeButton({
         >
           {count}명
         </button>
+        {(initial?.names?.length ?? 0) > 0 && (
+          <span onClick={openLikers} title="좋아요 누른 사람 전체 보기"
+            style={{ fontSize: 12, color: '#94a3b8', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+            {(() => {
+              const ns = (initial!.names || []).filter(Boolean);
+              const head = ns.slice(0, 3).join(', ');
+              return ns.length > 3 ? `${head} 외 ${ns.length - 3}명` : head;
+            })()}
+          </span>
+        )}
       </div>
       {open && (
         <div
