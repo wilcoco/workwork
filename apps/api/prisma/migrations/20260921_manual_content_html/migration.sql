@@ -1,0 +1,1 @@
+ALTER TABLE "WorkManual" ADD COLUMN IF NOT EXISTS "contentHtml" TEXT;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { ProcessDocument } from '../components/ProcessDocument';
+import { ManualDocument } from '../components/ManualDocument';
 import { UserAvatar } from '../components/UserAvatar';
 
 export function ApprovalsMine() {
@@ -87,6 +88,13 @@ export function ApprovalsMine() {
             doc = { process: inst, summaryTasks: sum?.tasks || [], pendingTask: sum?.pendingTask || null };
             docTitle = `프로세스 결재 - ${(inst?.title || '').trim()}`;
             docDate = inst?.createdAt || a.createdAt;
+          } catch {}
+        }
+        else if (String(a.subjectType || '').toUpperCase() === 'WORK_MANUAL' && a.subjectId) {
+          try {
+            const r = await apiJson<any>(`/api/approvals/batch-subjects`, { method: 'POST', body: JSON.stringify({ items: [{ subjectType: 'WORK_MANUAL', subjectId: a.subjectId }] }) });
+            const m = r?.results?.[`WORK_MANUAL::${a.subjectId}`] || null;
+            if (m) { doc = m; docTitle = `[매뉴얼] ${(m.title || '').trim() || '(제목 없음)'}`; docDate = m.updatedAt || a.createdAt; }
           } catch {}
         }
         return { ...a, docTitle, docDate, _doc: doc };
@@ -284,6 +292,11 @@ export function ApprovalsMine() {
                   {it.subjectType === 'PROCESS' && it._doc ? (
                     <div className="print-expand" style={{ marginTop: 8, maxHeight: 520, overflow: 'auto' }}>
                       <ProcessDocument processDoc={it._doc} variant="full" />
+                    </div>
+                  ) : null}
+                  {String(it.subjectType || '').toUpperCase() === 'WORK_MANUAL' && it._doc ? (
+                    <div className="print-expand" style={{ marginTop: 8, maxHeight: 520, overflow: 'auto' }}>
+                      <ManualDocument manual={it._doc} />
                     </div>
                   ) : null}
                   <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>

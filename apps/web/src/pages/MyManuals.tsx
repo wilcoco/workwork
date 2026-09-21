@@ -3,13 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
+import { RichTextEditor } from '../components/RichTextEditor';
+import { htmlToPlainText, plainTextToHtml } from '../lib/richText';
 
 /**
  * 내 업무 매뉴얼 — 전 구성원이 자기 업무를 자연어 매뉴얼로 입력하고,
  * 곧장 "프로세스 만들기"로 이어지는 진입점.
+ * 본문은 리치 에디터(그림 포함, contentHtml)로 쓰고, 파서·AI용 텍스트 사본(content)을 같이 저장한다.
+ * 저장한 매뉴얼은 팀장 승인(결재함 연동)을 받을 수 있다.
  */
 type Attach = { url: string; name: string };
-type Manual = { id: string; title: string; content?: string; status: string; qualityScore?: number; attachments?: Attach[] | null; createdAt: string; updatedAt: string };
+type Approval = { id: string; status: string; approverId: string; approverName: string; createdAt: string; anyActed: boolean };
+type Manual = {
+  id: string; title: string; content?: string; contentHtml?: string | null; status: string; qualityScore?: number;
+  attachments?: Attach[] | null; approval?: Approval | null; reviewerName?: string; reviewComment?: string | null; reviewedAt?: string | null;
+  createdAt: string; updatedAt: string;
+};
 
 const STD_TEMPLATE = [
   '### STEP S1 | (단계 이름)',
@@ -25,6 +34,13 @@ const STD_TEMPLATE = [
   '- 반려 시: (예: S1로 돌아가 다시 작성)',
 ].join('\n');
 
+const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  DRAFT: { label: '초안', color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },
+  REVIEW: { label: '승인 대기', color: '#1d4ed8', bg: '#eff6ff', border: '#93c5fd' },
+  APPROVED: { label: '승인됨', color: '#15803d', bg: '#f0fdf4', border: '#86efac' },
+  REJECTED: { label: '반려', color: '#b91c1c', bg: '#fef2f2', border: '#fca5a5' },
+};
+
 export function MyManuals() {
   const nav = useNavigate();
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
@@ -32,12 +48,14 @@ export function MyManuals() {
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [contentHtml, setContentHtml] = useState('');
+  const [editorKey, setEditorKey] = useState(0); // 에디터 내용 강제 재적용 카운터
   const [saving, setSaving] = useState(false);
   const [attachments, setAttachments] = useState<Attach[]>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null); // 수정 중인 매뉴얼 id (null=새 작성)
   const [loadingEdit, setLoadingEdit] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null); // 승인 요청/취소 처리 중인 매뉴얼
   // 가이드라인 점검 모달: 저장 직후 빠진 항목을 대화로 보완
   const [check, setCheck] = useState<null | { manualId: string; thenProcess: boolean; phase: 'loading' | 'ask'; checklist: Array<{ key: string; ok: boolean; note: string }>; questions: Array<{ id: number; category: string; question: string }> }>(null);
   const [checkAnswers, setCheckAnswers] = useState<Record<number, string>>({});
@@ -108,7 +126,8 @@ export function MyManuals() {
   useEffect(() => { void load(); /* eslint-disable-next-line */ }, [userId]);
 
   function resetForm() {
-    setTitle(''); setContent(''); setAttachments([]); setEditingId(null);
+    setTitle(''); setContentHtml(''); setAttachments([]); setEditingId(null);
+    setEditorKey((k) => k + 1);
   }
 
   // 기존 매뉴얼을 입력 양식에 그대로 불러오기 (수정 모드)
@@ -118,21 +137,28 @@ export function MyManuals() {
       const d = await apiJson<Manual>(`/api/work-manuals/${encodeURIComponent(m.id)}?userId=${encodeURIComponent(userId)}`);
       setEditingId(m.id);
       setTitle(d.title || m.title || '');
-      setContent(d.content || '');
+      setContentHtml(d.contentHtml || plainTextToHtml(d.content || ''));
       setAttachments(Array.isArray(d.attachments) ? d.attachments : []);
+      setEditorKey((k) => k + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e: any) {
       toast(e?.message || '매뉴얼을 불러오지 못했습니다', 'error');
     } finally { setLoadingEdit(false); }
   }
 
+  function insertTemplate() {
+    setContentHtml((prev) => (htmlToPlainText(prev).trim() ? prev + '<p><br></p>' : '') + plainTextToHtml(STD_TEMPLATE));
+    setEditorKey((k) => k + 1);
+  }
+
   async function save(thenProcess: boolean) {
+    const content = htmlToPlainText(contentHtml);
     if (!title.trim() || !content.trim()) { toast('업무명과 내용을 입력하세요.', 'error'); return; }
     setSaving(true);
     try {
-      const body = JSON.stringify({ userId, title: title.trim(), content: content.trim(), attachments });
+      const body = JSON.stringify({ userId, title: title.trim(), content, contentHtml, attachments });
       if (editingId) {
-        // 수정: 기존 매뉴얼 갱신 (작성자만, 버전 +1)
+        // 수정: 기존 매뉴얼 갱신 (작성자만, 버전 +1). 승인된 매뉴얼은 서버에서 초안으로 되돌아감(재승인 필요)
         const id = editingId;
         await apiJson(`/api/work-manuals/${encodeURIComponent(id)}`, { method: 'PUT', body });
         resetForm();
@@ -151,6 +177,31 @@ export function MyManuals() {
     } finally { setSaving(false); }
   }
 
+  /** 팀장 승인 요청 — 조직도 라인(팀 책임자 → 팀장 → 상위 조직 → 대표)으로 결재 상신 */
+  async function requestApproval(m: Manual) {
+    setBusyId(m.id);
+    try {
+      await apiJson(`/api/work-manuals/${encodeURIComponent(m.id)}/status`, { method: 'POST', body: JSON.stringify({ userId, status: 'REVIEW' }) });
+      toast('팀장에게 승인 요청을 보냈습니다. 결재함에서 처리됩니다.', 'success');
+      await load();
+    } catch (e: any) {
+      toast(e?.message || '승인 요청 실패', 'error');
+    } finally { setBusyId(null); }
+  }
+
+  /** 승인 요청 취소 (결재자가 아직 처리하지 않은 경우) → 초안으로 복귀 */
+  async function cancelApproval(m: Manual) {
+    setBusyId(m.id);
+    try {
+      if (m.approval?.id) await apiJson(`/api/approvals/${encodeURIComponent(m.approval.id)}/cancel`, { method: 'POST', body: JSON.stringify({ actorId: userId }) });
+      else await apiJson(`/api/work-manuals/${encodeURIComponent(m.id)}/status`, { method: 'POST', body: JSON.stringify({ userId, status: 'DRAFT' }) });
+      toast('승인 요청을 취소했습니다.', 'success');
+      await load();
+    } catch (e: any) {
+      toast(e?.message || '취소 실패', 'error');
+    } finally { setBusyId(null); }
+  }
+
   if (!userId) return <div style={{ padding: 24, color: '#64748b' }}>로그인 후 사용할 수 있습니다.</div>;
 
   return (
@@ -158,7 +209,7 @@ export function MyManuals() {
       <div>
         <h2 style={{ margin: '0 0 4px' }}>내 업무 매뉴얼</h2>
         <div style={{ fontSize: 13, color: '#64748b' }}>
-          내가 하는 업무를 평소 말하듯 적어주세요. 적은 매뉴얼은 바로 <b>프로세스</b>로 만들 수 있고, 전사 매뉴얼 자산이 됩니다.
+          내가 하는 업무를 평소 말하듯 적어주세요. 그림(화면 캡처)은 본문에 바로 붙여 넣을 수 있습니다. 적은 매뉴얼은 <b>팀장 승인</b>을 받거나 바로 <b>프로세스</b>로 만들 수 있습니다.
         </div>
       </div>
 
@@ -175,8 +226,13 @@ export function MyManuals() {
           )}
         </div>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="업무명 (예: 구매 발주 처리)" />
-        <textarea rows={10} value={content} onChange={(e) => setContent(e.target.value)}
-          placeholder={'예: 자재가 필요하면 발주 요청서를 작성한다. 팀장이 승인하고, 반려되면 다시 작성한다...\n\n단계·담당·결재선·반려 시 처리·기한이 들어 있을수록 정확한 프로세스가 됩니다.'} />
+        <RichTextEditor
+          value={contentHtml}
+          onChange={setContentHtml}
+          resetKey={editorKey}
+          minHeight={280}
+          placeholder={'예: 자재가 필요하면 발주 요청서를 작성한다. 팀장이 승인하고, 반려되면 다시 작성한다... 화면 캡처는 Ctrl+V로 바로 붙여 넣으세요.'}
+        />
         <div style={{ display: 'grid', gap: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>첨부파일 (OneDrive)</span>
@@ -195,8 +251,7 @@ export function MyManuals() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" className="btn btn-sm btn-outline"
-            onClick={() => setContent((prev) => (prev.trim() ? prev + '\n\n' + STD_TEMPLATE : STD_TEMPLATE))}>📋 표준 양식 넣기</button>
+          <button type="button" className="btn btn-sm btn-outline" onClick={insertTemplate}>📋 표준 양식 넣기</button>
           <span style={{ flex: 1 }} />
           <button className="btn" onClick={() => void save(false)} disabled={saving}>{editingId ? '수정 저장' : '저장만'}</button>
           <button className="btn btn-primary" onClick={() => void save(true)} disabled={saving}>
@@ -210,21 +265,57 @@ export function MyManuals() {
         <b style={{ fontSize: 14 }}>내 매뉴얼 {items.length}개 {loading && <span style={{ fontWeight: 400, color: '#94a3b8' }}>· 로딩중</span>}</b>
         {items.map((m) => {
           const processed = processedIds.has(m.id);
+          const st = STATUS_LABEL[String(m.status || 'DRAFT')] || STATUS_LABEL.DRAFT;
+          const pending = m.status === 'REVIEW';
+          const canRequest = !pending && m.status !== 'APPROVED';
+          const canCancel = pending && (!m.approval || !m.approval.anyActed);
+          const busy = busyId === m.id;
+          const approverName = m.approval?.approverName || m.reviewerName || '';
           return (
-            <div key={m.id} style={{ border: editingId === m.id ? '1px solid #0F3D73' : '1px solid #e5e7eb', background: editingId === m.id ? '#f0f6ff' : undefined, borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, flex: 1, minWidth: 160 }}>{m.title}{(m.attachments?.length ?? 0) > 0 ? <span style={{ marginLeft: 6, fontSize: 12, color: '#0F3D73' }}>📎{m.attachments!.length}</span> : null}</span>
-              {processed ? (
-                <span style={{ fontSize: 11, color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 999, padding: '2px 8px' }}>✓ 프로세스화 완료</span>
-              ) : (
-                <span style={{ fontSize: 11, color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 999, padding: '2px 8px' }}>프로세스화 전</span>
+            <div key={m.id} style={{ border: editingId === m.id ? '1px solid #0F3D73' : '1px solid #e5e7eb', background: editingId === m.id ? '#f0f6ff' : undefined, borderRadius: 8, padding: '10px 12px', display: 'grid', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 700, flex: 1, minWidth: 160 }}>{m.title}{(m.attachments?.length ?? 0) > 0 ? <span style={{ marginLeft: 6, fontSize: 12, color: '#0F3D73' }}>📎{m.attachments!.length}</span> : null}</span>
+                <span title={pending && approverName ? `승인자: ${approverName}` : undefined}
+                  style={{ fontSize: 11, color: st.color, background: st.bg, border: `1px solid ${st.border}`, borderRadius: 999, padding: '2px 8px' }}>
+                  {st.label}{pending && approverName ? ` · ${approverName}` : ''}
+                </span>
+                {processed ? (
+                  <span style={{ fontSize: 11, color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 999, padding: '2px 8px' }}>✓ 프로세스화 완료</span>
+                ) : (
+                  <span style={{ fontSize: 11, color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 999, padding: '2px 8px' }}>프로세스화 전</span>
+                )}
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(m.updatedAt).toLocaleDateString()}</span>
+              </div>
+              {m.status === 'REJECTED' && m.reviewComment && (
+                <div style={{ fontSize: 12, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px' }}>
+                  반려 사유{m.reviewerName ? ` (${m.reviewerName})` : ''}: {m.reviewComment}
+                </div>
               )}
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(m.updatedAt).toLocaleDateString()}</span>
-              <button className="btn btn-sm btn-primary" onClick={() => void openForEdit(m)} disabled={loadingEdit} title="입력한 양식 그대로 다시 열어 수정하고 파일을 추가합니다">✏️ 수정</button>
-              <button className="btn btn-sm" onClick={() => nav(`/manuals?openId=${encodeURIComponent(m.id)}`)}>열기</button>
-              <button className="btn btn-sm btn-outline" onClick={() => void runGuidelineCheck(m.id, false)} title="회사 작성 가이드라인(주기·소요시간/구체 서술/자원/경로/예외) 기준으로 빠진 부분을 점검하고 문답으로 보완합니다">📋 가이드 점검</button>
-              <button className="btn btn-sm btn-primary" onClick={() => nav(`/process/from-manual?manualId=${encodeURIComponent(m.id)}`)}>
-                {processed ? '프로세스 다시 만들기' : '프로세스 만들기 →'}
-              </button>
+              {m.status === 'APPROVED' && (
+                <div style={{ fontSize: 12, color: '#15803d' }}>
+                  {m.reviewerName ? `${m.reviewerName} 승인` : '승인'}{m.reviewedAt ? ` · ${new Date(m.reviewedAt).toLocaleDateString()}` : ''}{m.reviewComment ? ` · ${m.reviewComment}` : ''} · 내용을 수정하면 다시 승인을 받아야 합니다.
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <button className="btn btn-sm btn-primary" onClick={() => void openForEdit(m)} disabled={loadingEdit} title="입력한 양식 그대로 다시 열어 수정하고 파일을 추가합니다">✏️ 수정</button>
+                <button className="btn btn-sm" onClick={() => nav(`/manuals?openId=${encodeURIComponent(m.id)}`)}>열기</button>
+                <button className="btn btn-sm btn-outline" onClick={() => void runGuidelineCheck(m.id, false)} title="회사 작성 가이드라인(주기·소요시간/구체 서술/자원/경로/예외) 기준으로 빠진 부분을 점검하고 문답으로 보완합니다">📋 가이드 점검</button>
+                {canRequest && (
+                  <button className="btn btn-sm" disabled={busy} onClick={() => void requestApproval(m)} style={{ background: '#2563eb', color: '#fff', border: 'none' }}
+                    title="조직도 라인(팀 책임자 → 팀장 → 상위 조직 → 대표)의 팀장에게 결재함으로 승인 요청을 보냅니다">
+                    {busy ? '요청 중…' : m.status === 'REJECTED' ? '🔁 다시 승인 요청' : '✅ 팀장 승인 요청'}
+                  </button>
+                )}
+                {canCancel && (
+                  <button className="btn btn-sm btn-outline" disabled={busy} onClick={() => void cancelApproval(m)} style={{ color: '#dc2626', borderColor: '#fca5a5' }}>
+                    {busy ? '취소 중…' : '승인 요청 취소'}
+                  </button>
+                )}
+                <span style={{ flex: 1 }} />
+                <button className="btn btn-sm btn-outline" onClick={() => nav(`/process/from-manual?manualId=${encodeURIComponent(m.id)}`)}>
+                  {processed ? '프로세스 다시 만들기' : '프로세스 만들기 →'}
+                </button>
+              </div>
             </div>
           );
         })}
@@ -248,7 +339,7 @@ export function MyManuals() {
                   ))}
                 </div>
                 <div style={{ fontSize: 12, color: '#64748b' }}>
-                  회사 표준(주기·소요시간 / 따라 할 수 있는 서술 / 자원·연락처 / 경로·산출물 / 예외 대응) 중 빠진 부분입니다. <b>아는 것만 짧게</b> 답하면 매뉴얼에 자동 추가됩니다. 화면 캡처는 저장 후 본문 편집으로 붙여 주세요.
+                  회사 표준(주기·소요시간 / 따라 할 수 있는 서술 / 자원·연락처 / 경로·산출물 / 예외 대응) 중 빠진 부분입니다. <b>아는 것만 짧게</b> 답하면 매뉴얼에 자동 추가됩니다.
                 </div>
                 {check.questions.map((q) => (
                   <div key={q.id} style={{ display: 'grid', gap: 4 }}>

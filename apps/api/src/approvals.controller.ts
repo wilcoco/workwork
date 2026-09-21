@@ -156,13 +156,14 @@ export class ApprovalsController {
     ];
     const attTypes = KIND_LABELS.filter(([, ls]) => ls.some((l) => l.includes(low) || low.includes(l))).map(([t]) => t);
     const take = 2000;
-    const [wls, cars, logis, atts, trips, procs] = await Promise.all([
+    const [wls, cars, logis, atts, trips, procs, manuals] = await Promise.all([
       this.prisma.worklog.findMany({ where: { note: c }, select: { id: true }, take }),
       this.prisma.carDispatchRequest.findMany({ where: { OR: [{ destination: c }, { purpose: c }] }, select: { id: true }, take }),
       (this.prisma as any).logisticsDispatchRequest.findMany({ where: { OR: [{ loadingPlace: c }, { unloadingPlace: c }, { vehicleType: c }, { cargoDetails: c }] }, select: { id: true }, take }),
       this.prisma.attendanceRequest.findMany({ where: { OR: [{ reason: c }, ...(attTypes.length ? [{ type: { in: attTypes as any } }] : [])] }, select: { id: true }, take }),
       (this.prisma as any).businessTripRequest.findMany({ where: { OR: [{ destination: c }, { purpose: c }] }, select: { id: true }, take }),
       (this.prisma as any).processInstance.findMany({ where: { title: c }, select: { id: true }, take }),
+      (this.prisma as any).workManual.findMany({ where: { title: c }, select: { id: true }, take }),
     ]);
     const or: any[] = [];
     const push = (type: string, rows: any[]) => {
@@ -174,6 +175,7 @@ export class ApprovalsController {
     push('ATTENDANCE', atts);
     push('BUSINESS_TRIP', trips);
     push('PROCESS', procs);
+    push('WORK_MANUAL', manuals);
     if (!or.length) return { id: '__no_title_match__' }; // 아무 문서도 안 걸리면 빈 결과
     return { OR: or };
   }
@@ -456,13 +458,14 @@ export class ApprovalsController {
 
     try {
       const worklogIds = [...ids('WORKLOG'), ...ids('WORKLOGS')];
-      const [worklogs, cars, logistics, attendance, trips, processes] = await Promise.all([
+      const [worklogs, cars, logistics, attendance, trips, processes, manuals] = await Promise.all([
         worklogIds.length ? this.prisma.worklog.findMany({ where: { id: { in: worklogIds } }, include: { createdBy: { select: { id: true, name: true } } } }) : Promise.resolve([]),
         ids('CAR_DISPATCH').length ? this.prisma.carDispatchRequest.findMany({ where: { id: { in: ids('CAR_DISPATCH') } }, include: { requester: { select: { id: true, name: true } }, car: { select: { name: true, type: true } } } }) : Promise.resolve([]),
         ids('LOGISTICS_DISPATCH').length ? (this.prisma as any).logisticsDispatchRequest.findMany({ where: { id: { in: ids('LOGISTICS_DISPATCH') } }, include: { requester: { select: { id: true, name: true } } } }) : Promise.resolve([]),
         ids('ATTENDANCE').length ? this.prisma.attendanceRequest.findMany({ where: { id: { in: ids('ATTENDANCE') } }, include: { user: { select: { id: true, name: true } } } }) : Promise.resolve([]),
         ids('BUSINESS_TRIP').length ? (this.prisma as any).businessTripRequest.findMany({ where: { id: { in: ids('BUSINESS_TRIP') } }, include: { requester: { select: { id: true, name: true } } } }) : Promise.resolve([]),
         ids('PROCESS').length ? this.prisma.processInstance.findMany({ where: { id: { in: ids('PROCESS') } }, include: { startedBy: { select: { id: true, name: true } } } }) : Promise.resolve([]),
+        ids('WORK_MANUAL').length ? (this.prisma as any).workManual.findMany({ where: { id: { in: ids('WORK_MANUAL') } }, select: { id: true, title: true, content: true, contentHtml: true, attachments: true, status: true, version: true, createdAt: true, updatedAt: true, user: { select: { id: true, name: true, orgUnit: { select: { name: true } } } } } }) : Promise.resolve([]),
       ]);
       const wlMap = toMap(worklogs as any[]);
       const maps: Record<string, Record<string, any>> = {
@@ -473,6 +476,7 @@ export class ApprovalsController {
         ATTENDANCE: toMap(attendance as any[]),
         BUSINESS_TRIP: toMap(trips as any[]),
         PROCESS: toMap(processes as any[]),
+        WORK_MANUAL: toMap(manuals as any[]),
       };
       for (const item of list) {
         const key = `${item.subjectType}::${item.subjectId}`;
@@ -561,6 +565,7 @@ export class ApprovalsController {
           await exec.finalizeMilestoneApproval(tx as any, id, 'APPROVED', dto.actorId, dto.comment);
         }
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id, comment: dto.comment } } });
+        await this.finalizeWorkManual(tx, req, 'APPROVED', dto.actorId, dto.comment);
         await this.notifyParticipants(tx, { req, type: 'ApprovalGranted', actorId: dto.actorId, comment: dto.comment });
         return updated;
       });
@@ -648,6 +653,7 @@ export class ApprovalsController {
         await exec.finalizeMilestoneApproval(tx as any, id, 'APPROVED', dto.actorId, dto.comment);
       }
       await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalGranted', userId: dto.actorId, attrs: { requestId: id } } });
+      await this.finalizeWorkManual(tx, req, 'APPROVED', dto.actorId, dto.comment);
       await this.notifyParticipants(tx, { req, type: 'ApprovalGranted', actorId: dto.actorId, comment: dto.comment });
       return updated;
     });
@@ -680,6 +686,7 @@ export class ApprovalsController {
           await exec.finalizeMilestoneApproval(tx as any, id, 'REJECTED', dto.actorId, dto.comment);
         }
         await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, reason: dto.comment } } });
+        await this.finalizeWorkManual(tx, req, 'REJECTED', dto.actorId, dto.comment);
         await this.notifyParticipants(tx, { req, type: 'ApprovalRejected', actorId: dto.actorId, comment: dto.comment });
         return updated;
       });
@@ -731,6 +738,7 @@ export class ApprovalsController {
       const engine = new ProcessesController(this.prisma);
       await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
       await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo, reason: dto.comment } } });
+      await this.finalizeWorkManual(tx, req, 'REJECTED', dto.actorId, dto.comment);
       await this.notifyParticipants(tx, { req, type: 'ApprovalRejected', actorId: dto.actorId, comment: dto.comment });
       return updated;
     });
@@ -804,9 +812,27 @@ export class ApprovalsController {
 
   /** subject 상태 동기화 헬퍼 (결재 상태 → 원문 상태) */
   private async syncSubjectStatus(tx: any, subjectType: string, subjectId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING' | 'CANCELLED') {
+    const st = String(subjectType || '').toUpperCase();
+    if (st === 'WORK_MANUAL') {
+      // ManualStatus: DRAFT/REVIEW/APPROVED/REJECTED — 취소=초안 복귀, 대기=검토중
+      const ms = status === 'CANCELLED' ? 'DRAFT' : status === 'PENDING' ? 'REVIEW' : status;
+      const data: any = { status: ms };
+      if (ms === 'DRAFT') { data.reviewComment = null; data.reviewedAt = null; }
+      await tx.workManual.update({ where: { id: subjectId }, data }).catch(() => {});
+      return;
+    }
     const map: Record<string, string> = { ATTENDANCE: 'attendanceRequest', CAR_DISPATCH: 'carDispatchRequest', LOGISTICS_DISPATCH: 'logisticsDispatchRequest', BUSINESS_TRIP: 'businessTripRequest' };
-    const model = map[String(subjectType || '').toUpperCase()];
+    const model = map[st];
     if (model) await tx[model].update({ where: { id: subjectId }, data: { status: status as any } }).catch(() => {});
+  }
+
+  /** 업무 매뉴얼 결재 확정 — 매뉴얼 상태·검토자·검토의견 반영 */
+  private async finalizeWorkManual(tx: any, req: any, decision: 'APPROVED' | 'REJECTED', actorId?: string, comment?: string) {
+    if (String(req?.subjectType || '').toUpperCase() !== 'WORK_MANUAL') return;
+    await tx.workManual.update({
+      where: { id: String(req.subjectId) },
+      data: { status: decision, reviewedAt: new Date(), reviewComment: String(comment || '').trim() || null, ...(actorId ? { reviewerId: actorId } : {}) },
+    }).catch(() => {});
   }
 
   /** 신청자 본인 취소 — 승인 시작 전(어느 결재자도 승인하지 않음)에만. 결재를 제거하고 원문서를 CANCELLED로. */

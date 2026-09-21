@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
+import { toSafeHtml } from '../lib/richText';
 import { formatKstDatetime } from '../lib/time';
 import { StepFormEditor, StepFormData, parseTextToStepForms, serializeStepsToText, makeEmptyStep } from '../components/StepFormEditor';
 import { toast, toastConfirm } from '../components/Toast';
 
 type WorkManualDto = {
+  contentHtml?: string | null;
   id?: string;
   userId?: string;
   title: string;
@@ -1201,7 +1203,11 @@ export function WorkManuals() {
                 </div>
                 <div style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontWeight: 700, marginBottom: 8 }}>{selected.title || '(업무명 없음)'}</div>
-                  <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.6, color: '#0f172a', margin: 0, maxHeight: 400, overflow: 'auto' }}>{String(selected.content || '').trim() || '(내용 없음)'}</pre>
+                  {selected.contentHtml ? (
+                    <div className="rich-body" style={{ fontSize: 13, lineHeight: 1.6, color: '#0f172a', maxHeight: 480, overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: toSafeHtml(String(selected.contentHtml)) }} />
+                  ) : (
+                    <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.6, color: '#0f172a', margin: 0, maxHeight: 400, overflow: 'auto' }}>{String(selected.content || '').trim() || '(내용 없음)'}</pre>
+                  )}
                   {(selected.attachments?.length ?? 0) > 0 && (
                     <div style={{ marginTop: 10, borderTop: '1px solid #e5e7eb', paddingTop: 8 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4 }}>📎 첨부파일</div>

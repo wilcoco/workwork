@@ -3,6 +3,7 @@ import { LoadingButton } from '../components/LoadingButton';
 import { apiJson, apiUrl } from '../lib/api';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { ProcessDocument } from '../components/ProcessDocument';
+import { ManualDocument } from '../components/ManualDocument';
 import { UserAvatar } from '../components/UserAvatar';
 import { ApprovalStepLadder, turnBadge, type ApprovalStep } from '../components/ApprovalSteps';
 
@@ -395,6 +396,18 @@ export function ApprovalsInbox() {
               </span>
             ) as any;
             when = inst?.createdAt || when;
+          } else if (stNorm === 'WORK_MANUAL' && doc) {
+            title = `[매뉴얼] ${(doc.title || '').trim() || '(제목 없음)'}`;
+            const who = doc?.user?.name || '';
+            const team = doc?.user?.orgUnit?.name || '';
+            meta = (
+              <span>
+                {who}
+                <UserAvatar userId={String(doc?.user?.id || '')} name={String(who || '')} size={14} style={{ marginLeft: 4 }} />
+                {team ? ` · ${team}` : ''}{doc?.version ? ` · v${doc.version}` : ''}
+              </span>
+            ) as any;
+            when = doc?.updatedAt || doc?.createdAt || when;
           }
           const reqName = String(a.requestedBy?.name || '');
           const reqId = String(a.requestedBy?.id || '');
@@ -543,6 +556,12 @@ export function ApprovalsInbox() {
                 ].filter(Boolean);
                 meta = parts.join(' · ');
                 when = inst?.createdAt || when;
+              } else if (stNorm === 'WORK_MANUAL' && doc) {
+                title = `[매뉴얼] ${(doc.title || '').trim() || '(제목 없음)'}`;
+                const who = doc?.user?.name || '';
+                const team = doc?.user?.orgUnit?.name || '';
+                meta = `작성자: ${who}${team ? ` · ${team}` : ''}${doc?.version ? ` · v${doc.version}` : ''}`;
+                when = doc?.updatedAt || doc?.createdAt || when;
               }
               const mine = isCurrentApprover(n);
               const tb = turnBadge(mine, String(n.status || ''));
@@ -572,6 +591,11 @@ export function ApprovalsInbox() {
                   {stNorm === 'PROCESS' && doc && (
                     <div style={{ marginTop: 8 }}>
                       <ProcessDocument processDoc={doc} variant="full" onOpenWorklog={(wl) => setWorklogPopup(wl)} />
+                    </div>
+                  )}
+                  {stNorm === 'WORK_MANUAL' && doc && (
+                    <div style={{ marginTop: 6, maxHeight: 520, overflow: 'auto' }}>
+                      <ManualDocument manual={doc} />
                     </div>
                   )}
                   {stNorm === 'ATTENDANCE' && doc?.attachments && Array.isArray(doc.attachments) && doc.attachments.length > 0 && (

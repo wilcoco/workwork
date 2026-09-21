@@ -400,6 +400,7 @@ model WorkManual {
   phaseData      Json?
   currentPhase   Int          @default(1)
   attachments    Json? // OneDrive 첨부 [{ url, name }]
+  contentHtml    String? // 리치 에디터 본문(HTML, 그림 포함). content는 파서/AI용 텍스트 사본
   version        Int          @default(1)
   versionUpAt    DateTime     @default(now())
   status         ManualStatus @default(DRAFT)

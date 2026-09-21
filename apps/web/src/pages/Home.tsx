@@ -478,6 +478,7 @@ export function Home() {
                       {a.subjectType === 'BUSINESS_TRIP' && '[출장]'}
                       {a.subjectType === 'Worklog' && '[업무일지]'}
                       {a.subjectType === 'PROCESS' && '[프로세스]'}
+                      {a.subjectType === 'WORK_MANUAL' && '[매뉴얼]'}
                     </span>
                     <span style={{ fontSize: 11, color: '#a16207' }}>{new Date(a.createdAt).toLocaleDateString()}</span>
                   </div>

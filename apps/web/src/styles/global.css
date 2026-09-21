@@ -134,3 +134,9 @@ textarea { resize: vertical; }
   body.printing-approval .approval-print-area .print-expand { max-height: none !important; overflow: visible !important; }
   body.printing-approval .no-print { display: none !important; }
 }
+
+/* 리치 본문 뷰어(매뉴얼 등): 그림이 폭을 넘지 않게 */
+.rich-body img { max-width: 100%; height: auto; border-radius: 6px; }
+.rich-body p { margin: 0 0 6px; }
+.rich-body h1, .rich-body h2, .rich-body h3 { margin: 12px 0 6px; }
+.rich-body ul, .rich-body ol { padding-left: 22px; margin: 4px 0; }

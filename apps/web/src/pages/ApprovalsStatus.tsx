@@ -312,6 +312,7 @@ function subjectTypeLabel(t?: string): string {
   if (v === 'CAR_DISPATCH') return '배차 신청';
   if (v === 'ATTENDANCE') return '근태 신청';
   if (v === 'PROCESS') return '프로세스';
+  if (v === 'WORK_MANUAL') return '업무 매뉴얼';
   return String(t || '문서');
 }
 
@@ -380,6 +381,9 @@ function describeSubject(it: any): { title: string; meta: string } {
       inst?.status ? `상태: ${inst.status}` : '',
     ].filter(Boolean).join(' · ');
     return { title, meta };
+  }
+  if (stNorm === 'WORK_MANUAL' && doc) {
+    return { title: `[매뉴얼] ${(doc.title || '').trim() || '(제목 없음)'}`, meta: `작성자: ${doc?.user?.name || ''}${doc?.user?.orgUnit?.name ? ` · ${doc.user.orgUnit.name}` : ''}` };
   }
   return { title: subjectTypeLabel(it.subjectType), meta: `ID: ${String(it.subjectId || '')}` };
 }

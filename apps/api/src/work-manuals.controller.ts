@@ -37,6 +37,9 @@ class CreateWorkManualDto {
   @IsOptional()
   attachments?: any; // OneDrive [{ url, name }]
 
+  @IsOptional()
+  contentHtml?: string; // 리치 에디터 HTML 본문
+
   currentPhase?: number;
 }
 
@@ -70,6 +73,9 @@ class UpdateWorkManualDto {
 
   @IsOptional()
   attachments?: any; // OneDrive [{ url, name }]
+
+  @IsOptional()
+  contentHtml?: string; // 리치 에디터 HTML 본문
 
   currentPhase?: number;
 }
@@ -291,12 +297,33 @@ export class WorkManualsController {
       orderBy: { updatedAt: 'desc' },
       take: 500,
     });
+    // 진행 중인 결재(WORK_MANUAL) — 취소 버튼·승인자 표시용
+    const pendingMap = new Map<string, any>();
+    try {
+      const ids = (items || []).map((it: any) => String(it.id));
+      if (ids.length) {
+        const reqs = await (this.prisma as any).approvalRequest.findMany({
+          where: { subjectType: 'WORK_MANUAL', subjectId: { in: ids }, status: 'PENDING' },
+          select: { id: true, subjectId: true, status: true, createdAt: true, approver: { select: { id: true, name: true } }, steps: { select: { status: true } } },
+        });
+        for (const r of reqs) pendingMap.set(String(r.subjectId), { id: r.id, status: r.status, approverId: r.approver?.id || '', approverName: r.approver?.name || '', createdAt: r.createdAt, anyActed: (r.steps || []).some((st: any) => st.status !== 'PENDING') });
+      }
+    } catch {}
+    const reviewerIds = Array.from(new Set<string>((items || []).map((it: any) => String(it.reviewerId || '')).filter(Boolean)));
+    const reviewerNames = new Map<string, string>();
+    if (reviewerIds.length) {
+      const rs = await this.prisma.user.findMany({ where: { id: { in: reviewerIds } }, select: { id: true, name: true } });
+      for (const r of rs) reviewerNames.set(r.id, r.name || '');
+    }
     return {
       items: (items || []).map((it: any) => ({
         id: it.id,
         userId: it.userId,
         title: it.title,
         content: it.content,
+        contentHtml: it.contentHtml || null,
+        approval: pendingMap.get(String(it.id)) || null,
+        reviewerName: it.reviewerId ? (reviewerNames.get(String(it.reviewerId)) || '') : '',
         authorName: it.authorName || '',
         authorTeamName: it.authorTeamName || '',
         department: it.department || '',
@@ -406,10 +433,10 @@ export class WorkManualsController {
     }
     const m = await (this.prisma as any).workManual.findUnique({
       where: { id: manualId },
-      select: { id: true, title: true, content: true, status: true, qualityScore: true, attachments: true, updatedAt: true, user: { select: { name: true } } },
+      select: { id: true, title: true, content: true, contentHtml: true, status: true, qualityScore: true, attachments: true, updatedAt: true, user: { select: { name: true } } },
     });
     if (!m) throw new BadRequestException('manual not found');
-    return { id: m.id, title: m.title, content: m.content || "", status: m.status, qualityScore: m.qualityScore ?? 0, attachments: m.attachments ?? [], updatedAt: m.updatedAt, authorName: m.user?.name || "" };
+    return { id: m.id, title: m.title, content: m.content || "", contentHtml: m.contentHtml || null, status: m.status, qualityScore: m.qualityScore ?? 0, attachments: m.attachments ?? [], updatedAt: m.updatedAt, authorName: m.user?.name || "" };
   }
 
   /**
@@ -499,7 +526,7 @@ export class WorkManualsController {
     const phaseData = dto.phaseData != null ? dto.phaseData : undefined;
     const currentPhase = typeof dto.currentPhase === 'number' ? dto.currentPhase : 1;
     const created = await (this.prisma as any).workManual.create({
-      data: { userId: uid, title, content, authorName, authorTeamName, department, baseType, options, phaseData, attachments: (dto as any).attachments ?? undefined, currentPhase },
+      data: { userId: uid, title, content, authorName, authorTeamName, department, baseType, options, phaseData, attachments: (dto as any).attachments ?? undefined, contentHtml: (dto as any).contentHtml ?? undefined, currentPhase },
     });
     void this.linkManualActivity(created.id, String(dto.title || '')).catch(() => {}); // 온톨로지: 제목 기준 활동 결정론 연결 (AI 불필요)
     return created;
@@ -533,9 +560,11 @@ export class WorkManualsController {
     const wantsCurrentPhase = dto.currentPhase != null;
     const wantsAttachments = (dto as any).attachments !== undefined
       && JSON.stringify((dto as any).attachments ?? []) !== JSON.stringify(existing?.attachments ?? []);
+    const wantsContentHtml = (dto as any).contentHtml !== undefined
+      && String((dto as any).contentHtml ?? '') !== String(existing?.contentHtml ?? '');
 
     const changed = titleChanged || contentChanged || authorNameChanged || authorTeamChanged
-      || wantsDept || wantsBaseType || wantsOptions || wantsPhaseData || wantsCurrentPhase || wantsAttachments;
+      || wantsDept || wantsBaseType || wantsOptions || wantsPhaseData || wantsCurrentPhase || wantsAttachments || wantsContentHtml;
 
     if (!changed) return existing;
 
@@ -552,7 +581,13 @@ export class WorkManualsController {
     if (wantsOptions) data.options = dto.options;
     if (wantsPhaseData) data.phaseData = dto.phaseData;
     if ((dto as any).attachments !== undefined) data.attachments = (dto as any).attachments;
+    if (wantsContentHtml) data.contentHtml = String((dto as any).contentHtml || '') || null;
+    else if (contentChanged && (dto as any).contentHtml === undefined) data.contentHtml = null; // 텍스트만 고친 경우 HTML 사본은 폐기(텍스트가 원본)
     if (wantsCurrentPhase) data.currentPhase = Number(dto.currentPhase);
+    // 승인된 매뉴얼의 제목·본문·첨부가 바뀌면 재승인 대상(DRAFT)으로 되돌린다
+    if (String(existing?.status || '') === 'APPROVED' && (titleChanged || contentChanged || wantsContentHtml || wantsAttachments)) {
+      data.status = 'DRAFT'; data.reviewComment = null; data.reviewedAt = null;
+    }
 
     return (this.prisma as any).workManual.update({
       where: { id: String(id) },
@@ -587,7 +622,7 @@ export class WorkManualsController {
       DRAFT: ['REVIEW'],
       REVIEW: ['DRAFT'],
       REJECTED: ['REVIEW', 'DRAFT'],
-      APPROVED: ['DRAFT'],
+      APPROVED: ['DRAFT', 'REVIEW'],
     };
     if (!(allowed[current] || []).includes(nextStatus)) {
       throw new BadRequestException(`Cannot change status from ${current} to ${nextStatus}`);
@@ -615,7 +650,33 @@ export class WorkManualsController {
     }
 
     const updated = await (this.prisma as any).workManual.update({ where: { id }, data });
+    // 결재함 연동: REVIEW = 팀장 결재 상신(ApprovalRequest WORK_MANUAL), DRAFT 복귀 = 대기 중 결재 회수
+    if (nextStatus === 'REVIEW') await this.openManualApproval(updated, uid, String(data.reviewerId));
+    else await this.closeManualApproval(String(id));
     return updated;
+  }
+
+  /** 매뉴얼 결재 상신 — 기존 대기 건은 회수하고 1단계 결재선(검토자)으로 새로 만든다 */
+  private async openManualApproval(manual: any, requesterId: string, approverId: string) {
+    await this.closeManualApproval(String(manual.id));
+    await this.prisma.$transaction(async (tx: any) => {
+      const req = await tx.approvalRequest.create({ data: { subjectType: 'WORK_MANUAL', subjectId: String(manual.id), approverId, requestedById: requesterId } });
+      await tx.approvalStep.create({ data: { requestId: req.id, stepNo: 1, approverId, status: 'PENDING' } });
+      await tx.event.create({ data: { subjectType: 'WORK_MANUAL', subjectId: String(manual.id), activity: 'ApprovalRequested', userId: requesterId, attrs: { requestId: req.id, title: manual.title } } }).catch(() => {});
+      await tx.notification.create({ data: { userId: approverId, type: 'ApprovalRequested', subjectType: 'WORK_MANUAL', subjectId: String(manual.id), payload: { requestId: req.id, requestedById: requesterId, title: manual.title } } }).catch(() => {});
+    });
+  }
+
+  /** 대기 중인 매뉴얼 결재 회수(삭제) — 작성자가 초안으로 되돌리거나 다시 상신할 때 */
+  private async closeManualApproval(manualId: string) {
+    const reqs = await (this.prisma as any).approvalRequest.findMany({ where: { subjectType: 'WORK_MANUAL', subjectId: manualId, status: 'PENDING' }, select: { id: true } });
+    if (!reqs.length) return;
+    const ids = reqs.map((r: any) => r.id);
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.approvalStep.deleteMany({ where: { requestId: { in: ids } } });
+      await tx.approvalRequest.deleteMany({ where: { id: { in: ids } } });
+      await tx.notification.deleteMany({ where: { type: 'ApprovalRequested', subjectType: 'WORK_MANUAL', subjectId: manualId } }).catch(() => {});
+    });
   }
 
   @Post(':id/review')
@@ -635,14 +696,26 @@ export class WorkManualsController {
       throw new BadRequestException('decision must be APPROVED or REJECTED');
     }
 
+    const comment = String(dto.comment || '').trim() || null;
     const updated = await (this.prisma as any).workManual.update({
       where: { id: mid },
-      data: {
-        status: decision,
-        reviewedAt: new Date(),
-        reviewComment: String(dto.comment || '').trim() || null,
-      },
+      data: { status: decision, reviewedAt: new Date(), reviewComment: comment, reviewerId: uid },
     });
+    // 결재함에 올라간 건이 있으면 같이 마감 + 작성자 알림
+    const reqs = await (this.prisma as any).approvalRequest.findMany({ where: { subjectType: 'WORK_MANUAL', subjectId: mid, status: 'PENDING' }, select: { id: true, requestedById: true } });
+    if (reqs.length) {
+      const actor = await this.prisma.user.findUnique({ where: { id: uid }, select: { name: true } });
+      await this.prisma.$transaction(async (tx: any) => {
+        for (const r of reqs) {
+          await tx.approvalStep.updateMany({ where: { requestId: r.id, status: 'PENDING' }, data: { status: decision, comment, actedAt: new Date() } });
+          await tx.approvalRequest.update({ where: { id: r.id }, data: { status: decision } });
+          await tx.notification.deleteMany({ where: { type: 'ApprovalRequested', subjectType: 'WORK_MANUAL', subjectId: mid } }).catch(() => {});
+          if (r.requestedById && r.requestedById !== uid) {
+            await tx.notification.create({ data: { userId: r.requestedById, type: decision === 'APPROVED' ? 'ApprovalGranted' : 'ApprovalRejected', subjectType: 'WORK_MANUAL', subjectId: mid, payload: { requestId: r.id, byId: uid, byName: actor?.name || '', comment, reason: comment, forRequester: true } } }).catch(() => {});
+          }
+        }
+      });
+    }
     return updated;
   }
 
@@ -1224,7 +1297,11 @@ targetField 가능한 값: ${allowedFields}
     if (!qa.length) return { applied: 0 };
     const date = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
     const section = `\n\n---\n## 📋 가이드라인 보완 (${date})\n` + qa.map((x) => `- **[${x.category}]** ${x.q}\n  → ${x.a}`).join('\n');
-    const updated = await (this.prisma as any).workManual.update({ where: { id: manual.id }, data: { content: String(manual.content || '') + section } });
+    const escHtml = (t: string) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as any)[c]);
+    const sectionHtml = `<p><br></p><h2>📋 가이드라인 보완 (${date})</h2><ul>` + qa.map((x) => `<li><strong>[${escHtml(x.category)}]</strong> ${escHtml(x.q)}<br>→ ${escHtml(x.a)}</li>`).join('') + `</ul>`;
+    const data: any = { content: String(manual.content || '') + section };
+    if (manual.contentHtml) data.contentHtml = String(manual.contentHtml) + sectionHtml;
+    const updated = await (this.prisma as any).workManual.update({ where: { id: manual.id }, data });
     return { applied: qa.length, contentLength: String(updated.content || '').length };
   }
 
@@ -1302,6 +1379,7 @@ updatedContent는 원본 메뉴얼에 사용자 답변을 반영한 전체 메�
       where: { id },
       data: {
         content: updatedContent,
+        contentHtml: null, // AI가 텍스트 전체를 다시 썼으므로 HTML 사본 폐기
         version: { increment: 1 },
         versionUpAt: new Date(),
       },

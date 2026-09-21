@@ -120,3 +120,59 @@ function sanitizeRichHtml(html: string): string {
 export function toSafeHtml(html: string): string {
   return rewriteOneDriveImagesInHtml(autoLinkUrls(absolutizeUploads(sanitizeRichHtml(html))));
 }
+
+/** HTML 이스케이프 */
+export function escapeHtml(s: string): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
+}
+
+/**
+ * 리치 에디터 HTML → 줄 단위 평문 (STEP 파서·AI 프롬프트용 텍스트 사본).
+ * 문단/제목/목록 항목은 한 줄씩, 목록은 "- " 또는 "1. " 접두, 그림은 "[이미지: url]".
+ */
+export function htmlToPlainText(html: string): string {
+  const src = String(html || '');
+  if (!src.trim()) return '';
+  if (typeof DOMParser === 'undefined') return src.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const doc = new DOMParser().parseFromString(src, 'text/html');
+  const BLOCK = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'TABLE', 'TR', 'SECTION', 'ARTICLE']);
+  const render = (node: Node, list: { ordered: boolean; n: number } | null): string => {
+    if (node.nodeType === 3) return (node.textContent || '').replace(/ /g, ' ');
+    if (node.nodeType !== 1) return '';
+    const el = node as HTMLElement;
+    const tag = el.tagName;
+    if (tag === 'BR') return '\n';
+    if (tag === 'HR') return '\n---\n';
+    if (tag === 'IMG') return `[이미지: ${el.getAttribute('src') || ''}]`;
+    if (tag === 'SCRIPT' || tag === 'STYLE') return '';
+    if (tag === 'UL' || tag === 'OL') {
+      const ctx = { ordered: tag === 'OL', n: 0 };
+      return '\n' + Array.from(el.childNodes).map((c) => render(c, ctx)).join('') + '\n';
+    }
+    if (tag === 'LI') {
+      const ordered = list ? list.ordered : el.getAttribute('data-list') === 'ordered';
+      if (list) list.n += 1;
+      const inner = Array.from(el.childNodes).map((c) => render(c, null)).join('').trim();
+      const already = /^(-|\d+\.)\s/.test(inner);
+      const prefix = already ? '' : ordered ? `${list ? list.n : 1}. ` : '- ';
+      return prefix + inner + '\n';
+    }
+    if (tag === 'TD' || tag === 'TH') return Array.from(el.childNodes).map((c) => render(c, list)).join('') + '\t';
+    const inner = Array.from(el.childNodes).map((c) => render(c, list)).join('');
+    return BLOCK.has(tag) ? '\n' + inner + '\n' : inner;
+  };
+  const text = render(doc.body, null);
+  return text
+    .split('\n')
+    .map((l) => l.replace(/[ \t]+$/g, ''))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** 평문(줄 단위) → 리치 에디터 초기 HTML. 각 줄을 <p>로. */
+export function plainTextToHtml(text: string): string {
+  const t = String(text || '');
+  if (!t.trim()) return '';
+  return t.split(/\r?\n/).map((l) => (l.trim() ? `<p>${escapeHtml(l)}</p>` : '<p><br></p>')).join('');
+}
