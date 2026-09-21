@@ -84,6 +84,10 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
     setSelected(new Set());
     loadFiles('root', q);
   }
+  // 입력 중에는 현재 폴더 목록을 즉시 이름 필터(서버 호출 없음). Enter/검색 버튼 = OneDrive 전체 검색.
+  const visibleItems = (!searchMode && search.trim())
+    ? items.filter((it) => it.name.toLowerCase().includes(search.trim().toLowerCase()))
+    : items;
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -168,7 +172,7 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
-            placeholder="파일 검색..."
+            placeholder="이름 일부 입력 → 현재 폴더 즉시 필터 · Enter = OneDrive 전체 검색"
             style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: 8, padding: '6px 12px', fontSize: 13, outline: 'none' }}
           />
           <button type="button" onClick={doSearch} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#f8fafc', fontSize: 13, cursor: 'pointer' }}>
@@ -206,8 +210,10 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px' }}>
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>불러오는 중...</div>
-          ) : items.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>파일이 없습니다</div>
+          ) : visibleItems.length === 0 ? (
+            <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
+              {searchMode ? '검색 결과가 없습니다. 방금 올린 파일은 OneDrive 색인에 잡히기까지 몇 분 걸릴 수 있습니다 — 폴더를 직접 열어 선택하세요.' : search.trim() ? '현재 폴더에 일치하는 파일이 없습니다. Enter를 누르면 OneDrive 전체를 검색합니다.' : '파일이 없습니다'}
+            </div>
           ) : (
             <div>
               {/* Back button */}
@@ -222,7 +228,7 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
                   <span>상위 폴더</span>
                 </div>
               )}
-              {items.map((item) => {
+              {visibleItems.map((item) => {
                 const isSelected = selected.has(item.id);
                 return (
                   <div

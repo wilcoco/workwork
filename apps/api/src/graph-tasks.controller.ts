@@ -1424,11 +1424,33 @@ export class GraphTasksController {
 
     let data: any;
     if (search && search.trim()) {
-      // Search across all OneDrive files
-      data = await this.graphGet(
-        token,
-        `/me/drive/root/search(q='${encodeURIComponent(search.trim())}')?$top=50&$select=id,name,size,lastModifiedDateTime,webUrl,folder,file&$orderby=lastModifiedDateTime desc`,
-      );
+      // OneDrive for Business 검색: Microsoft Search API(권장, 접두 와일드카드·한글 토큰 OK) 우선,
+      // 실패하면 구형 drive search로 폴백. 구형 search는 $orderby를 지원하지 않아 400이 나므로 정렬은 서버에서.
+      const q = search.trim().replace(/["\\]/g, ' ').trim();
+      let items: any[] | null = null;
+      try {
+        const kql = /[*"]/.test(q) || /\s/.test(q) ? q : `${q}*`;
+        const resp = await fetch('https://graph.microsoft.com/v1.0/search/query', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests: [{ entityTypes: ['driveItem'], query: { queryString: kql }, from: 0, size: 50, sharePointOneDriveOptions: { includeContent: 'privateContent' } }] }),
+        });
+        if (resp.ok) {
+          const j: any = await resp.json();
+          const hits = j?.value?.[0]?.hitsContainers?.[0]?.hits || [];
+          items = hits.map((h: any) => h?.resource).filter((r: any) => r && r.id);
+        }
+      } catch { items = null; }
+      if (!items) {
+        const legacy = await this.graphGet(
+          token,
+          `/me/drive/root/search(q='${encodeURIComponent(q.replace(/'/g, "''"))}')?$top=50&$select=id,name,size,lastModifiedDateTime,webUrl,folder,file`,
+        );
+        items = legacy?.value || [];
+      }
+      const sorted: any[] = items || [];
+      sorted.sort((a: any, b: any) => String(b?.lastModifiedDateTime || '').localeCompare(String(a?.lastModifiedDateTime || '')));
+      data = { value: sorted };
     } else {
       // List children of a folder
       const folder = folderId && folderId !== 'root' ? `/me/drive/items/${encodeURIComponent(folderId)}` : '/me/drive/root';
