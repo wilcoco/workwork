@@ -13,6 +13,28 @@ import { DataverseService } from './dataverse.service';
  *  2. This controller reads the token, refreshes if expired, and proxies Graph calls
  */
 
+/**
+ * OneDrive 실시간 파일명 색인 (Microsoft 검색 색인 지연 우회).
+ * delta API는 색인이 아니라 저장소를 읽으므로 방금 올린 파일도 즉시 잡힌다.
+ * 사용자별로 메모리에 {id→항목} 을 두고, 첫 호출 때 전체를 훑은 뒤 deltaLink로 변경분만 갱신한다.
+ */
+type DriveIdxItem = { id: string; name: string; size?: number; lastModifiedDateTime?: string; webUrl?: string; folder?: any; file?: any; parentPath?: string };
+type DriveIdx = { items: Map<string, DriveIdxItem>; deltaLink: string | null; nextLink: string | null; refreshedAt: number; usedAt: number; building: Promise<void> | null; complete: boolean };
+const DRIVE_IDX = new Map<string, DriveIdx>();
+const DRIVE_IDX_SELECT = '$select=id,name,size,lastModifiedDateTime,webUrl,folder,file,parentReference,deleted';
+const DRIVE_IDX_REFRESH_MS = 15_000;      // 검색 시 이 시간이 지났으면 delta 변경분 반영
+const DRIVE_IDX_IDLE_EVICT_MS = 3 * 3600_000; // 3시간 미사용 사용자 캐시 제거
+const DRIVE_IDX_MAX_PAGES = 60;           // 한 번의 훑기에서 최대 페이지(≈60k 항목)
+const DRIVE_IDX_FIRST_WAIT_MS = 8_000;    // 첫 구축은 8초까지만 기다리고 나머지는 백그라운드
+
+function driveIdxApply(idx: DriveIdx, page: any) {
+  for (const it of page?.value || []) {
+    if (!it?.id) continue;
+    if (it.deleted) { idx.items.delete(it.id); continue; }
+    idx.items.set(it.id, { id: it.id, name: String(it.name || ''), size: it.size, lastModifiedDateTime: it.lastModifiedDateTime, webUrl: it.webUrl, folder: it.folder, file: it.file, parentPath: String(it.parentReference?.path || '') });
+  }
+}
+
 @Controller('graph-tasks')
 export class GraphTasksController {
   constructor(private prisma: PrismaService, private dataverse: DataverseService) {}
@@ -523,6 +545,61 @@ export class GraphTasksController {
     });
 
     return json.access_token;
+  }
+
+  /** delta 페이지를 따라가며 색인을 채운다(첫 구축 또는 변경분). 페이지 상한에 걸리면 nextLink를 남겨 다음 호출에서 이어간다. */
+  private async driveIdxCrawl(token: string, idx: DriveIdx, startUrl: string) {
+    let url: string | null = startUrl;
+    let pages = 0;
+    while (url && pages < DRIVE_IDX_MAX_PAGES) {
+      const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!resp.ok) { const t = await resp.text().catch(() => ''); throw new Error(`delta ${resp.status}: ${t.slice(0, 200)}`); }
+      const page: any = await resp.json();
+      driveIdxApply(idx, page);
+      pages += 1;
+      if (page['@odata.deltaLink']) { idx.deltaLink = String(page['@odata.deltaLink']); idx.nextLink = null; idx.complete = true; url = null; }
+      else { url = page['@odata.nextLink'] ? String(page['@odata.nextLink']) : null; idx.nextLink = url; }
+    }
+    idx.refreshedAt = Date.now();
+  }
+
+  /** 사용자 색인 확보: 없으면 구축 시작(최대 8초 대기 후 백그라운드), 있으면 15초 지났을 때 변경분 반영 */
+  private async ensureDriveIdx(userId: string, token: string): Promise<DriveIdx> {
+    // 오래 안 쓴 캐시 정리
+    const now = Date.now();
+    for (const [k, v] of DRIVE_IDX) if (now - v.usedAt > DRIVE_IDX_IDLE_EVICT_MS) DRIVE_IDX.delete(k);
+    let idx = DRIVE_IDX.get(userId);
+    if (!idx) {
+      idx = { items: new Map(), deltaLink: null, nextLink: null, refreshedAt: 0, usedAt: now, building: null, complete: false };
+      DRIVE_IDX.set(userId, idx);
+    }
+    idx.usedAt = now;
+    if (idx.building) {
+      await Promise.race([idx.building, new Promise((r) => setTimeout(r, DRIVE_IDX_FIRST_WAIT_MS))]);
+      return idx;
+    }
+    const stale = now - idx.refreshedAt > DRIVE_IDX_REFRESH_MS;
+    const startUrl = idx.nextLink || idx.deltaLink || `https://graph.microsoft.com/v1.0/me/drive/root/delta?${DRIVE_IDX_SELECT}&$top=1000`;
+    if (!idx.complete || stale) {
+      const run = this.driveIdxCrawl(token, idx, startUrl).catch(() => { /* 색인 실패는 검색 결과에만 영향 */ }).finally(() => { idx!.building = null; });
+      idx.building = run;
+      await Promise.race([run, new Promise((r) => setTimeout(r, idx.complete ? 3_000 : DRIVE_IDX_FIRST_WAIT_MS))]);
+    }
+    return idx;
+  }
+
+  /** 색인에서 파일명 부분 일치 검색 (대소문자 무시, 공백으로 나눈 모든 단어 포함) */
+  private searchDriveIdx(idx: DriveIdx, q: string, limit = 50): DriveIdxItem[] {
+    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const out: DriveIdxItem[] = [];
+    for (const it of idx.items.values()) {
+      if (!it.parentPath) continue; // 드라이브 루트 자체는 제외
+      const n = it.name.toLowerCase();
+      if (words.every((w) => n.includes(w))) out.push(it);
+    }
+    out.sort((a, b) => String(b.lastModifiedDateTime || '').localeCompare(String(a.lastModifiedDateTime || '')));
+    return out.slice(0, limit);
   }
 
   private async graphGet(token: string, path: string) {
@@ -1448,9 +1525,19 @@ export class GraphTasksController {
         );
         items = legacy?.value || [];
       }
-      const sorted: any[] = items || [];
-      sorted.sort((a: any, b: any) => String(b?.lastModifiedDateTime || '').localeCompare(String(a?.lastModifiedDateTime || '')));
-      data = { value: sorted };
+      // 실시간 파일명 색인(delta) 결과를 합친다 — 방금 올린 파일도 즉시 검색됨
+      let live: DriveIdxItem[] = [];
+      let idxState: { complete: boolean; count: number } | null = null;
+      try {
+        const idx = await this.ensureDriveIdx(userId, token);
+        live = this.searchDriveIdx(idx, q);
+        idxState = { complete: idx.complete, count: idx.items.size };
+      } catch {}
+      const seen = new Set<string>();
+      const merged: any[] = [];
+      for (const it of [...live, ...(items || [])]) { if (!it?.id || seen.has(it.id)) continue; seen.add(it.id); merged.push(it); }
+      merged.sort((a: any, b: any) => String(b?.lastModifiedDateTime || '').localeCompare(String(a?.lastModifiedDateTime || '')));
+      data = { value: merged.slice(0, 80), _index: idxState };
     } else {
       // List children of a folder
       const folder = folderId && folderId !== 'root' ? `/me/drive/items/${encodeURIComponent(folderId)}` : '/me/drive/root';
@@ -1469,8 +1556,9 @@ export class GraphTasksController {
       isFolder: !!f.folder,
       childCount: f.folder?.childCount,
       mimeType: f.file?.mimeType,
+      path: f.parentPath ? String(f.parentPath).replace(/^\/drive\/root:?/, '') : undefined,
     }));
-    return { items };
+    return { items, index: data?._index || null };
   }
 
   /**

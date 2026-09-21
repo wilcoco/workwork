@@ -10,6 +10,7 @@ interface OneDriveItem {
   isFolder: boolean;
   childCount?: number;
   mimeType?: string;
+  path?: string;
 }
 
 interface Props {
@@ -28,6 +29,7 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
   const [searchMode, setSearchMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
+  const [indexNote, setIndexNote] = useState<string | null>(null);
 
   const currentFolderId = folderStack[folderStack.length - 1].id;
 
@@ -45,8 +47,9 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
       } else {
         params.set('folderId', folderId);
       }
-      const data = await apiJson<{ items: OneDriveItem[] }>(`/api/graph-tasks/onedrive/files?${params.toString()}`);
+      const data = await apiJson<{ items: OneDriveItem[]; index?: { complete: boolean; count: number } | null }>(`/api/graph-tasks/onedrive/files?${params.toString()}`);
       setItems(data.items || []);
+      setIndexNote(searchQuery && data.index && !data.index.complete ? `파일 목록을 아직 읽는 중입니다(${data.index.count}개 확인) — 잠시 후 다시 검색하면 더 나옵니다.` : null);
     } catch (e: any) {
       setError(e?.message || '파일 목록 로딩 실패');
     } finally {
@@ -197,6 +200,7 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
             ))}
           </div>
         )}
+        {searchMode && indexNote && <div style={{ padding: '0 20px 6px', fontSize: 12, color: '#b45309' }}>{indexNote}</div>}
         {searchMode && (
           <div style={{ padding: '4px 20px 8px', fontSize: 12, color: '#64748b' }}>
             검색 결과 · <button type="button" onClick={() => { setSearchMode(false); setSearch(''); loadFiles(currentFolderId); }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontSize: 12, padding: 0 }}>목록으로 돌아가기</button>
@@ -212,7 +216,7 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
             <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>불러오는 중...</div>
           ) : visibleItems.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
-              {searchMode ? '검색 결과가 없습니다. 방금 올린 파일은 OneDrive 색인에 잡히기까지 몇 분 걸릴 수 있습니다 — 폴더를 직접 열어 선택하세요.' : search.trim() ? '현재 폴더에 일치하는 파일이 없습니다. Enter를 누르면 OneDrive 전체를 검색합니다.' : '파일이 없습니다'}
+              {searchMode ? '검색 결과가 없습니다. 파일 이름의 일부(예: 배차, 2026)로 다시 검색하거나 폴더를 직접 열어 선택하세요.' : search.trim() ? '현재 폴더에 일치하는 파일이 없습니다. Enter를 누르면 OneDrive 전체를 검색합니다.' : '파일이 없습니다'}
             </div>
           ) : (
             <div>
@@ -249,6 +253,7 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
                       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
                         {item.isFolder ? `${item.childCount ?? ''}개 항목` : formatSize(item.size)}
                         {item.lastModified ? ` · ${formatDate(item.lastModified)}` : ''}
+                        {searchMode && item.path ? ` · ${item.path}` : ''}
                       </div>
                     </div>
                     {!item.isFolder && (
