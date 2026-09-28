@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiJson } from '../lib/api';
+import { apiJson, apiUrl } from '../lib/api';
 
 export function AdminTools() {
   const [userId, setUserId] = useState('');
@@ -29,6 +29,21 @@ export function AdminTools() {
   const [userDataLoading, setUserDataLoading] = useState(false);
   const [userDataError, setUserDataError] = useState<string | null>(null);
   const [userDataResult, setUserDataResult] = useState<any | null>(null);
+
+  // AI API 상태 (실시간 헬스체크)
+  const [aiStatus, setAiStatus] = useState<{ claude?: any; openai?: any; loading: boolean }>({ loading: true });
+  async function checkAi() {
+    setAiStatus({ loading: true });
+    const grab = async (q: string) => {
+      try {
+        const r = await fetch(apiUrl(`/api/health/ai${q}`));
+        return await r.json();
+      } catch (e: any) { return { ok: false, error: String(e?.message || e) }; }
+    };
+    const [claude, openai] = await Promise.all([grab(''), grab('?provider=openai')]);
+    setAiStatus({ claude, openai, loading: false });
+  }
+  useEffect(() => { void checkAi(); }, []);
 
   useEffect(() => {
     const uid = localStorage.getItem('userId') || '';
@@ -257,6 +272,40 @@ export function AdminTools() {
       <div>
         <h2 style={{ margin: 0 }}>시스템 도구</h2>
         <div style={{ color: '#6b7280', marginTop: 4 }}>관리자용 도구입니다. 데이터 삭제는 CEO만 수행할 수 있습니다.</div>
+      </div>
+
+      {/* AI API 계정 상태 */}
+      <div className="card" style={{ padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>🤖 AI API 계정 상태</div>
+          <button className="btn btn-sm btn-outline" disabled={aiStatus.loading} onClick={() => void checkAi()}>{aiStatus.loading ? '확인 중…' : '↻ 새로고침'}</button>
+        </div>
+        <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+          {[{ key: 'claude', label: 'Anthropic (Claude)', console: 'console.anthropic.com → Plans & Billing' }, { key: 'openai', label: 'OpenAI (GPT)', console: 'platform.openai.com → Billing' }].map((p) => {
+            const s = (aiStatus as any)[p.key];
+            const ok = s?.ok === true;
+            const depleted = s && !ok && /credit balance too low|quota|insufficient/i.test(String(s?.error || ''));
+            return (
+              <div key={p.key} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', background: ok ? '#f0fdf4' : depleted ? '#fef2f2' : '#fffbeb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 16 }}>{aiStatus.loading ? '⏳' : ok ? '🟢' : depleted ? '🔴' : '🟡'}</span>
+                  <b style={{ fontSize: 14 }}>{p.label}</b>
+                  <span style={{ fontSize: 12, color: '#64748b' }}>{s?.model ? `· ${s.model}` : ''}{typeof s?.ms === 'number' ? ` · ${s.ms}ms` : ''}</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: ok ? '#16a34a' : depleted ? '#dc2626' : '#b45309' }}>
+                    {aiStatus.loading ? '확인 중' : ok ? '정상 (크레딧 있음)' : depleted ? '크레딧 소진' : '오류'}
+                  </span>
+                </div>
+                {!ok && s?.error && <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 6, wordBreak: 'break-all' }}>{String(s.error).slice(0, 200)}</div>}
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>정확한 잔액·사용량: {p.console}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 10, lineHeight: 1.6 }}>
+          ⚠️ Anthropic·OpenAI 모두 <b>남은 잔액(금액)을 API로 조회하는 기능을 제공하지 않습니다.</b> 여기서는 실제 호출을 보내
+          <b> 작동 여부(=크레딧 유무)</b>를 표시합니다. "크레딧 소진"으로 바뀌면 AI 기능(보완질문·배지·분석 등)이 멈추므로 콘솔에서 충전하세요.
+          앱 기본 모델은 Claude이며, 자동 충전(auto-reload) 설정을 권장합니다.
+        </div>
       </div>
 
       <div className="card" style={{ borderColor: '#ef4444', padding: 16 }}>
