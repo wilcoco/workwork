@@ -300,12 +300,11 @@ model Activity {
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  status      String   @default("AUTO") // 생명주기: AUTO(AI채굴, 미확인)/CONFIRMED(템플릿·매뉴얼 연결 또는 사람 확인)/DEPRECATED
 
   @@index([name])
   @@index([taskType])
   @@index([domain])
-  status String @default("AUTO") // 생명주기: AUTO(AI채굴, 미확인)/CONFIRMED(템플릿·매뉴얼 연결 또는 사람 확인)/DEPRECATED
-
 }
 
 model Worklog {
@@ -416,6 +415,7 @@ model WorkManual {
   schedules      Schedule[]
   periodicAlarms PeriodicAlarm[]
   workSkillFiles WorkSkillFile[]
+  activityId     String? // 온톨로지: 이 매뉴얼이 정의하는 활동
 
   @@index([userId])
   @@index([updatedAt])
@@ -423,8 +423,6 @@ model WorkManual {
   @@index([status])
   @@index([reviewerId])
   @@index([baseType])
-  activityId String? // 온톨로지: 이 매뉴얼이 정의하는 활동
-
 }
 
 model Event {
@@ -799,10 +797,10 @@ model CarDispatchRequest {
   negotiationNote    String? // 협의 메모 (예: 남는 시간 사용 / 차량 교환)
   conflictDispatchId String? // 협의 대상이 된 선점 배차 id
 
-  dispatchType String         @default("CORPORATE") // CORPORATE | LOGISTICS
+  dispatchType    String         @default("CORPORATE") // CORPORATE | LOGISTICS
   purposeCategory String? // 구분(오라클 CHAGBN): 시내 | 시외 | 교육 | 기타
-  cargoDetails String? // 화물 내용 (물류 전용)
-  status       DispatchStatus @default(PENDING)
+  cargoDetails    String? // 화물 내용 (물류 전용)
+  status          DispatchStatus @default(PENDING)
 
   // 경비실 입·출차 관리
   checkoutAt     DateTime? // 출차 확인 시각 (경비)
@@ -1261,28 +1259,28 @@ model MeetingSummaryEdit {
 }
 
 model MeetingMinutes {
-  id            String               @id @default(cuid())
-  title         String
-  date          DateTime             @default(now())
-  participants  Json? // string[] of participant names/ids
-  audioUploadId String? // reference to Upload.id for the audio file
-  audioChunks   Json? // Array of { uploadId, order, duration } for chunked audio
-  transcript    String?              @db.Text
-  summary       String?              @db.Text
-  actionItems   Json? // Array of { text, assignee?, dueDate? }
-  attachments   Json? // Array of { url, name, size?, contentType? }
-  status        String               @default("draft") // draft | recording | transcribing | summarized | finalized
-  duration      Int? // total duration in seconds
-  createdById   String
-  createdBy     User                 @relation("MeetingMinutesCreatedBy", fields: [createdById], references: [id])
-  summaryEdits  MeetingSummaryEdit[]
+  id                 String               @id @default(cuid())
+  title              String
+  date               DateTime             @default(now())
+  participants       Json? // string[] of participant names/ids
+  audioUploadId      String? // reference to Upload.id for the audio file
+  audioChunks        Json? // Array of { uploadId, order, duration } for chunked audio
+  transcript         String?              @db.Text
+  summary            String?              @db.Text
+  actionItems        Json? // Array of { text, assignee?, dueDate? }
+  attachments        Json? // Array of { url, name, size?, contentType? }
+  status             String               @default("draft") // draft | recording | transcribing | summarized | finalized
+  duration           Int? // total duration in seconds
+  createdById        String
+  createdBy          User                 @relation("MeetingMinutesCreatedBy", fields: [createdById], references: [id])
+  summaryEdits       MeetingSummaryEdit[]
   // 공유: visibility=PRIVATE(나만)/MANAGER_PLUS(팀장이상)/EXEC_PLUS(임원이상)/ORG(전사) · 지정공유 · 참석자 자동공유 · 링크토큰
-  visibility         String  @default("PRIVATE")
+  visibility         String               @default("PRIVATE")
   sharedUserIds      Json? // 지정 공유 대상 userId 배열
   participantUserIds Json? // 참석자를 실제 구성원으로 선택 시 userId 배열 (자동 공유)
-  shareToken         String? @unique // 링크 열람 토큰
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  shareToken         String?              @unique // 링크 열람 토큰
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@index([createdById])
   @@index([date])
@@ -1658,13 +1656,13 @@ model GoalActivityLink {
 /// 온톨로지 "대상(masters)" 객체 — 활동이 다루는 실물/개념: 설비, 차종, 고객사, 협력사, 부품, 시스템.
 /// 활동과 달리 생명주기가 독립적(장비는 담당자가 바뀌어도 존속)이라 별도 객체 타입으로 분리.
 model OntologyEntity {
-  id        String   @id @default(cuid())
-  name      String
-  normName  String   @unique
-  kind      String   @default("OTHER") // EQUIPMENT/VEHICLE/CUSTOMER/SUPPLIER/PART/SYSTEM/OTHER
-  aliases   Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String          @id @default(cuid())
+  name         String
+  normName     String          @unique
+  kind         String          @default("OTHER") // EQUIPMENT/VEHICLE/CUSTOMER/SUPPLIER/PART/SYSTEM/OTHER
+  aliases      Json?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   worklogLinks WorklogEntity[]
 
   @@index([kind])
@@ -1716,4 +1714,92 @@ model GaContact {
   updatedAt   DateTime @updatedAt
 
   @@index([category])
+}
+
+/// 설비투자 포트폴리오 — 투자 제안(기안). 건별 가부가 아니라 연간 포트폴리오 안에서 우선순위를 비교한다 (대표 요청 2026-09-29)
+model InvestmentProposal {
+  id               String             @id @default(cuid())
+  title            String
+  category         String // REGULATORY(법규·안전·환경) | CUSTOMER(원청·신차 대응) | MAINTENANCE(유지·노후 교체) | COST_SAVING(원가절감·생산성) | STRATEGIC(전략·신사업)
+  description      String             @default("") // 투자 내용·범위
+  rationale        String             @default("") // 필요성·배경, 안 하면 생기는 문제
+  orgUnitId        String?
+  orgUnitName      String             @default("")
+  proposerId       String
+  proposerName     String             @default("")
+  amount           Float              @default(0) // 투자 금액(원)
+  targetYear       Int
+  targetQuarter    Int?
+  carProgram       String             @default("") // 관련 차종/프로그램(SOP·단종 일정)
+  deadlineAt       DateTime? // 원청 요구·법규 기한
+  annualBenefit    Float? // 연간 기대효과(원): 절감·매출
+  paybackMonths    Int?
+  fastTrack        Boolean            @default(false) // 긴급(패스트트랙) — 사후 포트폴리오 반영
+  dependencies     Json? // 관련 안건 id[] (선후·중복)
+  attachments      Json? // OneDrive [{url,name}]
+  status           String             @default("SUBMITTED") // SUBMITTED|REVIEWED|ON_AGENDA|APPROVED|DEFERRED|REJECTED|IN_PROGRESS|COMPLETED|AUDITED|WITHDRAWN
+  // 사전 검토 점수(1~5)
+  scoreFinancial   Int?
+  scoreRisk        Int?
+  scoreStrategic   Int?
+  scoreFeasibility Int?
+  scoreUrgency     Int?
+  priorityScore    Float? // 가중 합산 0~100
+  reviewNote       String?
+  reviewerId       String?
+  reviewerName     String             @default("")
+  reviewedAt       DateTime?
+  meetingId        String?
+  meeting          InvestmentMeeting? @relation(fields: [meetingId], references: [id])
+  decision         String? // APPROVED|DEFERRED|REJECTED
+  decisionNote     String?
+  decidedAt        DateTime?
+  approvedAmount   Float?
+  executionNote    String?
+  executionStartAt DateTime?
+  executionEndAt   DateTime?
+  actualAmount     Float?
+  auditDueAt       DateTime? // 사후 검증 예정일(완료 후 12개월)
+  actualBenefit    Float?
+  auditNote        String?
+  auditedAt        DateTime?
+  auditorName      String             @default("")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([targetYear, status])
+  @@index([proposerId])
+  @@index([meetingId])
+}
+
+/// 투자위원회 회의 (연 1회 전체 검토 + 분기 재조정 + 긴급)
+model InvestmentMeeting {
+  id          String               @id @default(cuid())
+  title       String
+  kind        String               @default("QUARTERLY") // ANNUAL|QUARTERLY|FAST_TRACK
+  scheduledAt DateTime
+  location    String               @default("")
+  attendeeIds Json? // userId[]
+  status      String               @default("PLANNED") // PLANNED|HELD|CANCELLED
+  minutes     String? // 회의 결과 요약
+  createdById String
+  notifiedAt  DateTime?
+  heldAt      DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  proposals   InvestmentProposal[]
+
+  @@index([scheduledAt])
+}
+
+/// 연도별 투자 한도·필수 예비·우선순위 가중치
+model InvestmentBudget {
+  id               String   @id @default(cuid())
+  year             Int      @unique
+  limitAmount      Float    @default(0) // 연간 투자 한도(원)
+  mandatoryReserve Float    @default(0) // 필수 투자(법규·원청) 선배정(원)
+  weights          Json? // {financial,risk,strategic,feasibility,urgency} 합 100
+  note             String   @default("")
+  updatedById      String?
+  updatedAt        DateTime @updatedAt
 }

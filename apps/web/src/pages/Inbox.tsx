@@ -15,6 +15,10 @@ function getNotificationUrl(n: any): string {
   }
   if (st === 'CAR_SWAP' || t === 'CarSwapRequested' || t === 'CarSwapAgreed' || t === 'CarSwapDeclined') return '/dispatch/corporate';
   if (t === 'HelpRequested') return '/coops/inbox';
+  if (t === 'InvestmentMeeting') return '/investments/committee';
+  if (t === 'InvestmentSubmitted') return '/investments/review';
+  if (t === 'InvestmentReviewed' || t === 'InvestmentDecided') return '/investments';
+  if (t === 'InvestmentAudited') return '/investments/execution';
   if (t === 'Delegated') return '/me/goals';
   if (t === 'ProcessStarted' || t === 'ProcessTaskReady') return sid ? `/process/instances/${encodeURIComponent(sid)}` : '/process/my';
   if (st === 'ATTENDANCE') return '/attendance/request';
@@ -26,7 +30,7 @@ function getNotificationUrl(n: any): string {
   return '/';
 }
 
-const SUBJECT_KO: Record<string, string> = { ATTENDANCE: '근태 신청', CAR_DISPATCH: '법인차 배차', LOGISTICS_DISPATCH: '물류 배차', BUSINESS_TRIP: '출장', WORKLOG: '업무일지', PROCESS: '프로세스', ONTOLOGY: '온톨로지', CAR_SWAP: '차량 교환', HELPTICKET: '업무 요청' };
+const SUBJECT_KO: Record<string, string> = { ATTENDANCE: '근태 신청', CAR_DISPATCH: '법인차 배차', LOGISTICS_DISPATCH: '물류 배차', BUSINESS_TRIP: '출장', WORKLOG: '업무일지', PROCESS: '프로세스', ONTOLOGY: '온톨로지', CAR_SWAP: '차량 교환', HELPTICKET: '업무 요청', INVESTMENT: '설비투자' };
 
 function typeLabel(n: any): string {
   const t = String(n?.type || '');
@@ -37,6 +41,11 @@ function typeLabel(n: any): string {
   if (t === 'ApprovalCommented') return '결재 의견';
   if (t === 'OntologyDigest') return '📊 온톨로지 주간 리포트';
   if (t === 'HelpRequested') return '업무 요청';
+  if (t === 'InvestmentSubmitted') return '💰 투자 제안 접수';
+  if (t === 'InvestmentReviewed') return '💰 투자 제안 검토 완료';
+  if (t === 'InvestmentMeeting') return '📅 투자위원회 소집';
+  if (t === 'InvestmentDecided') return '💰 투자 심의 결과';
+  if (t === 'InvestmentAudited') return '💰 투자 사후 검증';
   if (t === 'CarSwapRequested') return '차량 교환 요청';
   if (t === 'CarSwapAgreed') return '차량 교환 동의';
   if (t === 'CarSwapDeclined') return '차량 교환 거절';

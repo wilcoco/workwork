@@ -115,6 +115,18 @@ export class NotificationsController {
       } catch { /* 요약 실패는 목록 표시에 영향 없음 */ }
     }
 
+    // 설비투자 알림: payload로 요약 문구 구성
+    for (const n of items as any[]) {
+      if (String(n?.subjectType || '').toUpperCase() !== 'INVESTMENT' || n._summary) continue;
+      const p = n.payload || {};
+      const t = String(n.type || '');
+      const dec: Record<string, string> = { APPROVED: '승인', DEFERRED: '보류', REJECTED: '반려' };
+      if (t === 'InvestmentMeeting') n._summary = `${p.title || '투자위원회'} · ${p.scheduledAt ? new Date(new Date(p.scheduledAt).getTime() + 9 * 3600000).toISOString().slice(5, 16).replace('T', ' ') : ''}${p.location ? ` · ${p.location}` : ''} · 안건 ${p.agendaCount ?? 0}건`;
+      else if (t === 'InvestmentSubmitted') n._summary = `${p.by || ''} · ${p.title || ''}${p.fastTrack ? ' ⚡긴급' : ''}`;
+      else if (t === 'InvestmentReviewed') n._summary = `${p.title || ''} · 검토자 ${p.by || ''} · 우선순위 점수 ${p.priorityScore ?? '-'}`;
+      else if (t === 'InvestmentDecided') n._summary = `${p.title || ''} · ${dec[String(p.decision)] || p.decision}${p.note ? ` — ${p.note}` : ''}`;
+      else if (t === 'InvestmentAudited') n._summary = `${p.title || ''} · 검증 ${p.by || ''}`;
+    }
     return { items };
   }
 

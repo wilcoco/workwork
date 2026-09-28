@@ -44,6 +44,7 @@ import { KnowledgeBaseController } from './knowledge-base.controller';
 import { SchedulesController } from './schedules.controller';
 import { PeriodicAlarmsController } from './periodic-alarms.controller';
 import { MeetingMinutesController } from './meeting-minutes.controller';
+import { InvestmentsController } from './investments.controller';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
@@ -121,6 +122,7 @@ import { AuditLogService } from './audit-log.service';
     KeyInitiativesController,
     GoalsDashboardController,
     TeamTasksController,
+    InvestmentsController,
   ],
   providers: [
     PrismaService,

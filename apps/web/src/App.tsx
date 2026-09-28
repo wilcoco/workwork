@@ -87,6 +87,7 @@ import { WorkManualExt } from './pages/WorkManualExt';
 import { ProcessFromManual } from './pages/ProcessFromManual';
 import { WeeklyReport } from './pages/WeeklyReport';
 import { MeetingMinutes } from './pages/MeetingMinutes';
+import { Investments } from './pages/Investments';
 import { PlannerTasks } from './pages/PlannerTasks';
 import { CompanyDataAI } from './pages/CompanyDataAI';
 import { WorklogAnalysis } from './pages/WorklogAnalysis';
@@ -478,6 +479,11 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
             </>
           )}
           <Route path="/meetings" element={<MeetingMinutes />} />
+          <Route path="/investments" element={<Investments tab="proposals" />} />
+          <Route path="/investments/review" element={<Investments tab="review" />} />
+          <Route path="/investments/portfolio" element={<Investments tab="portfolio" />} />
+          <Route path="/investments/committee" element={<Investments tab="committee" />} />
+          <Route path="/investments/execution" element={<Investments tab="execution" />} />
           <Route path="/worklogs/planner" element={<PlannerTasks />} />
           <Route path="/company-data" element={<CompanyDataAI />} />
           <Route path="/worklog-analysis" element={<WorklogAnalysis />} />
@@ -639,6 +645,13 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
         </NavDropdown>
         <NavDropdown label="회의록" active={location.pathname.startsWith('/meetings')}>
           <Link to="/meetings">회의록</Link>
+        </NavDropdown>
+        <NavDropdown label="설비투자" active={location.pathname.startsWith('/investments')}>
+          <Link to="/investments">투자 제안</Link>
+          <Link to="/investments/review">사전 검토</Link>
+          <Link to="/investments/portfolio">포트폴리오</Link>
+          <Link to="/investments/committee">투자위원회</Link>
+          <Link to="/investments/execution">실행·사후검증</Link>
         </NavDropdown>
         {isExec && (
           <>
@@ -936,6 +949,15 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
     if (path.startsWith('/meetings')) {
       return [
         { to: '/meetings', label: '회의록' },
+      ];
+    }
+    if (path.startsWith('/investments')) {
+      return [
+        { to: '/investments', label: '투자 제안' },
+        { to: '/investments/review', label: '사전 검토' },
+        { to: '/investments/portfolio', label: '포트폴리오' },
+        { to: '/investments/committee', label: '투자위원회' },
+        { to: '/investments/execution', label: '실행·사후검증' },
       ];
     }
     if (path.startsWith('/company-data') || path.startsWith('/worklog-analysis')) {
