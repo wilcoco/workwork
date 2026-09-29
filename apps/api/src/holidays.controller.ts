@@ -52,7 +52,8 @@ export class HolidaysController {
       throw new BadRequestException('only EXEC/CEO can manage holidays');
     }
 
-    const dateKst = new Date(`${dto.date}T00:00:00+09:00`);
+    // 근태 모듈과 규약 통일: 날짜를 UTC 자정으로 저장(=그 캘린더 날짜의 표준 키). GET은 KST 변환하여 표시.
+    const dateKst = new Date(`${dto.date}T00:00:00.000Z`);
     if (isNaN(dateKst.getTime())) throw new BadRequestException('invalid date');
 
     const existing = await (this.prisma as any).holiday.findUnique({ where: { date: dateKst } });
