@@ -46,6 +46,7 @@ export function MyManuals() {
   const userId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
   const [items, setItems] = useState<Manual[]>([]);
   const [processedIds, setProcessedIds] = useState<Set<string>>(new Set());
+  const [templateByManual, setTemplateByManual] = useState<Map<string, { id: string; title: string; status: string }>>(new Map()); // 매뉴얼 → 만들어진 프로세스 템플릿
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState('');
   const [contentHtml, setContentHtml] = useState('');
@@ -118,6 +119,9 @@ export function MyManuals() {
       try {
         const tp = await apiJson<any[]>(`/api/process-templates?actorId=${encodeURIComponent(userId)}`);
         setProcessedIds(new Set((tp || []).map((t: any) => String(t.sourceManualId || '')).filter(Boolean)));
+        const map = new Map<string, { id: string; title: string; status: string }>();
+        for (const t of tp || []) { const mid = String(t.sourceManualId || ''); if (mid && !map.has(mid)) map.set(mid, { id: String(t.id), title: String(t.title || ''), status: String(t.status || '') }); }
+        setTemplateByManual(map);
       } catch {}
     } catch (e: any) {
       toast(e?.message || '매뉴얼을 불러오지 못했습니다', 'error');
@@ -312,6 +316,12 @@ export function MyManuals() {
                   </button>
                 )}
                 <span style={{ flex: 1 }} />
+                {processed && templateByManual.get(m.id) && (
+                  <>
+                    <button className="btn btn-sm btn-primary" title={`프로세스 템플릿: ${templateByManual.get(m.id)!.title}`} onClick={() => nav(`/process/templates?openId=${encodeURIComponent(templateByManual.get(m.id)!.id)}`)}>🔁 프로세스 보기</button>
+                    <button className="btn btn-sm btn-outline" onClick={() => nav(`/process/start?templateId=${encodeURIComponent(templateByManual.get(m.id)!.id)}`)}>▶ 실행</button>
+                  </>
+                )}
                 <button className="btn btn-sm btn-outline" onClick={() => nav(`/process/from-manual?manualId=${encodeURIComponent(m.id)}`)}>
                   {processed ? '프로세스 다시 만들기' : '프로세스 만들기 →'}
                 </button>
