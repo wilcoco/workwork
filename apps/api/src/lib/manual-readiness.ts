@@ -121,8 +121,12 @@ export function computeReadiness(content: string): Readiness {
   let approval = 15;
   if (approvalSteps > 0) approval = (approvalLineOk / approvalSteps) * 8 + (branchOk / approvalSteps) * 7;
   else if (/결재|승인|품의/.test(text)) { approval = 0; gaps.push({ stepId: '*', stepTitle: '', field: 'taskType', label: '결재 단계(taskType: APPROVAL)가 없음 — 본문에 결재·승인 언급 있음' }); }
-  const score = Math.round(Math.min(100, structure + commonAvg + approval));
+  let score = Math.round(Math.min(100, structure + commonAvg + approval));
+  // 필수 중의 필수: 모든 단계에 유형(taskType)과 담당이 있어야 프로세스에 사람을 배정할 수 있다 → 하나라도 없으면 80 미만으로 고정
+  const hardMissing = stepInfos.some((s) => !s.has.taskType || !s.has.assignee);
+  if (hardMissing) score = Math.min(score, READINESS_THRESHOLD - 1);
   const summary: string[] = [];
+  if (hardMissing) summary.push('단계 유형·담당은 모든 단계에 있어야 80점 이상 가능');
   const byField = new Map<string, number>();
   for (const g of gaps) byField.set(g.field, (byField.get(g.field) || 0) + 1);
   for (const [f, n] of byField) summary.push(`${FIELD_LABEL[f] || f} 누락 ${n}곳`);
