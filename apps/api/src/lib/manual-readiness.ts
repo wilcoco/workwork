@@ -23,16 +23,24 @@ const FIELD_LABEL: Record<string, string> = {
 };
 export const READINESS_FIELD_LABEL = FIELD_LABEL;
 
-const RX = {
-  taskType: /\n\s*-\s*taskType\s*:\s*(WORKLOG|APPROVAL|COOPERATION)\b/i,
-  assignee: /\n\s*-\s*(담당|담당자|수행자|수행|주관|담당\s*팀)\s*:/i,
-  method: /\n\s*-\s*(방법|작업방법|절차|수행방법|작업내용)\s*:/i,
-  completion: /\n\s*-\s*(완료조건|산출물|완료기준|결과물|완료)\s*:/i,
-  deadline: /\n\s*-\s*(기한|소요시간|SLA|납기|기간)\s*:/i,
-  approvalLine: /\n\s*-\s*(결재선|결재자|승인자|결재역할)\s*:/i,
-  branch: /\n\s*-\s*(반려\s*시|반려시|분기|예외|반려|불합격\s*시|NG\s*시)\s*:/i,
-  coopTarget: /\n\s*-\s*(요청대상|요청\s*대상|협력사|내부협조|요청\s*팀|수신|요청처)\s*:/i,
+// 라벨 뒤 값이 비어 있거나 "(미정)", "-", "없음", "TBD" 등 자리표시자면 "없음"으로 본다
+const PLACEHOLDER = /^[\s(（\[]*(미정|미확정|TBD|해당\s*없음|없음|N\/A|-|\?)?[\s)）\]]*$/i;
+function hasValue(text: string, labels: string): boolean {
+  const rx = new RegExp(`\\n\\s*-\\s*(?:${labels})\\s*:\\s*([^\\n]*)`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = rx.exec(text))) { const v = String(m[1] || '').trim(); if (!PLACEHOLDER.test(v) && !(/미정|미확정|TBD/i.test(v) && v.length < 40)) return true; }
+  return false;
+}
+const L = {
+  assignee: '담당|담당자|수행자|수행|주관|담당\\s*팀',
+  method: '방법|작업방법|절차|수행방법|작업내용',
+  completion: '완료조건|산출물|완료기준|결과물|완료',
+  deadline: '기한|소요시간|SLA|납기|기간',
+  approvalLine: '결재선|결재자|승인자|결재역할',
+  branch: '반려\\s*시|반려시|분기|예외|반려|불합격\\s*시|NG\\s*시',
+  coopTarget: '요청대상|요청\\s*대상|협력사|내부협조|요청\\s*팀|수신|요청처',
 };
+const RX = { taskType: /\n\s*-\s*taskType\s*:\s*(WORKLOG|APPROVAL|COOPERATION)\b/i };
 
 export function splitSteps(content: string): Array<{ stepId: string; title: string; body: string }> {
   const lines = String(content || '').split(/\r?\n/);
@@ -87,23 +95,23 @@ export function computeReadiness(content: string): Readiness {
     const taskType = ttm ? ttm[1].toUpperCase() : '';
     const has: Record<string, boolean> = {
       taskType: !!taskType,
-      assignee: RX.assignee.test(t) || (taskType === 'COOPERATION' && RX.coopTarget.test(t)),
-      method: RX.method.test(t),
-      completion: RX.completion.test(t),
-      deadline: RX.deadline.test(t),
+      assignee: hasValue(t, L.assignee) || (taskType === 'COOPERATION' && hasValue(t, L.coopTarget)),
+      method: hasValue(t, L.method),
+      completion: hasValue(t, L.completion),
+      deadline: hasValue(t, L.deadline),
     };
     common += (has.taskType ? 15 : 0) + (has.assignee ? 15 : 0) + (has.completion ? 15 : 0) + (has.method ? 10 : 0) + (has.deadline ? 10 : 0);
     const missing: string[] = [];
     for (const k of ['taskType', 'assignee', 'method', 'completion', 'deadline']) if (!has[k]) missing.push(k);
     if (taskType === 'APPROVAL') {
       approvalSteps += 1;
-      const a = RX.approvalLine.test(t), b = RX.branch.test(t);
+      const a = hasValue(t, L.approvalLine), b = hasValue(t, L.branch);
       has.approvalLine = a; has.branch = b;
       if (a) approvalLineOk += 1; else missing.push('approvalLine');
       if (b) branchOk += 1; else missing.push('branch');
     }
     if (taskType === 'COOPERATION') {
-      has.coopTarget = RX.coopTarget.test(t);
+      has.coopTarget = hasValue(t, L.coopTarget);
       if (!has.coopTarget) missing.push('coopTarget');
     }
     for (const f of missing) gaps.push({ stepId: s.stepId, stepTitle: s.title, field: f, label: FIELD_LABEL[f] || f });
@@ -121,6 +129,24 @@ export function computeReadiness(content: string): Readiness {
   const completeness = computeCompleteness(text);
   for (const it of completeness.items) if (!it.ok) gaps.push({ stepId: '*', stepTitle: '', field: it.field, label: it.label });
   return { score, hasSteps: true, stepCount: steps.length, steps: stepInfos, gaps, summary, completeness };
+}
+
+/** STEP 번호를 등장 순서대로 S1..Sn으로 다시 매긴다 (AI가 흐름을 나누며 S1을 두 번 쓰는 경우 등). "-> S2" 같은 참조도 함께 치환 */
+export function renumberSteps(text: string): string {
+  const lines = String(text || '').split(/\r?\n/);
+  const map = new Map<string, string>(); // 등장 순서: oldId@occurrence → newId (중복 old id는 두 번째부터 새 번호)
+  let n = 0; const seen = new Map<string, number>(); const order: Array<[number, string]> = [];
+  const out = lines.map((line) => {
+    const m = line.match(/^(###\s*STEP\s+)(S\d+)(\s*\|.*)$/i);
+    if (!m) return line;
+    n += 1; const oldId = m[2].toUpperCase(); const k = (seen.get(oldId) || 0) + 1; seen.set(oldId, k);
+    const newId = `S${n}`; map.set(`${oldId}#${k}`, newId); order.push([n, oldId]);
+    return `${m[1]}${newId}${m[3]}`;
+  });
+  // 본문 참조(-> S2, S1로) 치환: 중복이 없던 id만 안전하게 치환
+  const uniq = new Map<string, string>();
+  for (const [idx, oldId] of order) if ((seen.get(oldId) || 0) === 1) uniq.set(oldId, `S${idx}`);
+  return out.map((line) => /^###\s*STEP/i.test(line) ? line : line.replace(/\bS(\d+)\b/g, (w) => uniq.get(w.toUpperCase()) || w)).join('\n');
 }
 
 /** STEP 텍스트 → 리치 에디터 HTML. "[이미지: url]" 줄은 <img>로 복원하므로 본문 그림이 제자리에 유지된다. */

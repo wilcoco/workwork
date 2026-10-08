@@ -5,7 +5,7 @@ import { BASE_TYPES, BASE_TYPE_MAP, QUESTION_SETS, TACIT_KNOWLEDGE_QUESTIONS, OP
 import { callAI, type AIModel } from './llm/ai-client';
 import { isAncestorOrgManager } from './lib/org-hierarchy';
 import { exactMatch, shortlist } from './lib/activity-match';
-import { computeReadiness, fallbackQuestions, stepTextToHtml, READINESS_THRESHOLD, READINESS_FIELD_LABEL } from './lib/manual-readiness';
+import { computeReadiness, fallbackQuestions, stepTextToHtml, renumberSteps, READINESS_THRESHOLD, READINESS_FIELD_LABEL } from './lib/manual-readiness';
 
 class CreateWorkManualDto {
   @IsString() @IsNotEmpty()
@@ -1297,14 +1297,17 @@ targetField 가능한 값: ${allowedFields}
 - 기한: 직전 단계 완료 후 N일 이내
 (APPROVAL이면) - 결재선: 예) 팀장 → 공장장 / - 반려 시: 예) S1로 돌아가 다시 작성
 (COOPERATION이면) - 요청대상: 팀/협력사, 돌려받을 것
-4. 단계 번호는 S1부터 순서대로. 기존 단계 구조가 있으면 유지하고 빈 항목만 채웁니다.
+4. 단계 번호는 한 매뉴얼 안에서 S1부터 끝까지 끊김 없이 하나의 연번입니다. 흐름을 둘로 나누더라도 "## 흐름 2: 이름" 제목만 두고 번호는 이어서(S5, S6 …) 씁니다. 같은 번호를 두 번 쓰지 않습니다. 기존 단계 구조가 있으면 유지하고 빈 항목만 채웁니다.
+4-1. 담당은 사람 이름이 아니라 팀 또는 직책으로 씁니다(프로세스는 역할로 배정됨). 이름만 알 수 있으면 "담당: 구매팀 담당자" 처럼 팀을 추정하지 말고 "담당: (팀/직책 미정 — 현재 김OO)" 형태로 둡니다.
+4-2. 모르는 값은 "(미정)"으로 두되, 원문에 근거가 있으면(예: 매일 하는 업무 → 기한: 당일) 그 근거로 채웁니다.
 5. STEP 양식 밖의 일반 설명(개요, 참고, 가이드라인 보완 섹션)은 맨 아래에 "## 참고" 아래 그대로 보존합니다. 목적·주기·연락처·예외 대응 답변은 맨 위 "## 개요"(- 목적: / - 주기·소요시간: / - 연락처·시스템: / - 예외 대응:)에 적습니다.
 6. 답변에 딸린 [첨부파일]은 해당 단계에 "- 관련문서: 파일명 (URL)" 줄로, [이미지]는 해당 단계의 "- 방법:" 아래에 "[이미지: URL]" 한 줄씩 넣습니다. 단계를 특정할 수 없으면 "## 참고"에 둡니다. URL은 한 글자도 바꾸지 않습니다.
 출력(JSON만): {"draft": "전체 매뉴얼 텍스트", "changes": ["무엇을 바꿨는지 한 줄씩"]}`;
     const userMsg = `업무명: ${manual.title}\n\n[현재 매뉴얼]\n${content.slice(0, 12000)}\n\n[작성자 답변]\n${qa.length ? qa.map((x) => `- (${x.stepId}/${x.field}) Q: ${x.q}\n  A: ${x.a || '(텍스트 없음)'}${x.files.length ? `\n  [첨부파일] ${x.files.map((f) => `${f.name} (${f.url})`).join(', ')}` : ''}${x.images.length ? `\n  [이미지] ${x.images.join(', ')}` : ''}`).join('\n') : '(답변 없음 — 현재 내용만으로 양식 정리)'}`;
     const result = await callAI({ system: sys, user: userMsg, model: aiModel, temperature: 0.1, maxTokens: 6000 });
-    const draft = String(result.parsed?.draft || '').trim();
-    if (!draft) throw new BadRequestException('AI가 재작성 결과를 내지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    const draftRaw = String(result.parsed?.draft || '').trim();
+    if (!draftRaw) throw new BadRequestException('AI가 재작성 결과를 내지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    const draft = renumberSteps(draftRaw); // S1 중복 등 번호 오류 교정
     // 그림·첨부 보존 검증: 원문 이미지와 답변에 붙인 이미지·파일이 빠졌으면 끝에 복원
     const imgs = Array.from(new Set([...Array.from(content.matchAll(/\[이미지:\s*(\S+?)\s*\]/g)).map((m) => m[1]), ...qa.flatMap((x) => x.images)]));
     const lost = imgs.filter((u) => !draft.includes(u));
@@ -1321,7 +1324,7 @@ targetField 가능한 값: ${allowedFields}
   async coachApply(@Param('id') id: string, @Body() dto: { userId?: string; draft?: string; attachments?: Array<{ name?: string; url?: string }> }) {
     const uid = String(dto?.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-    const draft = String(dto?.draft || '').trim();
+    const draft = renumberSteps(String(dto?.draft || '').trim());
     if (!draft) throw new BadRequestException('draft required');
     const r = computeReadiness(draft);
     const data: any = { content: draft, contentHtml: stepTextToHtml(draft), readinessScore: r.score, readinessAt: new Date(), version: { increment: 1 }, versionUpAt: new Date() };
