@@ -45,6 +45,18 @@ export class MeetingMinutesController {
     return ['EXEC', 'CEO', 'EXTERNAL'].includes(String(role || '').toUpperCase());
   }
 
+  /** Whisper prompt-echo 감지: 반환 텍스트 토큰의 상당수가 프롬프트에 들어 있으면 반향으로 간주 */
+  private looksLikePromptEcho(text: string, prompt: string): boolean {
+    const norm = (x: string) => x.replace(/\s+/g, ' ').trim();
+    const t = norm(text), p = norm(prompt);
+    if (!t || !p) return false;
+    if (p.includes(t) && t.length > 10) return true; // 프롬프트가 결과를 통째로 포함
+    const toks = Array.from(new Set(t.split(/[\s,·、]+/).filter((w) => w.length >= 2)));
+    if (toks.length < 3) return false;
+    const inPrompt = toks.filter((w) => p.includes(w)).length;
+    return inPrompt / toks.length >= 0.8; // 80% 이상 토큰이 프롬프트에 존재
+  }
+
   private canView(m: any, viewer: { id?: string | null; role?: string | null } | null): boolean {
     if (!m) return false;
     if (this.isExecPlus(viewer?.role)) return true; // 임원 이상 전체 열람
@@ -108,13 +120,15 @@ export class MeetingMinutesController {
   }
 
   @Get(':id')
-  async get(@Param('id') id: string, @Query('viewerId') viewerId?: string) {
+  async get(@Param('id') id: string, @Query('viewerId') viewerId?: string, @Req() req?: any) {
     const m = await (this.prisma as any).meetingMinutes.findUnique({
       where: { id },
       include: { createdBy: { select: { id: true, name: true } } },
     });
     if (!m) throw new BadRequestException('Meeting not found');
-    const viewer = viewerId ? await (this.prisma as any).user.findUnique({ where: { id: viewerId }, select: { id: true, role: true } }) : null;
+    // viewerId 쿼리가 비어 와도 로그인(JWT) 사용자로 판정 — 작성자가 자기 회의록에서 잠기는 일 방지
+    const effId = String(viewerId || req?.jwtUser?.userId || '').trim();
+    const viewer = effId ? await (this.prisma as any).user.findUnique({ where: { id: effId }, select: { id: true, role: true } }) : null;
     if (!this.canView(m, viewer)) throw new BadRequestException('열람 권한이 없습니다');
     return m;
   }
@@ -336,29 +350,9 @@ export class MeetingMinutesController {
     // 2) Auto-extracted terms from recent worklogs (keywords field + first line of note)
     const envHint = String(process.env.STT_PROMPT || process.env.MEETING_GLOSSARY || '').trim();
 
-    let autoTerms = '';
-    try {
-      const recentWls = await this.prisma.worklog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 200,
-        select: { keywords: true, note: true },
-      });
-      const termSet = new Set<string>();
-      for (const w of recentWls) {
-        // keywords field (comma/space/newline separated)
-        if (w.keywords) {
-          String(w.keywords).split(/[,\n]+/).map(t => t.trim()).filter(t => t.length >= 2 && t.length <= 30).forEach(t => termSet.add(t));
-        }
-        // first line of note (worklog title)
-        if (w.note) {
-          const firstLine = String(w.note).split('\n')[0].trim();
-          if (firstLine.length >= 2 && firstLine.length <= 40) termSet.add(firstLine);
-        }
-      }
-      if (termSet.size > 0) autoTerms = Array.from(termSet).slice(0, 120).join(', ');
-    } catch {}
-
-    const baseHint = [envHint, autoTerms].filter(Boolean).join('\n').slice(0, 800);
+    // 업무일지 제목 자동 어휘 힌트는 제거(2026-10-08): 긴 제목 목록을 Whisper prompt로 넣으면
+    // 음성이 불분명할 때 그 목록을 그대로 받아적는 prompt-echo 오염이 발생. env 큐레이션만 사용.
+    const baseHint = envHint.slice(0, 400);
 
     // ── CLOVA Speech (Naver) — activated when CLOVA_SPEECH_SECRET is set ──
     // Superior Korean accuracy + speaker diarization. Falls back to
@@ -447,6 +441,12 @@ export class MeetingMinutesController {
             continue;
           }
           const text = (await resp.text()).trim();
+          // prompt echo 방어: 모델이 음성 대신 프롬프트(힌트)를 그대로 돌려주면 버린다
+          if (promptText && text && this.looksLikePromptEcho(text, promptText)) {
+            console.error('[meeting-minutes] Whisper prompt-echo discarded for chunk', chunk.order);
+            transcriptParts.push(`[전사 실패: chunk ${chunk.order} — 음성 인식 불가(프롬프트 반향 감지). 재전사 필요]`);
+            continue;
+          }
           transcriptParts.push(text);
           prevTail = text.slice(-300);
         } catch (err: any) {
