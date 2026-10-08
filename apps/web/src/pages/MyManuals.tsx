@@ -4,6 +4,7 @@ import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 import { RichTextEditor } from '../components/RichTextEditor';
+import { ManualCoach } from '../components/ManualCoach';
 import { htmlToPlainText, plainTextToHtml } from '../lib/richText';
 
 /**
@@ -16,7 +17,7 @@ type Attach = { url: string; name: string };
 type Approval = { id: string; status: string; approverId: string; approverName: string; createdAt: string; anyActed: boolean };
 type Manual = {
   id: string; title: string; content?: string; contentHtml?: string | null; status: string; qualityScore?: number;
-  attachments?: Attach[] | null; approval?: Approval | null; reviewerName?: string; reviewComment?: string | null; reviewedAt?: string | null;
+  attachments?: Attach[] | null; approval?: Approval | null; reviewerName?: string; reviewComment?: string | null; reviewedAt?: string | null; readinessScore?: number | null;
   createdAt: string; updatedAt: string;
 };
 
@@ -57,6 +58,8 @@ export function MyManuals() {
   const [editingId, setEditingId] = useState<string | null>(null); // 수정 중인 매뉴얼 id (null=새 작성)
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null); // 승인 요청/취소 처리 중인 매뉴얼
+  const [coach, setCoach] = useState<{ id: string; title: string } | null>(null); // AI 검토(프로세스화 준비 코치) 모달
+  const READY = 80; // 팀장 승인 요청 가능 준비도
   // 가이드라인 점검 모달: 저장 직후 빠진 항목을 대화로 보완
   const [check, setCheck] = useState<null | { manualId: string; thenProcess: boolean; phase: 'loading' | 'ask'; checklist: Array<{ key: string; ok: boolean; note: string }>; questions: Array<{ id: number; category: string; question: string }> }>(null);
   const [checkAnswers, setCheckAnswers] = useState<Record<number, string>>({});
@@ -172,10 +175,12 @@ export function MyManuals() {
         return;
       }
       const created = await apiJson<{ id: string }>(`/api/work-manuals`, { method: 'POST', body });
+      const savedTitle = title.trim();
       resetForm();
-      toast('매뉴얼이 저장되었습니다. 가이드라인 점검 중...', 'success');
-      if (created?.id) { void runGuidelineCheck(created.id, thenProcess); return; }
       await load();
+      if (created?.id && thenProcess) { nav(`/process/from-manual?manualId=${encodeURIComponent(created.id)}`); return; }
+      toast('매뉴얼이 저장되었습니다. 다음 단계: AI 검토로 프로세스화 준비도를 올리세요.', 'success');
+      if (created?.id) setCoach({ id: created.id, title: savedTitle });
     } catch (e: any) {
       toast(e?.message || '저장 실패', 'error');
     } finally { setSaving(false); }
@@ -183,6 +188,7 @@ export function MyManuals() {
 
   /** 팀장 승인 요청 — 조직도 라인(팀 책임자 → 팀장 → 상위 조직 → 대표)으로 결재 상신 */
   async function requestApproval(m: Manual) {
+    if ((m.readinessScore ?? 0) < READY) { toast(`프로세스화 준비도 ${m.readinessScore ?? 0}점 — ${READY}점 이상이어야 팀장 승인을 요청할 수 있습니다. 'AI 검토'를 먼저 진행하세요.`, 'warning'); setCoach({ id: m.id, title: m.title }); return; }
     setBusyId(m.id);
     try {
       await apiJson(`/api/work-manuals/${encodeURIComponent(m.id)}/status`, { method: 'POST', body: JSON.stringify({ userId, status: 'REVIEW' }) });
@@ -213,7 +219,7 @@ export function MyManuals() {
       <div>
         <h2 style={{ margin: '0 0 4px' }}>내 업무 매뉴얼</h2>
         <div style={{ fontSize: 13, color: '#64748b' }}>
-          내가 하는 업무를 평소 말하듯 적어주세요. 그림(화면 캡처)은 본문에 바로 붙여 넣을 수 있습니다. 적은 매뉴얼은 <b>팀장 승인</b>을 받거나 바로 <b>프로세스</b>로 만들 수 있습니다.
+          내가 하는 업무를 평소 말하듯 적어주세요. 그림(화면 캡처)은 본문에 바로 붙여 넣을 수 있습니다. 순서: <b>작성 → 🤖 AI 검토(질문에 답하며 보완, 준비도 80점 이상) → ✅ 팀장 승인 → 프로세스 만들기</b>.
         </div>
       </div>
 
@@ -283,6 +289,7 @@ export function MyManuals() {
                   style={{ fontSize: 11, color: st.color, background: st.bg, border: `1px solid ${st.border}`, borderRadius: 999, padding: '2px 8px' }}>
                   {st.label}{pending && approverName ? ` · ${approverName}` : ''}
                 </span>
+                <span title="프로세스화 준비도 (80점 이상이면 팀장 승인 요청 가능)" style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', border: '1px solid', borderColor: (m.readinessScore ?? 0) >= READY ? '#86efac' : '#fcd34d', background: (m.readinessScore ?? 0) >= READY ? '#f0fdf4' : '#fffbeb', color: (m.readinessScore ?? 0) >= READY ? '#15803d' : '#b45309' }}>준비도 {m.readinessScore ?? 0}</span>
                 {processed ? (
                   <span style={{ fontSize: 11, color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 999, padding: '2px 8px' }}>✓ 프로세스화 완료</span>
                 ) : (
@@ -303,10 +310,12 @@ export function MyManuals() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <button className="btn btn-sm btn-primary" onClick={() => void openForEdit(m)} disabled={loadingEdit} title="입력한 양식 그대로 다시 열어 수정하고 파일을 추가합니다">✏️ 수정</button>
                 <button className="btn btn-sm" onClick={() => nav(`/manuals?openId=${encodeURIComponent(m.id)}`)}>열기</button>
-                <button className="btn btn-sm btn-outline" onClick={() => void runGuidelineCheck(m.id, false)} title="회사 작성 가이드라인(주기·소요시간/구체 서술/자원/경로/예외) 기준으로 빠진 부분을 점검하고 문답으로 보완합니다">📋 가이드 점검</button>
+                <button className="btn btn-sm" style={{ background: '#7c3aed', color: '#fff', border: 'none' }} onClick={() => setCoach({ id: m.id, title: m.title })}
+                  title="프로세스로 만들기 전에 AI가 빠진 항목(단계·담당·완료조건·결재선·기한·첨부·화면)을 질문으로 채우고 양식을 정리합니다">🤖 AI 검토</button>
                 {canRequest && (
-                  <button className="btn btn-sm" disabled={busy} onClick={() => void requestApproval(m)} style={{ background: '#2563eb', color: '#fff', border: 'none' }}
-                    title="조직도 라인(팀 책임자 → 팀장 → 상위 조직 → 대표)의 팀장에게 결재함으로 승인 요청을 보냅니다">
+                  <button className="btn btn-sm" disabled={busy} onClick={() => void requestApproval(m)}
+                    style={{ background: (m.readinessScore ?? 0) >= READY ? '#2563eb' : '#cbd5e1', color: '#fff', border: 'none' }}
+                    title={(m.readinessScore ?? 0) >= READY ? '조직도 라인의 팀장에게 결재함으로 승인 요청을 보냅니다' : `준비도 ${READY}점 이상이어야 승인 요청할 수 있습니다 (AI 검토 먼저)`}>
                     {busy ? '요청 중…' : m.status === 'REJECTED' ? '🔁 다시 승인 요청' : '✅ 팀장 승인 요청'}
                   </button>
                 )}
@@ -371,6 +380,17 @@ export function MyManuals() {
             )}
           </div>
         </div>
+      )}
+      {coach && (
+        <ManualCoach
+          manualId={coach.id}
+          title={coach.title}
+          userId={userId}
+          onClose={() => { setCoach(null); void load(); }}
+          onApplied={() => { void load(); }}
+          onRequestApproval={() => { const m = items.find((x) => x.id === coach.id); setCoach(null); void (async () => { await load(); const fresh = (await apiJson<{ items: Manual[] }>(`/api/work-manuals?userId=${encodeURIComponent(userId)}`)).items.find((x) => x.id === coach.id); if (fresh) await requestApproval(fresh); else if (m) await requestApproval(m); })(); }}
+          onMakeProcess={() => { setCoach(null); nav(`/process/from-manual?manualId=${encodeURIComponent(coach.id)}`); }}
+        />
       )}
       {showPicker && (
         <OneDriveFilePicker

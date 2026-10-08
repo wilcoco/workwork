@@ -451,7 +451,7 @@ export function WorkManuals() {
     try {
       await apiJson(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/status`, {
         method: 'POST',
-        body: JSON.stringify({ userId, status: 'REVIEW', ...(reviewerId ? { reviewerId } : {}) }),
+        body: JSON.stringify({ userId, status: 'REVIEW', skipReadinessGate: true, ...(reviewerId ? { reviewerId } : {}) }),
       });
       toast('검토 요청이 전송되었습니다.', 'success');
       setReviewerPickOpen(false);

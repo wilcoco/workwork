@@ -5,6 +5,7 @@ import { BASE_TYPES, BASE_TYPE_MAP, QUESTION_SETS, TACIT_KNOWLEDGE_QUESTIONS, OP
 import { callAI, type AIModel } from './llm/ai-client';
 import { isAncestorOrgManager } from './lib/org-hierarchy';
 import { exactMatch, shortlist } from './lib/activity-match';
+import { computeReadiness, fallbackQuestions, stepTextToHtml, READINESS_THRESHOLD, READINESS_FIELD_LABEL } from './lib/manual-readiness';
 
 class CreateWorkManualDto {
   @IsString() @IsNotEmpty()
@@ -152,6 +153,9 @@ class ChangeStatusDto {
 
   @IsOptional() @IsString()
   reviewerId?: string;
+
+  @IsOptional()
+  skipReadinessGate?: boolean; // 매뉴얼 조회 화면(자체 품질 게이트 60점)에서는 준비도 80 게이트를 건너뜀
 }
 
 class ReviewManualDto {
@@ -322,6 +326,7 @@ export class WorkManualsController {
         title: it.title,
         content: it.content,
         contentHtml: it.contentHtml || null,
+        readinessScore: it.readinessScore ?? null,
         approval: pendingMap.get(String(it.id)) || null,
         reviewerName: it.reviewerId ? (reviewerNames.get(String(it.reviewerId)) || '') : '',
         authorName: it.authorName || '',
@@ -526,7 +531,7 @@ export class WorkManualsController {
     const phaseData = dto.phaseData != null ? dto.phaseData : undefined;
     const currentPhase = typeof dto.currentPhase === 'number' ? dto.currentPhase : 1;
     const created = await (this.prisma as any).workManual.create({
-      data: { userId: uid, title, content, authorName, authorTeamName, department, baseType, options, phaseData, attachments: (dto as any).attachments ?? undefined, contentHtml: (dto as any).contentHtml ?? undefined, currentPhase },
+      data: { userId: uid, title, content, authorName, authorTeamName, department, baseType, options, phaseData, attachments: (dto as any).attachments ?? undefined, contentHtml: (dto as any).contentHtml ?? undefined, currentPhase, readinessScore: computeReadiness(String(content || '')).score, readinessAt: new Date() },
     });
     void this.linkManualActivity(created.id, String(dto.title || '')).catch(() => {}); // 온톨로지: 제목 기준 활동 결정론 연결 (AI 불필요)
     return created;
@@ -576,6 +581,7 @@ export class WorkManualsController {
       versionUpAt: new Date(),
     };
     if (wantsContent) data.content = nextContent;
+    if (contentChanged) { data.readinessScore = computeReadiness(String(nextContent || '')).score; data.readinessAt = new Date(); }
     if (wantsDept) data.department = String(dto.department).trim();
     if (wantsBaseType) data.baseType = String(dto.baseType).trim();
     if (wantsOptions) data.options = dto.options;
@@ -629,6 +635,14 @@ export class WorkManualsController {
     }
 
     const data: any = { status: nextStatus };
+    if (nextStatus === 'REVIEW' && !dto.skipReadinessGate) {
+      // 80점 이상이어야 팀장 결재로 넘어간다 (대표 결정 2026-10-08). 점수는 항상 현재 본문으로 다시 계산
+      const r = computeReadiness(String(manual.content || ''));
+      await (this.prisma as any).workManual.update({ where: { id }, data: { readinessScore: r.score, readinessAt: new Date() } }).catch(() => {});
+      if (r.score < READINESS_THRESHOLD) {
+        throw new BadRequestException(`프로세스화 준비도 ${r.score}점 — ${READINESS_THRESHOLD}점 이상이어야 팀장 승인을 요청할 수 있습니다. 'AI 검토'로 보완해 주세요. (${r.summary.slice(0, 3).join(', ') || '단계 구성 필요'})`);
+      }
+    }
     if (nextStatus === 'REVIEW') {
       let reviewerId = String(dto.reviewerId || '').trim();
       if (!reviewerId) {
@@ -1227,6 +1241,102 @@ targetField 가능한 값: ${allowedFields}
    * 가이드라인(2026 업무표준화): ①주기·소요시간 정량화 ②동사 위주 구체 서술
    * ③인적·물적 자원 명시 ④화면캡처·저장경로 구체화 ⑤예외·실패 대처
    */
+  // ───────────── 프로세스화 준비 코치 (AI 검토) ─────────────
+  /** 1) 진단: 결정론적 준비도 + 빈칸 기반 질문(AI 생성, 실패 시 규칙 질문) */
+  @Post(':id/ai/coach/diagnose')
+  async coachDiagnose(@Param('id') id: string, @Body() dto: { userId?: string; aiModel?: string; max?: number }) {
+    const uid = String(dto?.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const content = String(manual.content || '');
+    const r = computeReadiness(content);
+    await (this.prisma as any).workManual.update({ where: { id }, data: { readinessScore: r.score, readinessAt: new Date() } }).catch(() => {});
+    const max = Math.min(6, Math.max(3, Number(dto?.max) || 5));
+    if (r.score >= READINESS_THRESHOLD && !r.gaps.length) return { readiness: r, threshold: READINESS_THRESHOLD, questions: [], source: 'none' };
+    const aiModel = (dto?.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
+    const gapsText = r.gaps.slice(0, 20).map((g) => `- ${g.stepId === '*' ? '(전체)' : `${g.stepId} ${g.stepTitle}`}: ${g.label} (${g.field})`).join('\n');
+    const sys = `당신은 제조회사(자동차 부품 사출·도장·조립) 업무 매뉴얼을 프로세스로 자동 변환하기 전에, 작성자에게 빠진 정보를 묻는 코치입니다.
+규칙:
+- 아래 [빈칸 목록]만 근거로 질문합니다. 이미 적힌 내용을 다시 묻지 않습니다.
+- 현장 말로 짧게, 한 질문에 한 가지만. 전문용어(taskType, BPMN) 대신 "결재를 받는 단계인가요" 같은 표현.
+- 가능하면 보기(choices)를 2~5개 제시하고, 보기 밖 답도 쓸 수 있음을 전제로 합니다.
+- 질문은 최대 ${max}개. 중요한 순서: 단계 구분 > 결재선·반려 > 담당 > 완료조건 > 기한 > 방법 > (완성도) 관련 문서·양식 첨부 > 화면 캡처 > 예외 대응 > 주기·소요시간 > 자원·연락처 > 목적.
+- 관련 문서·양식(reference)과 화면 캡처(screen) 질문은 "파일을 첨부해 주세요 / 화면을 캡처해 올려 주세요"라고 명시합니다(작성자가 답변에 파일·이미지를 붙일 수 있음).
+- 각 질문에 stepId("S1" 등, 전체면 "*")와 field(${Object.keys(READINESS_FIELD_LABEL).join('|')})를 붙입니다.
+출력(JSON만): {"questions":[{"id":1,"stepId":"S1","field":"assignee","question":"...","choices":["..."]}]}`;
+    try {
+      const result = await callAI({ system: sys, user: `업무명: ${manual.title}\n\n[매뉴얼]\n${content.slice(0, 12000)}\n\n[빈칸 목록]\n${gapsText}`, model: aiModel, temperature: 0.2, maxTokens: 1500 });
+      const qs = Array.isArray(result.parsed?.questions) ? result.parsed.questions : [];
+      const cleaned = qs.filter((q: any) => q && q.question).slice(0, max).map((q: any, i: number) => ({ id: i + 1, stepId: String(q.stepId || '*'), field: String(q.field || ''), question: String(q.question), choices: Array.isArray(q.choices) ? q.choices.map(String).slice(0, 5) : undefined }));
+      if (cleaned.length) return { readiness: r, threshold: READINESS_THRESHOLD, questions: cleaned, source: 'ai' };
+    } catch { /* fall through */ }
+    return { readiness: r, threshold: READINESS_THRESHOLD, questions: fallbackQuestions(r, max), source: 'rule' };
+  }
+
+  /** 2) 재작성 미리보기: 답변을 반영해 STEP 양식으로 다시 쓴다. 저장하지 않음 */
+  @Post(':id/ai/coach/rewrite')
+  async coachRewrite(@Param('id') id: string, @Body() dto: { userId?: string; aiModel?: string; qa?: Array<{ stepId?: string; field?: string; q?: string; a?: string; files?: Array<{ name?: string; url?: string }>; images?: string[] }> }) {
+    const uid = String(dto?.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const content = String(manual.content || '');
+    const qa = (Array.isArray(dto?.qa) ? dto.qa : []).map((x) => ({
+      stepId: String(x?.stepId || '*'), field: String(x?.field || ''), q: String(x?.q || '').trim(), a: String(x?.a || '').trim(),
+      files: (Array.isArray(x?.files) ? x.files : []).filter((f) => f && f.url).map((f) => ({ name: String(f.name || f.url), url: String(f.url) })),
+      images: (Array.isArray(x?.images) ? x.images : []).filter((u) => typeof u === 'string' && u.trim()).map(String),
+    })).filter((x) => x.q && (x.a || x.files.length || x.images.length));
+    const aiModel = (dto?.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
+    const sys = `당신은 업무 매뉴얼을 "프로세스 자동 변환에 가장 잘 읽히는 STEP 양식"으로 다시 쓰는 편집자입니다.
+반드시 지킬 것:
+1. 작성자가 쓴 문장과 표현을 최대한 그대로 살립니다. 사실을 지어내지 않습니다. 답변에 없는 정보는 "(미정)"으로 둡니다.
+2. "[이미지: URL]" 형태의 줄은 그림입니다. 내용·순서를 바꾸지 말고 관련 단계 안 제자리에 그대로 둡니다. 절대 삭제하지 않습니다.
+3. 출력 양식(각 단계):
+### STEP S1 | 단계 이름
+- taskType: WORKLOG | APPROVAL | COOPERATION
+- 담당: 팀 또는 직책
+- 방법: 무엇을 어떻게
+- 완료조건: 무엇이 되어 있어야 완료
+- 기한: 직전 단계 완료 후 N일 이내
+(APPROVAL이면) - 결재선: 예) 팀장 → 공장장 / - 반려 시: 예) S1로 돌아가 다시 작성
+(COOPERATION이면) - 요청대상: 팀/협력사, 돌려받을 것
+4. 단계 번호는 S1부터 순서대로. 기존 단계 구조가 있으면 유지하고 빈 항목만 채웁니다.
+5. STEP 양식 밖의 일반 설명(개요, 참고, 가이드라인 보완 섹션)은 맨 아래에 "## 참고" 아래 그대로 보존합니다. 목적·주기·연락처·예외 대응 답변은 맨 위 "## 개요"(- 목적: / - 주기·소요시간: / - 연락처·시스템: / - 예외 대응:)에 적습니다.
+6. 답변에 딸린 [첨부파일]은 해당 단계에 "- 관련문서: 파일명 (URL)" 줄로, [이미지]는 해당 단계의 "- 방법:" 아래에 "[이미지: URL]" 한 줄씩 넣습니다. 단계를 특정할 수 없으면 "## 참고"에 둡니다. URL은 한 글자도 바꾸지 않습니다.
+출력(JSON만): {"draft": "전체 매뉴얼 텍스트", "changes": ["무엇을 바꿨는지 한 줄씩"]}`;
+    const userMsg = `업무명: ${manual.title}\n\n[현재 매뉴얼]\n${content.slice(0, 12000)}\n\n[작성자 답변]\n${qa.length ? qa.map((x) => `- (${x.stepId}/${x.field}) Q: ${x.q}\n  A: ${x.a || '(텍스트 없음)'}${x.files.length ? `\n  [첨부파일] ${x.files.map((f) => `${f.name} (${f.url})`).join(', ')}` : ''}${x.images.length ? `\n  [이미지] ${x.images.join(', ')}` : ''}`).join('\n') : '(답변 없음 — 현재 내용만으로 양식 정리)'}`;
+    const result = await callAI({ system: sys, user: userMsg, model: aiModel, temperature: 0.1, maxTokens: 6000 });
+    const draft = String(result.parsed?.draft || '').trim();
+    if (!draft) throw new BadRequestException('AI가 재작성 결과를 내지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    // 그림·첨부 보존 검증: 원문 이미지와 답변에 붙인 이미지·파일이 빠졌으면 끝에 복원
+    const imgs = Array.from(new Set([...Array.from(content.matchAll(/\[이미지:\s*(\S+?)\s*\]/g)).map((m) => m[1]), ...qa.flatMap((x) => x.images)]));
+    const lost = imgs.filter((u) => !draft.includes(u));
+    const lostFiles = qa.flatMap((x) => x.files).filter((f) => !draft.includes(f.url));
+    let finalDraft = draft;
+    if (lost.length) finalDraft += `\n\n## 참고 화면\n${lost.map((u) => `[이미지: ${u}]`).join('\n')}`;
+    if (lostFiles.length) finalDraft += `\n\n## 관련 문서\n${lostFiles.map((f) => `- 관련문서: ${f.name} (${f.url})`).join('\n')}`;
+    const after = computeReadiness(finalDraft);
+    return { draft: finalDraft, changes: Array.isArray(result.parsed?.changes) ? result.parsed.changes.map(String).slice(0, 12) : [], before: computeReadiness(content).score, after: after.score, afterReadiness: after, threshold: READINESS_THRESHOLD, restoredImages: lost.length, newFiles: qa.flatMap((x) => x.files) };
+  }
+
+  /** 3) 적용: 미리보기 초안을 저장 (텍스트 + 그림 복원 HTML, 버전 +1, 준비도 갱신) */
+  @Post(':id/ai/coach/apply')
+  async coachApply(@Param('id') id: string, @Body() dto: { userId?: string; draft?: string; attachments?: Array<{ name?: string; url?: string }> }) {
+    const uid = String(dto?.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const draft = String(dto?.draft || '').trim();
+    if (!draft) throw new BadRequestException('draft required');
+    const r = computeReadiness(draft);
+    const data: any = { content: draft, contentHtml: stepTextToHtml(draft), readinessScore: r.score, readinessAt: new Date(), version: { increment: 1 }, versionUpAt: new Date() };
+    // 답변에 붙인 파일은 매뉴얼 첨부 목록에도 합친다(중복 URL 제외)
+    const addFiles = (Array.isArray(dto?.attachments) ? dto.attachments : []).filter((f) => f && f.url).map((f) => ({ url: String(f.url), name: String(f.name || f.url) }));
+    if (addFiles.length) {
+      const cur: any[] = Array.isArray(manual.attachments) ? manual.attachments : [];
+      const seen = new Set(cur.map((a: any) => String(a?.url || '')));
+      data.attachments = [...cur, ...addFiles.filter((f) => !seen.has(f.url))];
+    }
+    if (String(manual.status) === 'APPROVED') { data.status = 'DRAFT'; data.reviewComment = null; data.reviewedAt = null; }
+    const updated = await (this.prisma as any).workManual.update({ where: { id }, data });
+    return { id: updated.id, version: updated.version, readiness: r, threshold: READINESS_THRESHOLD, status: updated.status };
+  }
+
   @Post(':id/ai/guideline-check')
   async guidelineCheck(@Param('id') id: string, @Body() dto: { userId?: string; aiModel?: string }) {
     const uid = String(dto?.userId || '').trim();

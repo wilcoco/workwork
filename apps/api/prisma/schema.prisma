@@ -400,6 +400,8 @@ model WorkManual {
   currentPhase   Int          @default(1)
   attachments    Json? // OneDrive 첨부 [{ url, name }]
   contentHtml    String? // 리치 에디터 본문(HTML, 그림 포함). content는 파서/AI용 텍스트 사본
+  readinessScore Int? // 프로세스화 준비도(0~100, lib/manual-readiness 규칙). 80 이상이면 팀장 승인 요청 가능
+  readinessAt    DateTime?
   version        Int          @default(1)
   versionUpAt    DateTime     @default(now())
   status         ManualStatus @default(DRAFT)
