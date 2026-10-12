@@ -18,6 +18,7 @@ export const READINESS_THRESHOLD = 80;
 const FIELD_LABEL: Record<string, string> = {
   structure: '단계 구분(### STEP)', taskType: '단계 유형(taskType)', assignee: '담당(팀/담당자)', method: '수행 방법', completion: '완료조건·산출물', deadline: '기한',
   approvalLine: '결재선', branch: '반려·예외 시 처리', coopTarget: '요청 대상(타팀/협력사)',
+  approvalNeeded: '결재(승인) 필요 여부 확인', coopNeeded: '타팀·협력사 협조 필요 여부 확인',
   // 매뉴얼 완성도(회사 작성 가이드라인 + 작업표준서 요소) — 80점 게이트에는 안 들어가고 질문·체크리스트로만
   purpose: '목적·적용 범위', cycle: '업무 주기·소요시간', resources: '자원(담당 연락처·시스템·도구)', reference: '관련 문서·양식(첨부)', screen: '화면 캡처·경로', exceptions: '예외·비상 대응',
 };
@@ -29,6 +30,13 @@ function hasValue(text: string, labels: string): boolean {
   const rx = new RegExp(`\\n\\s*-\\s*(?:${labels})\\s*:\\s*([^\\n]*)`, 'gi');
   let m: RegExpExecArray | null;
   while ((m = rx.exec(text))) { const v = String(m[1] || '').trim(); if (!PLACEHOLDER.test(v) && !(/미정|미확정|TBD/i.test(v) && v.length < 40)) return true; }
+  return false;
+}
+/** 확인용 답변 줄: 값이 비어 있지만 않으면 된다 ("없음"도 유효한 답) */
+function hasAnswer(text: string, labels: string): boolean {
+  const rx = new RegExp(`\\n\\s*-\\s*(?:${labels})\\s*:\\s*([^\\n]*)`, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = rx.exec(text))) { if (String(m[1] || '').trim() && !/^[\s(（\[]*(미정|TBD|\?)?[\s)）\]]*$/i.test(String(m[1]))) return true; }
   return false;
 }
 const L = {
@@ -120,15 +128,24 @@ export function computeReadiness(content: string): Readiness {
   const commonAvg = common / steps.length; // 0..65
   let approval = 15;
   if (approvalSteps > 0) approval = (approvalLineOk / approvalSteps) * 8 + (branchOk / approvalSteps) * 7;
-  else if (/결재|승인|품의/.test(text)) { approval = 0; gaps.push({ stepId: '*', stepTitle: '', field: 'taskType', label: '결재 단계(taskType: APPROVAL)가 없음 — 본문에 결재·승인 언급 있음' }); }
+  else {
+    const textNoAnswer = text.replace(/^\s*-\s*(결재|결재\s*필요|승인\s*필요)\s*:.*$/gim, '');
+    if (/결재|승인|품의/.test(textNoAnswer)) { approval = 0; gaps.push({ stepId: '*', stepTitle: '', field: 'taskType', label: '결재 단계(taskType: APPROVAL)가 없음 — 본문에 결재·승인 언급 있음' }); }
+  }
   let score = Math.round(Math.min(100, structure + commonAvg + approval));
   // 필수 중의 필수: 모든 단계에 유형(taskType)과 담당이 있어야 프로세스에 사람을 배정할 수 있다 → 하나라도 없으면 80 미만으로 고정
   const hardMissing = stepInfos.some((s) => !s.has.taskType || !s.has.assignee);
   if (hardMissing) score = Math.min(score, READINESS_THRESHOLD - 1);
   const summary: string[] = [];
   if (hardMissing) summary.push('단계 유형·담당은 모든 단계에 있어야 80점 이상 가능');
+  // 결재·협조 필요 여부는 작성자에게 반드시 한 번 확인한다: APPROVAL/COOPERATION 단계가 있거나, 개요에 "- 결재: …" / "- 타팀 협조: …" 답이 기록되어 있어야 확인된 것
+  const approvalConfirmed = approvalSteps > 0 || hasAnswer(text, '결재|결재\\s*필요|승인\\s*필요');
+  const coopSteps = stepInfos.filter((s) => s.taskType === 'COOPERATION').length;
+  const coopConfirmed = coopSteps > 0 || hasAnswer(text, '타팀\\s*협조|협조|타팀\\s*요청|협력사\\s*요청');
+  if (!approvalConfirmed) { gaps.push({ stepId: '*', stepTitle: '', field: 'approvalNeeded', label: FIELD_LABEL.approvalNeeded }); score = Math.min(score, READINESS_THRESHOLD - 1); summary.push('결재(승인) 필요 여부 미확인'); }
+  if (!coopConfirmed) { gaps.push({ stepId: '*', stepTitle: '', field: 'coopNeeded', label: FIELD_LABEL.coopNeeded }); score = Math.min(score, READINESS_THRESHOLD - 1); summary.push('타팀·협력사 협조 필요 여부 미확인'); }
   const byField = new Map<string, number>();
-  for (const g of gaps) byField.set(g.field, (byField.get(g.field) || 0) + 1);
+  for (const g of gaps) if (g.field !== 'approvalNeeded' && g.field !== 'coopNeeded') byField.set(g.field, (byField.get(g.field) || 0) + 1);
   for (const [f, n] of byField) summary.push(`${FIELD_LABEL[f] || f} 누락 ${n}곳`);
   const completeness = computeCompleteness(text);
   for (const it of completeness.items) if (!it.ok) gaps.push({ stepId: '*', stepTitle: '', field: it.field, label: it.label });
@@ -177,7 +194,9 @@ export function fallbackQuestions(r: Readiness, max = 5): Array<{ id: number; st
     push('*', 'assignee', '각 단계는 누가(어느 팀/직책) 수행합니까?');
     return qs;
   }
-  for (const g of r.gaps) {
+  const PRIORITY = ['approvalNeeded', 'coopNeeded'];
+  const ordered = [...r.gaps].sort((a, b) => (PRIORITY.includes(b.field) ? 1 : 0) - (PRIORITY.includes(a.field) ? 1 : 0));
+  for (const g of ordered) {
     const where = g.stepId === '*' ? '' : `[${g.stepId} ${g.stepTitle}] `;
     switch (g.field) {
       case 'taskType': push(g.stepId, g.field, `${where}이 단계는 어떤 종류입니까?`, ['업무일지로 처리(WORKLOG)', '결재를 받음(APPROVAL)', '다른 팀에 요청(COOPERATION)']); break;
@@ -188,6 +207,8 @@ export function fallbackQuestions(r: Readiness, max = 5): Array<{ id: number; st
       case 'approvalLine': push(g.stepId, g.field, `${where}결재는 누구 순서로 받습니까? (예: 팀장 → 공장장)`); break;
       case 'branch': push(g.stepId, g.field, `${where}반려되면 어느 단계로 돌아갑니까?`); break;
       case 'coopTarget': push(g.stepId, g.field, `${where}어느 팀(또는 협력사)에 무엇을 요청하고, 무엇을 돌려받아야 합니까?`); break;
+      case 'approvalNeeded': push('*', g.field, '이 업무 중에 상급자 결재(승인)를 받는 단계가 있습니까? 있다면 어느 단계 뒤에, 누구 순서로 받습니까?', ['결재 없음', '팀장 승인 (1단계)', '팀장 → 공장장', '팀장 → 임원 → 대표', '그 외 직접 입력']); break;
+      case 'coopNeeded': push('*', g.field, '다른 팀이나 협력사에 요청·의뢰하고 결과를 받아야 하는 단계가 있습니까? 있다면 어느 단계에서 어느 팀에 무엇을 요청합니까?', ['협조 없음(우리 팀 안에서 끝남)', '있음 — 품질팀 검사 의뢰', '있음 — 생산팀 작업 요청', '있음 — 협력사(외주) 요청', '그 외 직접 입력']); break;
       case 'purpose': push('*', g.field, '이 업무는 왜 필요하고(목적), 어떤 경우에 적용됩니까(범위)?'); break;
       case 'cycle': push('*', g.field, '이 업무는 얼마나 자주 하고, 한 번에 얼마나 걸립니까?', ['매일', '매주', '매월', '수시(요청 시)']); break;
       case 'resources': push('*', g.field, '어떤 시스템·장비를 쓰고, 막히면 누구에게(연락처) 물어봅니까?'); break;
