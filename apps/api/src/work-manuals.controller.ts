@@ -1306,6 +1306,7 @@ targetField 가능한 값: ${allowedFields}
    - 결재가 있다고 답하면 해당 위치에 "### STEP Sn | ○○ 승인" 단계를 새로 넣고 "- taskType: APPROVAL", "- 담당: 결재자 직책", "- 결재선: 답변 순서", "- 반려 시: 어느 단계로 돌아가는지(답이 없으면 직전 단계)", "- 완료조건: 결재 완료", "- 기한: …"을 채웁니다. 이후 단계 번호는 다시 연번.
    - 협조가 있다고 답하면 해당 위치에 "### STEP Sn | ○○팀에 △△ 요청" 단계를 넣고 "- taskType: COOPERATION", "- 담당: 요청하는 팀", "- 요청대상: 받는 팀/협력사, 돌려받을 것", "- 완료조건: 회신 수령", "- 기한: …"을 채웁니다.
    - "결재 없음"/"협조 없음"이라 답하면 "## 개요"에 "- 결재: 없음" / "- 타팀 협조: 없음" 한 줄을 적어 확인된 사실로 남깁니다. 있다고 답한 경우에도 개요에 "- 결재: S3 팀장 승인" / "- 타팀 협조: S4 품질팀 검사 의뢰" 처럼 요약 한 줄을 적습니다.
+   - 단, [작성자 답변]에 결재(approvalNeeded)·협조(coopNeeded) 답이 없으면 "- 결재:" / "- 타팀 협조:" 줄을 절대 쓰지 않습니다. 이 확인은 작성자만 할 수 있습니다(AI가 "없음"으로 단정 금지).
 5. STEP 양식 밖의 일반 설명(개요, 참고, 가이드라인 보완 섹션)은 맨 아래에 "## 참고" 아래 그대로 보존합니다. 목적·주기·연락처·예외 대응 답변은 맨 위 "## 개요"(- 목적: / - 주기·소요시간: / - 연락처·시스템: / - 예외 대응:)에 적습니다.
 6. 답변에 딸린 [첨부파일]은 해당 단계에 "- 관련문서: 파일명 (URL)" 줄로, [이미지]는 해당 단계의 "- 방법:" 아래에 "[이미지: URL]" 한 줄씩 넣습니다. 단계를 특정할 수 없으면 "## 참고"에 둡니다. URL은 한 글자도 바꾸지 않습니다.
 출력(JSON만): {"draft": "전체 매뉴얼 텍스트", "changes": ["무엇을 바꿨는지 한 줄씩"]}`;
@@ -1313,7 +1314,12 @@ targetField 가능한 값: ${allowedFields}
     const result = await callAI({ system: sys, user: userMsg, model: aiModel, temperature: 0.1, maxTokens: 6000 });
     const draftRaw = String(result.parsed?.draft || '').trim();
     if (!draftRaw) throw new BadRequestException('AI가 재작성 결과를 내지 못했습니다. 잠시 후 다시 시도해 주세요.');
-    const draft = renumberSteps(draftRaw); // S1 중복 등 번호 오류 교정
+    let draft = renumberSteps(draftRaw); // S1 중복 등 번호 오류 교정
+    // 결재·협조 확인 줄은 작성자가 답했을 때만 허용 — AI가 임의로 "없음"을 쓰면 제거 (원문에 이미 있던 줄은 유지)
+    const answered = (f: string) => qa.some((x) => x.field === f);
+    const hadLine = (rx: RegExp) => rx.test(`\n${content}`);
+    if (!answered('approvalNeeded') && !hadLine(/\n\s*-\s*(결재|결재\s*필요|승인\s*필요)\s*:/)) draft = draft.replace(/^\s*-\s*(결재|결재\s*필요|승인\s*필요)\s*:.*$\n?/gim, '');
+    if (!answered('coopNeeded') && !hadLine(/\n\s*-\s*(타팀\s*협조|협조|타팀\s*요청|협력사\s*요청)\s*:/)) draft = draft.replace(/^\s*-\s*(타팀\s*협조|협조|타팀\s*요청|협력사\s*요청)\s*:.*$\n?/gim, '');
     // 그림·첨부 보존 검증: 원문 이미지와 답변에 붙인 이미지·파일이 빠졌으면 끝에 복원
     const imgs = Array.from(new Set([...Array.from(content.matchAll(/\[이미지:\s*(\S+?)\s*\]/g)).map((m) => m[1]), ...qa.flatMap((x) => x.images)]));
     const lost = imgs.filter((u) => !draft.includes(u));
