@@ -10,7 +10,7 @@ class CreateLogisticsDispatchDto {
   approvalLine?: string[]; // 앞단계 결재선(관련부서 임원 → 대표이사, 순차)
 
   @IsOptional()
-  finalApprovers?: string[]; // 최종 담당자 any-of 그룹(기본 윤대룡·김부영, 요청자가 변경 가능)
+  finalApprovers?: string[]; // 최종 담당자 any-of 그룹(기본 윤대룡·최연상, 요청자가 변경 가능)
 
   @IsString()
   vehicleType!: string;
@@ -59,8 +59,8 @@ export class LogisticsDispatchController {
 
       // 결재선 순서: (앞) 관련부서 임원 → 대표이사 = 요청자가 지정한 결재선(순차)
       //             (최종) 담당자 any-of 그룹 — 모든 결재가 난 후 통보/처리. 담당자 그룹은 항상 '마지막 단계'.
-      // 최종 담당자는 기본 윤대룡·김부영이되, 요청자가 finalApprovers로 변경 가능.
-      const DEFAULT_FINAL_NAMES = ['윤대룡', '김부영'];
+      // 최종 담당자는 기본 윤대룡·최연상이되, 요청자가 finalApprovers로 변경 가능.
+      const DEFAULT_FINAL_NAMES = ['윤대룡', '최연상'];
       let primaryIds: string[] = (dto.finalApprovers || []).filter(Boolean);
       if (primaryIds.length === 0) {
         const defaults = await this.prisma.user.findMany({ where: { name: { in: DEFAULT_FINAL_NAMES }, status: 'ACTIVE' as any }, select: { id: true, name: true } });
@@ -103,7 +103,7 @@ export class LogisticsDispatchController {
         for (let j = 0; j < rawLine.length; j++) {
           await tx.approvalStep.create({ data: { requestId: approval.id, stepNo: j + 1, approverId: rawLine[j], status: 'PENDING' as any } });
         }
-        // 최종 단계: 담당자 any-of 그룹(윤대룡·김부영). 둘 중 하나만 처리하면 완료.
+        // 최종 단계: 담당자 any-of 그룹(윤대룡·최연상). 둘 중 하나만 처리하면 완료.
         const finalStageNo = rawLine.length + 1;
         for (const pid of primaryIds) {
           await tx.approvalStep.create({ data: { requestId: approval.id, stepNo: finalStageNo, approverId: pid, status: 'PENDING' as any } });

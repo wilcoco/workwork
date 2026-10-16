@@ -91,7 +91,7 @@ export function CarDispatchLogistics() {
 
   const [members, setMembers] = useState<{ id: string; name: string; role?: string }[]>([]);
   const [approverIds, setApproverIds] = useState<string[]>(['']);
-  const [finalApproverIds, setFinalApproverIds] = useState<string[]>([]); // 최종 담당자 any-of(기본 윤대룡·김부영, 변경 가능)
+  const [finalApproverIds, setFinalApproverIds] = useState<string[]>([]); // 최종 담당자 any-of(기본 윤대룡·최연상, 변경 가능)
 
   const [vehicleType, setVehicleType] = useState('');
   const [loadingPlace, setLoadingPlace] = useState('');
@@ -115,8 +115,8 @@ export function CarDispatchLogistics() {
       const all = res.items || [];
       setMembers(all);
       // 결재선(앞단계)은 요청자가 관련부서 임원 → 대표이사 순으로 지정.
-      // 최종 담당자는 기본 윤대룡·김부영으로 자동 세팅(요청자가 변경 가능).
-      const defaults = ['윤대룡', '김부영'].map((n) => all.find((m) => m.name === n)?.id).filter((x): x is string => !!x);
+      // 최종 담당자는 기본 윤대룡·최연상으로 자동 세팅(요청자가 변경 가능).
+      const defaults = ['윤대룡', '최연상'].map((n) => all.find((m) => m.name === n)?.id).filter((x): x is string => !!x);
       if (defaults.length) setFinalApproverIds(defaults);
     } catch {}
   }
@@ -187,7 +187,7 @@ export function CarDispatchLogistics() {
       setVehicleType(''); setLoadingPlace(''); setLoadingAt(''); setLoadingContact(''); setLoadingPhone('');
       setUnloadingPlace(''); setUnloadingAt(''); setUnloadingContact(''); setUnloadingPhone(''); setCargoDetails('');
       setApproverIds(['']);
-      const defaults = ['윤대룡', '김부영'].map((n) => members.find((m) => m.name === n)?.id).filter((x): x is string => !!x);
+      const defaults = ['윤대룡', '최연상'].map((n) => members.find((m) => m.name === n)?.id).filter((x): x is string => !!x);
       setFinalApproverIds(defaults);
       await loadCalendar();
       await loadList();
@@ -303,7 +303,7 @@ export function CarDispatchLogistics() {
             <div style={{ marginTop: 4 }}>
               <span style={{ ...lbl, display: 'block' }}>최종 담당자 <span style={{ fontWeight: 400, color: '#64748b', fontSize: 12 }}>(모든 결재 후 통보·처리 · 둘 중 한 명만 처리하면 완료)</span></span>
               <div style={{ fontSize: 12, color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: '6px 10px', margin: '4px 0 6px' }}>
-                기본으로 <b>윤대룡 · 김부영</b>에게 자동으로 갑니다. 필요하면 아래에서 변경할 수 있어요.
+                기본으로 <b>윤대룡 · 최연상</b>에게 자동으로 갑니다. 필요하면 아래에서 변경할 수 있어요.
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
                 {finalApproverIds.map((aid, idx) => (
