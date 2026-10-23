@@ -8,7 +8,7 @@ import { toast, toastConfirm } from './Toast';
  */
 type Meta = {
   sourceTypes: string[]; schedules: Record<string, string>; internalMetrics: Record<string, { label: string; unit: string; desc: string }>;
-  odooConfigured: boolean; agentTokenConfigured: boolean; agents: Array<{ name: string; version: string; host: string; lastSeenAt: string; online: boolean }>;
+  odooConfigured: boolean; agentTokenConfigured: boolean; agents: Array<{ name: string; version: string; host: string; lastSeenAt: string; online: boolean; queries?: Array<{ id: string; name: string; binds: string[]; tables: string[] }> }>;
   bindTemplates: Record<string, string>;
 };
 type Binding = { id: string; keyResultId: string; sourceType: string; config: any; schedule: string; enabled: boolean; agentName?: string | null; lastRunAt?: string | null; lastSuccessAt?: string | null; lastError?: string | null; lastValues?: Array<{ year: number; month: number; value: number | null }> | null; jobs?: any[] };
@@ -129,18 +129,31 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
         {sourceType === 'ORACLE_AGENT' && (
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ fontSize: 12, padding: 8, borderRadius: 8, background: agentOnline ? '#f0fdf4' : '#fffbeb', border: `1px solid ${agentOnline ? '#86efac' : '#fcd34d'}`, color: agentOnline ? '#166534' : '#92400e' }}>
-              {agentOnline ? `사내 에이전트 온라인: ${meta!.agents.filter((a) => a.online).map((a) => `${a.name}@${a.host}`).join(', ')}` : '사내 에이전트가 연결되어 있지 않습니다. 사내 PC에서 workwork_agent 를 실행하면 작업을 가져갑니다. (설정은 저장 가능)'}
+              {agentOnline ? `사내 에이전트 온라인: ${meta!.agents.filter((a) => a.online).map((a) => `${a.name}@${a.host}`).join(', ')}` : '사내 에이전트가 연결되어 있지 않습니다. 사내 PC에서 workwork_agent 를 실행하면 등록된 질의 목록이 올라오고 작업을 가져갑니다. (설정은 저장 가능)'}
               {!meta?.agentTokenConfigured && ' · 서버에 ORACLE_SYNC_TOKEN 이 없습니다'}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div><div style={lbl}>에이전트 이름</div><input style={inp} value={agentName} onChange={(e) => setAgentName(e.target.value)} list="agent-names" /><datalist id="agent-names">{(meta?.agents || []).map((a) => <option key={a.name} value={a.name} />)}</datalist></div>
               <div><div style={lbl}>추가 바인드 (JSON, 선택)</div><input style={inp} placeholder='예: {"bul":"폐각"}' value={typeof config.extraBinds === 'string' ? config.extraBinds : config.extraBinds ? JSON.stringify(config.extraBinds) : ''} onChange={(e) => { const v = e.target.value; try { setC('extraBinds', v ? JSON.parse(v) : undefined); } catch { setC('extraBinds', v); } }} /></div>
             </div>
-            <div><div style={lbl}>SELECT 문 — 결과는 연·월·값 3컬럼 (컬럼명 "연","월","값" 또는 YEAR/MONTH/VALUE)</div>
-              <textarea style={{ ...inp, minHeight: 160, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 12 }} value={config.sql || ''} onChange={(e) => setC('sql', e.target.value)}
-                placeholder={'SELECT s.YY AS "연", s.MM AS "월", ROUND(...) AS "값"\n  FROM ... WHERE silyy = :yy\n GROUP BY ... ORDER BY 1,2'} />
-              <div style={{ fontSize: 11, color: '#64748b' }}>바인드 자동 채움: {Object.entries(meta?.bindTemplates || {}).map(([k, v]) => `:${k}=${v}`).join(' · ')}. SELECT만 허용되고 세미콜론·주석·쓰기 키워드는 서버와 에이전트 양쪽에서 거부됩니다.</div>
-            </div>
+            {(() => {
+              const qs = (meta?.agents || []).filter((a) => a.name === agentName).flatMap((a) => a.queries || []);
+              const all = qs.length ? qs : (meta?.agents || []).flatMap((a) => a.queries || []);
+              const sel = all.find((q) => q.id === config.queryId);
+              return (
+                <div><div style={lbl}>질의 (사내 에이전트의 agent_queries 폴더에 등록된 것만 선택 가능 — SQL 본문은 클라우드에 저장되지 않습니다)</div>
+                  {all.length ? (
+                    <select style={inp} value={config.queryId || ''} onChange={(e) => setC('queryId', e.target.value)}>
+                      <option value="">선택…</option>
+                      {all.map((q) => <option key={q.id} value={q.id}>{q.name} [{q.id}]</option>)}
+                    </select>
+                  ) : (
+                    <input style={inp} placeholder="질의 ID (예: injection_defect_rate) — 에이전트가 연결되면 목록에서 고를 수 있습니다" value={config.queryId || ''} onChange={(e) => setC('queryId', e.target.value)} />
+                  )}
+                  {sel && <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>바인드: {sel.binds.join(', ') || '없음'} · 테이블: {sel.tables.join(', ')}{sel.binds.some((b) => !['yy', 'from_ymd', 'to_ymd', 'from_yyyymmdd', 'to_yyyymmdd'].includes(b)) ? ' · 표준 외 바인드는 "추가 바인드"에 JSON으로 지정하세요' : ''}</div>}
+                </div>
+              );
+            })()}
           </div>
         )}
 

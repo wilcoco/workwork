@@ -2,11 +2,14 @@
 """
 WorkWork 사내 데이터 에이전트 (읽기 전용)
 =========================================
-사내망 PC에서 돌며, 클라우드(WorkWork API)가 적어 둔 "조회 작업"(SQL + 바인드)을 가져와
-사내 오라클에서 SELECT로 실행하고 결과(연·월·값)만 클라우드로 올린다.
+사내망 PC에서 돌며, 클라우드(WorkWork API)가 적어 둔 "조회 작업"(질의 ID + 바인드)을 가져와,
+사내 PC의 agent_queries/<질의ID>.sql 을 SELECT로 실행하고 결과(연·월·값)만 클라우드로 올린다.
+SQL 본문은 클라우드에 없다 — 클라우드가 뚫려도 미리 등록된 질의만 돈다.
 클라우드는 오라클에 직접 접속하지 않는다 (outbound 폴링, 배차 연동과 같은 방식).
 
 안전장치 (DB가 막아주지 않으므로 코드에서 강제):
+  - SQL은 이 PC의 agent_queries/*.sql 에 등록된 것만 실행 (클라우드는 질의 ID만 전달)
+  - 허용 테이블 화이트리스트(ALLOWED_TABLES) 밖 조회 거부
   - SELECT/WITH로 시작하는 문장만 실행. INSERT/UPDATE/DELETE/DDL/세미콜론/주석/FOR UPDATE 거부
   - 접속 직후 세션을 읽기 전용 트랜잭션으로 전환 (SET TRANSACTION READ ONLY)
   - 문장당 타임아웃 20초 (call_timeout), 순차 실행, 문장 사이 300ms 간격
@@ -33,20 +36,22 @@ try:
 except ImportError:  # pragma: no cover
     oracledb = None
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # ─── .env 로드 (스크립트 폴더) ────────────────────────────────────────────
+SCRIPT_DIR = Path(getattr(sys, "_MEIPASS", None) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent)
+
+
 def load_env():
-    for d in (Path(__file__).resolve().parent, Path.cwd()):
-        p = d / ".env"
-        if p.exists():
-            for line in p.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-            break
+    # 스크립트(또는 exe) 폴더의 .env 만 읽는다 — 다른 폴더의 .env 를 집지 않도록 경로 고정
+    p = SCRIPT_DIR / ".env"
+    if p.exists():
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 load_env()
 API_URL = os.getenv("WORKWORK_API_URL", "https://workworkapi-production-dcac.up.railway.app").rstrip("/")
@@ -58,6 +63,8 @@ ORA_DSN = os.getenv("ORACLE_DSN", "59.28.45.1:1521/orcl")
 CALL_TIMEOUT_MS = int(os.getenv("CALL_TIMEOUT_MS", "20000"))
 GAP_SEC = float(os.getenv("QUERY_GAP_SEC", "0.3"))
 MAX_ROWS = int(os.getenv("MAX_ROWS", "5000"))
+QUERY_DIR = Path(os.getenv("QUERY_DIR", str(SCRIPT_DIR / "agent_queries")))
+ALLOWED_TABLES = {t.strip().lower() for t in os.getenv("ALLOWED_TABLES", "t_zl_sil,t_zl_bul,t_zl_kld,t_zj_cod,t_doj,t_zm_pln2,t_zm_pln1,dual").split(",") if t.strip()}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
                     handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("workwork_agent.log", encoding="utf-8")])
@@ -80,7 +87,49 @@ def assert_read_only(sql: str) -> str:
         raise ValueError("FOR UPDATE 금지")
     if re.search(r"\bbin\$", s, re.I):
         raise ValueError("휴지통 객체 금지")
+    # 테이블 화이트리스트: FROM/JOIN 뒤 식별자(서브쿼리 괄호 제외)가 전부 허용 목록 안이어야 한다
+    for m in re.finditer(r"\b(from|join)\s+([a-zA-Z_][\w$.]*)", s, re.I):
+        ident = m.group(2).lower().split(".")[-1]
+        if ident not in ALLOWED_TABLES:
+            raise ValueError(f"허용되지 않은 테이블: {ident} (ALLOWED_TABLES 참고)")
     return s
+
+
+def load_queries() -> dict:
+    """agent_queries/*.sql → {id: {sql, name, desc, binds, tables}}. 머리말 주석(-- name/desc/binds)은 분리하고 본문은 가드 검사."""
+    reg = {}
+    if not QUERY_DIR.exists():
+        return reg
+    for f in sorted(QUERY_DIR.glob("*.sql")):
+        qid = f.stem
+        if not re.match(r"^[A-Za-z0-9_\-]{1,80}$", qid):
+            log.warning("질의 파일명 부적합(건너뜀): %s", f.name)
+            continue
+        meta = {"name": qid, "desc": "", "binds": []}
+        body = []
+        for line in f.read_text(encoding="utf-8").splitlines():
+            mm = re.match(r"^\s*--\s*(name|desc|binds)\s*:\s*(.*)$", line, re.I)
+            if mm:
+                k, v = mm.group(1).lower(), mm.group(2).strip()
+                meta[k] = [b.strip() for b in v.split(",") if b.strip()] if k == "binds" else v
+            elif line.strip().startswith("--"):
+                continue  # 기타 주석 줄 제거
+            else:
+                body.append(line)
+        sql = "\n".join(body).strip()
+        try:
+            assert_read_only(sql)
+        except ValueError as e:
+            log.error("질의 %s 가드 실패(등록 안 함): %s", qid, e)
+            continue
+        tables = sorted({m.group(2).lower().split(".")[-1] for m in re.finditer(r"\b(from|join)\s+([a-zA-Z_][\w$.]*)", sql, re.I)})
+        if not meta["binds"]:
+            meta["binds"] = sorted({m.group(1) for m in re.finditer(r":([a-zA-Z_][a-zA-Z0-9_]*)", sql)})
+        reg[qid] = {"sql": sql, "name": meta["name"], "desc": meta["desc"], "binds": meta["binds"], "tables": tables}
+    return reg
+
+
+QUERIES = {}
 
 
 def api(method: str, path: str, **kw):
@@ -91,8 +140,11 @@ def api(method: str, path: str, **kw):
 
 
 def heartbeat():
+    global QUERIES
+    QUERIES = load_queries()
     try:
-        api("POST", "/api/kpi-bindings/agent/heartbeat", json={"token": TOKEN, "agent": AGENT, "version": VERSION, "host": socket.gethostname()})
+        cat = [{"id": k, "name": v["name"], "binds": v["binds"], "tables": v["tables"]} for k, v in QUERIES.items()]
+        api("POST", "/api/kpi-bindings/agent/heartbeat", json={"token": TOKEN, "agent": AGENT, "version": VERSION, "host": socket.gethostname(), "queries": cat})
     except Exception as e:  # noqa: BLE001
         log.warning("heartbeat 실패: %s", e)
 
@@ -141,7 +193,11 @@ def run_once() -> int:
         for j in jobs:
             jid = j["id"]
             try:
-                rows = run_sql(conn, j.get("sql", ""), j.get("params") or {})
+                qid = str(j.get("queryId") or "")
+                q = QUERIES.get(qid)
+                if not q:
+                    raise ValueError(f"등록되지 않은 질의 ID: {qid!r} (agent_queries 폴더 확인)")
+                rows = run_sql(conn, q["sql"], j.get("params") or {})
                 api("POST", "/api/kpi-bindings/agent/result", json={"token": TOKEN, "jobId": jid, "rows": rows})
                 log.info("완료 %s (%s) rows=%d", jid, j.get("kind"), len(rows))
             except Exception as e:  # noqa: BLE001

@@ -248,15 +248,17 @@ export class KpiBindingsService {
     }
   }
 
-  /** ORACLE_AGENT: 작업 큐에 넣기 */
+  /** ORACLE_AGENT: 작업 큐에 넣기 — SQL은 내려보내지 않는다. 에이전트에 등록된 질의 ID와 바인드 값만 보낸다 */
   async enqueueAgentJob(binding: any, kind: 'SYNC' | 'PREVIEW', year: number, requestedBy?: string) {
     const cfg = (binding.config || {}) as any;
-    const sql = assertReadOnlySql(String(cfg.sql || ''));
-    const params = buildBindParams(sql, year, cfg.extraBinds && typeof cfg.extraBinds === 'object' ? cfg.extraBinds : undefined);
-    // 같은 바인딩의 미처리 작업이 있으면 재사용(중복 방지)
+    const queryId = String(cfg.queryId || '').trim();
+    if (!/^[A-Za-z0-9_\-]{1,80}$/.test(queryId)) throw new BadRequestException('질의 ID가 필요합니다 (에이전트의 queries 폴더에 등록된 파일명)');
+    const extra = cfg.extraBinds && typeof cfg.extraBinds === 'object' ? cfg.extraBinds : {};
+    // 표준 바인드 전부 + 추가 바인드. 에이전트가 SQL에 실제 쓰인 것만 골라 쓴다
+    const params = { yy: String(year), from_ymd: `${year}-01-01`, to_ymd: `${year}-12-31`, from_yyyymmdd: `${year}0101`, to_yyyymmdd: `${year}1231`, ...extra };
     const dup = await (this.prisma as any).kpiBindingJob.findFirst({ where: { bindingId: binding.id, kind, status: { in: ['PENDING', 'RUNNING'] } } });
     if (dup) return dup;
-    return (this.prisma as any).kpiBindingJob.create({ data: { bindingId: binding.id, kind, agentName: String(binding.agentName || 'default'), sql, params, requestedBy: requestedBy || null } });
+    return (this.prisma as any).kpiBindingJob.create({ data: { bindingId: binding.id, kind, agentName: String(binding.agentName || 'default'), queryId, sql: '', params, requestedBy: requestedBy || null } });
   }
 
   /** 에이전트 결과 반영 */

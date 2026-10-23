@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get,
 import { PrismaService } from './prisma.service';
 import { Public } from './jwt-auth.guard';
 import { isAncestorOrgManager } from './lib/org-hierarchy';
-import { KpiBindingsService, INTERNAL_METRICS, SCHEDULES, SOURCE_TYPES, assertReadOnlySql, buildBindParams } from './kpi-bindings.service';
+import { KpiBindingsService, INTERNAL_METRICS, SCHEDULES, SOURCE_TYPES } from './kpi-bindings.service';
 
 /**
  * KPI 데이터 바인딩 API
@@ -46,7 +46,7 @@ export class KpiBindingsController {
     return {
       sourceTypes: SOURCE_TYPES, schedules: SCHEDULES, internalMetrics: INTERNAL_METRICS,
       odooConfigured: this.svc.odooConfigured(), agentTokenConfigured: !!process.env.ORACLE_SYNC_TOKEN,
-      agents: agents.map((a: any) => ({ name: a.name, version: a.version, host: a.host, lastSeenAt: a.lastSeenAt, online: Date.now() - new Date(a.lastSeenAt).getTime() < 15 * 60 * 1000 })),
+      agents: agents.map((a: any) => ({ name: a.name, version: a.version, host: a.host, lastSeenAt: a.lastSeenAt, online: Date.now() - new Date(a.lastSeenAt).getTime() < 15 * 60 * 1000, queries: Array.isArray(a.queries) ? a.queries : [] })),
       bindTemplates: {
         yy: '연도 4자리 (예: 2026)', from_ymd: 'YYYY-MM-DD 연초', to_ymd: 'YYYY-MM-DD 연말', from_yyyymmdd: 'YYYYMMDD 연초', to_yyyymmdd: 'YYYYMMDD 연말',
       },
@@ -76,7 +76,7 @@ export class KpiBindingsController {
     const sourceType = String(b.sourceType || '').toUpperCase();
     if (!(SOURCE_TYPES as readonly string[]).includes(sourceType)) throw new BadRequestException('sourceType invalid');
     const config = b.config && typeof b.config === 'object' ? b.config : {};
-    if (sourceType === 'ORACLE_AGENT') config.sql = assertReadOnlySql(String(config.sql || ''));
+    if (sourceType === 'ORACLE_AGENT') { delete config.sql; if (!/^[A-Za-z0-9_\-]{1,80}$/.test(String(config.queryId || ''))) throw new BadRequestException('에이전트에 등록된 질의 ID를 선택하세요 (SQL은 클라우드에 저장하지 않습니다)'); }
     if (sourceType === 'INTERNAL' && !INTERNAL_METRICS[String(config.metric || '')]) throw new BadRequestException('내부 지표를 선택하세요');
     if (sourceType === 'ODOO_RPC' && !String(config.model || '').trim()) throw new BadRequestException('Odoo 모델을 입력하세요');
     if (sourceType === 'REST' && !/^https?:\/\//.test(String(config.url || ''))) throw new BadRequestException('REST URL을 입력하세요');
@@ -106,12 +106,10 @@ export class KpiBindingsController {
     const config = b.config || {};
     const fake = { id: b.bindingId || 'preview', keyResultId: b.keyResultId || '', sourceType, config, agentName: b.agentName || 'default' };
     if (sourceType === 'ORACLE_AGENT') {
-      const sql = assertReadOnlySql(String(config.sql || ''));
-      // 미리보기 작업은 저장된 바인딩이 있어야 큐에 넣을 수 있다 → 임시 바인딩 없이도 되게 keyResultId 기준으로 저장본 사용
-      let binding = b.keyResultId ? await (this.prisma as any).kpiBinding.findUnique({ where: { keyResultId: b.keyResultId } }) : null;
-      if (!binding) throw new BadRequestException('오라클 미리보기는 먼저 저장한 뒤 실행할 수 있습니다 (SQL 검사는 통과했습니다)');
-      const job = await this.svc.enqueueAgentJob({ ...binding, config: { ...binding.config, sql, extraBinds: config.extraBinds ?? binding.config?.extraBinds }, agentName: b.agentName || binding.agentName }, 'PREVIEW', year, user.id);
-      return { queued: true, jobId: job.id, params: buildBindParams(sql, year, config.extraBinds) };
+      const binding = b.keyResultId ? await (this.prisma as any).kpiBinding.findUnique({ where: { keyResultId: b.keyResultId } }) : null;
+      if (!binding) throw new BadRequestException('오라클 미리보기는 먼저 저장한 뒤 실행할 수 있습니다');
+      const job = await this.svc.enqueueAgentJob({ ...binding, config: { ...binding.config, queryId: config.queryId || binding.config?.queryId, extraBinds: config.extraBinds ?? binding.config?.extraBinds }, agentName: b.agentName || binding.agentName }, 'PREVIEW', year, user.id);
+      return { queued: true, jobId: job.id, params: job.params };
     }
     const values = await this.svc.fetchValues(fake, year);
     return { queued: false, values };
@@ -143,7 +141,8 @@ export class KpiBindingsController {
   async heartbeat(@Body() b: any) {
     this.assertToken(b?.token);
     const name = String(b?.agent || 'default');
-    await (this.prisma as any).kpiAgent.upsert({ where: { name }, create: { name, version: String(b?.version || ''), host: String(b?.host || '') }, update: { version: String(b?.version || ''), host: String(b?.host || ''), lastSeenAt: new Date() } });
+    const queries = Array.isArray(b?.queries) ? b.queries.filter((q: any) => q && typeof q.id === 'string').slice(0, 200).map((q: any) => ({ id: String(q.id), name: String(q.name || q.id), binds: Array.isArray(q.binds) ? q.binds.map(String) : [], tables: Array.isArray(q.tables) ? q.tables.map(String) : [] })) : undefined;
+    await (this.prisma as any).kpiAgent.upsert({ where: { name }, create: { name, version: String(b?.version || ''), host: String(b?.host || ''), queries }, update: { version: String(b?.version || ''), host: String(b?.host || ''), lastSeenAt: new Date(), ...(queries ? { queries } : {}) } });
     // 오래된 미처리 작업 만료 (2일)
     await (this.prisma as any).kpiBindingJob.updateMany({ where: { status: { in: ['PENDING', 'RUNNING'] }, requestedAt: { lt: new Date(Date.now() - 2 * 86400000) } }, data: { status: 'EXPIRED', error: '2일 내 처리되지 않아 만료' } }).catch(() => {});
     return { ok: true, serverTime: new Date().toISOString() };
@@ -158,7 +157,7 @@ export class KpiBindingsController {
     const take = Math.min(20, Math.max(1, Number(limit) || 5));
     const jobs = await (this.prisma as any).kpiBindingJob.findMany({ where: { status: 'PENDING', agentName: name }, orderBy: { requestedAt: 'asc' }, take });
     if (jobs.length) await (this.prisma as any).kpiBindingJob.updateMany({ where: { id: { in: jobs.map((j: any) => j.id) } }, data: { status: 'RUNNING', startedAt: new Date() } });
-    return { items: jobs.map((j: any) => ({ id: j.id, kind: j.kind, sql: j.sql, params: j.params || {} })) };
+    return { items: jobs.map((j: any) => ({ id: j.id, kind: j.kind, queryId: j.queryId, params: j.params || {} })) };
   }
 
   /** 결과 올리기 */

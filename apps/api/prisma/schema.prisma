@@ -1835,7 +1835,8 @@ model KpiBindingJob {
   kind        String     @default("SYNC") // SYNC(실적 기록) | PREVIEW(미리보기만)
   status      String     @default("PENDING") // PENDING | RUNNING | DONE | ERROR | EXPIRED
   agentName   String     @default("default")
-  sql         String
+  sql         String     @default("") // (구버전) 클라우드가 SQL을 내려보내던 방식 — 현재는 queryId만 내려보냄
+  queryId     String? // 에이전트 쪽에 등록된 질의 ID (queries/<id>.sql)
   params      Json? // 바인드 값
   result      Json? // [{year,month,value}]
   error       String?
@@ -1856,4 +1857,5 @@ model KpiAgent {
   host       String   @default("")
   lastSeenAt DateTime @default(now())
   note       String   @default("")
+  queries    Json? // 에이전트가 heartbeat로 보고한 등록 질의 목록 [{id, name, binds[]}]
 }
