@@ -487,9 +487,21 @@ def cmd_proposals(approve_id: str | None, auto_yes: bool = False):
             print("→ 가드를 통과하지 못해 등록할 수 없습니다. (ALLOWED_TABLES 확장은 .env 에서 직접)")
             continue
         qid = p["queryId"]
-        if (QUERY_DIR / f"{qid}.sql").exists():
-            print(f"→ 이미 {qid}.sql 이 있습니다. 덮어쓰려면 파일을 먼저 지우세요.")
-            continue
+        existing = QUERY_DIR / f"{qid}.sql"
+        if existing.exists():
+            # 같은 이름이 이미 있으면: 본문이 같으면 기존 질의를 그대로 연결, 다르면 _2, _3 … 로 새 이름
+            norm = lambda t: re.sub(r"\s+", " ", t).strip().lower()  # noqa: E731
+            cur_sql = norm("\n".join(l for l in existing.read_text(encoding="utf-8").splitlines() if not l.strip().startswith("--")))
+            if cur_sql == norm(p["sql"]):
+                print(f"→ 동일한 질의 {qid}.sql 이 이미 등록되어 있어 그대로 연결합니다.")
+                api("POST", f"/api/kpi-bindings/agent/proposals/{p['id']}/registered", json={"token": TOKEN, "agent": AGENT, "queryId": qid, "host": socket.gethostname()})
+                print("→ 연결 완료 (KPI 연결 자동 생성)")
+                continue
+            n = 2
+            while (QUERY_DIR / f"{qid}_{n}.sql").exists():
+                n += 1
+            print(f"→ {qid}.sql 이 있지만 본문이 달라 {qid}_{n} 으로 등록합니다.")
+            qid = f"{qid}_{n}"
         ans = "y" if auto_yes else input("이 질의를 등록할까요? (y=등록 / n=거절 / s=건너뜀) ").strip().lower()
         if ans == "y":
             f = write_query_file(qid, p["name"], f"{p.get('screenRef', '')} {p.get('rationale', '')}".strip(), p.get("binds") or [], p["sql"])
