@@ -748,13 +748,17 @@ export class ProcessesController {
       if (tmplStatus !== 'ACTIVE') throw new BadRequestException('template not published');
       const tmplVis = String((tmpl as any)?.visibility || '').toUpperCase();
       const isOwner = String((tmpl as any)?.ownerId || '') === String(startedById);
-      if (tmplVis === 'PRIVATE') {
-        if (!isOwner) throw new ForbiddenException('not allowed');
-      } else if (tmplVis === 'ORG_UNIT') {
-        if (!isOwner) {
-          const starterOrgUnitId = starter?.orgUnitId ? String(starter.orgUnitId) : '';
-          const tmplOrgUnitId = (tmpl as any)?.orgUnitId ? String((tmpl as any).orgUnitId) : '';
-          if (!starterOrgUnitId || !tmplOrgUnitId || starterOrgUnitId !== tmplOrgUnitId) throw new ForbiddenException('not allowed');
+      // 임원·CEO는 공개범위와 무관하게 모든 프로세스를 시작할 수 있다 (다른 관리 엔드포인트와 동일 정책)
+      const starterIsExec = await this.isExecOrCeo(String(startedById));
+      if (!starterIsExec) {
+        if (tmplVis === 'PRIVATE') {
+          if (!isOwner) throw new ForbiddenException('not allowed');
+        } else if (tmplVis === 'ORG_UNIT') {
+          if (!isOwner) {
+            const starterOrgUnitId = starter?.orgUnitId ? String(starter.orgUnitId) : '';
+            const tmplOrgUnitId = (tmpl as any)?.orgUnitId ? String((tmpl as any).orgUnitId) : '';
+            if (!starterOrgUnitId || !tmplOrgUnitId || starterOrgUnitId !== tmplOrgUnitId) throw new ForbiddenException('not allowed');
+          }
         }
       }
       // initiative is optional; if provided but not found, ignore silently
