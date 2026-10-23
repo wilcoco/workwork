@@ -73,6 +73,15 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
     return () => { stop = true; clearInterval(t); };
   }, [jobId, userId, onChanged]);
 
+  // 승인됨·등록 대기(APPROVED) 제안이 있으면 15초마다 새로고침 — 사내 에이전트가 등록(REGISTERED)/보류(HOLD)로 바꾸는 것을 화면에 반영
+  const waiting = proposals.some((p) => p.status === 'APPROVED');
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(() => void loadProposals(), 15000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, keyResultId]);
+
   // 관련 자료 찾기 작업 폴링 (사내 에이전트가 카탈로그 검색 → 서버 AI 제안)
   useEffect(() => {
     if (!discoverJob) return;
@@ -234,7 +243,7 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
                       {p.status === 'PROPOSED' && <div style={{ fontSize: 11, color: '#6b7280' }}>임원이 여기서 <b>승인</b>하면 사내 PC 에이전트가 자동 등록합니다(PC 설정 AUTO_REGISTER_APPROVED). 또는 사내 PC에서 <code>workwork_agent.py --approve {p.id}</code>.</div>}
                       {p.status === 'APPROVED' && <div style={{ fontSize: 11, color: '#1d4ed8' }}>승인됨 — 사내 에이전트가 가드·화이트리스트 검사 후 등록합니다(보통 1분 이내). 이미 쓰는 테이블만 읽으면 자동, 처음 보는 테이블이면 PC 담당자 검토로 넘어갑니다.</div>}
                       {p.status === 'HOLD' && <div style={{ fontSize: 11, color: '#c2410c' }}>처음 접근하는 테이블이 있어 사내 PC 담당자가 SQL을 읽고 등록해야 합니다: <code>workwork_agent.py --approve {p.id}</code></div>}
-                      {p.status === 'REGISTERED' && <div style={{ fontSize: 11, color: '#15803d' }}>{p.registeredHost ? `${p.registeredHost}에서 ` : ''}{p.registeredAt ? new Date(p.registeredAt).toLocaleString() : ''} 등록 · KPI 연결이 자동 생성되었습니다</div>}
+                      {p.status === 'REGISTERED' && <div style={{ fontSize: 11, color: '#15803d' }}>{p.registeredHost ? `${p.registeredHost}에서 ` : ''}{p.registeredAt ? new Date(p.registeredAt).toLocaleString() : ''} 등록 · KPI 연결이 없으면 자동 생성되고, 이미 연결된 질의는 그대로 둡니다(바꾸려면 "이 질의 선택" → 저장)</div>}
                     </div>
                   );
                 })}

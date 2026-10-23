@@ -39,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     oracledb = None
 
-VERSION = "1.4.2"
+VERSION = "1.4.3"
 
 # ─── .env 로드 (스크립트 폴더) ────────────────────────────────────────────
 SCRIPT_DIR = Path(getattr(sys, "_MEIPASS", None) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent)
@@ -298,13 +298,13 @@ def _log_outbound(path: str, body) -> int:
     return size
 
 
-def api(method: str, path: str, **kw):
+def api(method: str, path: str, timeout: int = 30, **kw):
     url = f"{API_URL}{path}"
     if method.upper() == "POST" and "json" in kw:
         size = _log_outbound(path, kw["json"])
         if size > MAX_OUTBOUND_BYTES:
             raise ValueError(f"클라우드 전송 거부: payload {size}B > 상한 {MAX_OUTBOUND_BYTES}B (카탈로그 통째 전송 방지)")
-    r = requests.request(method, url, timeout=30, **kw)
+    r = requests.request(method, url, timeout=timeout, **kw)
     r.raise_for_status()
     return r.json() if r.text else {}
 
@@ -455,7 +455,8 @@ def run_once() -> int:
             try:
                 t0 = time.time()
                 hits = discover(j.get("params") or {})
-                api("POST", "/api/kpi-bindings/agent/result", json={"token": TOKEN, "jobId": j["id"], "result": hits})
+                # 서버가 발췌로 AI 제안을 만드는 데 30~60초 걸리므로 응답 대기 연장 (30초 타임아웃 → 오류 보고 중복 사고 방지)
+                api("POST", "/api/kpi-bindings/agent/result", timeout=180, json={"token": TOKEN, "jobId": j["id"], "result": hits})
                 log.info("DISCOVER %s 완료 화면 %d·테이블 %d (%.2fs)", j["id"], len(hits["screens"]), len(hits["tables"]), time.time() - t0)
             except Exception as e:  # noqa: BLE001
                 log.error("DISCOVER %s 실패: %s", j["id"], e)

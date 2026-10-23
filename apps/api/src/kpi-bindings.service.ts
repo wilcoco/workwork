@@ -286,7 +286,7 @@ export class KpiBindingsService {
       if (!kr) throw new BadRequestException('KPI not found for discover job');
       try {
         const proposals = await this.discovery.proposeFromHits(kr, result || {}, String(job.requestedBy || 'agent'), job.agentName);
-        await (this.prisma as any).kpiBindingJob.update({ where: { id: jobId }, data: { status: 'DONE', result: { proposalIds: proposals.map((p: any) => p.id), hits: { screens: (result?.screens || []).map((x: any) => `${x.id} ${x.name}`), tables: (result?.tables || []).map((x: any) => x.table) } }, finishedAt: new Date() } });
+        await (this.prisma as any).kpiBindingJob.update({ where: { id: jobId }, data: { status: 'DONE', error: null, result: { proposalIds: proposals.map((p: any) => p.id), hits: { screens: (result?.screens || []).map((x: any) => `${x.id} ${x.name}`), tables: (result?.tables || []).map((x: any) => x.table) } }, finishedAt: new Date() } });
         return { ok: true, proposals: proposals.length };
       } catch (e: any) {
         await (this.prisma as any).kpiBindingJob.update({ where: { id: jobId }, data: { status: 'ERROR', error: String(e?.message || e).slice(0, 1000), finishedAt: new Date() } });
