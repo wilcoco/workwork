@@ -146,6 +146,10 @@ export class KpiBindingsController {
     const agentName = String(b?.agentName || 'default');
     const agent = await (this.prisma as any).kpiAgent.findUnique({ where: { name: agentName } });
     const online = !!agent && Date.now() - new Date(agent.lastSeenAt).getTime() < 15 * 60 * 1000;
+    // 같은 KPI에 대한 반복 요청으로 카탈로그가 누적 유출되지 않도록 하루 5회 제한
+    const since = new Date(Date.now() - 24 * 3600000);
+    const recent = await (this.prisma as any).kpiBindingJob.count({ where: { keyResultId, kind: 'DISCOVER', requestedAt: { gte: since } } });
+    if (recent >= 5) throw new BadRequestException('이 KPI의 관련 자료 찾기는 하루 5회까지입니다. 제안 목록을 먼저 검토해 주세요.');
     const job = await this.svc.enqueueDiscoverJob(kr, user.id, agentName, b?.hint ? String(b.hint) : undefined);
     return { queued: true, jobId: job.id, agentOnline: online, catalog: agent?.catalog || null, tokens: job.params?.tokens || [] };
   }

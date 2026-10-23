@@ -39,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     oracledb = None
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 # ─── .env 로드 (스크립트 폴더) ────────────────────────────────────────────
 SCRIPT_DIR = Path(getattr(sys, "_MEIPASS", None) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent)
@@ -209,9 +209,10 @@ def discover(params: dict) -> dict:
             if len(w) >= 2 and w not in toks:
                 toks.append(w)
     toks = toks[:30]
-    max_s = int(params.get("maxScreens") or 6)
-    max_t = int(params.get("maxTables") or 8)
-    max_c = int(params.get("maxCodes") or 4)
+    # 서버가 큰 값을 보내도 발췌 상한은 에이전트가 고정한다 (카탈로그 통째 유출 방지)
+    max_s = min(int(params.get("maxScreens") or 6), 8)
+    max_t = min(int(params.get("maxTables") or 8), 12)
+    max_c = min(int(params.get("maxCodes") or 4), 6)
 
     def score(text: str, name: str = "", has_menu: bool = True, has_sql: bool = True) -> float:
         sc = sum(3 if (t in name.lower()) else (1 if t in text else 0) for t in toks)
@@ -246,8 +247,40 @@ def discover(params: dict) -> dict:
     }
 
 
+MAX_OUTBOUND_BYTES = int(os.getenv("MAX_OUTBOUND_BYTES", str(96 * 1024)))  # 한 번에 클라우드로 보내는 payload 상한
+OUTBOUND_LOG = SCRIPT_DIR / "outbound_payloads.log"
+
+
+def _log_outbound(path: str, body) -> int:
+    """클라우드로 나가는 모든 payload를 로컬에 기록(크기·키·요약). '무엇이 나갔는가'를 사람이 나중에 확인할 수 있게."""
+    import json
+    raw = json.dumps(body, ensure_ascii=False) if body is not None else ""
+    size = len(raw.encode("utf-8"))
+    summary = ""
+    if isinstance(body, dict):
+        if "result" in body and isinstance(body["result"], dict):
+            r = body["result"]
+            summary = f"DISCOVER 발췌: 화면 {[x.get('id') for x in r.get('screens', [])]} 테이블 {[t.get('table') for t in r.get('tables', [])]} 코드 {[c.get('group') for c in r.get('codes', [])]}"
+        elif "rows" in body:
+            summary = f"rows={len(body.get('rows') or [])}"
+        elif "queries" in body:
+            summary = f"heartbeat queries={len(body.get('queries') or [])} catalog={body.get('catalog')}"
+        else:
+            summary = ",".join(k for k in body.keys() if k not in ("token",))
+    try:
+        with OUTBOUND_LOG.open("a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} POST {path} {size}B {summary}\n")
+    except Exception:  # noqa: BLE001
+        pass
+    return size
+
+
 def api(method: str, path: str, **kw):
     url = f"{API_URL}{path}"
+    if method.upper() == "POST" and "json" in kw:
+        size = _log_outbound(path, kw["json"])
+        if size > MAX_OUTBOUND_BYTES:
+            raise ValueError(f"클라우드 전송 거부: payload {size}B > 상한 {MAX_OUTBOUND_BYTES}B (카탈로그 통째 전송 방지)")
     r = requests.request(method, url, timeout=30, **kw)
     r.raise_for_status()
     return r.json() if r.text else {}
