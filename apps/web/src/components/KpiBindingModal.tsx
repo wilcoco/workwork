@@ -104,7 +104,7 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
           {cur && <span style={{ fontSize: 11, color: cur.lastError ? '#b91c1c' : '#15803d', background: cur.lastError ? '#fef2f2' : '#f0fdf4', borderRadius: 999, padding: '2px 8px' }}>{cur.lastError ? `오류: ${cur.lastError.slice(0, 60)}` : cur.lastSuccessAt ? `마지막 성공 ${new Date(cur.lastSuccessAt).toLocaleString()}` : '아직 실행 안 됨'}</span>}
           <span style={{ flex: 1 }} /><button type="button" className="btn btn-sm btn-outline" onClick={onClose}>닫기</button>
         </div>
-        <div style={{ fontSize: 12, color: '#64748b' }}>소스만 고르면 월별 값 수집 → KPI 실적 기록 → 리포트 반영은 공통으로 처리됩니다. 자동 기록된 값은 "자동" 배지가 붙고, 사람이 입력한 값과 다르면 괴리가 표시됩니다.</div>
+        <div style={{ fontSize: 12, color: '#64748b' }}>소스만 고르면 월별 값 수집 → KPI 실적 기록 → 리포트 반영은 공통으로 처리됩니다. 자동 기록된 값은 "자동" 배지가 붙습니다. <b>진행 중인 달의 값은 잠정치</b>이며 다음 달 1일 수집분이 확정값입니다.</div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
           <div><div style={lbl}>소스</div>

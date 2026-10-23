@@ -220,9 +220,11 @@ export class KpiBindingsService {
       if (v.value == null || v.year > curY || (v.year === curY && v.month > curM)) { skipped++; continue; }
       const { start, end } = this.monthRange(v.year, v.month);
       const existing = await this.prisma.progressEntry.findFirst({ where: { keyResultId: binding.keyResultId, periodStart: start, note: { startsWith: 'binding:' } } });
-      const note = `binding:${binding.sourceType}:${binding.id}`;
+      // 진행 중인 달은 조회 시점마다 값이 바뀌므로 '잠정'으로 표시 — 다음 달 1일 수집분이 확정값이 된다
+      const provisional = v.year === curY && v.month === curM;
+      const note = `binding:${binding.sourceType}:${binding.id}${provisional ? ':provisional' : ''}`;
       if (existing) {
-        if (existing.krValue !== v.value) await this.prisma.progressEntry.update({ where: { id: existing.id }, data: { krValue: v.value, note } });
+        if (existing.krValue !== v.value || existing.note !== note) await this.prisma.progressEntry.update({ where: { id: existing.id }, data: { krValue: v.value, note } });
       } else {
         await this.prisma.progressEntry.create({ data: { actorId: robot.id, keyResultId: binding.keyResultId, periodStart: start, periodEnd: end, krValue: v.value, note } });
       }
