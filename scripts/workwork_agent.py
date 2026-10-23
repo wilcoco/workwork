@@ -69,8 +69,10 @@ MAX_ROWS = int(os.getenv("MAX_ROWS", "5000"))
 QUERY_DIR = Path(os.getenv("QUERY_DIR", str(SCRIPT_DIR / "agent_queries")))
 ALLOWED_TABLES = {t.strip().lower() for t in os.getenv("ALLOWED_TABLES", "t_zl_sil,t_zl_bul,t_zl_kld,t_zj_cod,t_doj,t_zm_pln2,t_zm_pln1,dual").split(",") if t.strip()}
 
+from logging.handlers import RotatingFileHandler  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
-                    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("workwork_agent.log", encoding="utf-8")])
+                    handlers=[logging.StreamHandler(sys.stdout),
+                              RotatingFileHandler(str(SCRIPT_DIR / "workwork_agent.log"), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8")])
 log = logging.getLogger("agent")
 
 DML_RX = re.compile(r"\b(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|commit|rollback|execute|exec|call|begin|declare|lock|rename|comment|analyze|audit|flashback|purge)\b", re.I)
@@ -268,6 +270,9 @@ def _log_outbound(path: str, body) -> int:
         else:
             summary = ",".join(k for k in body.keys() if k not in ("token",))
     try:
+        # 회전: 5MB 넘으면 .1 로 밀고 새로 시작 (상시 가동 시 디스크 보호)
+        if OUTBOUND_LOG.exists() and OUTBOUND_LOG.stat().st_size > 5 * 1024 * 1024:
+            OUTBOUND_LOG.replace(OUTBOUND_LOG.with_suffix(".log.1"))
         with OUTBOUND_LOG.open("a", encoding="utf-8") as f:
             f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} POST {path} {size}B {summary}\n")
     except Exception:  # noqa: BLE001
