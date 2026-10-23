@@ -51,6 +51,8 @@ import { KpiBindingSchedulerService } from './kpi-binding-scheduler.service';
 import { KpiDiscoveryService } from './kpi-discovery.service';
 import { OpsMetricsController } from './ops-metrics.controller';
 import { OpsMetricsService } from './ops-metrics.service';
+import { KpiQuizController } from './kpi-quiz.controller';
+import { KpiQuizService } from './kpi-quiz.service';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
@@ -131,6 +133,7 @@ import { AuditLogService } from './audit-log.service';
     InvestmentsController,
     KpiBindingsController,
     OpsMetricsController,
+    KpiQuizController,
   ],
   providers: [
     PrismaService,
@@ -143,6 +146,7 @@ import { AuditLogService } from './audit-log.service';
     KpiBindingSchedulerService,
     KpiDiscoveryService,
     OpsMetricsService,
+    KpiQuizService,
     DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

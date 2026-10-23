@@ -57,6 +57,7 @@ export function Home() {
   const [pendingInstructions, setPendingInstructions] = useState<any[]>([]);
   const [pendingComments, setPendingComments] = useState<any[]>([]); // 내 업무일지에 달린 답변 필요한 댓글
   const [pendingSwaps, setPendingSwaps] = useState<any[]>([]); // 내게 온 차량 교환 요청 (대기중)
+  const [pendingQuizzes, setPendingQuizzes] = useState<any[]>([]); // 내게 온 관리자 시험지 (응답 대기)
   const [approvalNotices, setApprovalNotices] = useState<any[]>([]); // 결재 소식: 의견/최종 승인·반려 (안 읽은 것)
   const [weeklyDigest, setWeeklyDigest] = useState<any | null>(null); // 온톨로지 주간 리포트 (안 읽은 것)
   const [myName, setMyName] = useState('');
@@ -362,6 +363,13 @@ export function Home() {
       } catch {
         setPendingSwaps([]);
       }
+      // 나에게 온 관리자 시험지 (응답 대기)
+      try {
+        const res = await apiJson<{ items: any[] }>(`/api/kpi-quiz/mine?userId=${encodeURIComponent(viewerId)}`);
+        setPendingQuizzes((res.items || []).filter((q: any) => q.status === 'OPEN'));
+      } catch {
+        setPendingQuizzes([]);
+      }
     })(), 800);
     return () => window.clearTimeout(timer);
   }, []);
@@ -441,11 +449,11 @@ export function Home() {
         </div>
       )}
       {/* 알림 배너 */}
-      {(!hideApproval || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0) && (
+      {(!hideApproval || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || pendingQuizzes.length > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
-            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>{(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0) ? '처리가 필요한 항목이 있습니다' : '오늘의 알림'}</span>
+            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>{(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0 || pendingQuizzes.length > 0) ? '처리가 필요한 항목이 있습니다' : '오늘의 알림'}</span>
           </div>
           {weeklyDigest && (
             <div
@@ -532,6 +540,19 @@ export function Home() {
                 {approvalNotices.length > 3 && (
                   <div style={{ fontSize: 12, color: '#9333ea' }}>외 {approvalNotices.length - 3}건 더... (알림함에서 확인)</div>
                 )}
+              </div>
+            </div>
+          )}
+          {pendingQuizzes.length > 0 && (
+            <div onClick={() => nav('/okr/kpi-quiz')} style={{ background: '#eef2ff', border: '1px solid #a5b4fc', borderRadius: 8, padding: 10, cursor: 'pointer' }}>
+              <div style={{ fontWeight: 700, color: '#4338ca', marginBottom: 6, fontSize: 13 }}>📝 관리자 시험지 ({pendingQuizzes.length}건) - 내 팀 KPI 실제 데이터에 답해 주세요 →</div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {pendingQuizzes.slice(0, 3).map((q: any) => (
+                  <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                    <span style={{ color: '#3730a3', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>• {q.year}년 {q.month}월 · {q.kr?.title || q.dataSnapshot?.title || 'KPI'}</span>
+                    <span style={{ fontSize: 11, color: new Date(q.dueAt).getTime() < Date.now() ? '#b91c1c' : '#4f46e5' }}>기한 {q.dueAt ? new Date(q.dueAt).toLocaleDateString() : ''}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

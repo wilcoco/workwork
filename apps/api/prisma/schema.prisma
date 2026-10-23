@@ -1816,6 +1816,7 @@ model KpiBinding {
   config        Json // 소스별 설정 (sql/binds, model/domain/measure, metric, url/keys)
   schedule      String          @default("MONTHLY_2") // DAILY | WEEKLY | MONTHLY_2(1·16일 02:00 KST)
   enabled       Boolean         @default(true)
+  quizEnabled   Boolean         @default(true) // 3단계 관리자 시험지 출제 대상 여부 (데이터 연결된 KPI만)
   agentName     String? // ORACLE_AGENT: 실행할 사내 에이전트 이름 (기본 'default')
   lastRunAt     DateTime?
   lastSuccessAt DateTime?
@@ -1905,6 +1906,34 @@ model KpiQueryProposal {
 }
 
 /// 온톨로지 완성도·운영 계기판 — 매일 KST 03:00 이후 1회 스냅샷 (결정론적 규칙, 2단계 2026-10-23)
+/// 3단계 관리자 시험지 — 데이터 연결된 KPI의 실제 수치로 매월 팀장에게 묻는 3문항(객관식 1·주관식 2).
+/// 객관식은 데이터에서 결정론적으로 정답을 만들고, 주관식(원인·조치)은 AI 1차 채점 후 임원이 확정한다.
+model KpiQuiz {
+  id           String    @id @default(cuid())
+  keyResultId  String
+  year         Int
+  month        Int // 출제 기준월(직전 마감월)
+  status       String    @default("OPEN") // OPEN(응답 대기) | ANSWERED(AI 채점 완료·임원 확인 대기) | GRADED(확정) | SKIPPED
+  respondentId String // 응답자(팀장: 조직 책임자, 없으면 KPI 담당)
+  questions    Json // [{no,type:'CHOICE'|'TEXT',text,options?,answerIdx?,rubric?,points}]
+  dataSnapshot Json // {series:[{year,month,value}], target, unit, direction, aggregation}
+  answers      Json? // [{no,choiceIdx?,text?}]
+  answeredAt   DateTime?
+  aiGrading    Json? // [{no,score,max,feedback}]
+  aiScore      Float? // 0~100
+  finalScore   Float? // 임원 확정 0~100
+  gradedById   String?
+  gradedAt     DateTime?
+  gradeNote    String?
+  dueAt        DateTime
+  createdById  String? // 수동 출제자(자동이면 null)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([keyResultId, year, month])
+  @@index([respondentId, status])
+}
+
 model OpsMetricDaily {
   id         String   @id @default(cuid())
   date       String   @unique // KST 'YYYY-MM-DD'

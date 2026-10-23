@@ -74,6 +74,7 @@ import { GaContacts } from './pages/GaContacts';
 import { KpiContribution } from './pages/KpiContribution';
 import { CompanyPulse } from './pages/CompanyPulse';
 import { CompanyMaturity } from './pages/CompanyMaturity';
+import { KpiQuiz } from './pages/KpiQuiz';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -468,6 +469,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/process/kpi-contribution" element={<KpiContribution />} />
           <Route path="/process/company-pulse" element={<CompanyPulse />} />
           <Route path="/process/maturity" element={<CompanyMaturity />} />
+          <Route path="/okr/kpi-quiz" element={<KpiQuiz />} />
           <Route path="/process/my" element={<ProcessMy />} />
           <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
@@ -590,6 +592,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <Link to="/okr/kpi-result">KPI 실적 입력 (수동)</Link>
           <Link to="/okr/team-board">정량 목표 (팀 KPI) 조회</Link>
           <Link to="/okr/kpi-report">팀 KPI 리포트</Link>
+          {canEvaluate && <Link to="/okr/kpi-quiz">관리자 시험지 (데이터)</Link>}
           <Link to="/key-initiatives">중점 추진 과제</Link>
           <Link to="/team-tasks">팀 과제 관리</Link>
         </NavDropdown>
