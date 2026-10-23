@@ -1903,3 +1903,13 @@ model KpiQueryProposal {
   @@index([keyResultId, status])
   @@index([status, agentName])
 }
+
+/// 온톨로지 완성도·운영 계기판 — 매일 KST 03:00 이후 1회 스냅샷 (결정론적 규칙, 2단계 2026-10-23)
+model OpsMetricDaily {
+  id         String   @id @default(cuid())
+  date       String   @unique // KST 'YYYY-MM-DD'
+  score      Float // 0~100 가중 합산
+  grade      Int // 1~4
+  components Json // [{key,label,weight,score,raw:{...}}]
+  computedAt DateTime @default(now())
+}

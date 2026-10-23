@@ -73,6 +73,7 @@ import { CompanyAtlas } from './pages/CompanyAtlas';
 import { GaContacts } from './pages/GaContacts';
 import { KpiContribution } from './pages/KpiContribution';
 import { CompanyPulse } from './pages/CompanyPulse';
+import { CompanyMaturity } from './pages/CompanyMaturity';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -466,6 +467,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/ga-contacts" element={<GaContacts />} />
           <Route path="/process/kpi-contribution" element={<KpiContribution />} />
           <Route path="/process/company-pulse" element={<CompanyPulse />} />
+          <Route path="/process/maturity" element={<CompanyMaturity />} />
           <Route path="/process/my" element={<ProcessMy />} />
           <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
@@ -640,6 +642,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           {isExec && <Link to="/process/ontology">온톨로지 탐색기</Link>}
           {isExec && <Link to="/process/kpi-contribution">KPI 기여 분석</Link>}
           {isExec && <Link to="/process/company-pulse">회사 실행 현황판</Link>}
+          {isExec && <Link to="/process/maturity">온톨로지 완성도 계기판</Link>}
           <Link to="/process/templates">프로세스 템플릿</Link>
           <Link to="/process/from-manual">매뉴얼로 프로세스 만들기 (AI)</Link>
         </NavDropdown>
