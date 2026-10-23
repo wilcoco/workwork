@@ -5,3 +5,7 @@
 - 결과는 **연·월·값 3컬럼**(별칭 "연","월","값" 또는 YEAR/MONTH/VALUE)이어야 합니다.
 - 허용 테이블 밖을 조회하면 거부됩니다 (`ALLOWED_TABLES` 환경변수로 조정). 기본: t_zl_sil, t_zl_bul, t_zl_kld, t_zj_cod, t_doj, t_zm_pln2, t_zm_pln1, dual
 - 바인드 표준값(클라우드가 채움): `:yy` 연도, `:from_ymd`/`:to_ymd` YYYY-MM-DD, `:from_yyyymmdd`/`:to_yyyymmdd` YYYYMMDD. 그 외는 KPI 연결 설정의 "추가 바인드"에서 지정.
+
+## 운영 수칙
+- 이 PC의 `.env`(ALLOWED_TABLES·자격증명)를 고칠 수 있는 사람이 곧 DB 조회 범위를 정하는 사람입니다. `.env`와 이 폴더의 변경은 담당자 1~2명으로 제한하고, 변경 시 WorkWork 관리자에게 알립니다.
+- WITH(CTE) 절의 임시 이름은 자동으로 허용되지만, CTE 안에서 읽는 실제 테이블은 여전히 화이트리스트 검사를 받습니다.

@@ -88,9 +88,12 @@ def assert_read_only(sql: str) -> str:
     if re.search(r"\bbin\$", s, re.I):
         raise ValueError("휴지통 객체 금지")
     # 테이블 화이트리스트: FROM/JOIN 뒤 식별자(서브쿼리 괄호 제외)가 전부 허용 목록 안이어야 한다
+    # WITH 절(CTE) 이름은 이 문장 안에서만 쓰이는 임시 이름이므로 허용 집합에 더한다
+    cte_names = {m.group(1).lower() for m in re.finditer(r"(?:\bwith\s+|,\s*)([a-zA-Z_]\w*)\s+as\s*\(", s, re.I)}
+    allowed = ALLOWED_TABLES | cte_names
     for m in re.finditer(r"\b(from|join)\s+([a-zA-Z_][\w$.]*)", s, re.I):
         ident = m.group(2).lower().split(".")[-1]
-        if ident not in ALLOWED_TABLES:
+        if ident not in allowed:
             raise ValueError(f"허용되지 않은 테이블: {ident} (ALLOWED_TABLES 참고)")
     return s
 
