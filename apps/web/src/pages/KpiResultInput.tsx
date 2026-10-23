@@ -19,7 +19,7 @@ type Kr = {
   objectiveTitle?: string;
 };
 
-type ProgressEntry = { id: string; krValue: number | null; periodStart: string; periodEnd: string; createdAt: string };
+type ProgressEntry = { id: string; krValue: number | null; periodStart: string; periodEnd: string; createdAt: string; note?: string | null };
 type KrEvidence = {
   krId: string;
   activities: Array<{ id: string; name: string }>;
@@ -303,7 +303,8 @@ export function KpiResultInput() {
                       {pct != null ? `${pct}%` : '-'}
                     </td>
                     <td style={{ padding: '6px 8px', color: '#475569', fontSize: 12 }}>
-                      {last && last.krValue != null ? `${last.krValue.toLocaleString()} (${kstYm(String(last.periodStart))})` : '-'}
+                      {last && last.krValue != null ? `${last.krValue.toLocaleString()} (${kstYm(String(last.periodStart))})${String(last.note || '').startsWith('binding:') ? ' · 자동' : ''}` : '-'}
+                      {(() => { const list = progress[kr.id] || []; const ym = month; const auto = list.find((e) => kstYm(String(e.periodStart)) === ym && String(e.note || '').startsWith('binding:')); const man = list.find((e) => kstYm(String(e.periodStart)) === ym && !String(e.note || '').startsWith('binding:')); return auto && man && auto.krValue != null && man.krValue != null && auto.krValue !== man.krValue ? <div style={{ fontSize: 10, color: '#c2410c' }}>⚠ 이달 자기신고 {man.krValue.toLocaleString()} ↔ 데이터 {auto.krValue.toLocaleString()}</div> : null; })()}
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <div style={{ display: 'grid', gap: 4 }}>

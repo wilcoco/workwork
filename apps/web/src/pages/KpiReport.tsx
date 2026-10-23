@@ -4,7 +4,7 @@ import { achPct, cumAchPct, cumTargetOf, cumValueOf, kpiModeOf, monthAchPct, mon
 
 type OrgUnit = { id: string; name: string; type: string; parentId?: string | null };
 type Pillar = 'Q' | 'C' | 'D' | 'DEV' | 'P';
-type ProgressEntry = { krValue: number | null; periodStart: string; createdAt: string };
+type ProgressEntry = { krValue: number | null; periodStart: string; createdAt: string; note?: string | null };
 
 type KrEvidence = {
   krId: string;
@@ -100,7 +100,8 @@ type Kr = {
   pillar?: Pillar | null; metric?: string | null; aggregation?: 'AVG' | 'SUM' | 'LAST' | 'PROGRESS' | null;
   analysis25?: string | null; initiatives?: Array<{ id: string; title: string }>;
   latest?: number | null; latestMonth?: string | null;
-  monthly?: (number | null)[]; // 선택 연도 1~12월 실적
+  monthly?: (number | null)[]; // 선택 연도 1~12월 실적 (데이터 연결값 우선)
+  gaps?: Record<number, { manual: number; auto: number }>; // 같은 달에 자기신고와 데이터가 다른 경우
 };
 
 const PILLARS: { key: Pillar; label: string; color: string; bg: string }[] = [
@@ -302,15 +303,25 @@ export function KpiReport() {
         try {
           const pr = await apiJson<{ items: ProgressEntry[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(kr.id)}`);
           const items = pr.items || []; // createdAt desc — 월별 첫 항목이 그 달의 최신값
-          const monthly: (number | null)[] = Array(12).fill(null);
+          // 월별 값: 데이터 연결(자동, note 'binding:')이 있으면 그 값을 우선하고, 자기신고(수동)와 다르면 괴리로 기록
+          const autoM: (number | null)[] = Array(12).fill(null);
+          const manualM: (number | null)[] = Array(12).fill(null);
           for (const e of items) {
             const ym = kstYm(String(e.periodStart));
             if (ym.slice(0, 4) !== year) continue;
             const mi = parseInt(ym.slice(5, 7), 10) - 1;
-            if (mi < 0 || mi > 11) continue;
-            if (monthly[mi] == null && e.krValue != null) monthly[mi] = e.krValue;
+            if (mi < 0 || mi > 11 || e.krValue == null) continue;
+            const isAuto = String(e.note || '').startsWith('binding:');
+            if (isAuto) { if (autoM[mi] == null) autoM[mi] = e.krValue; }
+            else if (manualM[mi] == null) manualM[mi] = e.krValue;
           }
-          kr.monthly = monthly;
+          const monthly: (number | null)[] = Array(12).fill(null);
+          const gaps: Record<number, { manual: number; auto: number }> = {};
+          for (let mi = 0; mi < 12; mi++) {
+            monthly[mi] = autoM[mi] != null ? autoM[mi] : manualM[mi];
+            if (autoM[mi] != null && manualM[mi] != null && Math.abs(autoM[mi]! - manualM[mi]!) > 1e-9) gaps[mi] = { manual: manualM[mi]!, auto: autoM[mi]! };
+          }
+          kr.monthly = monthly; kr.gaps = gaps;
           // 선택 월 값(없으면 최근값 표시용)
           const m = items.find((e) => kstYm(String(e.periodStart)) === month);
           const pick = m || items[0];
@@ -481,6 +492,7 @@ export function KpiReport() {
                         <div style={{ flex: '0 1 320px', minWidth: 300, display: 'grid', gap: 6 }}>
                           <div style={{ fontWeight: 700, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                             {kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}
+                            {kr.gaps && Object.keys(kr.gaps).length > 0 && <span title={Object.entries(kr.gaps).map(([m, g]) => `${Number(m) + 1}월 자기신고 ${g.manual} ↔ 데이터 ${g.auto}`).join(' · ')} style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', border: '1px solid #fdba74', background: '#fff7ed', color: '#c2410c' }}>⚠ 자기신고≠데이터 {Object.keys(kr.gaps).length}개월</span>}
                             {bound[kr.id] && <span title={bound[kr.id].lastError ? `연결 오류: ${bound[kr.id].lastError}` : '실적이 데이터 소스에서 자동 수집됩니다'} style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', border: '1px solid', borderColor: bound[kr.id].lastError ? '#fca5a5' : '#86efac', background: bound[kr.id].lastError ? '#fef2f2' : '#f0fdf4', color: bound[kr.id].lastError ? '#b91c1c' : '#15803d' }}>{bound[kr.id].lastError ? '⚠ 연결 오류' : `🔗 자동(${SRC_KO[bound[kr.id].sourceType] || bound[kr.id].sourceType})`}</span>}
                             <select
                               value={kr.aggregation ?? ''}
@@ -600,9 +612,11 @@ export function KpiReport() {
                         {Array.from({ length: selIdx + 1 }, (_, i) => {
                           const v = kr.monthly?.[i] ?? null;
                           const a = monthAchPct(kr, v, i);
+                          const g = kr.gaps?.[i];
                           return (
-                            <td key={i} style={{ ...tdS, textAlign: 'right', background: i === selIdx ? '#eff6ff' : undefined, color: v == null ? '#cbd5e1' : achColor(a), fontWeight: v == null ? 400 : 600 }}>
-                              {v != null ? v.toLocaleString() : '·'}
+                            <td key={i} title={g ? `자기신고 ${g.manual.toLocaleString()} ↔ 데이터 ${g.auto.toLocaleString()} (데이터 값으로 표시)` : undefined}
+                              style={{ ...tdS, textAlign: 'right', background: g ? '#fff7ed' : i === selIdx ? '#eff6ff' : undefined, color: v == null ? '#cbd5e1' : achColor(a), fontWeight: v == null ? 400 : 600 }}>
+                              {v != null ? v.toLocaleString() : '·'}{g ? <sup style={{ color: '#c2410c', fontSize: 9, marginLeft: 2 }}>⚠{g.manual.toLocaleString()}</sup> : null}
                             </td>
                           );
                         })}
