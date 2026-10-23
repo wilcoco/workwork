@@ -221,7 +221,8 @@ export class KpiBindingsController {
   @Get('agent/proposals')
   async agentProposals(@Query('token') token?: string, @Query('agent') agent?: string, @Query('id') id?: string, @Query('status') status?: string) {
     this.assertToken(token);
-    const where: any = { status: String(status || 'PROPOSED').toUpperCase() === 'APPROVED' ? 'APPROVED' : 'PROPOSED', agentName: String(agent || 'default') };
+    const st = String(status || 'PROPOSED').toUpperCase();
+    const where: any = { status: ['APPROVED', 'HOLD'].includes(st) ? st : 'PROPOSED', agentName: String(agent || 'default') };
     if (id) where.id = String(id);
     const items = await (this.prisma as any).kpiQueryProposal.findMany({ where, orderBy: { createdAt: 'asc' }, take: 50 });
     const krs = await this.prisma.keyResult.findMany({ where: { id: { in: items.map((p: any) => p.keyResultId) } }, select: { id: true, title: true, unit: true } });
@@ -243,6 +244,15 @@ export class KpiBindingsController {
     if (!existing) await (this.prisma as any).kpiBinding.create({ data: { keyResultId: p.keyResultId, createdById: p.createdById, sourceType: 'ORACLE_AGENT', config, schedule: 'MONTHLY_2', enabled: true, agentName: String(b?.agent || p.agentName || 'default') } });
     else if (existing.sourceType === 'ORACLE_AGENT') await (this.prisma as any).kpiBinding.update({ where: { id: existing.id }, data: { config: { ...(existing.config || {}), ...config }, agentName: String(b?.agent || existing.agentName || 'default') } });
     return { ok: true, bindingCreated: !existing };
+  }
+
+  /** 에이전트: 웹 승인됐지만 처음 접근하는 테이블이라 사람 검토 보류 */
+  @Public()
+  @Post('agent/proposals/:id/hold')
+  async agentProposalHold(@Param('id') id: string, @Body() b: any) {
+    this.assertToken(b?.token);
+    await (this.prisma as any).kpiQueryProposal.update({ where: { id }, data: { status: 'HOLD', caveats: String(b?.reason || '사람 검토 필요').slice(0, 2000) } });
+    return { ok: true };
   }
 
   @Public()

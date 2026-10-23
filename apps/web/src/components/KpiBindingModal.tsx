@@ -14,6 +14,13 @@ type Meta = {
 type Proposal = { id: string; queryId: string; name: string; sql: string; binds?: string[]; tables?: string[]; extraBinds?: any; screenRef: string; rationale: string; caveats: string; confidence: number; status: string; createdAt: string; registeredAt?: string | null; registeredHost?: string };
 type Binding = { id: string; keyResultId: string; sourceType: string; config: any; schedule: string; enabled: boolean; agentName?: string | null; lastRunAt?: string | null; lastSuccessAt?: string | null; lastError?: string | null; lastValues?: Array<{ year: number; month: number; value: number | null }> | null; jobs?: any[] };
 
+const TABLE_KO: Record<string, string> = { t_zl_sil: '공정 생산실적', t_zl_bul: '공정 불량실적', t_zl_kld: '설비 중단시간', t_zj_cod: '코드 마스터', t_doj: '도장 실적(POP)', t_zm_pln2: '생산계획', t_zm_pln1: '생산계획(상세)', dual: '-' };
+function readsSummary(p: { tables?: string[]; binds?: string[]; extraBinds?: any }): string {
+  const t = (p.tables || []).filter((x) => x !== 'dual').map((x) => TABLE_KO[x] ? `${TABLE_KO[x]}(${x})` : x);
+  const period = (p.binds || []).some((b) => /yy|from_|to_/.test(b)) ? '선택 연도의 월별 집계' : '기간 조건 없음';
+  const extra = p.extraBinds && Object.keys(p.extraBinds).length ? ` · 추가 조건 ${Object.entries(p.extraBinds).map(([k, v]) => `${k}=${v}`).join(', ')}` : '';
+  return `이 질의는 ${t.join(', ') || '(테이블 미상)'}에서 ${period}를 읽습니다${extra}. 쓰기는 하지 않습니다.`;
+}
 const SRC_LABEL: Record<string, string> = { ORACLE_AGENT: '사내 오라클 (에이전트)', ODOO_RPC: 'Odoo ERP', INTERNAL: 'WorkWork 내부 지표', REST: '외부 REST API' };
 const inp: React.CSSProperties = { border: '1px solid #cbd5e1', borderRadius: 6, padding: '6px 8px', fontSize: 13, width: '100%' };
 const lbl: React.CSSProperties = { fontSize: 12, color: '#475569', fontWeight: 600, marginBottom: 2 };
@@ -206,7 +213,7 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
             {proposals.length > 0 && (
               <div style={{ display: 'grid', gap: 6 }}>
                 {proposals.map((p) => {
-                  const st = p.status === 'REGISTERED' ? { t: '등록됨', c: '#15803d', bg: '#f0fdf4' } : p.status === 'APPROVED' ? { t: '승인됨 · 등록 대기', c: '#1d4ed8', bg: '#eff6ff' } : p.status === 'REJECTED' ? { t: '거절', c: '#94a3b8', bg: '#f8fafc' } : { t: '승인 대기', c: '#b45309', bg: '#fffbeb' };
+                  const st = p.status === 'REGISTERED' ? { t: '등록됨', c: '#15803d', bg: '#f0fdf4' } : p.status === 'APPROVED' ? { t: '승인됨 · 등록 대기', c: '#1d4ed8', bg: '#eff6ff' } : p.status === 'HOLD' ? { t: '승인됨 · PC 검토 보류', c: '#c2410c', bg: '#fff7ed' } : p.status === 'REJECTED' ? { t: '거절', c: '#94a3b8', bg: '#f8fafc' } : { t: '승인 대기', c: '#b45309', bg: '#fffbeb' };
                   return (
                     <div key={p.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: '#fff', display: 'grid', gap: 4, opacity: p.status === 'REJECTED' ? 0.6 : 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 13 }}>
@@ -219,12 +226,14 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
                         {p.status === 'PROPOSED' && <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11, color: '#dc2626' }} onClick={() => void rejectProposal(p)}>거절</button>}
                         {p.status === 'REGISTERED' && <button type="button" className="btn btn-sm btn-primary" style={{ fontSize: 11 }} onClick={() => { setC('queryId', p.queryId); if (p.extraBinds && Object.keys(p.extraBinds).length) setC('extraBinds', p.extraBinds); }}>이 질의 선택</button>}
                       </div>
+                      <div style={{ fontSize: 12, color: '#0f172a', background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px' }}>📖 {readsSummary(p)}</div>
                       <div style={{ fontSize: 12, color: '#475569' }}>근거 화면: {p.screenRef || '-'} · 테이블: {(p.tables || []).join(', ') || '-'} · 바인드: {(p.binds || []).join(', ') || '-'}</div>
                       <div style={{ fontSize: 12, color: '#334155' }}>{p.rationale}</div>
                       {p.caveats && <div style={{ fontSize: 12, color: '#b45309' }}>⚠ {p.caveats}</div>}
                       {openSql === p.id && <pre style={{ margin: 0, fontSize: 11, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, whiteSpace: 'pre-wrap' }}>{p.sql}</pre>}
                       {p.status === 'PROPOSED' && <div style={{ fontSize: 11, color: '#6b7280' }}>임원이 여기서 <b>승인</b>하면 사내 PC 에이전트가 자동 등록합니다(PC 설정 AUTO_REGISTER_APPROVED). 또는 사내 PC에서 <code>workwork_agent.py --approve {p.id}</code>.</div>}
-                      {p.status === 'APPROVED' && <div style={{ fontSize: 11, color: '#1d4ed8' }}>승인됨 — 사내 에이전트가 가드·화이트리스트 검사 후 등록합니다(보통 1분 이내). 등록되면 KPI 연결이 자동 생성됩니다.</div>}
+                      {p.status === 'APPROVED' && <div style={{ fontSize: 11, color: '#1d4ed8' }}>승인됨 — 사내 에이전트가 가드·화이트리스트 검사 후 등록합니다(보통 1분 이내). 이미 쓰는 테이블만 읽으면 자동, 처음 보는 테이블이면 PC 담당자 검토로 넘어갑니다.</div>}
+                      {p.status === 'HOLD' && <div style={{ fontSize: 11, color: '#c2410c' }}>처음 접근하는 테이블이 있어 사내 PC 담당자가 SQL을 읽고 등록해야 합니다: <code>workwork_agent.py --approve {p.id}</code></div>}
                       {p.status === 'REGISTERED' && <div style={{ fontSize: 11, color: '#15803d' }}>{p.registeredHost ? `${p.registeredHost}에서 ` : ''}{p.registeredAt ? new Date(p.registeredAt).toLocaleString() : ''} 등록 · KPI 연결이 자동 생성되었습니다</div>}
                     </div>
                   );

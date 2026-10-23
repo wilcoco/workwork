@@ -39,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     oracledb = None
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 
 # ─── .env 로드 (스크립트 폴더) ────────────────────────────────────────────
 SCRIPT_DIR = Path(getattr(sys, "_MEIPASS", None) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent)
@@ -414,8 +414,24 @@ def auto_register_approved():
     except Exception as e:  # noqa: BLE001
         log.warning("승인 제안 조회 실패: %s", e)
         return 0
+    # 조건부 자동 등록: 이미 등록된 질의들이 읽는 테이블 집합 안에서만 읽는 제안만 자동. 새 테이블이 하나라도 있으면 사람 검토(--approve) 보류
+    known = set()
+    for q in (QUERIES or load_queries()).values():
+        known |= set(q.get("tables") or [])
     n = 0
     for p in items:
+        tables = {str(t).lower().split(".")[-1] for t in (p.get("tables") or [])}
+        if not tables:
+            tables = {m.group(2).lower().split(".")[-1] for m in re.finditer(r"\b(from|join)\s+([a-zA-Z_][\w$.]*)", p.get("sql", ""), re.I)}
+        new_tables = sorted(tables - known - {"dual"})
+        if new_tables:
+            reason = f"처음 접근하는 테이블 {', '.join(new_tables)} — 사내 PC에서 --approve 로 사람이 SQL을 검토해야 등록됩니다"
+            log.warning("웹 승인 제안 %s 보류: %s", p["id"], reason)
+            try:
+                api("POST", f"/api/kpi-bindings/agent/proposals/{p['id']}/hold", json={"token": TOKEN, "agent": AGENT, "reason": reason})
+            except Exception:  # noqa: BLE001
+                pass
+            continue
         if register_proposal(p):
             n += 1
     return n
@@ -506,6 +522,7 @@ def cmd_proposals(approve_id: str | None, auto_yes: bool = False):
     if approve_id and approve_id != "all":
         params["id"] = approve_id
     items = api("GET", "/api/kpi-bindings/agent/proposals", params=params).get("items", [])
+    items += api("GET", "/api/kpi-bindings/agent/proposals", params={**params, "status": "HOLD"}).get("items", [])  # 웹 승인됐지만 새 테이블이라 보류된 것
     if not items:
         print("승인 대기 제안이 없습니다.")
         return
@@ -573,6 +590,7 @@ def main():
         log.error("ORACLE_SYNC_TOKEN 이 .env에 없습니다")
         sys.exit(2)
     log.info("WorkWork 에이전트 v%s agent=%s api=%s dsn=%s", VERSION, AGENT, API_URL, ORA_DSN)
+    log.info("허용 테이블(ALLOWED_TABLES): %s · 웹 승인 자동 등록: %s", ", ".join(sorted(ALLOWED_TABLES)), "켬(새 테이블 접근 시 보류)" if AUTO_REGISTER_APPROVED else "끔")
     if args.proposals or args.approve:
         cmd_proposals(args.approve, args.yes)
         heartbeat()  # 등록 질의 목록 갱신 보고
