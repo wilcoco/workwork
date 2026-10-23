@@ -63,7 +63,9 @@ export function Home() {
   const [weeklyDigest, setWeeklyDigest] = useState<any | null>(null); // 온톨로지 주간 리포트 (안 읽은 것)
   const [myName, setMyName] = useState('');
   // 결재 알림 예외 계정 (대표 지시): 숨김 활성 계정에게는 결재 섹션 자체를 표시하지 않음
-  const hideApproval = ['김정중', '김선구'].includes(myName);
+  const [hiddenNames, setHiddenNames] = useState<string[]>(['김정중', '김선구']); // 테넌트 설정 accounts.hiddenNames (기본값은 캠스 초기값)
+  useEffect(() => { apiJson<{ hiddenNames: string[] }>('/api/tenant/public').then((r) => Array.isArray(r?.hiddenNames) && setHiddenNames(r.hiddenNames)).catch(() => {}); }, []);
+  const hideApproval = hiddenNames.includes(myName);
   const [overdueScope, setOverdueScope] = useState<'mine' | 'all'>('mine');
   const [overdueYear, setOverdueYear] = useState<'2026' | 'before' | 'all'>('2026');
   const [overdueLoading, setOverdueLoading] = useState(false);

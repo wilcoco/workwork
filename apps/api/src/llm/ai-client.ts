@@ -267,8 +267,13 @@ export async function extractOdometerFromImage(
 }
 
 // ─── Main entry point ────────────────────────────────────
+// 테넌트 설정(ai.defaultProvider)으로 바꿀 수 있는 기본 공급자. 호출자가 model을 명시하면 그것이 우선.
+let DEFAULT_PROVIDER: AIModel = 'claude'; // 전사 기본 Claude (대표 결정 2026-07-23)
+export function setDefaultProvider(p: AIModel) { DEFAULT_PROVIDER = p === 'openai' ? 'openai' : 'claude'; }
+export function getDefaultProvider(): AIModel { return DEFAULT_PROVIDER; }
+
 export async function callAI(opts: CallAIOptions): Promise<CallAIResult> {
-  const model = opts.model || 'claude'; // 전사 기본 Claude (대표 결정 2026-07-23)
+  const model = opts.model || DEFAULT_PROVIDER;
 
   // If Claude requested but no API key, fall back to OpenAI
   if (model === 'claude' && !process.env.ANTHROPIC_API_KEY) {

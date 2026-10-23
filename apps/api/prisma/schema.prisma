@@ -2023,6 +2023,14 @@ model KnowledgeCard {
   @@index([normTitle])
 }
 
+/// 6단계 테넌트 설정 — 회사별로 달라지는 값(회사명·숨김 계정·기본 결재자·기능 플래그·AI 공급자·온보딩 진행)을 코드에서 분리.
+model TenantSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
 model OpsMetricDaily {
   id         String   @id @default(cuid())
   date       String   @unique // KST 'YYYY-MM-DD'

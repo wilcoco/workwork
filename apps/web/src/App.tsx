@@ -77,6 +77,7 @@ import { CompanyMaturity } from './pages/CompanyMaturity';
 import { KpiQuiz } from './pages/KpiQuiz';
 import { AgendaPage } from './pages/Agenda';
 import { KnowledgeCards } from './pages/KnowledgeCards';
+import { AdminTenant } from './pages/AdminTenant';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -475,6 +476,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/agenda" element={<AgendaPage />} />
           <Route path="/okr/agenda/:id" element={<AgendaPage />} />
           <Route path="/knowledge/cards" element={<KnowledgeCards />} />
+          <Route path="/admin/tenant" element={<AdminTenant />} />
           <Route path="/process/my" element={<ProcessMy />} />
           <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
@@ -690,6 +692,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
             <Link to="/admin/masters">기준정보 관리</Link>
             <Link to="/admin/audit-logs">변경 이력</Link>
             <Link to="/admin/tools">시스템 도구</Link>
+            <Link to="/admin/tenant">회사 설정 · 온보딩 · 데이터</Link>
           </NavDropdown>
         )}
         <span className="nav-right">

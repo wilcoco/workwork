@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { hiddenUserIds } from './lib/tenant';
 
 /**
  * Generic Like (heart) reactions on any subject (Worklog, etc.).
@@ -68,7 +69,7 @@ export class LikesController {
     const ids = Array.isArray(body?.ids) ? body!.ids!.filter((x) => typeof x === 'string' && x.trim()) : [];
     const viewerId = body?.viewerId ? String(body.viewerId) : '';
     if (!subjectType || ids.length === 0) return { items: {} };
-    const HIDDEN = ['cmouna6bf01w0xjhgf6imupg5', 'cmoknhiqj0av02rtgo5eou86t']; // 김정중·김선구 (명단 노출 제외)
+    const HIDDEN = await hiddenUserIds(this.prisma); // 테넌트 설정 accounts.hiddenUserIds (명단 노출 제외)
     const rows = await (this.prisma as any).like.findMany({
       where: { subjectType, subjectId: { in: ids }, userId: { notIn: HIDDEN } },
       orderBy: { createdAt: 'asc' },

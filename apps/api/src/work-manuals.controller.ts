@@ -6,6 +6,7 @@ import { callAI, type AIModel } from './llm/ai-client';
 import { isAncestorOrgManager } from './lib/org-hierarchy';
 import { exactMatch, shortlist } from './lib/activity-match';
 import { computeReadiness, fallbackQuestions, stepTextToHtml, renumberSteps, READINESS_THRESHOLD, READINESS_FIELD_LABEL } from './lib/manual-readiness';
+import { hiddenUserNames } from './lib/tenant';
 
 class CreateWorkManualDto {
   @IsString() @IsNotEmpty()
@@ -380,7 +381,7 @@ export class WorkManualsController {
       }),
     ]);
     // 이름 기반 제외(대표 지시): 김선구·김정중·로봇 계정 등 리스트 비대상
-    const EXCLUDE_NAMES = ['김선구', '김정중'];
+    const EXCLUDE_NAMES = await hiddenUserNames(this.prisma); // 테넌트 설정 accounts.hiddenNames
     const users = usersRaw.filter((u: any) =>
       String(u.orgUnit?.type || '').toUpperCase() === 'TEAM'
       && !EXCLUDE_NAMES.includes(String(u.name || '').trim())

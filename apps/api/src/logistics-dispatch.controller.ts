@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
+import { tenantGet } from './lib/tenant';
 
 class CreateLogisticsDispatchDto {
   @IsString()
@@ -60,7 +61,7 @@ export class LogisticsDispatchController {
       // 결재선 순서: (앞) 관련부서 임원 → 대표이사 = 요청자가 지정한 결재선(순차)
       //             (최종) 담당자 any-of 그룹 — 모든 결재가 난 후 통보/처리. 담당자 그룹은 항상 '마지막 단계'.
       // 최종 담당자는 기본 윤대룡·최연상이되, 요청자가 finalApprovers로 변경 가능.
-      const DEFAULT_FINAL_NAMES = ['윤대룡', '최연상'];
+      const DEFAULT_FINAL_NAMES = await tenantGet<string[]>(this.prisma, 'logistics.defaultFinalApprovers'); // 테넌트 설정
       let primaryIds: string[] = (dto.finalApprovers || []).filter(Boolean);
       if (primaryIds.length === 0) {
         const defaults = await this.prisma.user.findMany({ where: { name: { in: DEFAULT_FINAL_NAMES }, status: 'ACTIVE' as any }, select: { id: true, name: true } });

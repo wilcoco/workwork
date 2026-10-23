@@ -4,6 +4,7 @@ import { PrismaService } from './prisma.service';
 import { Delete } from '@nestjs/common';
 import { Public } from './jwt-auth.guard';
 import type { Response } from 'express';
+import { hiddenUserIds } from './lib/tenant';
 
 class UpdateRoleDto {
   @IsString() @IsNotEmpty()
@@ -230,7 +231,7 @@ export class UsersController {
     if (!['CEO', 'EXEC', 'EXTERNAL'].includes(vrole)) return { items: [], days: 0 }; // 임원 이상만
     const days = Math.min(Math.max(parseInt(String(daysStr || '3'), 10) || 3, 1), 30);
     const cutoff = new Date(Date.now() - days * 86400000);
-    const HIDDEN = ['cmouna6bf01w0xjhgf6imupg5', 'cmoknhiqj0av02rtgo5eou86t']; // 김정중·김선구
+    const HIDDEN = await hiddenUserIds(this.prisma); // 테넌트 설정 accounts.hiddenUserIds
     // 대상: 활성 + 조직 배정됨 + 일반/팀장(임원·외부·경비 제외)
     const users = await (this.prisma as any).user.findMany({
       where: {
