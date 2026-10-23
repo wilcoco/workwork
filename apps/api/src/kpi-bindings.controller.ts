@@ -242,7 +242,8 @@ export class KpiBindingsController {
     const existing = await (this.prisma as any).kpiBinding.findUnique({ where: { keyResultId: p.keyResultId } });
     const config = { queryId, ...(p.extraBinds && Object.keys(p.extraBinds).length ? { extraBinds: p.extraBinds } : {}), proposalId: p.id };
     if (!existing) await (this.prisma as any).kpiBinding.create({ data: { keyResultId: p.keyResultId, createdById: p.createdById, sourceType: 'ORACLE_AGENT', config, schedule: 'MONTHLY_2', enabled: true, agentName: String(b?.agent || p.agentName || 'default') } });
-    else if (existing.sourceType === 'ORACLE_AGENT') await (this.prisma as any).kpiBinding.update({ where: { id: existing.id }, data: { config: { ...(existing.config || {}), ...config }, agentName: String(b?.agent || existing.agentName || 'default') } });
+    else if (existing.sourceType === 'ORACLE_AGENT' && !existing.config?.queryId) await (this.prisma as any).kpiBinding.update({ where: { id: existing.id }, data: { config: { ...(existing.config || {}), ...config }, agentName: String(b?.agent || existing.agentName || 'default') } });
+    // 이미 질의가 연결된 KPI는 덮어쓰지 않는다 — 사용자가 모달에서 '이 질의 선택'으로 바꾼다
     return { ok: true, bindingCreated: !existing };
   }
 

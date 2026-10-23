@@ -39,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     oracledb = None
 
-VERSION = "1.4.1"
+VERSION = "1.4.2"
 
 # ─── .env 로드 (스크립트 폴더) ────────────────────────────────────────────
 SCRIPT_DIR = Path(getattr(sys, "_MEIPASS", None) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent)
@@ -420,6 +420,9 @@ def auto_register_approved():
         known |= set(q.get("tables") or [])
     n = 0
     for p in items:
+        if str(p.get("status") or "") != "APPROVED":  # 서버 버전 차이 등으로 다른 상태가 섞여 오면 절대 등록하지 않는다
+            log.warning("자동 등록 건너뜀(상태 %s): %s", p.get("status"), p["id"])
+            continue
         tables = {str(t).lower().split(".")[-1] for t in (p.get("tables") or [])}
         if not tables:
             tables = {m.group(2).lower().split(".")[-1] for m in re.finditer(r"\b(from|join)\s+([a-zA-Z_][\w$.]*)", p.get("sql", ""), re.I)}
