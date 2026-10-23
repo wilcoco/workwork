@@ -1749,10 +1749,11 @@ export class ProcessesController {
       if (st === 'COMPLETED' || st === 'SKIPPED') continue;
       // 반려: 승인처럼 완료시키지 않는다. 되돌림(loopBack)이 있으면 재작업 루프, 없으면 프로세스 중단.
       if (isReject) {
+        // 되돌림 성공 시 tryLoopBack이 결재 태스크를 NOT_STARTED로 리셋하고 직전 단계를 READY로
+        // 되살린다(재작업 후 재결재 생성). 여기서 COMPLETED로 덮어쓰면 재결재가 안 생기므로 건드리지 않는다.
         const loopBack = await this.tryLoopBack(tx, t.instanceId, t.taskTemplateId, t.id);
-        if (loopBack) {
-          await tx.processTaskInstance.update({ where: { id: t.id }, data: { status: 'COMPLETED', actualEndAt: new Date(), decidedById: actorId, decisionReason: decisionReason || '반려(되돌림)' } });
-        } else {
+        if (!loopBack) {
+          // 되돌릴 직전 단계가 없으면: 결재 태스크 반려 + 프로세스 중단(성공 완료로 처리하지 않음)
           await tx.processTaskInstance.update({ where: { id: t.id }, data: { status: 'REJECTED', actualEndAt: new Date(), decidedById: actorId, decisionReason: decisionReason || '반려' } });
           await tx.processInstance.update({ where: { id: t.instanceId }, data: { status: 'ABORTED', endAt: new Date() } }).catch(() => {});
         }

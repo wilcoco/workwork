@@ -126,6 +126,15 @@ export class ProcessTemplatesController {
           }
         }
       }
+      // 자동 되돌림(대표 결정 2026-10-23): 결재 단계에 명시적 되돌림이 없으면
+      // 반려 시 직전 작업 단계로 복귀하도록 기본 설정(없으면 반려=프로세스 중단).
+      if (!loopBackTargetId && normTaskType(n.taskType) === 'APPROVAL') {
+        const predTask = immPreds.find((pid: string) => isTask(nodes[pid])) || (preds.length ? preds[preds.length - 1] : undefined);
+        if (predTask && String(predTask) !== String(n.id)) {
+          loopBackTargetId = String(predTask);
+          loopBackCondition = "last.approval.status == 'REJECTED'";
+        }
+      }
       return {
         id: String(n.id),
         name: String(n.name || ''),
