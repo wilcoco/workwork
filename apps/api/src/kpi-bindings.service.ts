@@ -20,7 +20,7 @@ export const SCHEDULES: Record<string, string> = { DAILY: '매일 02:00', WEEKLY
 
 /** 내부 지표 카탈로그 — 서버 데이터로 계산 가능한 월 지표 */
 export const INTERNAL_METRICS: Record<string, { label: string; unit: string; desc: string }> = {
-  APPROVAL_LEAD_HOURS: { label: '결재 평균 소요시간', unit: '시간', desc: '상신부터 최종 승인/반려까지 평균 시간(월별, 완료 건 기준)' },
+  APPROVAL_LEAD_HOURS: { label: '결재 평균 소요시간', unit: '시간', desc: '상신부터 최종 승인/반려까지 평균 시간(월별, 완료 건 기준, 자동 승인 제외)' },
   APPROVAL_COUNT: { label: '결재 처리 건수', unit: '건', desc: '월별 최종 처리(승인+반려)된 결재 건수' },
   APPROVAL_WITHIN_24H_PCT: { label: '결재 24시간 내 처리율', unit: '%', desc: '완료 건 중 24시간 안에 처리된 비율' },
   WORKLOG_COUNT: { label: '업무일지 작성 건수', unit: '건', desc: '월별 작성된 업무일지 수' },
@@ -122,7 +122,8 @@ export class KpiBindingsService {
         });
         if (metric === 'APPROVAL_COUNT') value = reqs.length;
         else if (reqs.length) {
-          const hours = reqs.map((r) => (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) / 3600000).filter((h) => h >= 0);
+          // 자동 승인(배차 등, 상신 즉시 확정)은 소요시간 지표에서 제외 — 1분 미만은 사람이 처리한 것이 아님
+          const hours = reqs.map((r) => (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) / 3600000).filter((h) => h >= 1 / 60);
           if (metric === 'APPROVAL_LEAD_HOURS') value = hours.length ? Math.round((hours.reduce((a, b) => a + b, 0) / hours.length) * 10) / 10 : null;
           if (metric === 'APPROVAL_WITHIN_24H_PCT') value = hours.length ? Math.round((hours.filter((h) => h <= 24).length / hours.length) * 1000) / 10 : null;
         }
