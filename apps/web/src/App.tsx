@@ -75,6 +75,7 @@ import { KpiContribution } from './pages/KpiContribution';
 import { CompanyPulse } from './pages/CompanyPulse';
 import { CompanyMaturity } from './pages/CompanyMaturity';
 import { KpiQuiz } from './pages/KpiQuiz';
+import { AgendaPage } from './pages/Agenda';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -470,6 +471,8 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/process/company-pulse" element={<CompanyPulse />} />
           <Route path="/process/maturity" element={<CompanyMaturity />} />
           <Route path="/okr/kpi-quiz" element={<KpiQuiz />} />
+          <Route path="/okr/agenda" element={<AgendaPage />} />
+          <Route path="/okr/agenda/:id" element={<AgendaPage />} />
           <Route path="/process/my" element={<ProcessMy />} />
           <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
@@ -584,6 +587,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
         </NavDropdown>
         <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives') || location.pathname.startsWith('/goals') || location.pathname.startsWith('/team-tasks')}>
           <Link to="/goals/guide">📖 입력 가이드</Link>
+          <Link to="/okr/agenda">경영 어젠다 · 클레임</Link>
           <Link to="/goals/my">내 업무 과제</Link>
           {canEvaluate && <Link to="/goals/overview">전사 목표 현황</Link>}
           <Link to="/okr/input">정성 목표 (OKR) 입력</Link>

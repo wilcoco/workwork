@@ -1934,6 +1934,63 @@ model KpiQuiz {
   @@index([respondentId, status])
 }
 
+/// 4단계 어젠다 클레임 — 대표의 "한 문장 목표"를 AI가 항목으로 쪼개고, 팀이 지표·목표치를 걸고 클레임하면 대표가 승인해 KR로 만든다.
+/// 클레임 지도(항목 × 팀)가 곧 실행 조직도. 미클레임 항목은 붉게.
+model Agenda {
+  id          String       @id @default(cuid())
+  year        Int
+  statement   String       @db.Text // 대표 한 문장
+  status      String       @default("DRAFT") // DRAFT(초안·질문 답변 중) | OPEN(공개·클레임 접수) | CLOSED
+  aiQuestions Json? // AI가 대표에게 되묻는 질문 [{no,text}]
+  aiAnswers   Json? // 대표 답 [{no,text}]
+  summary     String?      @db.Text // AI가 정리한 목표 해석(공개용)
+  createdById String
+  publishedAt DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  items       AgendaItem[]
+}
+
+model AgendaItem {
+  id          String        @id @default(cuid())
+  agendaId    String
+  agenda      Agenda        @relation(fields: [agendaId], references: [id], onDelete: Cascade)
+  order       Int           @default(0)
+  title       String
+  description String?       @db.Text
+  weight      Int           @default(10) // 가중치(합 100 권장)
+  krDraft     Json? // AI KR 초안 {metric,unit,target,direction,rationale,teams:[권장 팀]}
+  status      String        @default("OPEN") // OPEN(미클레임) | CLAIMED(제안 있음) | APPROVED(승인된 클레임 있음)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  claims      AgendaClaim[]
+}
+
+model AgendaClaim {
+  id           String     @id @default(cuid())
+  itemId       String
+  item         AgendaItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  orgUnitId    String
+  claimedById  String
+  title        String // KR 제목
+  metric       String // 산식
+  unit         String
+  target       Float
+  direction    String? // AT_LEAST | AT_MOST
+  rationale    String?    @db.Text // 왜 우리 팀이, 왜 이 목표치인지
+  status       String     @default("PROPOSED") // PROPOSED | APPROVED | REJECTED
+  keyResultId  String? // 승인 시 생성된 KR
+  objectiveId  String?
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([itemId, orgUnitId])
+}
+
 model OpsMetricDaily {
   id         String   @id @default(cuid())
   date       String   @unique // KST 'YYYY-MM-DD'
