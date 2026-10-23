@@ -245,6 +245,15 @@ export function KpiReport() {
   const [evidence, setEvidence] = useState<Record<string, KrEvidence>>({});
   const [evOpen, setEvOpen] = useState(false); // 근거 상세 전체 펼침 (인쇄용)
   const [mapKr, setMapKr] = useState<Kr | null>(null); // 온톨로지 맵 모달 대상
+  const [bound, setBound] = useState<Record<string, { sourceType: string; lastError?: string | null }>>({}); // 데이터 연결된 KPI
+  useEffect(() => {
+    const ids = krs.map((k) => k.id); if (!ids.length) { setBound({}); return; }
+    apiJson<{ items: any[] }>(`/api/kpi-bindings?userId=${encodeURIComponent(userId)}&krIds=${encodeURIComponent(ids.join(','))}`)
+      .then((r) => { const m: Record<string, any> = {}; for (const b of r.items || []) m[b.keyResultId] = { sourceType: b.sourceType, lastError: b.lastError }; setBound(m); })
+      .catch(() => setBound({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [krs]);
+  const SRC_KO: Record<string, string> = { ORACLE_AGENT: '오라클', ODOO_RPC: 'Odoo', INTERNAL: '내부', REST: 'API' };
 
   useEffect(() => {
     if (!orgUnitId) { setEvidence({}); return; }
@@ -472,6 +481,7 @@ export function KpiReport() {
                         <div style={{ flex: '0 1 320px', minWidth: 300, display: 'grid', gap: 6 }}>
                           <div style={{ fontWeight: 700, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                             {kr.title}{kr.unit ? <span style={{ color: '#94a3b8', fontWeight: 400 }}> ({kr.unit})</span> : null}
+                            {bound[kr.id] && <span title={bound[kr.id].lastError ? `연결 오류: ${bound[kr.id].lastError}` : '실적이 데이터 소스에서 자동 수집됩니다'} style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', border: '1px solid', borderColor: bound[kr.id].lastError ? '#fca5a5' : '#86efac', background: bound[kr.id].lastError ? '#fef2f2' : '#f0fdf4', color: bound[kr.id].lastError ? '#b91c1c' : '#15803d' }}>{bound[kr.id].lastError ? '⚠ 연결 오류' : `🔗 자동(${SRC_KO[bound[kr.id].sourceType] || bound[kr.id].sourceType})`}</span>}
                             <select
                               value={kr.aggregation ?? ''}
                               onChange={(e) => void saveAggregation(kr.id, e.target.value)}
@@ -584,7 +594,7 @@ export function KpiReport() {
                     return (
                       <tr key={kr.id}>
                         <td style={{ ...tdS, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }} title={kr.title}>
-                          {kr.title}{kr.unit ? ` (${kr.unit})` : ''}
+                          {bound[kr.id] ? <span style={{ fontSize: 10, color: '#15803d' }}>🔗 </span> : null}{kr.title}{kr.unit ? ` (${kr.unit})` : ''}
                         </td>
                         <td style={{ ...tdS, textAlign: 'right', color: '#64748b' }}>{kr.target ?? '-'}</td>
                         {Array.from({ length: selIdx + 1 }, (_, i) => {

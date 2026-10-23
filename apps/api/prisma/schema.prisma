@@ -239,6 +239,7 @@ model KeyResult {
   assignments       KeyResultAssignment[]
   analysis25        String?
   activityId        String? // 온톨로지: 이 지표가 측정하는 활동
+  binding           KpiBinding?
 }
 
 model KeyResultAssignment {
@@ -1804,4 +1805,55 @@ model InvestmentBudget {
   note             String   @default("")
   updatedById      String?
   updatedAt        DateTime @updatedAt
+}
+
+/// KPI 데이터 바인딩 — KPI(KeyResult) 실적을 사람이 입력하지 않고 외부 소스(오라클 에이전트·Odoo·내부 지표·REST)에서 월별로 자동 수집 (1단계, 2026-10-23)
+model KpiBinding {
+  id            String          @id @default(cuid())
+  keyResultId   String          @unique
+  keyResult     KeyResult       @relation(fields: [keyResultId], references: [id], onDelete: Cascade)
+  sourceType    String // ORACLE_AGENT | ODOO_RPC | INTERNAL | REST
+  config        Json // 소스별 설정 (sql/binds, model/domain/measure, metric, url/keys)
+  schedule      String          @default("MONTHLY_2") // DAILY | WEEKLY | MONTHLY_2(1·16일 02:00 KST)
+  enabled       Boolean         @default(true)
+  agentName     String? // ORACLE_AGENT: 실행할 사내 에이전트 이름 (기본 'default')
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  lastValues    Json? // [{year,month,value}] 최근 수집 결과
+  createdById   String
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  jobs          KpiBindingJob[]
+}
+
+/// 에이전트 작업 큐 — 클라우드가 작업(SQL+바인드)을 적어 두면 사내 에이전트가 가져가 실행하고 결과를 올린다
+model KpiBindingJob {
+  id          String     @id @default(cuid())
+  bindingId   String
+  binding     KpiBinding @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+  kind        String     @default("SYNC") // SYNC(실적 기록) | PREVIEW(미리보기만)
+  status      String     @default("PENDING") // PENDING | RUNNING | DONE | ERROR | EXPIRED
+  agentName   String     @default("default")
+  sql         String
+  params      Json? // 바인드 값
+  result      Json? // [{year,month,value}]
+  error       String?
+  requestedBy String?
+  requestedAt DateTime   @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  @@index([status, agentName])
+  @@index([bindingId])
+}
+
+/// 사내 에이전트 생존 신호
+model KpiAgent {
+  id         String   @id @default(cuid())
+  name       String   @unique
+  version    String   @default("")
+  host       String   @default("")
+  lastSeenAt DateTime @default(now())
+  note       String   @default("")
 }

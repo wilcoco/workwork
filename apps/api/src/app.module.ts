@@ -45,6 +45,9 @@ import { SchedulesController } from './schedules.controller';
 import { PeriodicAlarmsController } from './periodic-alarms.controller';
 import { MeetingMinutesController } from './meeting-minutes.controller';
 import { InvestmentsController } from './investments.controller';
+import { KpiBindingsController } from './kpi-bindings.controller';
+import { KpiBindingsService } from './kpi-bindings.service';
+import { KpiBindingSchedulerService } from './kpi-binding-scheduler.service';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
@@ -123,6 +126,7 @@ import { AuditLogService } from './audit-log.service';
     GoalsDashboardController,
     TeamTasksController,
     InvestmentsController,
+    KpiBindingsController,
   ],
   providers: [
     PrismaService,
@@ -131,6 +135,8 @@ import { AuditLogService } from './audit-log.service';
     ProcessDeadlineService,
     ProcessSchedulerService,
     OntologySchedulerService,
+    KpiBindingsService,
+    KpiBindingSchedulerService,
     DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

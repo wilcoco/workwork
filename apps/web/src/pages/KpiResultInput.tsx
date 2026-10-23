@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiJson } from '../lib/api';
 import { kpiModeOf, monthAchPct, monthTargetOf } from '../lib/kpiCalc';
+import { KpiBindingModal } from '../components/KpiBindingModal';
 
 type OrgUnit = { id: string; name: string; type: string; parentId?: string | null };
 type Pillar = 'Q' | 'C' | 'D' | 'DEV' | 'P';
@@ -47,6 +48,17 @@ export function KpiResultInput() {
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // KPI 데이터 연결(바인딩): krId → 바인딩 요약. 설정 모달 대상
+  const [bindings, setBindings] = useState<Record<string, { sourceType: string; lastSuccessAt?: string | null; lastError?: string | null; enabled: boolean }>>({});
+  const [bindKr, setBindKr] = useState<Kr | null>(null);
+  async function loadBindings(ids: string[]) {
+    if (!ids.length) { setBindings({}); return; }
+    try {
+      const r = await apiJson<{ items: any[] }>(`/api/kpi-bindings?userId=${encodeURIComponent(userId)}&krIds=${encodeURIComponent(ids.join(','))}`);
+      const m: Record<string, any> = {}; for (const b of r.items || []) m[b.keyResultId] = { sourceType: b.sourceType, lastSuccessAt: b.lastSuccessAt, lastError: b.lastError, enabled: b.enabled };
+      setBindings(m);
+    } catch { setBindings({}); }
+  }
 
   const teams = useMemo(() => orgs.filter((o) => o.type === 'TEAM'), [orgs]);
   const isExec = myRole === 'CEO' || myRole === 'EXEC';
@@ -106,6 +118,7 @@ export function KpiResultInput() {
         }
       }
       setKrs(flat);
+      void loadBindings(flat.map((k: Kr) => k.id));
       // 각 KR의 진행이력 조회
       const pmap: Record<string, ProgressEntry[]> = {};
       await Promise.all(flat.map(async (kr) => {
@@ -235,7 +248,14 @@ export function KpiResultInput() {
                       <span style={{ fontSize: 11, background: '#eef2ff', color: '#3730a3', borderRadius: 6, padding: '1px 6px' }}>{kr.pillar ? (PILLAR_LABEL[kr.pillar] || kr.pillar) : '-'}</span>
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <div style={{ fontWeight: 600 }}>{kr.title}{kr.unit ? ` (${kr.unit})` : ''}</div>
+                      <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>{kr.title}{kr.unit ? ` (${kr.unit})` : ''}
+                        {bindings[kr.id] && (
+                          <span title={bindings[kr.id].lastError ? `연결 오류: ${bindings[kr.id].lastError}` : bindings[kr.id].lastSuccessAt ? `마지막 자동 수집 ${new Date(bindings[kr.id].lastSuccessAt as string).toLocaleString()}` : '아직 수집 전'}
+                            style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '1px 6px', border: '1px solid', borderColor: bindings[kr.id].lastError ? '#fca5a5' : '#86efac', background: bindings[kr.id].lastError ? '#fef2f2' : '#f0fdf4', color: bindings[kr.id].lastError ? '#b91c1c' : '#15803d' }}>
+                            {bindings[kr.id].lastError ? '⚠ 연결 오류' : '🔗 자동'}
+                          </span>
+                        )}
+                      </div>
                       {kr.metric && <div style={{ fontSize: 11, color: '#94a3b8', whiteSpace: 'pre-wrap', maxWidth: 320 }}>{kr.metric}</div>}
                       {(() => {
                         const ev = evidence[kr.id];
@@ -286,9 +306,14 @@ export function KpiResultInput() {
                       {last && last.krValue != null ? `${last.krValue.toLocaleString()} (${kstYm(String(last.periodStart))})` : '-'}
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <button type="button" className="btn btn-sm" disabled={savingId === kr.id} onClick={() => void save(kr)}>
-                        {savingId === kr.id ? '저장…' : '저장'}
-                      </button>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <button type="button" className="btn btn-sm" disabled={savingId === kr.id} onClick={() => void save(kr)}>
+                          {savingId === kr.id ? '저장…' : '저장'}
+                        </button>
+                        <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11 }} onClick={() => setBindKr(kr)} title="오라클·Odoo·내부 지표·REST에서 실적을 자동으로 가져오도록 연결합니다">
+                          {bindings[kr.id] ? '🔗 연결 설정' : '🔗 데이터 연결'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   {openEv[kr.id] && evidence[kr.id] && (
@@ -322,6 +347,10 @@ export function KpiResultInput() {
             </tbody>
           </table>
         </div>
+      )}
+      {bindKr && (
+        <KpiBindingModal keyResultId={bindKr.id} title={bindKr.title} unit={bindKr.unit} userId={userId} onClose={() => setBindKr(null)}
+          onChanged={() => { void loadBindings(krs.map((k) => k.id)); if (bindKr) void apiJson<{ items: ProgressEntry[] }>(`/api/progress?subjectType=KR&subjectId=${encodeURIComponent(bindKr.id)}`).then((pr) => setProgress((m) => ({ ...m, [bindKr.id]: pr.items || [] }))).catch(() => {}); }} />
       )}
     </div>
   );
