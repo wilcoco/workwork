@@ -39,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     oracledb = None
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 
 # ─── .env 로드 (스크립트 폴더) ────────────────────────────────────────────
 SCRIPT_DIR = Path(getattr(sys, "_MEIPASS", None) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent)
@@ -237,13 +237,30 @@ def discover(params: dict) -> dict:
         if score(t["_text"], t["table"]) > 0 and t["table"] not in ref_tables:
             ref_tables.append(t["table"])
     tables = [c["tables"][t] for t in ref_tables if t in c["tables"]][:max_t]
-    codes = [g for g in sorted(c["codes"], key=lambda g: -score(g["_text"], g["name"])) if score(g["_text"], g["name"]) > 0][:max_c]
+    # 코드그룹: ① 선택된 테이블 컬럼이 code_ref 로 참조하는 그룹(예: silrtg → "RTG,1" 공정)은 반드시 포함 — AI가 공정코드를 추정하지 않게
+    #          ② 그 다음 토큰 점수순
+    ref_groups = []
+    for t in tables:
+        for col in t.get("columns", []):
+            cr = col.get("code_ref")
+            if cr:
+                g = str(cr).replace(",", "/").strip()
+                if g not in ref_groups:
+                    ref_groups.append(g)
+    by_group = {g["group"]: g for g in c["codes"]}
+    codes = [by_group[g] for g in ref_groups if g in by_group]
+    for g in sorted(c["codes"], key=lambda g: -score(g["_text"], g["name"])):
+        if len(codes) >= max_c + len(ref_groups):
+            break
+        if score(g["_text"], g["name"]) > 0 and g not in codes:
+            codes.append(g)
+    codes = codes[: max(max_c, len(ref_groups))]
     strip = lambda d, keys: {k: v for k, v in d.items() if k in keys}  # noqa: E731
     return {
         "screens": [dict(strip(x, {"id", "name", "menu", "note", "tables", "binds"}), sql=(x["sql"] or "")[:2500] or None,
                          grids=[{"title": g["title"], "sql": (g["sql"] or "")[:1500] or None} for g in x["grids"][:3]]) for x in screens],
         "tables": [dict(strip(t, {"table", "comment", "rows_approx"}), columns=t["columns"][:60]) for t in tables],
-        "codes": [dict(strip(g, {"group", "name"}), items=g["items"][:40]) for g in codes],
+        "codes": [dict(strip(g, {"group", "name"}), items=g["items"][:60]) for g in codes],
         "allowedTables": sorted(ALLOWED_TABLES),
         "tokens": toks,
     }
