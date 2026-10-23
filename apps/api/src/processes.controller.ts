@@ -1738,14 +1738,27 @@ export class ProcessesController {
     });
   }
 
-  async finalizeTasksLinkedToApprovalRequest(tx: any, approvalRequestId: string, actorId: string, decisionReason?: string) {
+  async finalizeTasksLinkedToApprovalRequest(tx: any, approvalRequestId: string, actorId: string, decisionReason?: string, decision: string = 'APPROVED') {
     const tasks = await tx.processTaskInstance.findMany({ where: { approvalRequestId } });
     if (!tasks.length) return;
+    const isReject = String(decision).toUpperCase() === 'REJECTED';
 
     const unlockKeys = new Set<string>();
     for (const t of tasks) {
       const st = String(t.status).toUpperCase();
       if (st === 'COMPLETED' || st === 'SKIPPED') continue;
+      // 반려: 승인처럼 완료시키지 않는다. 되돌림(loopBack)이 있으면 재작업 루프, 없으면 프로세스 중단.
+      if (isReject) {
+        const loopBack = await this.tryLoopBack(tx, t.instanceId, t.taskTemplateId, t.id);
+        if (loopBack) {
+          await tx.processTaskInstance.update({ where: { id: t.id }, data: { status: 'COMPLETED', actualEndAt: new Date(), decidedById: actorId, decisionReason: decisionReason || '반려(되돌림)' } });
+        } else {
+          await tx.processTaskInstance.update({ where: { id: t.id }, data: { status: 'REJECTED', actualEndAt: new Date(), decidedById: actorId, decisionReason: decisionReason || '반려' } });
+          await tx.processInstance.update({ where: { id: t.instanceId }, data: { status: 'ABORTED', endAt: new Date() } }).catch(() => {});
+        }
+        await this.scheduleDeadlineAlerts(tx, t.instanceId).catch(() => {});
+        continue;
+      }
       await tx.processTaskInstance.update({
         where: { id: t.id },
         data: { status: 'COMPLETED', actualEndAt: new Date(), decidedById: actorId, decisionReason: decisionReason || null },

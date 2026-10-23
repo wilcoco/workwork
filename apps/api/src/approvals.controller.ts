@@ -680,7 +680,7 @@ export class ApprovalsController {
           await (tx as any).attendanceRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
         }
         const engine = new ProcessesController(this.prisma);
-        await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+        await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment, 'REJECTED');
         if (updated.subjectType === 'INSTRUCTION_MILESTONE') {
           const exec = new ExecInstructionsController(this.prisma);
           await exec.finalizeMilestoneApproval(tx as any, id, 'REJECTED', dto.actorId, dto.comment);
@@ -736,7 +736,7 @@ export class ApprovalsController {
         await (tx as any).attendanceRequest.update({ where: { id: updated.subjectId }, data: { status: 'REJECTED' as any } });
       }
       const engine = new ProcessesController(this.prisma);
-      await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment);
+      await engine.finalizeTasksLinkedToApprovalRequest(tx as any, id, dto.actorId, dto.comment, 'REJECTED');
       await (tx as any).event.create({ data: { subjectType: updated.subjectType, subjectId: updated.subjectId, activity: 'ApprovalRejected', userId: dto.actorId, attrs: { requestId: id, stepNo: pending.stepNo, reason: dto.comment } } });
       await this.finalizeWorkManual(tx, req, 'REJECTED', dto.actorId, dto.comment);
       await this.notifyParticipants(tx, { req, type: 'ApprovalRejected', actorId: dto.actorId, comment: dto.comment });
