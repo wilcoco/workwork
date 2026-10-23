@@ -324,6 +324,24 @@ def connect():
     return conn
 
 
+def arm_read_only(conn):
+    """읽기 전용을 **작업마다 다시** 건다.
+
+    SET TRANSACTION READ ONLY 는 세션이 아니라 **그 트랜잭션에만** 적용된다.
+    커밋이나 롤백으로 트랜잭션이 끝나면 보호가 풀리고 쓰기가 가능해진다(실측 확인).
+    오라클은 이 문장을 트랜잭션의 첫 문장일 때만 받으므로, rollback 으로 트랜잭션을
+    닫은 뒤 다시 건다. 실패하면 쓰기 금지를 보장할 수 없으므로 중단한다.
+    """
+    conn.rollback()
+    cur = conn.cursor()
+    try:
+        cur.execute("SET TRANSACTION READ ONLY")
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(f"읽기 전용 세션 재설정 실패 — 쓰기 금지를 보장할 수 없어 중단합니다: {e}") from e
+    finally:
+        cur.close()
+
+
 def run_sql(conn, sql: str, params: dict):
     sql = assert_read_only(sql)
     used = {m.group(1).lower() for m in re.finditer(r":([a-zA-Z_][a-zA-Z0-9_]*)", sql)}
@@ -377,6 +395,7 @@ def run_once() -> int:
                 q = QUERIES.get(qid)
                 if not q:
                     raise ValueError(f"등록되지 않은 질의 ID: {qid!r} (agent_queries 폴더 확인)")
+                arm_read_only(conn)  # 직전 작업의 트랜잭션이 끝났을 수 있으므로 매번 다시 건다
                 rows = run_sql(conn, q["sql"], j.get("params") or {})
                 api("POST", "/api/kpi-bindings/agent/result", json={"token": TOKEN, "jobId": jid, "rows": rows})
                 log.info("완료 %s (%s) rows=%d", jid, j.get("kind"), len(rows))
