@@ -39,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     oracledb = None
 
-VERSION = "1.3.2"
+VERSION = "1.4.0"
 
 # ─── .env 로드 (스크립트 폴더) ────────────────────────────────────────────
 SCRIPT_DIR = Path(getattr(sys, "_MEIPASS", None) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent)
@@ -66,6 +66,7 @@ ORA_DSN = os.getenv("ORACLE_DSN", "59.28.45.1:1521/orcl")
 CALL_TIMEOUT_MS = int(os.getenv("CALL_TIMEOUT_MS", "20000"))
 GAP_SEC = float(os.getenv("QUERY_GAP_SEC", "0.3"))
 MAX_ROWS = int(os.getenv("MAX_ROWS", "5000"))
+AUTO_REGISTER_APPROVED = os.getenv("AUTO_REGISTER_APPROVED", "1") != "0"  # 웹(임원) 승인 제안을 이 PC가 자동 등록할지 — PC 담당자가 끌 수 있음
 QUERY_DIR = Path(os.getenv("QUERY_DIR", str(SCRIPT_DIR / "agent_queries")))
 ALLOWED_TABLES = {t.strip().lower() for t in os.getenv("ALLOWED_TABLES", "t_zl_sil,t_zl_bul,t_zl_kld,t_zj_cod,t_doj,t_zm_pln2,t_zm_pln1,dual").split(",") if t.strip()}
 
@@ -376,8 +377,54 @@ def run_sql(conn, sql: str, params: dict):
     return rows
 
 
+def register_proposal(p: dict) -> bool:
+    """제안 1건을 가드·화이트리스트 검사 후 agent_queries 에 등록하고 서버에 보고. 사람 승인(--approve)과 웹 승인 자동 등록이 공용으로 쓴다."""
+    try:
+        assert_read_only(p["sql"])
+    except ValueError as e:
+        log.error("제안 %s 가드 실패(등록 안 함): %s", p["id"], e)
+        try:
+            api("POST", f"/api/kpi-bindings/agent/proposals/{p['id']}/declined", json={"token": TOKEN, "agent": AGENT})
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+    qid = p["queryId"]
+    existing = QUERY_DIR / f"{qid}.sql"
+    if existing.exists():
+        norm = lambda t: re.sub(r"\s+", " ", t).strip().lower()  # noqa: E731
+        cur_sql = norm("\n".join(l for l in existing.read_text(encoding="utf-8").splitlines() if not l.strip().startswith("--")))
+        if cur_sql != norm(p["sql"]):
+            n = 2
+            while (QUERY_DIR / f"{qid}_{n}.sql").exists():
+                n += 1
+            qid = f"{qid}_{n}"
+    if not (QUERY_DIR / f"{qid}.sql").exists():
+        write_query_file(qid, p["name"], f"{p.get('screenRef', '')} {p.get('rationale', '')}".strip(), p.get("binds") or [], p["sql"])
+    api("POST", f"/api/kpi-bindings/agent/proposals/{p['id']}/registered", json={"token": TOKEN, "agent": AGENT, "queryId": qid, "host": socket.gethostname()})
+    log.info("웹 승인 제안 등록: %s → %s.sql (승인자 %s)", p["id"], qid, p.get("approvedBy", ""))
+    return True
+
+
+def auto_register_approved():
+    """웹에서 임원이 승인한 제안을 가져와 등록 (AUTO_REGISTER_APPROVED=1 일 때만)."""
+    if not AUTO_REGISTER_APPROVED:
+        return 0
+    try:
+        items = api("GET", "/api/kpi-bindings/agent/proposals", params={"token": TOKEN, "agent": AGENT, "status": "APPROVED"}).get("items", [])
+    except Exception as e:  # noqa: BLE001
+        log.warning("승인 제안 조회 실패: %s", e)
+        return 0
+    n = 0
+    for p in items:
+        if register_proposal(p):
+            n += 1
+    return n
+
+
 def run_once() -> int:
     heartbeat()
+    if auto_register_approved():
+        QUERIES.update(load_queries())  # 새 질의를 바로 쓸 수 있게
     jobs = api("GET", "/api/kpi-bindings/agent/jobs", params={"token": TOKEN, "agent": AGENT, "limit": 10}).get("items", [])
     if not jobs:
         return 0

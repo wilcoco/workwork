@@ -161,6 +161,17 @@ export class KpiBindingsController {
     return { items };
   }
 
+  /** 웹 승인(임원): PROPOSED → APPROVED. 사내 PC 에이전트가 AUTO_REGISTER_APPROVED=1 이면 자동으로 질의 파일을 만들고 REGISTERED 로 바꾼다 */
+  @Post('proposals/:id/approve')
+  async approveProposal(@Param('id') id: string, @Body() b: any) {
+    const user = await this.actor(b?.userId);
+    if (!['CEO', 'EXEC'].includes(String(user.role || '').toUpperCase())) throw new ForbiddenException('임원 이상만 웹에서 승인할 수 있습니다 (팀장은 사내 PC 담당자에게 요청)');
+    const p = await (this.prisma as any).kpiQueryProposal.findUnique({ where: { id } });
+    if (!p) throw new BadRequestException('not found');
+    if (p.status !== 'PROPOSED') throw new BadRequestException(`이미 ${p.status} 상태입니다`);
+    return (this.prisma as any).kpiQueryProposal.update({ where: { id }, data: { status: 'APPROVED', rationale: p.rationale, caveats: p.caveats, registeredHost: `web-approved-by:${user.name || user.id}` } });
+  }
+
   @Post('proposals/:id/reject')
   async rejectProposal(@Param('id') id: string, @Body() b: any) {
     const user = await this.actor(b?.userId);
@@ -208,14 +219,14 @@ export class KpiBindingsController {
   /** 에이전트: 승인 대기 제안 목록 (사내 PC에서 사람이 검토·승인). SQL은 여기서만 내려간다 — 자동 실행 경로는 없다 */
   @Public()
   @Get('agent/proposals')
-  async agentProposals(@Query('token') token?: string, @Query('agent') agent?: string, @Query('id') id?: string) {
+  async agentProposals(@Query('token') token?: string, @Query('agent') agent?: string, @Query('id') id?: string, @Query('status') status?: string) {
     this.assertToken(token);
-    const where: any = { status: 'PROPOSED', agentName: String(agent || 'default') };
+    const where: any = { status: String(status || 'PROPOSED').toUpperCase() === 'APPROVED' ? 'APPROVED' : 'PROPOSED', agentName: String(agent || 'default') };
     if (id) where.id = String(id);
     const items = await (this.prisma as any).kpiQueryProposal.findMany({ where, orderBy: { createdAt: 'asc' }, take: 50 });
     const krs = await this.prisma.keyResult.findMany({ where: { id: { in: items.map((p: any) => p.keyResultId) } }, select: { id: true, title: true, unit: true } });
     const km = new Map(krs.map((k) => [k.id, k]));
-    return { items: items.map((p: any) => ({ id: p.id, queryId: p.queryId, name: p.name, sql: p.sql, binds: p.binds || [], tables: p.tables || [], extraBinds: p.extraBinds || {}, screenRef: p.screenRef, rationale: p.rationale, caveats: p.caveats, confidence: p.confidence, kpi: km.get(p.keyResultId) || null })) };
+    return { items: items.map((p: any) => ({ id: p.id, status: p.status, approvedBy: p.registeredHost, queryId: p.queryId, name: p.name, sql: p.sql, binds: p.binds || [], tables: p.tables || [], extraBinds: p.extraBinds || {}, screenRef: p.screenRef, rationale: p.rationale, caveats: p.caveats, confidence: p.confidence, kpi: km.get(p.keyResultId) || null })) };
   }
 
   /** 에이전트: 사람이 승인해 agent_queries 에 등록했음을 보고 → 제안 REGISTERED + KPI 바인딩 자동 생성/갱신(ORACLE_AGENT, queryId) */

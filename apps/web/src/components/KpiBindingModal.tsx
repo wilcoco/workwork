@@ -91,6 +91,10 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
       setBusy(r.agentOnline ? '사내 에이전트에 검색 작업을 보냈습니다…' : '사내 에이전트가 오프라인입니다. 켜지면 자동으로 처리됩니다 (작업은 2일간 유지)');
     } catch (e: any) { toast(e?.message || '요청 실패', 'error'); setBusy(null); }
   }
+  async function approveProposal(p: Proposal) {
+    if (!(await toastConfirm(`"${p.name}" 질의를 승인할까요? 사내 PC 에이전트가 자동 등록(설정이 켜진 경우)하고, KPI 연결이 생성됩니다.`))) return;
+    try { await apiJson(`/api/kpi-bindings/proposals/${encodeURIComponent(p.id)}/approve`, { method: 'POST', body: JSON.stringify({ userId }) }); toast('승인했습니다. 에이전트가 1분 안에 등록합니다.', 'success'); await loadProposals(); } catch (e: any) { toast(e?.message || '실패', 'error'); }
+  }
   async function rejectProposal(p: Proposal) {
     try { await apiJson(`/api/kpi-bindings/proposals/${encodeURIComponent(p.id)}/reject`, { method: 'POST', body: JSON.stringify({ userId }) }); await loadProposals(); } catch (e: any) { toast(e?.message || '실패', 'error'); }
   }
@@ -202,7 +206,7 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
             {proposals.length > 0 && (
               <div style={{ display: 'grid', gap: 6 }}>
                 {proposals.map((p) => {
-                  const st = p.status === 'REGISTERED' ? { t: '등록됨', c: '#15803d', bg: '#f0fdf4' } : p.status === 'REJECTED' ? { t: '거절', c: '#94a3b8', bg: '#f8fafc' } : { t: '승인 대기', c: '#b45309', bg: '#fffbeb' };
+                  const st = p.status === 'REGISTERED' ? { t: '등록됨', c: '#15803d', bg: '#f0fdf4' } : p.status === 'APPROVED' ? { t: '승인됨 · 등록 대기', c: '#1d4ed8', bg: '#eff6ff' } : p.status === 'REJECTED' ? { t: '거절', c: '#94a3b8', bg: '#f8fafc' } : { t: '승인 대기', c: '#b45309', bg: '#fffbeb' };
                   return (
                     <div key={p.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: '#fff', display: 'grid', gap: 4, opacity: p.status === 'REJECTED' ? 0.6 : 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 13 }}>
@@ -211,6 +215,7 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
                         <span style={{ fontSize: 11, color: p.confidence >= 70 ? '#15803d' : '#b45309' }}>확신도 {p.confidence}</span>
                         <span style={{ flex: 1 }} />
                         <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11 }} onClick={() => setOpenSql(openSql === p.id ? null : p.id)}>{openSql === p.id ? 'SQL 접기' : 'SQL 보기'}</button>
+                        {p.status === 'PROPOSED' && <button type="button" className="btn btn-sm btn-primary" style={{ fontSize: 11 }} onClick={() => void approveProposal(p)} title="임원만 가능. 승인하면 사내 PC 에이전트가 자동 등록합니다">승인</button>}
                         {p.status === 'PROPOSED' && <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11, color: '#dc2626' }} onClick={() => void rejectProposal(p)}>거절</button>}
                         {p.status === 'REGISTERED' && <button type="button" className="btn btn-sm btn-primary" style={{ fontSize: 11 }} onClick={() => { setC('queryId', p.queryId); if (p.extraBinds && Object.keys(p.extraBinds).length) setC('extraBinds', p.extraBinds); }}>이 질의 선택</button>}
                       </div>
@@ -218,7 +223,8 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
                       <div style={{ fontSize: 12, color: '#334155' }}>{p.rationale}</div>
                       {p.caveats && <div style={{ fontSize: 12, color: '#b45309' }}>⚠ {p.caveats}</div>}
                       {openSql === p.id && <pre style={{ margin: 0, fontSize: 11, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, whiteSpace: 'pre-wrap' }}>{p.sql}</pre>}
-                      {p.status === 'PROPOSED' && <div style={{ fontSize: 11, color: '#6b7280' }}>등록은 사내 PC에서: <code>workwork_agent.py --approve {p.id}</code> (또는 APPROVE_proposals.bat) → 내용을 보고 y를 눌러야 질의가 생깁니다.</div>}
+                      {p.status === 'PROPOSED' && <div style={{ fontSize: 11, color: '#6b7280' }}>임원이 여기서 <b>승인</b>하면 사내 PC 에이전트가 자동 등록합니다(PC 설정 AUTO_REGISTER_APPROVED). 또는 사내 PC에서 <code>workwork_agent.py --approve {p.id}</code>.</div>}
+                      {p.status === 'APPROVED' && <div style={{ fontSize: 11, color: '#1d4ed8' }}>승인됨 — 사내 에이전트가 가드·화이트리스트 검사 후 등록합니다(보통 1분 이내). 등록되면 KPI 연결이 자동 생성됩니다.</div>}
                       {p.status === 'REGISTERED' && <div style={{ fontSize: 11, color: '#15803d' }}>{p.registeredHost ? `${p.registeredHost}에서 ` : ''}{p.registeredAt ? new Date(p.registeredAt).toLocaleString() : ''} 등록 · KPI 연결이 자동 생성되었습니다</div>}
                     </div>
                   );
