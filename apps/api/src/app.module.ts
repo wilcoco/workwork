@@ -48,6 +48,7 @@ import { InvestmentsController } from './investments.controller';
 import { KpiBindingsController } from './kpi-bindings.controller';
 import { KpiBindingsService } from './kpi-bindings.service';
 import { KpiBindingSchedulerService } from './kpi-binding-scheduler.service';
+import { KpiDiscoveryService } from './kpi-discovery.service';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
@@ -137,6 +138,7 @@ import { AuditLogService } from './audit-log.service';
     OntologySchedulerService,
     KpiBindingsService,
     KpiBindingSchedulerService,
+    KpiDiscoveryService,
     DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

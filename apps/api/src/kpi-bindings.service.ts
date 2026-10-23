@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { KpiDiscoveryService } from './kpi-discovery.service';
 
 /**
  * KPI 데이터 바인딩 — 소스 어댑터와 공통 기록부.
@@ -82,7 +83,7 @@ export function normalizeRows(rows: any[]): MonthValue[] {
 @Injectable()
 export class KpiBindingsService {
   private readonly logger = new Logger(KpiBindingsService.name);
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private discovery: KpiDiscoveryService) {}
 
   kstNow() { return new Date(Date.now() + KST_MS); }
   currentYear() { return this.kstNow().getUTCFullYear(); }
@@ -263,19 +264,39 @@ export class KpiBindingsService {
     return (this.prisma as any).kpiBindingJob.create({ data: { bindingId: binding.id, kind, agentName: String(binding.agentName || 'default'), queryId, sql: '', params, requestedBy: requestedBy || null } });
   }
 
-  /** 에이전트 결과 반영 */
-  async completeAgentJob(jobId: string, rows: any[] | null, error?: string | null) {
+  /** DISCOVER 작업: 사내 에이전트가 로컬 카탈로그를 검색해 발췌만 올리도록 큐에 넣는다 */
+  async enqueueDiscoverJob(kr: any, userId: string, agentName = 'default', hint?: string) {
+    const params = this.discovery.buildParams(kr, hint);
+    const dup = await (this.prisma as any).kpiBindingJob.findFirst({ where: { keyResultId: kr.id, kind: 'DISCOVER', status: { in: ['PENDING', 'RUNNING'] } } });
+    if (dup) return dup;
+    return (this.prisma as any).kpiBindingJob.create({ data: { bindingId: null, keyResultId: kr.id, kind: 'DISCOVER', agentName, queryId: null, sql: '', params, requestedBy: userId } });
+  }
+
+  /** 에이전트 결과 반영 — SYNC/PREVIEW는 rows(연·월·값), DISCOVER는 result(카탈로그 발췌) */
+  async completeAgentJob(jobId: string, rows: any[] | null, error?: string | null, result?: any) {
     const job = await (this.prisma as any).kpiBindingJob.findUnique({ where: { id: jobId }, include: { binding: true } });
     if (!job) throw new BadRequestException('job not found');
     if (error) {
       await (this.prisma as any).kpiBindingJob.update({ where: { id: jobId }, data: { status: 'ERROR', error: String(error).slice(0, 1000), finishedAt: new Date() } });
-      await this.markError(job.bindingId, error);
+      if (job.bindingId) await this.markError(job.bindingId, error);
       return { ok: false };
+    }
+    if (job.kind === 'DISCOVER') {
+      const kr: any = await this.prisma.keyResult.findUnique({ where: { id: String(job.keyResultId) }, include: { objective: { include: { orgUnit: true } } } });
+      if (!kr) throw new BadRequestException('KPI not found for discover job');
+      try {
+        const proposals = await this.discovery.proposeFromHits(kr, result || {}, String(job.requestedBy || 'agent'), job.agentName);
+        await (this.prisma as any).kpiBindingJob.update({ where: { id: jobId }, data: { status: 'DONE', result: { proposalIds: proposals.map((p: any) => p.id), hits: { screens: (result?.screens || []).map((x: any) => `${x.id} ${x.name}`), tables: (result?.tables || []).map((x: any) => x.table) } }, finishedAt: new Date() } });
+        return { ok: true, proposals: proposals.length };
+      } catch (e: any) {
+        await (this.prisma as any).kpiBindingJob.update({ where: { id: jobId }, data: { status: 'ERROR', error: String(e?.message || e).slice(0, 1000), finishedAt: new Date() } });
+        return { ok: false, error: String(e?.message || e) };
+      }
     }
     const values = normalizeRows(rows || []);
     await (this.prisma as any).kpiBindingJob.update({ where: { id: jobId }, data: { status: 'DONE', result: values, finishedAt: new Date() } });
-    if (job.kind === 'SYNC') await this.writeValues(job.binding, values);
-    else await (this.prisma as any).kpiBinding.update({ where: { id: job.bindingId }, data: { lastValues: values } });
+    if (job.kind === 'SYNC' && job.binding) await this.writeValues(job.binding, values);
+    else if (job.bindingId) await (this.prisma as any).kpiBinding.update({ where: { id: job.bindingId }, data: { lastValues: values } });
     return { ok: true, count: values.length };
   }
 

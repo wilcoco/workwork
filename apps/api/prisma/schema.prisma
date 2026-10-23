@@ -1829,19 +1829,20 @@ model KpiBinding {
 
 /// 에이전트 작업 큐 — 클라우드가 작업(SQL+바인드)을 적어 두면 사내 에이전트가 가져가 실행하고 결과를 올린다
 model KpiBindingJob {
-  id          String     @id @default(cuid())
-  bindingId   String
-  binding     KpiBinding @relation(fields: [bindingId], references: [id], onDelete: Cascade)
-  kind        String     @default("SYNC") // SYNC(실적 기록) | PREVIEW(미리보기만)
-  status      String     @default("PENDING") // PENDING | RUNNING | DONE | ERROR | EXPIRED
-  agentName   String     @default("default")
-  sql         String     @default("") // (구버전) 클라우드가 SQL을 내려보내던 방식 — 현재는 queryId만 내려보냄
+  id          String      @id @default(cuid())
+  bindingId   String? // DISCOVER 작업은 바인딩 없이 KPI만 가리킨다
+  binding     KpiBinding? @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+  keyResultId String?
+  kind        String      @default("SYNC") // SYNC(실적 기록) | PREVIEW(미리보기만) | DISCOVER(사내 카탈로그 검색 → AI 제안)
+  status      String      @default("PENDING") // PENDING | RUNNING | DONE | ERROR | EXPIRED
+  agentName   String      @default("default")
+  sql         String      @default("") // (구버전) 클라우드가 SQL을 내려보내던 방식 — 현재는 queryId만 내려보냄
   queryId     String? // 에이전트 쪽에 등록된 질의 ID (queries/<id>.sql)
   params      Json? // 바인드 값
   result      Json? // [{year,month,value}]
   error       String?
   requestedBy String?
-  requestedAt DateTime   @default(now())
+  requestedAt DateTime    @default(now())
   startedAt   DateTime?
   finishedAt  DateTime?
 
@@ -1858,4 +1859,47 @@ model KpiAgent {
   lastSeenAt DateTime @default(now())
   note       String   @default("")
   queries    Json? // 에이전트가 heartbeat로 보고한 등록 질의 목록 [{id, name, binds[]}]
+  catalog    Json? // 에이전트 PC에 있는 메타데이터 카탈로그 요약 {screens, tables, codes, generatedAt} — 카탈로그 본문은 클라우드에 두지 않는다
+}
+
+/// (미사용) 메타데이터 카탈로그 — 대표 지시(2026-10-23)로 오라클 카탈로그는 사내 PC에만 두고 클라우드에 올리지 않는다. 검색은 에이전트가 수행. 향후 Odoo 등 클라우드 소스용으로만 남겨 둠
+model DataCatalogEntry {
+  id         String   @id @default(cuid())
+  source     String   @default("ORACLE") // ORACLE | ODOO …
+  kind       String // SCREEN | TABLE | CODEGROUP | MENU
+  key        String // 화면ID / 테이블명 / 코드그룹
+  name       String   @default("")
+  data       Json // kind별 원문(JSON)
+  searchText String   @default("") // 소문자 검색용 결합 텍스트
+  sensitive  Boolean  @default(false) // 급여·인사 등 — 제안에서 자동 배제
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@unique([source, kind, key])
+  @@index([kind])
+}
+
+/// KPI 질의 제안 — AI가 카탈로그에서 찾은 SQL 초안. 사내 PC에서 사람이 승인(--approve)해야 agent_queries에 등록된다
+model KpiQueryProposal {
+  id             String    @id @default(cuid())
+  keyResultId    String
+  queryId        String // 등록될 질의 ID 제안 (파일명)
+  name           String
+  sql            String
+  binds          Json? // ["yy"] 등
+  tables         Json? // ["t_zl_sil", …]
+  extraBinds     Json? // {"bul":"폐각"} 등 KPI 연결 시 함께 쓸 추가 바인드
+  screenRef      String    @default("") // 근거 화면 ID·이름
+  rationale      String    @default("")
+  caveats        String    @default("")
+  confidence     Int       @default(0) // 0~100
+  status         String    @default("PROPOSED") // PROPOSED | REJECTED | REGISTERED
+  createdById    String
+  createdAt      DateTime  @default(now())
+  registeredAt   DateTime?
+  registeredHost String    @default("")
+  agentName      String    @default("default")
+
+  @@index([keyResultId, status])
+  @@index([status, agentName])
 }

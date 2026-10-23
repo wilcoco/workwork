@@ -9,6 +9,7 @@ SQL 본문은 클라우드에 없다 — 클라우드가 뚫려도 미리 등록
 
 안전장치 (DB가 막아주지 않으므로 코드에서 강제):
   - SQL은 이 PC의 agent_queries/*.sql 에 등록된 것만 실행 (클라우드는 질의 ID만 전달)
+  - 메타데이터 카탈로그(oracle_catalog/)는 이 PC에만 있고, "관련 자료 찾기"는 여기서 검색해 발췌(화면 몇 개의 SQL·컬럼 사전)만 올린다
   - 허용 테이블 화이트리스트(ALLOWED_TABLES) 밖 조회 거부
   - SELECT/WITH로 시작하는 문장만 실행. INSERT/UPDATE/DELETE/DDL/세미콜론/주석/FOR UPDATE 거부
   - 접속 직후 세션을 읽기 전용 트랜잭션으로 전환 (SET TRANSACTION READ ONLY)
@@ -17,8 +18,10 @@ SQL 본문은 클라우드에 없다 — 클라우드가 뚫려도 미리 등록
   - 자격증명·토큰은 .env(환경변수)로만: ORACLE_USER / ORACLE_PWD / ORACLE_DSN / WORKWORK_API_URL / ORACLE_SYNC_TOKEN
   - python-oracledb thin 모드 (Instant Client 불필요)
 
-실행:  python workwork_agent.py --loop 60     (60초마다 작업 확인)
-       python workwork_agent.py --once        (한 번만)
+실행:  python workwork_agent.py --loop 60      (60초마다 작업 확인)
+       python workwork_agent.py --once         (한 번만)
+       python workwork_agent.py --proposals    (AI가 제안한 질의 보기)
+       python workwork_agent.py --approve all  (제안을 사람이 검토해 y 로 등록 — 이 명령 없이는 새 질의가 생기지 않음)
 """
 import argparse
 import logging
@@ -36,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover
     oracledb = None
 
-VERSION = "1.1.0"
+VERSION = "1.3.0"
 
 # ─── .env 로드 (스크립트 폴더) ────────────────────────────────────────────
 SCRIPT_DIR = Path(getattr(sys, "_MEIPASS", None) and Path(sys.executable).resolve().parent or Path(__file__).resolve().parent)
@@ -134,6 +137,114 @@ def load_queries() -> dict:
 
 QUERIES = {}
 
+# ─── 메타데이터 카탈로그 (이 PC에만 존재, 클라우드로 올리지 않음) ─────────────
+CATALOG_DIR = Path(os.getenv("CATALOG_DIR", str(SCRIPT_DIR / "oracle_catalog")))
+_CATALOG = None
+
+
+def load_catalog():
+    """oracle_catalog/*.json → 메모리 인덱스. 민감(insa 앱, sensitive 테이블)은 처음부터 제외."""
+    global _CATALOG
+    if _CATALOG is not None:
+        return _CATALOG
+    import json
+    cat = {"screens": [], "tables": {}, "codes": [], "generatedAt": ""}
+    try:
+        def rd(name):
+            p = CATALOG_DIR / name
+            if not p.exists():
+                return None
+            return json.loads(p.read_text(encoding="utf-8"))
+        sc = rd("screens.json")
+        if sc:
+            cat["generatedAt"] = str(sc.get("generatedAt", "")) if isinstance(sc, dict) else ""
+            for x in (sc.get("screens") if isinstance(sc, dict) else sc) or []:
+                if str(x.get("app", "")).lower() == "insa" or x.get("sensitive"):
+                    continue
+                tables = {str(t).lower() for t in (x.get("tables") or [])}
+                grids = x.get("grids") or []
+                for g in grids:
+                    tables |= {str(t).lower() for t in (g.get("tables") or [])}
+                text = " ".join([str(x.get("id", "")), str(x.get("name", "")), str(x.get("menu") or ""), str(x.get("note") or ""), " ".join(tables),
+                                 " ".join(str(g.get("title", "")) for g in grids), str(x.get("sql") or "")[:3000],
+                                 " ".join(str(g.get("sql") or "")[:1500] for g in grids)]).lower()
+                cat["screens"].append({"id": str(x.get("id", "")).lower(), "name": x.get("name", ""), "menu": x.get("menu"), "note": x.get("note") or "",
+                                       "tables": sorted(tables), "binds": x.get("binds") or [], "sql": x.get("sql"),
+                                       "grids": [{"title": g.get("title", ""), "sql": g.get("sql"), "tables": [str(t).lower() for t in (g.get("tables") or [])]} for g in grids],
+                                       "_text": text})
+        tb = rd("tables.json")
+        if tb:
+            for t in (tb.get("tables") if isinstance(tb, dict) else tb) or []:
+                key = str(t.get("table", "")).lower()
+                if not key or t.get("sensitive"):
+                    continue
+                cols = [{"name": str(c.get("name", "")).lower(), "type": c.get("type", ""), "comment": c.get("comment") or "", "code_ref": c.get("code_ref")} for c in (t.get("columns") or [])]
+                cat["tables"][key] = {"table": key, "comment": t.get("comment") or "", "rows_approx": t.get("rows_approx"), "columns": cols,
+                                      "_text": " ".join([key, str(t.get("comment") or "")] + [f"{c['name']} {c['comment']}" for c in cols]).lower()}
+        cd = rd("codes.json")
+        if cd:
+            for g in (cd.get("groups") if isinstance(cd, dict) else cd) or []:
+                items = [{"code": str(i.get("code", "")), "label": str(i.get("label", ""))} for i in (g.get("items") or [])]
+                cat["codes"].append({"group": str(g.get("group", "")), "name": g.get("name") or "", "items": items,
+                                     "_text": " ".join([str(g.get("group", "")), str(g.get("name") or "")] + [f"{i['code']} {i['label']}" for i in items]).lower()})
+    except Exception as e:  # noqa: BLE001
+        log.error("카탈로그 로드 실패: %s", e)
+    _CATALOG = cat
+    log.info("카탈로그 로드: 화면 %d · 테이블 %d · 코드그룹 %d", len(cat["screens"]), len(cat["tables"]), len(cat["codes"]))
+    return cat
+
+
+def catalog_summary():
+    c = load_catalog()
+    return {"screens": len(c["screens"]), "tables": len(c["tables"]), "codes": len(c["codes"]), "generatedAt": c.get("generatedAt", "")}
+
+
+def discover(params: dict) -> dict:
+    """KPI 토큰으로 로컬 카탈로그를 검색해 '발췌'만 돌려준다 (화면 몇 개의 SQL, 관련 테이블 컬럼, 코드그룹)."""
+    c = load_catalog()
+    toks = [str(t).lower() for t in (params.get("tokens") or []) if str(t).strip()]
+    kpi = params.get("kpi") or {}
+    for extra in [str(kpi.get("title", "")), str(kpi.get("metric", "")), str(params.get("hint", ""))]:
+        for w in re.split(r"[\s()/·,%:\-]+", extra.lower()):
+            if len(w) >= 2 and w not in toks:
+                toks.append(w)
+    toks = toks[:30]
+    max_s = int(params.get("maxScreens") or 6)
+    max_t = int(params.get("maxTables") or 8)
+    max_c = int(params.get("maxCodes") or 4)
+
+    def score(text: str, name: str = "", has_menu: bool = True, has_sql: bool = True) -> float:
+        sc = sum(3 if (t in name.lower()) else (1 if t in text else 0) for t in toks)
+        if sc and has_menu:
+            sc += 1.5  # 사용자가 아는 화면 우선
+        if sc and has_sql:
+            sc += 1
+        return sc
+
+    screens = sorted(c["screens"], key=lambda x: -score(x["_text"], x["name"], bool(x["menu"]), bool(x["sql"] or any(g.get("sql") for g in x["grids"]))))
+    screens = [x for x in screens if score(x["_text"], x["name"], bool(x["menu"]), True) > 0][:max_s]
+    # 역검색: 화면이 쓰는 테이블 + 토큰이 걸리는 테이블
+    ref_tables = []
+    for x in screens:
+        for t in x["tables"]:
+            if t not in ref_tables:
+                ref_tables.append(t)
+    scored_tables = sorted(c["tables"].values(), key=lambda t: -score(t["_text"], t["table"]))
+    for t in scored_tables:
+        if score(t["_text"], t["table"]) > 0 and t["table"] not in ref_tables:
+            ref_tables.append(t["table"])
+    tables = [c["tables"][t] for t in ref_tables if t in c["tables"]][:max_t]
+    codes = [g for g in sorted(c["codes"], key=lambda g: -score(g["_text"], g["name"])) if score(g["_text"], g["name"]) > 0][:max_c]
+    strip = lambda d, keys: {k: v for k, v in d.items() if k in keys}  # noqa: E731
+    return {
+        "screens": [dict(strip(x, {"id", "name", "menu", "note", "tables", "binds"}), sql=(x["sql"] or "")[:2500] or None,
+                         grids=[{"title": g["title"], "sql": (g["sql"] or "")[:1500] or None} for g in x["grids"][:3]]) for x in screens],
+        "tables": [dict(strip(t, {"table", "comment", "rows_approx"}), columns=t["columns"][:60]) for t in tables],
+        "codes": [dict(strip(g, {"group", "name"}), items=g["items"][:40]) for g in codes],
+        "allowedTables": sorted(ALLOWED_TABLES),
+        "tokens": toks,
+    }
+
 
 def api(method: str, path: str, **kw):
     url = f"{API_URL}{path}"
@@ -147,7 +258,7 @@ def heartbeat():
     QUERIES = load_queries()
     try:
         cat = [{"id": k, "name": v["name"], "binds": v["binds"], "tables": v["tables"]} for k, v in QUERIES.items()]
-        api("POST", "/api/kpi-bindings/agent/heartbeat", json={"token": TOKEN, "agent": AGENT, "version": VERSION, "host": socket.gethostname(), "queries": cat})
+        api("POST", "/api/kpi-bindings/agent/heartbeat", json={"token": TOKEN, "agent": AGENT, "version": VERSION, "host": socket.gethostname(), "queries": cat, "catalog": catalog_summary()})
     except Exception as e:  # noqa: BLE001
         log.warning("heartbeat 실패: %s", e)
 
@@ -190,10 +301,30 @@ def run_once() -> int:
     if not jobs:
         return 0
     log.info("작업 %d건", len(jobs))
+    # 1) DISCOVER: 오라클 접속 없이 로컬 카탈로그 검색만
+    sql_jobs = []
+    for j in jobs:
+        if j.get("kind") == "DISCOVER":
+            try:
+                t0 = time.time()
+                hits = discover(j.get("params") or {})
+                api("POST", "/api/kpi-bindings/agent/result", json={"token": TOKEN, "jobId": j["id"], "result": hits})
+                log.info("DISCOVER %s 완료 화면 %d·테이블 %d (%.2fs)", j["id"], len(hits["screens"]), len(hits["tables"]), time.time() - t0)
+            except Exception as e:  # noqa: BLE001
+                log.error("DISCOVER %s 실패: %s", j["id"], e)
+                try:
+                    api("POST", "/api/kpi-bindings/agent/result", json={"token": TOKEN, "jobId": j["id"], "error": str(e)[:900]})
+                except Exception:  # noqa: BLE001
+                    pass
+        else:
+            sql_jobs.append(j)
+    if not sql_jobs:
+        return len(jobs)
+    # 2) SYNC/PREVIEW: 등록 질의를 오라클에서 읽기 전용 실행
     conn = None
     try:
         conn = connect()
-        for j in jobs:
+        for j in sql_jobs:
             jid = j["id"]
             try:
                 qid = str(j.get("queryId") or "")
@@ -212,7 +343,7 @@ def run_once() -> int:
             time.sleep(GAP_SEC)
     except Exception as e:  # noqa: BLE001
         log.error("접속/실행 오류: %s", e)
-        for j in jobs:
+        for j in sql_jobs:
             try:
                 api("POST", "/api/kpi-bindings/agent/result", json={"token": TOKEN, "jobId": j["id"], "error": f"접속 오류: {str(e)[:800]}"})
             except Exception:  # noqa: BLE001
@@ -227,15 +358,81 @@ def run_once() -> int:
     return len(jobs)
 
 
+def write_query_file(qid: str, name: str, desc: str, binds: list, sql: str) -> Path:
+    QUERY_DIR.mkdir(parents=True, exist_ok=True)
+    f = QUERY_DIR / f"{qid}.sql"
+    head = [f"-- name: {name}", f"-- desc: {desc}".replace("\n", " ")]
+    if binds:
+        head.append(f"-- binds: {', '.join(binds)}")
+    f.write_text("\n".join(head) + "\n" + sql.strip() + "\n", encoding="utf-8")
+    return f
+
+
+def cmd_proposals(approve_id: str | None, auto_yes: bool = False):
+    """클라우드의 승인 대기 제안을 보여주고, 사람이 y 를 눌러야 agent_queries 에 등록한다. 자동 실행 경로는 없다."""
+    params = {"token": TOKEN, "agent": AGENT}
+    if approve_id and approve_id != "all":
+        params["id"] = approve_id
+    items = api("GET", "/api/kpi-bindings/agent/proposals", params=params).get("items", [])
+    if not items:
+        print("승인 대기 제안이 없습니다.")
+        return
+    for p in items:
+        print("=" * 78)
+        print(f"제안 {p['id']}  ·  질의ID {p['queryId']}  ·  확신도 {p.get('confidence', 0)}")
+        print(f"KPI: {(p.get('kpi') or {}).get('title', '-')} ({(p.get('kpi') or {}).get('unit', '')})")
+        print(f"이름: {p['name']}")
+        print(f"근거 화면: {p.get('screenRef') or '-'}")
+        print(f"테이블: {', '.join(p.get('tables') or [])}  바인드: {', '.join(p.get('binds') or [])}  추가바인드: {p.get('extraBinds') or {}}")
+        print(f"이유: {p.get('rationale') or '-'}")
+        if p.get("caveats"):
+            print(f"주의: {p['caveats']}")
+        print("-" * 78)
+        print(p["sql"])
+        print("-" * 78)
+        try:
+            assert_read_only(p["sql"])
+            guard = "통과"
+        except ValueError as e:
+            guard = f"실패 — {e}"
+        print(f"가드·화이트리스트 검사: {guard}")
+        if not approve_id:
+            continue
+        if guard != "통과":
+            print("→ 가드를 통과하지 못해 등록할 수 없습니다. (ALLOWED_TABLES 확장은 .env 에서 직접)")
+            continue
+        qid = p["queryId"]
+        if (QUERY_DIR / f"{qid}.sql").exists():
+            print(f"→ 이미 {qid}.sql 이 있습니다. 덮어쓰려면 파일을 먼저 지우세요.")
+            continue
+        ans = "y" if auto_yes else input("이 질의를 등록할까요? (y=등록 / n=거절 / s=건너뜀) ").strip().lower()
+        if ans == "y":
+            f = write_query_file(qid, p["name"], f"{p.get('screenRef', '')} {p.get('rationale', '')}".strip(), p.get("binds") or [], p["sql"])
+            api("POST", f"/api/kpi-bindings/agent/proposals/{p['id']}/registered", json={"token": TOKEN, "agent": AGENT, "queryId": qid, "host": socket.gethostname()})
+            print(f"→ 등록 완료: {f}  (KPI 연결이 자동 생성되었습니다. 다음 작업 주기에 수집됩니다)")
+        elif ans == "n":
+            api("POST", f"/api/kpi-bindings/agent/proposals/{p['id']}/declined", json={"token": TOKEN, "agent": AGENT})
+            print("→ 거절 처리")
+        else:
+            print("→ 건너뜀")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--loop", type=int, default=0, help="초 단위 폴링 간격")
+    ap.add_argument("--proposals", action="store_true", help="승인 대기 제안 보기(등록 안 함)")
+    ap.add_argument("--approve", metavar="ID|all", help="제안을 검토·승인해 agent_queries 에 등록 (사람이 y 입력)")
+    ap.add_argument("--yes", action="store_true", help="--approve 시 확인 없이 등록 (가드 통과분만)")
     args = ap.parse_args()
     if not TOKEN:
         log.error("ORACLE_SYNC_TOKEN 이 .env에 없습니다")
         sys.exit(2)
     log.info("WorkWork 에이전트 v%s agent=%s api=%s dsn=%s", VERSION, AGENT, API_URL, ORA_DSN)
+    if args.proposals or args.approve:
+        cmd_proposals(args.approve, args.yes)
+        heartbeat()  # 등록 질의 목록 갱신 보고
+        return
     if args.loop and args.loop > 0:
         while True:
             try:

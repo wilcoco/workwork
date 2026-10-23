@@ -8,9 +8,10 @@ import { toast, toastConfirm } from './Toast';
  */
 type Meta = {
   sourceTypes: string[]; schedules: Record<string, string>; internalMetrics: Record<string, { label: string; unit: string; desc: string }>;
-  odooConfigured: boolean; agentTokenConfigured: boolean; agents: Array<{ name: string; version: string; host: string; lastSeenAt: string; online: boolean; queries?: Array<{ id: string; name: string; binds: string[]; tables: string[] }> }>;
+  odooConfigured: boolean; agentTokenConfigured: boolean; agents: Array<{ name: string; version: string; host: string; lastSeenAt: string; online: boolean; queries?: Array<{ id: string; name: string; binds: string[]; tables: string[] }>; catalog?: { screens: number; tables: number; codes: number; generatedAt: string } | null }>;
   bindTemplates: Record<string, string>;
 };
+type Proposal = { id: string; queryId: string; name: string; sql: string; binds?: string[]; tables?: string[]; extraBinds?: any; screenRef: string; rationale: string; caveats: string; confidence: number; status: string; createdAt: string; registeredAt?: string | null; registeredHost?: string };
 type Binding = { id: string; keyResultId: string; sourceType: string; config: any; schedule: string; enabled: boolean; agentName?: string | null; lastRunAt?: string | null; lastSuccessAt?: string | null; lastError?: string | null; lastValues?: Array<{ year: number; month: number; value: number | null }> | null; jobs?: any[] };
 
 const SRC_LABEL: Record<string, string> = { ORACLE_AGENT: '사내 오라클 (에이전트)', ODOO_RPC: 'Odoo ERP', INTERNAL: 'WorkWork 내부 지표', REST: '외부 REST API' };
@@ -30,6 +31,10 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
   const [preview, setPreview] = useState<Array<{ year: number; month: number; value: number | null }> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [discoverJob, setDiscoverJob] = useState<string | null>(null);
+  const [openSql, setOpenSql] = useState<string | null>(null);
+  async function loadProposals() { try { const r = await apiJson<{ items: Proposal[] }>(`/api/kpi-bindings/kr/${encodeURIComponent(keyResultId)}/proposals?userId=${encodeURIComponent(userId)}`); setProposals(r.items || []); } catch {} }
 
   useEffect(() => {
     (async () => {
@@ -38,7 +43,7 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
           apiJson<Meta>(`/api/kpi-bindings/meta?userId=${encodeURIComponent(userId)}`),
           apiJson<Binding | null>(`/api/kpi-bindings/kr/${encodeURIComponent(keyResultId)}?userId=${encodeURIComponent(userId)}`),
         ]);
-        setMeta(m);
+        setMeta(m); void loadProposals();
         if (b) { setCur(b); setSourceType(b.sourceType); setConfig(b.config || {}); setSchedule(b.schedule || 'MONTHLY_2'); setAgentName(b.agentName || 'default'); setEnabled(b.enabled !== false); if (b.lastValues) setPreview(b.lastValues); }
         else if (m.agents?.some((a) => a.online)) setSourceType('ORACLE_AGENT');
       } catch (e: any) { toast(e?.message || '불러오기 실패', 'error'); }
@@ -60,6 +65,35 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
     }, 3000);
     return () => { stop = true; clearInterval(t); };
   }, [jobId, userId, onChanged]);
+
+  // 관련 자료 찾기 작업 폴링 (사내 에이전트가 카탈로그 검색 → 서버 AI 제안)
+  useEffect(() => {
+    if (!discoverJob) return;
+    let stop = false;
+    const t = setInterval(async () => {
+      try {
+        const j = await apiJson<any>(`/api/kpi-bindings/jobs/${encodeURIComponent(discoverJob)}?userId=${encodeURIComponent(userId)}`);
+        if (j.status === 'DONE') { setBusy(null); setDiscoverJob(null); await loadProposals(); toast(`관련 자료 제안 ${(j.result?.proposalIds || []).length}건이 도착했습니다`, 'success'); }
+        else if (j.status === 'ERROR' || j.status === 'EXPIRED') { setBusy(null); setDiscoverJob(null); toast(`관련 자료 찾기 실패: ${j.error || j.status}`, 'error'); }
+        else setBusy(j.status === 'RUNNING' ? '사내 에이전트가 카탈로그를 검색하고 AI가 제안을 작성 중…' : '사내 에이전트 대기 중… (에이전트가 켜져 있어야 합니다)');
+      } catch {}
+      if (stop) clearInterval(t);
+    }, 3000);
+    return () => { stop = true; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discoverJob]);
+
+  async function discover() {
+    setBusy('관련 자료 찾기 요청 중…');
+    try {
+      const r = await apiJson<any>(`/api/kpi-bindings/kr/${encodeURIComponent(keyResultId)}/discover`, { method: 'POST', body: JSON.stringify({ userId, agentName }) });
+      setDiscoverJob(r.jobId);
+      setBusy(r.agentOnline ? '사내 에이전트에 검색 작업을 보냈습니다…' : '사내 에이전트가 오프라인입니다. 켜지면 자동으로 처리됩니다 (작업은 2일간 유지)');
+    } catch (e: any) { toast(e?.message || '요청 실패', 'error'); setBusy(null); }
+  }
+  async function rejectProposal(p: Proposal) {
+    try { await apiJson(`/api/kpi-bindings/proposals/${encodeURIComponent(p.id)}/reject`, { method: 'POST', body: JSON.stringify({ userId }) }); await loadProposals(); } catch (e: any) { toast(e?.message || '실패', 'error'); }
+  }
 
   const setC = (k: string, v: any) => setConfig((c: any) => ({ ...c, [k]: v }));
 
@@ -154,6 +188,43 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {sourceType === 'ORACLE_AGENT' && (
+          <div style={{ border: '1px dashed #c4b5fd', borderRadius: 10, padding: 10, display: 'grid', gap: 8, background: '#faf5ff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <b style={{ fontSize: 13 }}>🔎 관련 자료 찾기</b>
+              <span style={{ fontSize: 11, color: '#6b7280' }}>사내 PC의 오라클 카탈로그(화면 {meta?.agents?.find((a) => a.name === agentName)?.catalog?.screens ?? '-'}개·테이블 {meta?.agents?.find((a) => a.name === agentName)?.catalog?.tables ?? '-'}개)를 에이전트가 검색해 발췌만 올리고, AI가 연·월·값 SQL 초안을 제안합니다. 카탈로그 본문은 클라우드에 오지 않습니다.</span>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="btn btn-sm" style={{ background: '#7c3aed', color: '#fff', border: 'none' }} disabled={!!busy} onClick={() => void discover()}>관련 자료 찾기</button>
+            </div>
+            {proposals.length > 0 && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {proposals.map((p) => {
+                  const st = p.status === 'REGISTERED' ? { t: '등록됨', c: '#15803d', bg: '#f0fdf4' } : p.status === 'REJECTED' ? { t: '거절', c: '#94a3b8', bg: '#f8fafc' } : { t: '승인 대기', c: '#b45309', bg: '#fffbeb' };
+                  return (
+                    <div key={p.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, background: '#fff', display: 'grid', gap: 4, opacity: p.status === 'REJECTED' ? 0.6 : 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 13 }}>
+                        <b>{p.name}</b><span className="mono" style={{ fontSize: 11, color: '#64748b' }}>[{p.queryId}]</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: st.c, background: st.bg, borderRadius: 999, padding: '1px 8px' }}>{st.t}</span>
+                        <span style={{ fontSize: 11, color: p.confidence >= 70 ? '#15803d' : '#b45309' }}>확신도 {p.confidence}</span>
+                        <span style={{ flex: 1 }} />
+                        <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11 }} onClick={() => setOpenSql(openSql === p.id ? null : p.id)}>{openSql === p.id ? 'SQL 접기' : 'SQL 보기'}</button>
+                        {p.status === 'PROPOSED' && <button type="button" className="btn btn-sm btn-outline" style={{ fontSize: 11, color: '#dc2626' }} onClick={() => void rejectProposal(p)}>거절</button>}
+                        {p.status === 'REGISTERED' && <button type="button" className="btn btn-sm btn-primary" style={{ fontSize: 11 }} onClick={() => { setC('queryId', p.queryId); if (p.extraBinds && Object.keys(p.extraBinds).length) setC('extraBinds', p.extraBinds); }}>이 질의 선택</button>}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#475569' }}>근거 화면: {p.screenRef || '-'} · 테이블: {(p.tables || []).join(', ') || '-'} · 바인드: {(p.binds || []).join(', ') || '-'}</div>
+                      <div style={{ fontSize: 12, color: '#334155' }}>{p.rationale}</div>
+                      {p.caveats && <div style={{ fontSize: 12, color: '#b45309' }}>⚠ {p.caveats}</div>}
+                      {openSql === p.id && <pre style={{ margin: 0, fontSize: 11, background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, whiteSpace: 'pre-wrap' }}>{p.sql}</pre>}
+                      {p.status === 'PROPOSED' && <div style={{ fontSize: 11, color: '#6b7280' }}>등록은 사내 PC에서: <code>workwork_agent.py --approve {p.id}</code> (또는 APPROVE_proposals.bat) → 내용을 보고 y를 눌러야 질의가 생깁니다.</div>}
+                      {p.status === 'REGISTERED' && <div style={{ fontSize: 11, color: '#15803d' }}>{p.registeredHost ? `${p.registeredHost}에서 ` : ''}{p.registeredAt ? new Date(p.registeredAt).toLocaleString() : ''} 등록 · KPI 연결이 자동 생성되었습니다</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

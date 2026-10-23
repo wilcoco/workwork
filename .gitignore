@@ -31,3 +31,13 @@ coverage/
 
 # Uploads (runtime assets)
 apps/api/uploads/
+
+# 사내 오라클 메타데이터 카탈로그 (같은 PC 안에서만 공유 — 저장소/클라우드 반출 금지)
+# 원본 ERP 화면 SQL·테이블 구조가 들어 있어 사외로 나가면 안 된다.
+# 생성: oracleread 저장소의 scripts/export-oracle-catalog.mjs
+scripts/oracle_catalog/
+
+# 에이전트·동기화 로그
+scripts/*.log
+workwork_agent.log
+scripts/__pycache__/

@@ -46,7 +46,7 @@ export class KpiBindingsController {
     return {
       sourceTypes: SOURCE_TYPES, schedules: SCHEDULES, internalMetrics: INTERNAL_METRICS,
       odooConfigured: this.svc.odooConfigured(), agentTokenConfigured: !!process.env.ORACLE_SYNC_TOKEN,
-      agents: agents.map((a: any) => ({ name: a.name, version: a.version, host: a.host, lastSeenAt: a.lastSeenAt, online: Date.now() - new Date(a.lastSeenAt).getTime() < 15 * 60 * 1000, queries: Array.isArray(a.queries) ? a.queries : [] })),
+      agents: agents.map((a: any) => ({ name: a.name, version: a.version, host: a.host, lastSeenAt: a.lastSeenAt, online: Date.now() - new Date(a.lastSeenAt).getTime() < 15 * 60 * 1000, queries: Array.isArray(a.queries) ? a.queries : [], catalog: a.catalog || null })),
       bindTemplates: {
         yy: '연도 4자리 (예: 2026)', from_ymd: 'YYYY-MM-DD 연초', to_ymd: 'YYYY-MM-DD 연말', from_yyyymmdd: 'YYYYMMDD 연초', to_yyyymmdd: 'YYYYMMDD 연말',
       },
@@ -135,6 +135,37 @@ export class KpiBindingsController {
     return j;
   }
 
+  // ───────────── 관련 자료 찾기(카탈로그 검색·AI 제안) ─────────────
+  /** KPI 관련 자료 찾기: 사내 에이전트에 DISCOVER 작업을 보냄 (카탈로그는 사내 PC에만 있음) → 발췌가 오면 AI 제안이 PROPOSED로 저장됨 */
+  @Post('kr/:keyResultId/discover')
+  async discover(@Param('keyResultId') keyResultId: string, @Body() b: any) {
+    const user = await this.actor(b?.userId);
+    await this.assertCanEdit(user, keyResultId);
+    const kr: any = await this.prisma.keyResult.findUnique({ where: { id: keyResultId }, include: { objective: { include: { orgUnit: true } } } });
+    if (!kr) throw new BadRequestException('KPI를 찾을 수 없습니다');
+    const agentName = String(b?.agentName || 'default');
+    const agent = await (this.prisma as any).kpiAgent.findUnique({ where: { name: agentName } });
+    const online = !!agent && Date.now() - new Date(agent.lastSeenAt).getTime() < 15 * 60 * 1000;
+    const job = await this.svc.enqueueDiscoverJob(kr, user.id, agentName, b?.hint ? String(b.hint) : undefined);
+    return { queued: true, jobId: job.id, agentOnline: online, catalog: agent?.catalog || null, tokens: job.params?.tokens || [] };
+  }
+
+  @Get('kr/:keyResultId/proposals')
+  async proposals(@Param('keyResultId') keyResultId: string, @Query('userId') userId?: string) {
+    await this.actor(userId);
+    const items = await (this.prisma as any).kpiQueryProposal.findMany({ where: { keyResultId }, orderBy: { createdAt: 'desc' }, take: 20 });
+    return { items };
+  }
+
+  @Post('proposals/:id/reject')
+  async rejectProposal(@Param('id') id: string, @Body() b: any) {
+    const user = await this.actor(b?.userId);
+    const p = await (this.prisma as any).kpiQueryProposal.findUnique({ where: { id } });
+    if (!p) throw new BadRequestException('not found');
+    await this.assertCanEdit(user, p.keyResultId);
+    return (this.prisma as any).kpiQueryProposal.update({ where: { id }, data: { status: 'REJECTED' } });
+  }
+
   // ───────────── 에이전트 API (토큰) ─────────────
   @Public()
   @Post('agent/heartbeat')
@@ -142,7 +173,8 @@ export class KpiBindingsController {
     this.assertToken(b?.token);
     const name = String(b?.agent || 'default');
     const queries = Array.isArray(b?.queries) ? b.queries.filter((q: any) => q && typeof q.id === 'string').slice(0, 200).map((q: any) => ({ id: String(q.id), name: String(q.name || q.id), binds: Array.isArray(q.binds) ? q.binds.map(String) : [], tables: Array.isArray(q.tables) ? q.tables.map(String) : [] })) : undefined;
-    await (this.prisma as any).kpiAgent.upsert({ where: { name }, create: { name, version: String(b?.version || ''), host: String(b?.host || ''), queries }, update: { version: String(b?.version || ''), host: String(b?.host || ''), lastSeenAt: new Date(), ...(queries ? { queries } : {}) } });
+    const catalog = b?.catalog && typeof b.catalog === 'object' ? { screens: Number(b.catalog.screens) || 0, tables: Number(b.catalog.tables) || 0, codes: Number(b.catalog.codes) || 0, generatedAt: String(b.catalog.generatedAt || '') } : undefined;
+    await (this.prisma as any).kpiAgent.upsert({ where: { name }, create: { name, version: String(b?.version || ''), host: String(b?.host || ''), queries, catalog }, update: { version: String(b?.version || ''), host: String(b?.host || ''), lastSeenAt: new Date(), ...(queries ? { queries } : {}), ...(catalog ? { catalog } : {}) } });
     // 오래된 미처리 작업 만료 (2일)
     await (this.prisma as any).kpiBindingJob.updateMany({ where: { status: { in: ['PENDING', 'RUNNING'] }, requestedAt: { lt: new Date(Date.now() - 2 * 86400000) } }, data: { status: 'EXPIRED', error: '2일 내 처리되지 않아 만료' } }).catch(() => {});
     return { ok: true, serverTime: new Date().toISOString() };
@@ -157,7 +189,7 @@ export class KpiBindingsController {
     const take = Math.min(20, Math.max(1, Number(limit) || 5));
     const jobs = await (this.prisma as any).kpiBindingJob.findMany({ where: { status: 'PENDING', agentName: name }, orderBy: { requestedAt: 'asc' }, take });
     if (jobs.length) await (this.prisma as any).kpiBindingJob.updateMany({ where: { id: { in: jobs.map((j: any) => j.id) } }, data: { status: 'RUNNING', startedAt: new Date() } });
-    return { items: jobs.map((j: any) => ({ id: j.id, kind: j.kind, queryId: j.queryId, params: j.params || {} })) };
+    return { items: jobs.map((j: any) => ({ id: j.id, kind: j.kind, queryId: j.queryId, params: j.params || {} })) };  // DISCOVER: params={kpi,tokens,hint,max*}
   }
 
   /** 결과 올리기 */
@@ -166,6 +198,43 @@ export class KpiBindingsController {
   async agentResult(@Body() b: any) {
     this.assertToken(b?.token);
     const jobId = String(b?.jobId || ''); if (!jobId) throw new BadRequestException('jobId required');
-    return this.svc.completeAgentJob(jobId, Array.isArray(b?.rows) ? b.rows : null, b?.error ? String(b.error) : null);
+    return this.svc.completeAgentJob(jobId, Array.isArray(b?.rows) ? b.rows : null, b?.error ? String(b.error) : null, b?.result);
+  }
+
+  /** 에이전트: 승인 대기 제안 목록 (사내 PC에서 사람이 검토·승인). SQL은 여기서만 내려간다 — 자동 실행 경로는 없다 */
+  @Public()
+  @Get('agent/proposals')
+  async agentProposals(@Query('token') token?: string, @Query('agent') agent?: string, @Query('id') id?: string) {
+    this.assertToken(token);
+    const where: any = { status: 'PROPOSED', agentName: String(agent || 'default') };
+    if (id) where.id = String(id);
+    const items = await (this.prisma as any).kpiQueryProposal.findMany({ where, orderBy: { createdAt: 'asc' }, take: 50 });
+    const krs = await this.prisma.keyResult.findMany({ where: { id: { in: items.map((p: any) => p.keyResultId) } }, select: { id: true, title: true, unit: true } });
+    const km = new Map(krs.map((k) => [k.id, k]));
+    return { items: items.map((p: any) => ({ id: p.id, queryId: p.queryId, name: p.name, sql: p.sql, binds: p.binds || [], tables: p.tables || [], extraBinds: p.extraBinds || {}, screenRef: p.screenRef, rationale: p.rationale, caveats: p.caveats, confidence: p.confidence, kpi: km.get(p.keyResultId) || null })) };
+  }
+
+  /** 에이전트: 사람이 승인해 agent_queries 에 등록했음을 보고 → 제안 REGISTERED + KPI 바인딩 자동 생성/갱신(ORACLE_AGENT, queryId) */
+  @Public()
+  @Post('agent/proposals/:id/registered')
+  async agentProposalRegistered(@Param('id') id: string, @Body() b: any) {
+    this.assertToken(b?.token);
+    const p = await (this.prisma as any).kpiQueryProposal.findUnique({ where: { id } });
+    if (!p) throw new BadRequestException('not found');
+    const queryId = String(b?.queryId || p.queryId);
+    await (this.prisma as any).kpiQueryProposal.update({ where: { id }, data: { status: 'REGISTERED', queryId, registeredAt: new Date(), registeredHost: String(b?.host || '') } });
+    const existing = await (this.prisma as any).kpiBinding.findUnique({ where: { keyResultId: p.keyResultId } });
+    const config = { queryId, ...(p.extraBinds && Object.keys(p.extraBinds).length ? { extraBinds: p.extraBinds } : {}), proposalId: p.id };
+    if (!existing) await (this.prisma as any).kpiBinding.create({ data: { keyResultId: p.keyResultId, createdById: p.createdById, sourceType: 'ORACLE_AGENT', config, schedule: 'MONTHLY_2', enabled: true, agentName: String(b?.agent || p.agentName || 'default') } });
+    else if (existing.sourceType === 'ORACLE_AGENT') await (this.prisma as any).kpiBinding.update({ where: { id: existing.id }, data: { config: { ...(existing.config || {}), ...config }, agentName: String(b?.agent || existing.agentName || 'default') } });
+    return { ok: true, bindingCreated: !existing };
+  }
+
+  @Public()
+  @Post('agent/proposals/:id/declined')
+  async agentProposalDeclined(@Param('id') id: string, @Body() b: any) {
+    this.assertToken(b?.token);
+    await (this.prisma as any).kpiQueryProposal.update({ where: { id }, data: { status: 'REJECTED' } });
+    return { ok: true };
   }
 }
