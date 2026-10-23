@@ -395,8 +395,11 @@ def write_query_file(qid: str, name: str, desc: str, binds: list, sql: str) -> P
     QUERY_DIR.mkdir(parents=True, exist_ok=True)
     f = QUERY_DIR / f"{qid}.sql"
     head = [f"-- name: {name}", f"-- desc: {desc}".replace("\n", " ")]
-    if binds:
-        head.append(f"-- binds: {', '.join(binds)}")
+    # 머리말 binds = 제안이 적어 준 것 ∪ SQL 본문에 실제 쓰인 것 (추가 바인드 누락 방지)
+    used = sorted({m.group(1) for m in re.finditer(r":([a-zA-Z_][a-zA-Z0-9_]*)", sql)})
+    all_binds = list(dict.fromkeys([*(binds or []), *used]))
+    if all_binds:
+        head.append(f"-- binds: {', '.join(all_binds)}")
     f.write_text("\n".join(head) + "\n" + sql.strip() + "\n", encoding="utf-8")
     return f
 

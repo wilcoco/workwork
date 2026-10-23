@@ -1,0 +1,4 @@
+-- name: 도장 폐각률(월별)
+-- desc: w_pp_00471 도장투입 대비 폐각/샌딩(율) w_pp_00471 화면의 폐각률 산식(brate=outcnt/incnt*100)을 그대로 사용. incnt=도장 로딩(silld='1') 건수, outcnt=도장 언로딩(silld='2') 중 불량유형 끝 2자리가 :arg_bul(폐각)인 RTG/2 코드 건수. plndate(VARCHAR2 YYYY-MM-DD)에서 연/월 추출해 월별 집계. 화면은 품번앞3자리(syg)별로 쪼개지만 월합산 비율로 변환.
+-- binds: from_ymd, to_ymd, arg_bul
+select substr(aa.plndate,1,4) "연", substr(aa.plndate,6,2) "월", round(nvl(sum(outcnt),0)/nullif(sum(incnt),0)*100,1) "값" from (select plndate, count(1) incnt from t_doj where plndate >= :from_ymd and plndate <= :to_ymd and silld = '1' group by plndate) aa, (select plndate, count(1) outcnt from t_doj where plndate >= :from_ymd and plndate <= :to_ymd and silld = '2' and silbcd <> 'AB599' and silbcd in (select codcod from t_zj_cod where codgb1 = 'RTG' and codgb2 = 2 and substr(coddsd,-2) = :arg_bul) group by plndate) bb where aa.plndate = bb.plndate(+) group by substr(aa.plndate,1,4), substr(aa.plndate,6,2) order by 1,2
