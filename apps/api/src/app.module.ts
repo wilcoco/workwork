@@ -55,6 +55,8 @@ import { KpiQuizController } from './kpi-quiz.controller';
 import { KpiQuizService } from './kpi-quiz.service';
 import { AgendaController } from './agenda.controller';
 import { AgendaService } from './agenda.service';
+import { KnowledgeCardsController } from './knowledge-cards.controller';
+import { KnowledgeCardsService } from './knowledge-cards.service';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
@@ -137,6 +139,7 @@ import { AuditLogService } from './audit-log.service';
     OpsMetricsController,
     KpiQuizController,
     AgendaController,
+    KnowledgeCardsController,
   ],
   providers: [
     PrismaService,
@@ -151,6 +154,7 @@ import { AuditLogService } from './audit-log.service';
     OpsMetricsService,
     KpiQuizService,
     AgendaService,
+    KnowledgeCardsService,
     DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

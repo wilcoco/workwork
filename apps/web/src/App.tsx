@@ -76,6 +76,7 @@ import { CompanyPulse } from './pages/CompanyPulse';
 import { CompanyMaturity } from './pages/CompanyMaturity';
 import { KpiQuiz } from './pages/KpiQuiz';
 import { AgendaPage } from './pages/Agenda';
+import { KnowledgeCards } from './pages/KnowledgeCards';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -473,6 +474,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/kpi-quiz" element={<KpiQuiz />} />
           <Route path="/okr/agenda" element={<AgendaPage />} />
           <Route path="/okr/agenda/:id" element={<AgendaPage />} />
+          <Route path="/knowledge/cards" element={<KnowledgeCards />} />
           <Route path="/process/my" element={<ProcessMy />} />
           <Route path="/process/inbox" element={<ProcessInbox />} />
           <Route path="/process/start" element={<ProcessStart />} />
@@ -635,6 +637,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
         <NavDropdown label="매뉴얼" active={location.pathname.startsWith('/manuals')}>
           <Link to="/manuals/mine">내 매뉴얼 입력</Link>
           <Link to="/manuals">업무 메뉴얼 조회</Link>
+          <Link to="/knowledge/cards">🧠 암묵지 카드</Link>
           {canEvaluate && <Link to="/manuals/coverage">매뉴얼 입력 현황 (전사)</Link>}
           <Link to="/ga-contacts">총무 비상연락망</Link>
         </NavDropdown>

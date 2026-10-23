@@ -334,6 +334,7 @@ model Worklog {
   kbBadgeNote           String? // 배지 사유(칭찬 한 줄)
   activityId            String? // 온톨로지: 이 일지가 실행한 활동 (지식이 활동에 귀속되는 경로)
   entityMinedAt         DateTime? // 온톨로지: 대상(설비·차종·고객사 등) 추출 완료 시각
+  kcScannedAt           DateTime? // 암묵지 카드 추출 완료 시각
 
   @@index([kbBadge, date])
   @@index([activityId])
@@ -403,6 +404,7 @@ model WorkManual {
   contentHtml    String? // 리치 에디터 본문(HTML, 그림 포함). content는 파서/AI용 텍스트 사본
   readinessScore Int? // 프로세스화 준비도(0~100, lib/manual-readiness 규칙). 80 이상이면 팀장 승인 요청 가능
   readinessAt    DateTime?
+  kcScannedAt    DateTime? // 암묵지 카드 추출 완료 시각
   version        Int          @default(1)
   versionUpAt    DateTime     @default(now())
   status         ManualStatus @default(DRAFT)
@@ -1989,6 +1991,36 @@ model AgendaClaim {
   updatedAt    DateTime   @updatedAt
 
   @@unique([itemId, orgUnitId])
+}
+
+/// 5단계 암묵지 카드 — 업무일지의 문제·예외 문장과 매뉴얼의 예외 대응에서 AI가 "증상 → 확인 순서 → 조치"를 뽑아 담당자가 확인하면 프로세스·검색에 노출.
+model KnowledgeCard {
+  id            String    @id @default(cuid())
+  title         String
+  normTitle     String // 중복 방지용 정규화 제목
+  symptom       String    @db.Text // 증상·상황
+  checks        Json // string[] 확인 순서
+  action        String    @db.Text // 조치
+  tags          Json? // string[]
+  sourceType    String // WORKLOG | MANUAL | MANUAL_INPUT
+  sourceId      String?
+  sourceExcerpt String?   @db.Text
+  activityId    String? // 온톨로지 활동
+  keyResultId   String?
+  orgUnitId     String?
+  ownerId       String // 확인 책임자(원 작성자)
+  status        String    @default("DRAFT") // DRAFT(AI 추출·미확인) | CONFIRMED | ARCHIVED
+  confidence    Int       @default(0)
+  confirmedById String?
+  confirmedAt   DateTime?
+  useCount      Int       @default(0)
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, orgUnitId])
+  @@index([activityId])
+  @@index([normTitle])
 }
 
 model OpsMetricDaily {

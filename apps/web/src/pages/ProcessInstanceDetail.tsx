@@ -6,6 +6,7 @@ import { toSafeHtml } from '../lib/richText';
 import { UserPicker, type PickedUser } from '../components/UserPicker';
 import { WorklogDocument } from '../components/WorklogDocument';
 import { UserAvatar } from '../components/UserAvatar';
+import { RelatedKnowledgeCards } from '../components/KnowledgeCardView';
 
 interface ProcTask {
   id: string;
@@ -526,6 +527,7 @@ export function ProcessInstanceDetail() {
             <div style={{ width: `${summary.pct}%`, height: '100%', background: '#22C55E' }} />
           </div>
         </div>
+        <div style={{ marginTop: 8 }}><RelatedKnowledgeCards userId={userId} instanceId={inst.id} /></div>
         {(inst.itemCode || inst.moldCode || inst.carModelCode) && (
           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
             {[inst.itemCode && `품번:${inst.itemCode}`, inst.moldCode && `금형:${inst.moldCode}`, inst.carModelCode && `차종:${inst.carModelCode}`]
