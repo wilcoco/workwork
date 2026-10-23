@@ -1434,9 +1434,7 @@ targetField 가능한 값: ${allowedFields}
   async applyAnswers(@Param('id') id: string, @Body() dto: ApplyAnswersDto) {
     const uid = String(dto.userId || '').trim();
     const manual = await this.requireOwner(uid, id);
-
-    const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_CAMS || process.env.OPENAI_API_KEY_IAT;
-    if (!apiKey) throw new BadRequestException('Missing OPENAI_API_KEY');
+    const aiModel = ((dto as any)?.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
 
     const content = String(manual?.content || '').trim();
     if (!content) throw new BadRequestException('manual content required');
@@ -1470,32 +1468,18 @@ updatedContent는 원본 메뉴얼에 사용자 답변을 반영한 전체 메�
 
     const user = `[원본 메뉴얼]\n${content}\n\n[사용자 답변]\n${answerText}`;
 
-    const f: any = (globalThis as any).fetch;
-    if (!f) throw new BadRequestException('Server fetch not available.');
-
-    const resp = await f('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4.1',
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: user }],
-        temperature: 0.1,
-        response_format: { type: 'json_object' },
-      }),
+    const result = await callAI({
+      system: sys, user, model: aiModel, temperature: 0.1, maxTokens: 6000,
+      jsonSchema: {
+        name: 'apply_answers',
+        schema: {
+          type: 'object' as const,
+          properties: { updatedContent: { type: 'string' }, appliedCount: { type: 'number' }, summary: { type: 'string' } },
+          required: ['updatedContent'],
+        },
+      },
     });
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new BadRequestException(`OpenAI error: ${resp.status} ${text}`);
-    }
-
-    const data = await resp.json();
-    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    if (!raw) throw new BadRequestException('OpenAI returned empty response');
-
-    let parsed: any = null;
-    try { parsed = JSON.parse(raw); } catch { throw new BadRequestException('OpenAI did not return valid JSON'); }
-
+    const parsed: any = result?.parsed || {};
     const updatedContent = String(parsed?.updatedContent || '').trim();
     if (!updatedContent) throw new BadRequestException('AI returned empty updatedContent');
 

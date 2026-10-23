@@ -217,7 +217,7 @@ export function ProcessFromManual() {
           type: 'PROJECT',
           ownerId: userId,
           actorId: userId,
-          visibility: 'PRIVATE',
+          visibility: 'PUBLIC', // 프로세스는 공유 자산 — 전사 시작 가능 (대표 결정 2026-10-23)
           bpmnJson,
           tasks: [],
           sourceManualId: manualId || undefined,
