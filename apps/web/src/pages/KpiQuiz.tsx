@@ -54,6 +54,8 @@ function QuizCard({ q, userId, isExec, onChanged }: { q: Quiz; userId: string; i
   const [busy, setBusy] = useState(false);
   const [final, setFinal] = useState<string>(q.finalScore != null ? String(q.finalScore) : q.aiScore != null ? String(q.aiScore) : '');
   const [note, setNote] = useState(q.gradeNote || '');
+  // 응답 후(AI 채점 완료) 카드가 갱신되면 확정 점수칸을 AI 점수로 미리 채운다
+  useEffect(() => { setFinal(q.finalScore != null ? String(q.finalScore) : q.aiScore != null ? String(q.aiScore) : ''); setNote(q.gradeNote || ''); }, [q.id, q.aiScore, q.finalScore, q.gradeNote]);
   const st = STATUS[q.status] || STATUS.OPEN;
   const title = q.kr?.title || q.dataSnapshot?.title || '';
   const team = q.kr?.objective?.orgUnit?.name || q.dataSnapshot?.team || '';
@@ -111,9 +113,9 @@ function QuizCard({ q, userId, isExec, onChanged }: { q: Quiz; userId: string; i
                       const picked = q.status === 'OPEN' ? choice === i : ans?.choiceIdx === i;
                       const correct = q.status !== 'OPEN' && qq.answerIdx === i;
                       return (
-                        <label key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, padding: '6px 10px', borderRadius: 6, border: `1px solid ${correct ? '#86efac' : picked ? '#93c5fd' : '#e5e7eb'}`, background: correct ? '#f0fdf4' : picked ? '#eff6ff' : '#fff', cursor: q.status === 'OPEN' && mine ? 'pointer' : 'default' }}>
-                          <input type="radio" name={`q${q.id}-${qq.no}`} disabled={q.status !== 'OPEN' || !mine} checked={!!picked} onChange={() => setChoice(i)} />
-                          <span>{o}</span>
+                        <label key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-start', fontSize: 13, padding: '6px 10px', borderRadius: 6, border: `1px solid ${correct ? '#86efac' : picked ? '#93c5fd' : '#e5e7eb'}`, background: correct ? '#f0fdf4' : picked ? '#eff6ff' : '#fff', cursor: q.status === 'OPEN' && mine ? 'pointer' : 'default' }}>
+                          <input type="radio" name={`q${q.id}-${qq.no}`} disabled={q.status !== 'OPEN' || !mine} checked={!!picked} onChange={() => setChoice(i)} style={{ margin: 0, flex: '0 0 auto', width: 'auto' }} />
+                          <span style={{ flex: 1, textAlign: 'left' }}>{o}</span>
                           {correct && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>정답(데이터)</span>}
                           {picked && !correct && q.status !== 'OPEN' && <span style={{ fontSize: 11, color: '#b91c1c', fontWeight: 700 }}>선택</span>}
                         </label>
