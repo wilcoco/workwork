@@ -878,6 +878,8 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/okr/kpi-result', label: 'KPI 실적 입력 (수동)' },
         { to: '/okr/team-board', label: '정량 목표 (팀 KPI) 조회' },
         { to: '/okr/kpi-report', label: '팀 KPI 리포트' },
+        ...(canEvaluate ? [{ to: '/okr/kpi-quiz', label: '관리자 시험지 (데이터)' }] : []),
+        { to: '/okr/agenda', label: '경영 어젠다 · 클레임' },
         { to: '/key-initiatives', label: '중점 추진 과제' },
         { to: '/team-tasks', label: '팀 과제 관리' },
       ];
@@ -929,12 +931,14 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/admin/masters', label: '기준정보 관리' },
         { to: '/admin/audit-logs', label: '변경 이력' },
         { to: '/admin/tools', label: '시스템 도구' },
+        { to: '/admin/tenant', label: '회사 설정 · 온보딩 · 데이터' },
       ];
     }
-    if (path.startsWith('/manuals')) {
+    if (path.startsWith('/manuals') || path.startsWith('/knowledge')) {
       return [
         { to: '/manuals/mine', label: '내 매뉴얼 입력' },
         { to: '/manuals', label: '업무 메뉴얼 조회' },
+        { to: '/knowledge/cards', label: '🧠 암묵지 카드' },
         ...(canEvaluate ? [{ to: '/manuals/coverage', label: '매뉴얼 입력 현황 (전사)' }] : []),
         { to: '/ga-contacts', label: '총무 비상연락망' },
       ];

@@ -72,7 +72,7 @@ export function KnowledgeCards() {
         <button className="btn btn-sm btn-outline" onClick={() => void load()}>검색</button>
         <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ fontSize: 13 }}><option value="">확인됨+대기</option><option value="CONFIRMED">확인됨</option><option value="DRAFT">확인 대기</option><option value="ARCHIVED">보관</option></select>
         <select value={team} onChange={(e) => setTeam(e.target.value)} style={{ fontSize: 13 }}><option value="">전체 팀</option>{(data?.teams || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-        <label style={{ fontSize: 12, display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> 내 카드만</label>
+        <label style={{ fontSize: 12, display: 'inline-flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap', flexDirection: 'row' }}><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} style={{ margin: 0, width: 'auto' }} /><span>내 카드만</span></label>
       </div>
       <div style={{ display: 'grid', gap: 10 }}>
         {(data?.items || []).map((c) => <KnowledgeCardView key={c.id} card={c} userId={userId} onChanged={patch} />)}
