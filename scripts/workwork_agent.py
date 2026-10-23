@@ -309,10 +309,18 @@ def connect():
     conn = oracledb.connect(user=ORA_USER, password=ORA_PWD, dsn=ORA_DSN)
     conn.call_timeout = CALL_TIMEOUT_MS
     cur = conn.cursor()
+    # 쓰기 금지는 선택이 아니라 전제다 (대표님 지시 2026-10-23).
+    # 쓰기 권한을 가진 공유 계정(prd)으로 접속하므로, 세션을 읽기 전용으로 고정하지
+    # 못하면 **접속 자체를 포기한다.** 예전에는 경고만 남기고 진행했는데, 그 경우
+    # 코드 가드만 남아 DB 레벨 방어가 사라진다.
     try:
-        cur.execute("SET TRANSACTION READ ONLY")  # 이 세션에서는 쓰기가 DB 수준에서도 거부됨
+        cur.execute("SET TRANSACTION READ ONLY")
     except Exception as e:  # noqa: BLE001
-        log.warning("READ ONLY 트랜잭션 설정 실패(계속 진행, 코드 가드는 유지): %s", e)
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+        raise RuntimeError(f"읽기 전용 세션 설정 실패 — 쓰기 금지를 보장할 수 없어 중단합니다: {e}") from e
     return conn
 
 
