@@ -41,10 +41,10 @@ export function KpiBindingModal(props: { keyResultId: string; title: string; uni
       try {
         const [m, b] = await Promise.all([
           apiJson<Meta>(`/api/kpi-bindings/meta?userId=${encodeURIComponent(userId)}`),
-          apiJson<Binding | null>(`/api/kpi-bindings/kr/${encodeURIComponent(keyResultId)}?userId=${encodeURIComponent(userId)}`),
+          apiJson<Binding | null>(`/api/kpi-bindings/kr/${encodeURIComponent(keyResultId)}?userId=${encodeURIComponent(userId)}`).catch(() => null),
         ]);
         setMeta(m); void loadProposals();
-        if (b) { setCur(b); setSourceType(b.sourceType); setConfig(b.config || {}); setSchedule(b.schedule || 'MONTHLY_2'); setAgentName(b.agentName || 'default'); setEnabled(b.enabled !== false); if (b.lastValues) setPreview(b.lastValues); }
+        if (b && b.id) { setCur(b); setSourceType(b.sourceType); setConfig(b.config || {}); setSchedule(b.schedule || 'MONTHLY_2'); setAgentName(b.agentName || 'default'); setEnabled(b.enabled !== false); if (b.lastValues) setPreview(b.lastValues); }
         else if (m.agents?.some((a) => a.online)) setSourceType('ORACLE_AGENT');
       } catch (e: any) { toast(e?.message || '불러오기 실패', 'error'); }
     })();

@@ -66,7 +66,7 @@ export class KpiBindingsController {
   async one(@Param('keyResultId') keyResultId: string, @Query('userId') userId?: string) {
     await this.actor(userId);
     const b = await (this.prisma as any).kpiBinding.findUnique({ where: { keyResultId }, include: { jobs: { orderBy: { requestedAt: 'desc' }, take: 5 } } });
-    return b || null;
+    return b || { id: null, keyResultId, none: true }; // null 본문은 클라이언트 JSON 파싱을 깨뜨리므로 빈 객체로
   }
 
   @Put('kr/:keyResultId')
