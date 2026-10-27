@@ -289,7 +289,7 @@ export function MyManuals() {
                   style={{ fontSize: 11, color: st.color, background: st.bg, border: `1px solid ${st.border}`, borderRadius: 999, padding: '2px 8px' }}>
                   {st.label}{pending && approverName ? ` · ${approverName}` : ''}
                 </span>
-                <span title="프로세스화 준비도 (80점 이상이면 팀장 승인 요청 가능)" style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', border: '1px solid', borderColor: (m.readinessScore ?? 0) >= READY ? '#86efac' : '#fcd34d', background: (m.readinessScore ?? 0) >= READY ? '#f0fdf4' : '#fffbeb', color: (m.readinessScore ?? 0) >= READY ? '#15803d' : '#b45309' }}>준비도 {m.readinessScore ?? 0}</span>
+                <span title="매뉴얼을 단계별 양식으로 정리한 정도. 80점 이상이면 팀장 승인을 요청할 수 있어요. 'AI 검토'로 올립니다." style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', border: '1px solid', borderColor: (m.readinessScore ?? 0) >= READY ? '#86efac' : '#fcd34d', background: (m.readinessScore ?? 0) >= READY ? '#f0fdf4' : '#fffbeb', color: (m.readinessScore ?? 0) >= READY ? '#15803d' : '#b45309' }}>승인 준비도 {m.readinessScore ?? 0}{(m.readinessScore ?? 0) < READY ? ' · AI 검토 필요' : ' ✓'}</span>
                 {processed ? (
                   <span style={{ fontSize: 11, color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 999, padding: '2px 8px' }}>✓ 프로세스화 완료</span>
                 ) : (
@@ -297,6 +297,17 @@ export function MyManuals() {
                 )}
                 <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(m.updatedAt).toLocaleDateString()}</span>
               </div>
+              {/* 다음 행동 안내 — 혼란 방지 (상태별 1줄) */}
+              {m.status !== 'APPROVED' && m.status !== 'REVIEW' && (
+                <div style={{ fontSize: 12, color: '#475569', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '5px 10px', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {(m.readinessScore ?? 0) < READY ? (
+                    <>👉 <b style={{ color: '#7c3aed' }}>🤖 AI 검토</b>를 눌러 질문 몇 개에 답하면 양식이 정리되고 준비도가 올라가요. 그 다음 <b>✅ 팀장 승인 요청</b>이 가능합니다.</>
+                  ) : (
+                    <>✅ 준비됐어요. <b>팀장 승인 요청</b>을 보내거나, 바로 프로세스로 만들 수 있습니다.</>
+                  )}
+                  {processed && <span style={{ color: '#15803d' }}>· 프로세스는 이미 있으니 <b>▶ 실행</b>으로 바로 쓸 수 있어요(문서 승인은 선택).</span>}
+                </div>
+              )}
               {m.status === 'REJECTED' && m.reviewComment && (
                 <div style={{ fontSize: 12, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px' }}>
                   반려 사유{m.reviewerName ? ` (${m.reviewerName})` : ''}: {m.reviewComment}
@@ -310,8 +321,8 @@ export function MyManuals() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <button className="btn btn-sm btn-primary" onClick={() => void openForEdit(m)} disabled={loadingEdit} title="입력한 양식 그대로 다시 열어 수정하고 파일을 추가합니다">✏️ 수정</button>
                 <button className="btn btn-sm" onClick={() => nav(`/manuals?openId=${encodeURIComponent(m.id)}`)}>열기</button>
-                <button className="btn btn-sm" style={{ background: '#7c3aed', color: '#fff', border: 'none' }} onClick={() => setCoach({ id: m.id, title: m.title })}
-                  title="프로세스로 만들기 전에 AI가 빠진 항목(단계·담당·완료조건·결재선·기한·첨부·화면)을 질문으로 채우고 양식을 정리합니다">🤖 AI 검토</button>
+                <button className="btn btn-sm" style={{ background: '#7c3aed', color: '#fff', border: 'none', boxShadow: (m.readinessScore ?? 0) < READY ? '0 0 0 2px #ddd6fe' : undefined }} onClick={() => setCoach({ id: m.id, title: m.title })}
+                  title="프로세스로 만들기 전에 AI가 빠진 항목(단계·담당·완료조건·결재선·기한·첨부·화면)을 질문으로 채우고 양식을 정리합니다">🤖 AI 검토{(m.readinessScore ?? 0) < READY ? ' (다음 단계)' : ''}</button>
                 {canRequest && (
                   <button className="btn btn-sm" disabled={busy} onClick={() => void requestApproval(m)}
                     style={{ background: (m.readinessScore ?? 0) >= READY ? '#2563eb' : '#cbd5e1', color: '#fff', border: 'none' }}
