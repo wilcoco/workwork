@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import ReactFlow, { Background, Controls, Handle, MiniMap, Position, ReactFlowProvider, type Connection, type Edge, type Node } from 'reactflow';
+import ReactFlow, { Background, Controls, Handle, MiniMap, Position, ReactFlowProvider, useReactFlow, type Connection, type Edge, type Node } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { apiJson } from '../lib/api';
 import { toast, toastConfirm } from '../components/Toast';
@@ -55,6 +55,9 @@ function OntoNode({ data }: { data: any }) {
 
 function Canvas({ g, onLink, onPick, selected }: { g: Graph; onLink: (type: string, sourceRef: string, targetRef: string) => void; onPick: (n: GNode | null) => void; selected: string | null }) {
   const nodeTypes = useMemo(() => ({ onto: OntoNode }), []);
+  const rf = useReactFlow();
+  // 필터를 바꾸면 보이는 것에 맞춰 다시 맞춘다 (fitView 속성은 최초 1회만 동작)
+  useEffect(() => { const t = setTimeout(() => rf.fitView({ padding: 0.15, duration: 300 }), 60); return () => clearTimeout(t); }, [g.nodes.length, g.nodes.map((n) => n.id).join('|'), rf]);
   const byId = useMemo(() => new Map(g.nodes.map((n) => [n.id, n])), [g.nodes]);
 
   // 층마다 띠로 나누고, 한 줄에 최대 8개씩 접어 넣는다 (한 줄로 늘어놓으면 읽을 수 없다)
