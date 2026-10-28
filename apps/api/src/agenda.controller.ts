@@ -122,6 +122,7 @@ export class AgendaController {
     const a = await this.load(id);
     if (!a.items.length) throw new BadRequestException('항목이 없습니다');
     await (this.prisma as any).agenda.update({ where: { id }, data: { status: 'OPEN', publishedAt: new Date() } });
+    await this.svc.ensureCompanyKrs(id); // 전사 목표 아래 항목별 전사 KR 생성 (수직 트리의 뿌리)
     // 팀장 전원에게 알림
     const mgrs: any[] = await this.prisma.user.findMany({ where: { status: 'ACTIVE' as any, role: { in: ['MANAGER', 'EXEC'] as any } }, select: { id: true } });
     await this.prisma.notification.createMany({ data: mgrs.map((m) => ({ userId: m.id, type: 'AgendaPublished', subjectType: 'AGENDA', subjectId: id, payload: { year: a.year, statement: a.statement, items: a.items.length } })) }).catch(() => {});

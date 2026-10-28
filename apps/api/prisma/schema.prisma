@@ -1963,6 +1963,7 @@ model AgendaItem {
   description String?       @db.Text
   weight      Int           @default(10) // 가중치(합 100 권장)
   krDraft     Json? // AI KR 초안 {metric,unit,target,direction,rationale,teams:[권장 팀]}
+  companyKrId String? // 공개 시 만들어지는 전사 KR — 팀 목표가 이 KR 아래로 붙는다(수직 트리의 뿌리)
   status      String        @default("OPEN") // OPEN(미클레임) | CLAIMED(제안 있음) | APPROVED(승인된 클레임 있음)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
@@ -2029,6 +2030,19 @@ model TenantSetting {
   value       Json
   updatedById String?
   updatedAt   DateTime @updatedAt
+}
+
+/// 목표 정렬 작업대 — "연결 안 해도 됨"으로 넘긴 항목을 기억해 같은 제안이 다시 뜨지 않게 한다.
+model AlignmentReview {
+  id          String   @id @default(cuid())
+  itemType    String // OBJECTIVE_PARENT | KR_ASSIGNEE | KR_ACTIVITY
+  itemId      String
+  decision    String   @default("DISMISSED")
+  note        String?
+  decidedById String
+  decidedAt   DateTime @default(now())
+
+  @@unique([itemType, itemId])
 }
 
 model OpsMetricDaily {

@@ -78,6 +78,7 @@ import { KpiQuiz } from './pages/KpiQuiz';
 import { AgendaPage } from './pages/Agenda';
 import { KnowledgeCards } from './pages/KnowledgeCards';
 import { AdminTenant } from './pages/AdminTenant';
+import { AlignmentWorkbench } from './pages/AlignmentWorkbench';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -475,6 +476,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/kpi-quiz" element={<KpiQuiz />} />
           <Route path="/okr/agenda" element={<AgendaPage />} />
           <Route path="/okr/agenda/:id" element={<AgendaPage />} />
+          <Route path="/goals/align" element={<AlignmentWorkbench />} />
           <Route path="/knowledge/cards" element={<KnowledgeCards />} />
           <Route path="/admin/tenant" element={<AdminTenant />} />
           <Route path="/process/my" element={<ProcessMy />} />
@@ -592,6 +594,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
         <NavDropdown label="목표관리" active={location.pathname.startsWith('/okr') || location.pathname.startsWith('/key-initiatives') || location.pathname.startsWith('/goals') || location.pathname.startsWith('/team-tasks')}>
           <Link to="/goals/guide">📖 입력 가이드</Link>
           <Link to="/okr/agenda">경영 어젠다 · 클레임</Link>
+          {canEvaluate && <Link to="/goals/align">🔗 목표 정렬 작업대</Link>}
           <Link to="/goals/my">내 업무 과제</Link>
           {canEvaluate && <Link to="/goals/overview">전사 목표 현황</Link>}
           <Link to="/okr/input">정성 목표 (OKR) 입력</Link>
@@ -878,7 +881,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         { to: '/okr/kpi-result', label: 'KPI 실적 입력 (수동)' },
         { to: '/okr/team-board', label: '정량 목표 (팀 KPI) 조회' },
         { to: '/okr/kpi-report', label: '팀 KPI 리포트' },
-        ...(canEvaluate ? [{ to: '/okr/kpi-quiz', label: '관리자 시험지 (데이터)' }] : []),
+        ...(canEvaluate ? [{ to: '/goals/align', label: '목표 정렬 작업대' }, { to: '/okr/kpi-quiz', label: '관리자 시험지 (데이터)' }] : []),
         { to: '/okr/agenda', label: '경영 어젠다 · 클레임' },
         { to: '/key-initiatives', label: '중점 추진 과제' },
         { to: '/team-tasks', label: '팀 과제 관리' },

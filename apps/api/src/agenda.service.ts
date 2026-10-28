@@ -60,6 +60,33 @@ export class AgendaService {
     };
   }
 
+  /** 전사 목표(Objective) 1개 아래 어젠다 항목마다 전사 KR을 만든다 — 팀 목표가 이 KR 아래로 붙어 수직 트리가 생긴다. 공개 시 1회. */
+  async ensureCompanyKrs(agendaId: string) {
+    const a: any = await (this.prisma as any).agenda.findUnique({ where: { id: agendaId }, include: { items: { orderBy: { order: 'asc' } } } });
+    if (!a) return;
+    const ceo = await this.prisma.user.findFirst({ where: { role: 'CEO' as any, status: 'ACTIVE' as any }, select: { id: true, orgUnitId: true } });
+    const ownerId = ceo?.id || a.createdById;
+    let orgUnitId = ceo?.orgUnitId || null;
+    if (!orgUnitId) {
+      const root = await this.prisma.orgUnit.findFirst({ where: { type: 'COMPANY', parentId: null }, select: { id: true } });
+      orgUnitId = root?.id || null;
+    }
+    if (!orgUnitId) { this.logger.warn('전사 조직을 찾지 못해 전사 KR을 만들지 못했습니다'); return; }
+    const periodStart = new Date(Date.UTC(a.year, 0, 1) - 9 * 3600000), periodEnd = new Date(Date.UTC(a.year, 11, 31, 23, 59, 59) - 9 * 3600000);
+    const title = `${a.year} 전사 목표`;
+    let obj: any = await this.prisma.objective.findFirst({ where: { orgUnitId, title, periodStart } });
+    if (!obj) obj = await this.prisma.objective.create({ data: { title, description: a.statement.slice(0, 1000), orgUnitId, ownerId, periodStart, periodEnd, status: 'ACTIVE' as any } as any });
+    for (const it of a.items) {
+      if (it.companyKrId) continue;
+      const d = it.krDraft || {};
+      const kr = await this.prisma.keyResult.create({ data: {
+        objectiveId: obj.id, title: it.title, metric: String(d.metric || ''), target: Number(d.target) || 0, unit: String(d.unit || ''),
+        ownerId, weight: Math.max(1, it.weight || 1), type: 'OPERATIONAL' as any, direction: (d.direction === 'AT_MOST' ? 'AT_MOST' : 'AT_LEAST') as any, cadence: 'MONTHLY' as any,
+      } as any });
+      await (this.prisma as any).agendaItem.update({ where: { id: it.id }, data: { companyKrId: kr.id } });
+    }
+  }
+
   /** 팀이 클레임할 때 AI가 그 팀 관점의 KR 제안 */
   async suggestClaim(item: any, agenda: any, team: { name: string }) {
     const krs: any[] = await this.prisma.keyResult.findMany({ where: { objective: { orgUnit: { name: team.name }, status: { in: ['ACTIVE', 'LOCKED'] as any } } }, select: { title: true, metric: true, unit: true, target: true }, take: 20 });
@@ -75,10 +102,12 @@ export class AgendaService {
   async approveClaim(claim: any, item: any, agenda: any, decidedById: string, note?: string) {
     const year = agenda.year;
     const periodStart = new Date(Date.UTC(year, 0, 1) - 9 * 3600000), periodEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59) - 9 * 3600000);
-    const objTitle = `${year} 경영 어젠다`;
+    // 팀 목표는 어젠다 "항목"마다 하나 — 그래야 전사 KR(항목) 아래로 alignsToKrId를 걸 수 있다
+    const objTitle = `[${year} 어젠다] ${item.title}`.slice(0, 200);
     return this.prisma.$transaction(async (tx) => {
       let obj: any = await tx.objective.findFirst({ where: { orgUnitId: claim.orgUnitId, title: objTitle, periodStart } });
-      if (!obj) obj = await tx.objective.create({ data: { title: objTitle, description: `대표 어젠다: ${agenda.statement}`.slice(0, 1000), orgUnitId: claim.orgUnitId, ownerId: claim.claimedById, periodStart, periodEnd, status: 'ACTIVE' as any } as any });
+      if (!obj) obj = await tx.objective.create({ data: { title: objTitle, description: `대표 어젠다: ${agenda.statement}`.slice(0, 1000), orgUnitId: claim.orgUnitId, ownerId: claim.claimedById, periodStart, periodEnd, status: 'ACTIVE' as any, alignsToKrId: item.companyKrId || undefined } as any });
+      else if (!obj.alignsToKrId && item.companyKrId) await tx.objective.update({ where: { id: obj.id }, data: { alignsToKrId: item.companyKrId } });
       const kr = await tx.keyResult.create({ data: { objectiveId: obj.id, title: claim.title, metric: claim.metric || '', target: claim.target, unit: claim.unit, ownerId: claim.claimedById, weight: Math.max(1, item.weight || 1), type: 'OPERATIONAL' as any, direction: (claim.direction as any) || undefined, cadence: 'MONTHLY' as any } as any });
       await (tx as any).keyResultAssignment.createMany({ data: [{ keyResultId: kr.id, userId: claim.claimedById }], skipDuplicates: true });
       const saved = await (tx as any).agendaClaim.update({ where: { id: claim.id }, data: { status: 'APPROVED', keyResultId: kr.id, objectiveId: obj.id, decidedById, decidedAt: new Date(), decisionNote: note || null } });
