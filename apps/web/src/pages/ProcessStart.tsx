@@ -388,7 +388,12 @@ export function ProcessStart() {
         else if (!missing) missing = en.label;
       });
       if (missing) {
-        toast(`「${rt.name}」 단계의 결재 역할(${missing})을 아래 '결재선 확정'에서 선택해 주세요.`, 'error');
+        toast(`「${rt.name}」 단계의 결재자(${missing})를 먼저 지정해 주세요 — 아래 '결재선 확정'에서 선택할 수 있어요.`, 'error');
+        // 결재선 확정 섹션으로 스크롤·강조 (아래에 묻혀서 못 보던 문제 해소)
+        try {
+          const el = document.getElementById('approval-line-section');
+          if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.style.outline = '2px solid #f59e0b'; setTimeout(() => { el.style.outline = ''; }, 2500); }
+        } catch {}
         return;
       }
       for (const uid of line) taskAssignees.push({ taskTemplateId: rt.taskTemplateId, assigneeId: uid });
@@ -876,7 +881,7 @@ export function ProcessStart() {
               </div>
               {/* 결재선 확정 — 템플릿에서 역할로 정의된 결재선을 시작 시 사람으로 확정 (이월된 빨간칸) */}
               {roleTasks.length > 0 && (
-                <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+                <div id="approval-line-section" style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', transition: 'outline 0.2s' }}>
                   <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <b style={{ fontSize: 13 }}>결재선 확정</b>
                     <span style={{ fontSize: 11, color: '#94a3b8' }}>역할로 정의된 결재선입니다. 자동 확정된 사람을 확인하고, 미확정 역할은 후보 중에서 선택하세요.</span>

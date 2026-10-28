@@ -342,7 +342,11 @@ export function MyManuals() {
                     <button className="btn btn-sm btn-outline" onClick={() => nav(`/process/start?templateId=${encodeURIComponent(templateByManual.get(m.id)!.id)}`)}>▶ 실행</button>
                   </>
                 )}
-                <button className="btn btn-sm btn-outline" onClick={() => nav(`/process/from-manual?manualId=${encodeURIComponent(m.id)}`)}>
+                <button className="btn btn-sm btn-outline" onClick={() => {
+                  // 미검토(준비도 낮음) 매뉴얼은 AI 검토를 권유 — 강제는 아님
+                  if ((m.readinessScore ?? 0) < READY && !confirm('아직 AI 검토를 안 한 매뉴얼이에요.\n\n먼저 「🤖 AI 검토」로 단계·담당·결재선 등을 정리하면 훨씬 정확한 프로세스가 만들어집니다.\n그래도 지금 바로 만들까요?')) { setCoach({ id: m.id, title: m.title }); return; }
+                  nav(`/process/from-manual?manualId=${encodeURIComponent(m.id)}`);
+                }}>
                   {processed ? '프로세스 다시 만들기' : '프로세스 만들기 →'}
                 </button>
               </div>

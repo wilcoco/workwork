@@ -182,7 +182,7 @@ function templateToStepForms(tpl: ManualTemplate): StepFormData[] {
   });
 }
 
-const MIN_QUALITY_SCORE = 60;
+const MIN_QUALITY_SCORE = 80; // 팀장 승인 요청 기준 — '내 매뉴얼 입력'(준비도 80)과 통일
 
 type ParsedStep = {
   stepId: string;
@@ -451,7 +451,7 @@ export function WorkManuals() {
     try {
       await apiJson(`/api/work-manuals/${encodeURIComponent(String(editing.id))}/status`, {
         method: 'POST',
-        body: JSON.stringify({ userId, status: 'REVIEW', skipReadinessGate: true, ...(reviewerId ? { reviewerId } : {}) }),
+        body: JSON.stringify({ userId, status: 'REVIEW', ...(reviewerId ? { reviewerId } : {}) }),
       });
       toast('검토 요청이 전송되었습니다.', 'success');
       setReviewerPickOpen(false);
@@ -1151,7 +1151,7 @@ export function WorkManuals() {
                 {/* 완성도 점수 바 */}
                 {qualityScore !== null && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#F8FAFC', borderRadius: 8, border: '1px solid #E5E7EB' }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>완성도</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>승인 준비도</div>
                     <div style={{ flex: 1, height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: `${Math.min(qualityScore, 100)}%`, borderRadius: 3, transition: 'width 0.5s ease',
                         background: qualityScore >= MIN_QUALITY_SCORE ? '#16a34a' : qualityScore >= 40 ? '#ca8a04' : '#dc2626' }} />
@@ -1249,7 +1249,7 @@ export function WorkManuals() {
                 {/* 품질 게이트 */}
                 {qualityScore !== null && qualityScore < MIN_QUALITY_SCORE && (!selected.status || selected.status === 'DRAFT' || selected.status === 'REJECTED') && (
                   <div style={{ background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 8, padding: 10 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E' }}>완성도 {qualityScore}점 — 검토 요청에는 {MIN_QUALITY_SCORE}점 이상이 필요합니다.</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#92400E' }}>승인 준비도 {qualityScore}점 — 검토 요청에는 {MIN_QUALITY_SCORE}점 이상이 필요합니다.</div>
                     <div style={{ fontSize: 12, color: '#92400E', marginTop: 4 }}>이전 단계에서 AI 검증을 실행하고 부족한 항목을 보완하세요.</div>
                   </div>
                 )}
