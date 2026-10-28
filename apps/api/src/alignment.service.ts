@@ -85,10 +85,15 @@ export class AlignmentService {
     // 일지 태그 집계 (최근 180일) — 담당자·활동 제안의 근거
     const since = new Date(Date.now() - 180 * 86400000);
     const krIds = krs.map((k) => k.id);
-    const tags: any[] = krIds.length ? await (this.prisma as any).worklogGoalTag.findMany({
-      where: { goalType: 'KR', goalId: { in: krIds }, worklog: { date: { gte: since } } },
-      select: { goalId: true, worklog: { select: { id: true, createdById: true, activityId: true, date: true, createdBy: { select: { id: true, name: true, orgUnitId: true, status: true } } } } },
+    // WorklogGoalTag에는 Worklog 관계가 없어 두 번에 나눠 읽는다 (태그 → 일지 id → 일지)
+    const rawTags: any[] = krIds.length ? await (this.prisma as any).worklogGoalTag.findMany({ where: { goalType: 'KR', goalId: { in: krIds } }, select: { goalId: true, worklogId: true } }) : [];
+    const logIds = Array.from(new Set(rawTags.map((t) => t.worklogId)));
+    const logs: any[] = logIds.length ? await this.prisma.worklog.findMany({
+      where: { id: { in: logIds }, date: { gte: since } },
+      select: { id: true, createdById: true, activityId: true, date: true, createdBy: { select: { id: true, name: true, orgUnitId: true, status: true } } },
     }) : [];
+    const logById = new Map(logs.map((w) => [w.id, w]));
+    const tags = rawTags.filter((t) => logById.has(t.worklogId)).map((t) => ({ goalId: t.goalId, worklog: logById.get(t.worklogId) }));
     const byKr = new Map<string, any[]>();
     for (const t of tags) { const arr = byKr.get(t.goalId) || []; arr.push(t.worklog); byKr.set(t.goalId, arr); }
 
