@@ -13,7 +13,7 @@ import { toast, toastConfirm } from '../components/Toast';
 type GNode = { id: string; type: string; refId: string; label: string; sub: string; layer: number; broken?: boolean; dismissed?: boolean; candidate?: boolean; logCount?: number; bound?: boolean; activityName?: string; orgUnitId?: string; objectiveId?: string };
 type GEdge = { id: string; source: string; target: string; type: string; confirmed?: boolean; fixed?: boolean };
 type Sugg = { id: string; type: string; source: string; target: string; score: number; reason: string; sourceLabel: string; targetLabel: string; weak?: boolean; activityName?: string };
-type Graph = { nodes: GNode[]; edges: GEdge[]; suggestions: Sugg[]; brokenCount: { objective: number; kr: number; activity: number }; total: { objective: number; kr: number; companyKr: number }; rate: { objective: number; kr: number; activity: number }; year: number; scope: string };
+type Graph = { nodes: GNode[]; edges: GEdge[]; suggestions: Sugg[]; teams?: Array<{ id: string; name: string }>; brokenCount: { objective: number; kr: number; activity: number }; total: { objective: number; kr: number; companyKr: number }; rate: { objective: number; kr: number; activity: number }; year: number; scope: string };
 
 const COLOR: Record<string, { bg: string; bd: string; fg: string }> = {
   COMPANY_KR: { bg: '#0F3D73', bd: '#0F3D73', fg: '#fff' },
@@ -57,15 +57,22 @@ function Canvas({ g, onLink, onPick, selected }: { g: Graph; onLink: (type: stri
   const nodeTypes = useMemo(() => ({ onto: OntoNode }), []);
   const byId = useMemo(() => new Map(g.nodes.map((n) => [n.id, n])), [g.nodes]);
 
+  // 층마다 띠로 나누고, 한 줄에 최대 8개씩 접어 넣는다 (한 줄로 늘어놓으면 읽을 수 없다)
   const nodes: Node[] = useMemo(() => {
+    const COL = 270, ROW = 104, BAND_GAP = 70, PER_ROW = 8;
     const perLayer = new Map<number, GNode[]>();
     for (const n of g.nodes) perLayer.set(n.layer, [...(perLayer.get(n.layer) || []), n]);
     const out: Node[] = [];
-    for (const [layer, list] of perLayer) {
+    let y = 0;
+    for (const layer of [0, 1, 2, 3]) {
+      const list = perLayer.get(layer) || [];
+      if (!list.length) continue;
+      const perRow = Math.min(PER_ROW, list.length);
       list.forEach((n, i) => out.push({
-        id: n.id, type: 'onto', position: { x: i * 265, y: layer * 175 }, draggable: true,
+        id: n.id, type: 'onto', position: { x: (i % perRow) * COL, y: y + Math.floor(i / perRow) * ROW }, draggable: true,
         data: { ...n, ntype: n.type, selected: selected === n.id, onSelect: () => onPick(n) },
       }));
+      y += Math.ceil(list.length / perRow) * ROW + BAND_GAP;
     }
     return out;
   }, [g.nodes, selected, onPick]);
@@ -104,11 +111,20 @@ function Canvas({ g, onLink, onPick, selected }: { g: Graph; onLink: (type: stri
   );
 }
 
+/** 그 노드가 선택한 팀에 속하는가 (팀 미선택이면 모두 통과) */
+function inTeam(g: Graph, nodeId: string, team: string) {
+  if (!team) return true;
+  const n = g.nodes.find((x) => x.id === nodeId);
+  return n?.orgUnitId === team;
+}
+
 export function AlignmentWorkbench() {
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
   const [g, setG] = useState<Graph | null>(null);
   const [view, setView] = useState<'graph' | 'list'>('graph');
   const [kind, setKind] = useState<string>('ALL');
+  const [onlyBroken, setOnlyBroken] = useState(true);
+  const [team, setTeam] = useState('');
   const [sel, setSel] = useState<GNode | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -142,14 +158,44 @@ export function AlignmentWorkbench() {
 
   if (err) return <div style={{ padding: 24, color: '#b91c1c' }}>{err}</div>;
   if (!g) return <div style={{ padding: 24, color: '#94a3b8' }}>불러오는 중…</div>;
-  const suggs = g.suggestions.filter((s) => kind === 'ALL' || s.type === kind);
+  const suggs = g.suggestions.filter((s) => (kind === 'ALL' || s.type === kind) && (!team || inTeam(g, s.source, team) || inTeam(g, s.target, team)));
+
+  // 그래프에 그릴 것만 추리기 — 기본은 "끊긴 것 + 그 후보"만 (전부 그리면 읽을 수 없다)
+  const view상 = (() => {
+    const byId = new Map(g.nodes.map((n) => [n.id, n]));
+    let keep = new Set<string>();
+    const pass = (n: GNode) => (!team || !n.orgUnitId || n.orgUnitId === team);
+    if (onlyBroken) {
+      for (const n of g.nodes) if (n.broken && !n.dismissed && pass(n)) keep.add(n.id);
+      for (const s of g.suggestions) {
+        if (keep.has(s.source) || keep.has(s.target)) { keep.add(s.source); keep.add(s.target); }
+      }
+      // 끊긴 KR의 소속 목표는 맥락으로 함께
+      for (const id of Array.from(keep)) { const n = byId.get(id); if (n?.objectiveId) keep.add(`obj:${n.objectiveId}`); }
+      for (const n of g.nodes) if (n.type === 'COMPANY_KR') keep.add(n.id);
+    } else {
+      for (const n of g.nodes) if (pass(n) || n.type === 'COMPANY_KR' || n.type === 'PERSON') keep.add(n.id);
+    }
+    if (team) {
+      // 팀 필터: 그 팀 목표/지표와 이어진 것만
+      const teamNodeIds = new Set(g.nodes.filter((n) => n.orgUnitId === team).map((n) => n.id));
+      const linked = new Set<string>(teamNodeIds);
+      for (const e of g.edges) { if (teamNodeIds.has(e.source)) linked.add(e.target); if (teamNodeIds.has(e.target)) linked.add(e.source); }
+      for (const s of g.suggestions) { if (teamNodeIds.has(s.source)) linked.add(s.target); if (teamNodeIds.has(s.target)) linked.add(s.source); }
+      for (const n of g.nodes) if (n.type === 'COMPANY_KR') linked.add(n.id);
+      keep = new Set(Array.from(keep).filter((id) => linked.has(id)));
+    }
+    const nodes = g.nodes.filter((n) => keep.has(n.id));
+    const ids = new Set(nodes.map((n) => n.id));
+    return { ...g, nodes, edges: g.edges.filter((e) => ids.has(e.source) && ids.has(e.target)), suggestions: suggs.filter((s) => ids.has(s.source) && ids.has(s.target)) };
+  })();
   const grouped = new Map<string, Sugg[]>();
   for (const s of suggs) { const k = `${s.type}|${s.type === 'KR_ASSIGNEE' ? s.target : s.source}`; grouped.set(k, [...(grouped.get(k) || []), s]); }
-  const gauge = (label: string, v: number, broken: number) => (
+  const gauge = (label: string, v: number, broken: number, na = false) => (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', background: '#fff', minWidth: 140 }}>
       <div style={{ fontSize: 10, color: '#64748b' }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-        <span style={{ fontSize: 20, fontWeight: 800, color: v >= 80 ? '#15803d' : v >= 40 ? '#b45309' : '#b91c1c' }}>{v}%</span>
+        <span style={{ fontSize: 20, fontWeight: 800, color: na ? '#94a3b8' : v >= 80 ? '#15803d' : v >= 40 ? '#b45309' : '#b91c1c' }}>{na ? '—' : `${v}%`}</span>
         {broken > 0 && <span style={{ fontSize: 11, color: '#b91c1c' }}>끊김 {broken}</span>}
       </div>
     </div>
@@ -165,7 +211,7 @@ export function AlignmentWorkbench() {
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        {gauge('팀 목표 → 전사 KR', g.rate.objective, g.brokenCount.objective)}
+        {gauge('팀 목표 → 전사 KR', g.rate.objective, g.brokenCount.objective, g.total.companyKr === 0)}
         {gauge('지표 → 담당자', g.rate.kr, g.brokenCount.kr)}
         {gauge('지표 → 활동', g.rate.activity, g.brokenCount.activity)}
         <span style={{ flex: 1 }} />
@@ -173,6 +219,13 @@ export function AlignmentWorkbench() {
           <option value="ALL">모든 제안 ({g.suggestions.length})</option>
           {Object.entries(TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v} ({g.suggestions.filter((s) => s.type === k).length})</option>)}
         </select>
+        <select value={team} onChange={(e) => setTeam(e.target.value)} style={{ fontSize: 13 }}>
+          <option value="">모든 팀</option>
+          {(g.teams || []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <label style={{ fontSize: 12, display: 'inline-flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={onlyBroken} onChange={(e) => setOnlyBroken(e.target.checked)} style={{ margin: 0, width: 'auto' }} /><span>끊긴 것만</span>
+        </label>
         <button className={`btn btn-sm ${view === 'graph' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setView('graph')}>그래프</button>
         <button className={`btn btn-sm ${view === 'list' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setView('list')}>목록</button>
         <button className="btn btn-sm btn-outline" disabled={busy} onClick={() => void load()}>새로고침</button>
@@ -193,8 +246,11 @@ export function AlignmentWorkbench() {
               <span>⚠ 빨간 점선 = 위에 연결 없음 · 주황 점선 = 제안 · 노드 클릭 = 상세</span>
             </div>
             <ReactFlowProvider>
-              <Canvas g={g} onLink={doLink} onPick={setSel} selected={sel?.id || null} />
+              <Canvas g={view상} onLink={doLink} onPick={setSel} selected={sel?.id || null} />
             </ReactFlowProvider>
+            <div style={{ fontSize: 11, color: view상.nodes.length > 120 ? '#b91c1c' : '#94a3b8', marginTop: 4 }}>
+              노드 {view상.nodes.length}개 · 제안 {view상.suggestions.length}개{view상.nodes.length > 120 ? ' — 너무 많습니다. 팀을 선택해 좁혀 보세요' : ''}
+            </div>
           </div>
           {sel && (
             <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 12, background: '#fff', display: 'grid', gap: 8, alignContent: 'start', maxHeight: 580, overflowY: 'auto' }}>

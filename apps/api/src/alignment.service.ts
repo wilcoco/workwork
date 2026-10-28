@@ -116,13 +116,15 @@ export class AlignmentService {
     for (const k of krs) {
       const logs = byKr.get(k.id) || [];
       const broken = k.assignments.length === 0;
+      const ownerObj = objectives.find((o) => o.id === k.objectiveId);
       nodes.push({
-        id: `kr:${k.id}`, type: 'KR', refId: k.id, label: k.title, sub: `${k.metric || ''}${k.unit ? ` · ${k.target}${k.unit}` : ''}`, layer: 2, objectiveId: k.objectiveId,
+        id: `kr:${k.id}`, type: 'KR', refId: k.id, label: k.title, sub: `${ownerObj?.orgUnit?.name || ''}${k.metric ? ` · ${k.metric}` : ''}${k.unit ? ` · ${k.target}${k.unit}` : ''}`, layer: 2, objectiveId: k.objectiveId, orgUnitId: ownerObj?.orgUnitId || null,
         broken, dismissed: dismissed.has(`KR_ASSIGNEE:${k.id}`), logCount: logs.length, bound: !!k.binding && !k.binding.lastError, activityName: k.activityId ? actName.get(k.activityId) || '' : '',
       });
       for (const a of k.assignments) if (a.user) people.set(a.user.id, a.user);
     }
     for (const p of people.values()) nodes.push({ id: `usr:${p.id}`, type: 'PERSON', refId: p.id, label: p.name, sub: '담당', layer: 3, broken: false });
+    const teamList = Array.from(new Map(objectives.filter((o) => o.orgUnitId).map((o) => [o.orgUnitId, { id: o.orgUnitId, name: o.orgUnit?.name || '' }])).values()).sort((a, b) => a.name.localeCompare(b.name));
 
     // ── 확정 선
     const edges: any[] = [];
@@ -174,7 +176,7 @@ export class AlignmentService {
       kr: total.kr ? Math.round(((total.kr - brokenCount.kr) / total.kr) * 100) : 0,
       activity: total.kr ? Math.round((krs.filter((k) => k.activityId).length / total.kr) * 100) : 0,
     };
-    return { nodes, edges, suggestions, brokenCount, total, rate, year, scope: all ? '전사' : `${orgIds.length}개 조직`, canEdit: true };
+    return { nodes, edges, suggestions, brokenCount, total, rate, year, teams: teamList, scope: all ? '전사' : `${orgIds.length}개 조직`, canEdit: true };
   }
 
   /** 연결 저장 */
