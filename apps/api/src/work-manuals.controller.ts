@@ -1266,7 +1266,10 @@ targetField 가능한 값: ${allowedFields}
 - 각 질문에 stepId("S1" 등, 전체면 "*")와 field(${Object.keys(READINESS_FIELD_LABEL).join('|')})를 붙입니다.
 출력(JSON만): {"questions":[{"id":1,"stepId":"S1","field":"assignee","question":"...","choices":["..."]}]}`;
     try {
-      const result = await callAI({ system: sys, user: `업무명: ${manual.title}\n\n[매뉴얼]\n${content.slice(0, 12000)}\n\n[빈칸 목록]\n${gapsText}`, model: aiModel, temperature: 0.2, maxTokens: 1500 });
+      const result = await callAI({
+        system: sys, user: `업무명: ${manual.title}\n\n[매뉴얼]\n${content.slice(0, 12000)}\n\n[빈칸 목록]\n${gapsText}`, model: aiModel, temperature: 0.2, maxTokens: 2500,
+        jsonSchema: { name: 'coach_questions', schema: { type: 'object' as const, properties: { questions: { type: 'array', items: { type: 'object', properties: { id: { type: 'number' }, stepId: { type: 'string' }, field: { type: 'string' }, question: { type: 'string' }, choices: { type: 'array', items: { type: 'string' } } }, required: ['question'] } } }, required: ['questions'] } },
+      });
       const qs = Array.isArray(result.parsed?.questions) ? result.parsed.questions : [];
       const cleaned = qs.filter((q: any) => q && q.question).slice(0, max).map((q: any, i: number) => ({ id: i + 1, stepId: String(q.stepId || '*'), field: String(q.field || ''), question: String(q.question), choices: Array.isArray(q.choices) ? q.choices.map(String).slice(0, 5) : undefined }));
       if (cleaned.length) return { readiness: r, threshold: READINESS_THRESHOLD, questions: cleaned, source: 'ai' };
@@ -1312,7 +1315,13 @@ targetField 가능한 값: ${allowedFields}
 6. 답변에 딸린 [첨부파일]은 해당 단계에 "- 관련문서: 파일명 (URL)" 줄로, [이미지]는 해당 단계의 "- 방법:" 아래에 "[이미지: URL]" 한 줄씩 넣습니다. 단계를 특정할 수 없으면 "## 참고"에 둡니다. URL은 한 글자도 바꾸지 않습니다.
 출력(JSON만): {"draft": "전체 매뉴얼 텍스트", "changes": ["무엇을 바꿨는지 한 줄씩"]}`;
     const userMsg = `업무명: ${manual.title}\n\n[현재 매뉴얼]\n${content.slice(0, 12000)}\n\n[작성자 답변]\n${qa.length ? qa.map((x) => `- (${x.stepId}/${x.field}) Q: ${x.q}\n  A: ${x.a || '(텍스트 없음)'}${x.files.length ? `\n  [첨부파일] ${x.files.map((f) => `${f.name} (${f.url})`).join(', ')}` : ''}${x.images.length ? `\n  [이미지] ${x.images.join(', ')}` : ''}`).join('\n') : '(답변 없음 — 현재 내용만으로 양식 정리)'}`;
-    const result = await callAI({ system: sys, user: userMsg, model: aiModel, temperature: 0.1, maxTokens: 6000 });
+    const result = await callAI({
+      system: sys, user: userMsg, model: aiModel, temperature: 0.1, maxTokens: 16000,
+      jsonSchema: {
+        name: 'manual_rewrite',
+        schema: { type: 'object' as const, properties: { draft: { type: 'string' }, changes: { type: 'array', items: { type: 'string' } } }, required: ['draft'] },
+      },
+    });
     const draftRaw = String(result.parsed?.draft || '').trim();
     if (!draftRaw) throw new BadRequestException('AI가 재작성 결과를 내지 못했습니다. 잠시 후 다시 시도해 주세요.');
     let draft = renumberSteps(draftRaw); // S1 중복 등 번호 오류 교정

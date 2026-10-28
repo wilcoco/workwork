@@ -45,6 +45,7 @@ export function ManualCoach(props: {
   const [current, setCurrent] = useState<string>('');
   const [pickerFor, setPickerFor] = useState<number | null>(null);
   const [round, setRound] = useState(1);
+  const [err, setErr] = useState<string>('');
 
   async function diagnose() {
     setBusy('진단 중…'); setPhase('diag');
@@ -77,12 +78,12 @@ export function ManualCoach(props: {
 
   async function rewrite(skipAnswers = false) {
     if (!diag) return;
-    setBusy('AI가 매뉴얼을 다시 쓰는 중… (10~30초)');
+    setErr(''); setBusy('AI가 매뉴얼을 다시 쓰는 중… (10~30초)');
     try {
       const qa = skipAnswers ? [] : diag.questions.map((q) => ({ stepId: q.stepId, field: q.field, q: q.question, a: answers[q.id]?.text || '', files: answers[q.id]?.files || [], images: answers[q.id]?.images || [] })).filter((x) => x.a.trim() || x.files.length || x.images.length);
       const r = await apiJson<any>(`/api/work-manuals/${encodeURIComponent(manualId)}/ai/coach/rewrite`, { method: 'POST', body: JSON.stringify({ userId, qa }) });
       setPreview(r); setPhase('preview');
-    } catch (e: any) { toast(e?.message || '재작성 실패', 'error'); } finally { setBusy(null); }
+    } catch (e: any) { const m = e?.message || '재작성 실패'; setErr(m); toast(m, 'error'); } finally { setBusy(null); }
   }
 
   async function apply() {
@@ -112,6 +113,7 @@ export function ManualCoach(props: {
         </div>
 
         {busy && <div style={{ fontSize: 13, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 10px' }}>⏳ {busy}</div>}
+        {!busy && err && <div style={{ fontSize: 13, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px' }}>⚠️ {err}<br /><span style={{ fontSize: 12, color: '#7f1d1d' }}>다시 한 번 눌러보시고, 계속 실패하면 관리자에게 알려주세요.</span></div>}
 
         {r && (
           <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 12, alignItems: 'start' }}>
