@@ -7,6 +7,13 @@ import { PrismaService } from './prisma.service';
 const OT_OVERRIDE_EMAIL = 'json@cams2002.onmicrosoft.com';
 const isOtOverrideUser = (email?: string | null) => String(email || '').trim().toLowerCase() === OT_OVERRIDE_EMAIL;
 
+// 전사 OT를 '열람'만 할 수 있는 허용 명단(소문자 이메일). 승인/반려는 불가 — 가시성만 임원과 동급.
+// 관리직 OT 확인 목적. (2026-10-30 이다빈 매니저 요청, 대표 승인)
+const OT_VIEWER_EMAILS = new Set<string>([
+  'dk1829@cams2002.onmicrosoft.com', // 이다빈 (경영관리팀)
+]);
+const isOtViewer = (email?: string | null) => OT_VIEWER_EMAILS.has(String(email || '').trim().toLowerCase());
+
 type AccessRecord = {
   id: number;
   source: string;
@@ -68,6 +75,7 @@ export class OtVerificationController {
 
     // 요청자 권한 확인
     let isExec = false;
+    let canViewAll = false; // 전사 OT 열람 (임원 또는 열람 허용 명단)
     let canOverride = false; // 승인/반려 최종 확정 권한 (지정 계정만)
     if (actorId) {
       const actor = await (this.prisma as any).user.findUnique({
@@ -75,6 +83,7 @@ export class OtVerificationController {
         select: { role: true, email: true },
       });
       isExec = actor?.role === 'CEO' || actor?.role === 'EXEC';
+      canViewAll = isExec || isOtViewer(actor?.email);
       canOverride = isOtOverrideUser(actor?.email);
     }
 
@@ -84,8 +93,8 @@ export class OtVerificationController {
       date: { gte: monthStart, lte: monthEnd },
     };
 
-    // 임원이 아니면 본인 기록만
-    if (!isExec && actorId) {
+    // 전사 열람 권한이 없으면 본인 기록만
+    if (!canViewAll && actorId) {
       where.userId = actorId;
     } else if (userId) {
       where.userId = userId;
@@ -111,7 +120,7 @@ export class OtVerificationController {
       type: 'HOLIDAY_WORK',
       date: { gte: monthStart, lte: monthEnd },
     };
-    if (!isExec && actorId) {
+    if (!canViewAll && actorId) {
       holidayWorkWhere.userId = actorId;
     } else if (userId) {
       holidayWorkWhere.userId = userId;
