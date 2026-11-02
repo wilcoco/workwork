@@ -1640,6 +1640,50 @@ targetField 가능한 값: ${allowedFields}
     return { draft: finalDraft, changes: Array.isArray(result.parsed?.changes) ? result.parsed.changes.map(String).slice(0, 12) : [], before: computeReadiness(content).score, after: after.score, afterReadiness: after, threshold: READINESS_THRESHOLD, restoredImages: lost.length, newFiles: qa.flatMap((x) => x.files) };
   }
 
+  /**
+   * 매뉴얼 자연어 수정 — "결재 단계를 추가해줘", "담당을 구매팀으로 바꿔줘" 같은 지시를 받아
+   * 본문을 고친 초안을 돌려준다(저장 안 함). 적용은 coach/apply 재사용.
+   */
+  @Post(':id/ai/nl-edit')
+  async manualNlEdit(@Param('id') id: string, @Body() dto: { userId?: string; aiModel?: string; instruction?: string }) {
+    const uid = String(dto?.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const instruction = String(dto?.instruction || '').trim();
+    if (!instruction) throw new BadRequestException('수정 지시를 입력하세요');
+    const content = String(manual.content || '');
+    if (!content.trim()) throw new BadRequestException('본문이 비어 있습니다');
+    const aiModel = (dto?.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
+    const sys = `당신은 업무 매뉴얼을 사용자의 자연어 지시대로만 고치는 편집자입니다.
+반드시 지킬 것:
+1. 지시와 무관한 문장은 한 글자도 바꾸지 않습니다. 전체 재구성 금지 — 지시받은 부분만 고칩니다.
+2. "[이미지: URL]" 줄은 그림입니다. 지시가 그림 삭제를 명시하지 않는 한 내용·순서를 바꾸지 말고 제자리에 둡니다. URL은 한 글자도 바꾸지 않습니다.
+3. 사실을 지어내지 않습니다. 지시에 없는 새 정보가 필요하면 "(미정)"으로 둡니다.
+4. 기존에 "### STEP Sn | 이름" 양식이 있으면 유지하고, 단계 추가·삭제 시 번호(S1부터 연번)를 다시 맞춥니다.
+5. changes에 무엇을 바꿨는지 한국어 한 줄씩 적습니다. 지시가 모호해 반영 못한 부분은 "(반영 못함) ..."으로 적습니다.
+출력(JSON만): {"draft": "수정된 전체 매뉴얼 텍스트", "changes": ["..."]}`;
+    const result = await callAI({
+      system: sys,
+      user: `업무명: ${manual.title}\n\n[현재 매뉴얼]\n${content.slice(0, 12000)}\n\n[사용자 수정 지시]\n${instruction}`,
+      model: aiModel, temperature: 0.1, maxTokens: 16000,
+      jsonSchema: { name: 'manual_nl_edit', schema: { type: 'object' as const, properties: { draft: { type: 'string' }, changes: { type: 'array', items: { type: 'string' } } }, required: ['draft'] } },
+    });
+    const draftRaw = String(result.parsed?.draft || '').trim();
+    if (!draftRaw) throw new BadRequestException('AI가 수정 결과를 내지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    let draft = renumberSteps(draftRaw);
+    // 그림 보존 검증 — 원문 이미지가 빠졌으면 끝에 복원 (명시적 삭제 지시가 아닌 한 안전망)
+    const imgs = Array.from(new Set(Array.from(content.matchAll(/\[이미지:\s*(\S+?)\s*\]/g)).map((m) => m[1])));
+    const wantsImageRemoval = /(그림|이미지|사진).{0,12}(삭제|빼|제거)/.test(instruction);
+    const lost = wantsImageRemoval ? [] : imgs.filter((u) => !draft.includes(u));
+    if (lost.length) draft += `\n\n## 참고 화면\n${lost.map((u) => `[이미지: ${u}]`).join('\n')}`;
+    const after = computeReadiness(draft);
+    return {
+      draft,
+      changes: Array.isArray(result.parsed?.changes) ? result.parsed.changes.map(String).slice(0, 12) : [],
+      before: computeReadiness(content).score, after: after.score, afterReadiness: after, threshold: READINESS_THRESHOLD,
+      restoredImages: lost.length,
+    };
+  }
+
   /** 3) 적용: 미리보기 초안을 저장 (텍스트 + 그림 복원 HTML, 버전 +1, 준비도 갱신) */
   @Post(':id/ai/coach/apply')
   async coachApply(@Param('id') id: string, @Body() dto: { userId?: string; draft?: string; attachments?: Array<{ name?: string; url?: string }> }) {

@@ -34,6 +34,39 @@ export function ManualLibrary() {
   const [open, setOpen] = useState<LibItem | null>(null);
   const [detail, setDetail] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // 말로 수정하기 (본인 매뉴얼): 자연어 지시 → AI 수정 미리보기 → 적용(새 버전 저장)
+  const [nlText, setNlText] = useState('');
+  const [nlBusy, setNlBusy] = useState<string | null>(null);
+  const [nlPreview, setNlPreview] = useState<null | { draft: string; changes: string[]; before: number; after: number }>(null);
+
+  async function nlEditRun() {
+    if (!open || !nlText.trim()) return;
+    setNlBusy('AI가 매뉴얼을 고치는 중… (10~30초)');
+    try {
+      const r = await apiJson<{ draft: string; changes: string[]; before: number; after: number }>(
+        `/api/work-manuals/${encodeURIComponent(open.id)}/ai/nl-edit`,
+        { method: 'POST', body: JSON.stringify({ userId, instruction: nlText.trim() }) },
+      );
+      setNlPreview(r);
+    } catch (e: any) { toast(e?.message || '수정 실패 — 다시 시도해 주세요', 'error'); }
+    finally { setNlBusy(null); }
+  }
+
+  async function nlEditApply() {
+    if (!open || !nlPreview?.draft) return;
+    setNlBusy('저장 중…');
+    try {
+      const r = await apiJson<any>(`/api/work-manuals/${encodeURIComponent(open.id)}/ai/coach/apply`,
+        { method: 'POST', body: JSON.stringify({ userId, draft: nlPreview.draft }) });
+      toast(`적용되었습니다 (v${r.version}) — 준비도 ${r?.readiness?.score ?? ''}점`, 'success');
+      setNlPreview(null); setNlText('');
+      // 본문·목록 갱신
+      const m = await apiJson<any>(`/api/work-manuals/library/${encodeURIComponent(open.id)}?userId=${encodeURIComponent(userId)}`);
+      setDetail(m);
+      apiJson<{ items: LibItem[] }>(`/api/work-manuals/library?userId=${encodeURIComponent(userId)}`).then((rr) => setItems(rr.items || [])).catch(() => {});
+    } catch (e: any) { toast(e?.message || '적용 실패', 'error'); }
+    finally { setNlBusy(null); }
+  }
 
   useEffect(() => {
     if (!userId) return;
@@ -46,6 +79,7 @@ export function ManualLibrary() {
 
   async function openDetail(it: LibItem) {
     setOpen(it); setDetail(null); setDetailLoading(true);
+    setNlText(''); setNlPreview(null);
     try {
       const m = await apiJson<any>(`/api/work-manuals/library/${encodeURIComponent(it.id)}?userId=${encodeURIComponent(userId)}`);
       setDetail(m);
@@ -153,6 +187,34 @@ export function ManualLibrary() {
               <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '7px 10px' }}>
                 📷 이 매뉴얼에는 그림이 없습니다. 화면 캡처나 현장 사진이 있으면 처음 보는 사람도 따라 하기 쉬워집니다.
                 {open.userId === userId ? <b> 「✏️ 수정하기」에서 본문에 바로 붙여 넣거나(Ctrl+V), 「🤖 AI 검토」 질문에 이미지를 올려 주세요.</b> : ` 작성자(${open.authorName || '미상'})에게 전달해 주세요.`}
+              </div>
+            )}
+            {/* 말로 수정하기 — 본인 매뉴얼만 */}
+            {open.userId === userId && (
+              <div style={{ border: '1px solid #ddd6fe', background: '#faf5ff', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
+                <b style={{ fontSize: 13, color: '#6d28d9' }}>🗣 말로 수정하기</b>
+                <div style={{ fontSize: 12, color: '#7c3aed' }}>예: “팀장 결재 단계를 추가해줘” · “발주 담당을 구매팀으로 바꿔” · “기한을 전부 3일로” — 지시한 부분만 고치고 나머지는 그대로 둡니다.</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={nlText} onChange={(e) => setNlText(e.target.value)} disabled={!!nlBusy}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void nlEditRun(); }}
+                    placeholder="매뉴얼을 어떻게 고칠지 평소 말하듯 적고 Enter" style={{ flex: 1 }} />
+                  <button className="btn btn-primary" disabled={!!nlBusy || !nlText.trim()} onClick={() => void nlEditRun()}>
+                    {nlBusy || '미리보기'}
+                  </button>
+                </div>
+                {nlPreview && (
+                  <div style={{ border: '1px solid #bbf7d0', background: '#f0fdf4', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: '#166534' }}>
+                      수정 미리보기 — 준비도 {nlPreview.before} → <b>{nlPreview.after}</b>점
+                    </div>
+                    {nlPreview.changes.map((c, i) => <div key={i} style={{ fontSize: 12, color: '#166534' }}>✓ {c}</div>)}
+                    <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.55, margin: 0, maxHeight: 220, overflow: 'auto', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, fontFamily: 'inherit' }}>{nlPreview.draft}</pre>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <button className="btn btn-sm btn-outline" disabled={!!nlBusy} onClick={() => setNlPreview(null)}>취소</button>
+                      <button className="btn btn-sm btn-primary" disabled={!!nlBusy} onClick={() => void nlEditApply()}>이대로 적용 (새 버전 저장)</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {detailLoading && <div style={{ fontSize: 13, color: '#94a3b8' }}>본문 불러오는 중…</div>}
