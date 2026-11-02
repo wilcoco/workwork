@@ -45,6 +45,35 @@ export function ProcessFromManual() {
   const [r2Answers, setR2Answers] = useState<Record<number, string>>({});
   const [r2Loading, setR2Loading] = useState(false);
 
+  // 말로 수정하기: 자연어 지시 → AI가 현재 BPMN을 고쳐 돌려줌
+  const [nlEdit, setNlEdit] = useState('');
+  const [nlBusy, setNlBusy] = useState(false);
+  const [nlChanges, setNlChanges] = useState<string[]>([]);
+  const [nlPrev, setNlPrev] = useState<string | null>(null); // 되돌리기용 직전 JSON
+
+  async function applyNlEdit() {
+    const instruction = nlEdit.trim();
+    if (!instruction || !manualId) return;
+    let j: any;
+    try { j = JSON.parse(bpmnJsonText || '{}'); } catch { toast('BPMN JSON이 올바르지 않습니다.', 'error'); return; }
+    if (!Array.isArray(j?.nodes)) { toast('먼저 프로세스 초안을 생성하세요.', 'error'); return; }
+    setNlBusy(true);
+    try {
+      const r = await apiJson<{ bpmnJson: any; changes: string[] }>(
+        `/api/work-manuals/${encodeURIComponent(manualId)}/ai/bpmn-edit`,
+        { method: 'POST', body: JSON.stringify({ userId, aiModel, bpmnJson: j, instruction }) },
+      );
+      if (!Array.isArray(r?.bpmnJson?.nodes)) throw new Error('AI 응답이 올바르지 않습니다.');
+      setNlPrev(bpmnJsonText);
+      setBpmnJsonText(JSON.stringify(r.bpmnJson, null, 2));
+      setNlChanges(r.changes?.length ? r.changes : ['요청을 반영했습니다.']);
+      setNlEdit('');
+      toast('프로세스에 반영했습니다. 그래프에서 확인하세요.', 'success');
+    } catch (e: any) {
+      toast(e?.message || '반영 실패 — 다시 시도해 주세요.', 'error');
+    } finally { setNlBusy(false); }
+  }
+
   async function askRound2() {
     if (!manualId) return;
     setR2Loading(true);
@@ -460,6 +489,34 @@ export function ProcessFromManual() {
             );
           })()}
           <BpmnEditor jsonText={bpmnJsonText} onChangeJson={setBpmnJsonText} height={560} />
+          {/* 말로 수정하기 — 자연어 지시를 AI가 그래프에 반영 */}
+          {manualId && (
+            <div style={{ border: '1px solid #ddd6fe', background: '#faf5ff', borderRadius: 8, padding: 10, display: 'grid', gap: 6 }}>
+              <b style={{ fontSize: 13, color: '#6d28d9' }}>🗣 말로 수정하기</b>
+              <div style={{ fontSize: 12, color: '#7c3aed' }}>
+                예: “견적 검토 뒤에 품질팀 검사 요청 단계를 넣어줘” · “결재를 팀장 → 공장장 2단계로 바꿔” · “발주 담당을 경영관리팀으로” · “마지막 두 단계는 동시에 진행되게”
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={nlEdit} onChange={(e) => setNlEdit(e.target.value)} disabled={nlBusy}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) void applyNlEdit(); }}
+                  placeholder="프로세스를 어떻게 고칠지 평소 말하듯 적고 Enter" style={{ flex: 1 }} />
+                <button className="btn btn-primary" disabled={nlBusy || !nlEdit.trim()} onClick={() => void applyNlEdit()}>
+                  {nlBusy ? 'AI 반영 중…' : '반영'}
+                </button>
+              </div>
+              {nlChanges.length > 0 && (
+                <div style={{ fontSize: 12, color: '#166534', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '6px 10px', display: 'grid', gap: 2 }}>
+                  {nlChanges.map((c, i) => <div key={i}>✓ {c}</div>)}
+                  {nlPrev != null && (
+                    <button type="button" className="btn btn-sm btn-outline" style={{ justifySelf: 'start', marginTop: 4 }}
+                      onClick={() => { setBpmnJsonText(nlPrev); setNlPrev(null); setNlChanges([]); toast('직전 상태로 되돌렸습니다.', 'success'); }}>
+                      ↩ 되돌리기
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {/* 2차 자연어 보완 — 초안 기준으로 남은 애매/누락을 추가 문답 후 재생성 */}
           {r2Questions.length > 0 && (
             <div style={{ border: '1px solid #bfdbfe', background: '#eff6ff', borderRadius: 8, padding: 10, display: 'grid', gap: 8 }}>

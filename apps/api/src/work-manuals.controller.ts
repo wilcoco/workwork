@@ -1152,6 +1152,118 @@ ${orgListText || '(없음)'}
     return { title: outTitle, bpmnJson: { ...bpmnJson, nodes: normalizedNodes, edges: normalizedEdges }, aiModel };
   }
 
+  /**
+   * BPMN 자연어 수정 — 현재 BPMN(JSON)과 사용자의 말(수정 지시)을 받아 고친 BPMN을 돌려준다.
+   * "결재 단계를 팀장 다음 공장장 2단계로 바꿔줘", "S3 뒤에 품질팀 검사 요청 추가" 같은 지시를 그대로 반영.
+   */
+  @Post(':id/ai/bpmn-edit')
+  async aiBpmnEdit(
+    @Param('id') id: string,
+    @Body() dto: { userId?: string; aiModel?: string; bpmnJson?: any; instruction?: string },
+  ) {
+    const uid = String(dto?.userId || '').trim();
+    const manual = await this.requireOwner(uid, id);
+    const instruction = String(dto?.instruction || '').trim();
+    if (!instruction) throw new BadRequestException('수정 지시를 입력하세요');
+    const cur = dto?.bpmnJson;
+    if (!Array.isArray(cur?.nodes) || !Array.isArray(cur?.edges)) throw new BadRequestException('현재 BPMN(bpmnJson.nodes/edges)이 필요합니다');
+    const aiModel = (dto?.aiModel === 'openai' ? 'openai' : 'claude') as AIModel;
+
+    const orgUnitsAll = await this.prisma.orgUnit.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    const orgUnits = orgUnitsAll.filter((o) => !/^personal\s*-/i.test(o.name || '')).slice(0, 200);
+    const normOrgName = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, '');
+    const orgByName = new Map(orgUnits.map((o) => [normOrgName(o.name), o.id]));
+
+    const sys = `당신은 BPMN 프로세스(JSON)를 사용자의 자연어 지시대로 고치는 편집자입니다.
+반드시 지킬 것:
+1. 지시와 무관한 노드·엣지·속성은 한 글자도 바꾸지 않습니다. 기존 노드 id는 유지합니다(이름만 바꿀 때 id를 새로 만들지 않음).
+2. 노드를 추가할 때 id는 기존과 충돌하지 않게 새로 만들고, 앞뒤 엣지를 연결해 흐름이 끊기지 않게 합니다. 노드를 삭제하면 그 노드에 붙은 엣지를 정리하고 앞뒤를 다시 잇습니다.
+3. 스키마: nodes[{id, type:"start"|"end"|"task"|"gateway_xor"|"gateway_parallel", name, taskType?:"WORKLOG"|"APPROVAL"|"COOPERATION", description?, assigneeHint?, assigneeOrgUnitName?, stageLabel?, deadlineOffsetDays?, slaHours?}], edges[{id, source, target, condition?, isLoopBack?}]. start/end는 반드시 유지.
+4. taskType: 기본 WORKLOG, 결재·승인 단계 APPROVAL, 타팀·협력사 요청 COOPERATION.
+5. 결재(APPROVAL) 태스크의 나가는 엣지는 승인/반려 분기를 명시: 전진 edge condition "last.approval.status == 'APPROVED'", 반려 복귀 edge는 isLoopBack:true + condition "last.approval.status == 'REJECTED'". 결재선은 assigneeHint에 "팀장 → 공장장"처럼 기록.
+6. 병렬이면 gateway_parallel(Split/Join 쌍), 조건 분기면 gateway_xor + edge.condition (좌변: last.approval.status, startedBy.role, itemCode 등 / 연산자 ==, !=, &&, ||).
+7. 담당 조직을 지시하면 assigneeOrgUnitName에 [조직 목록] 중 글자 그대로 하나를 넣습니다. 목록에 없는 조직명은 만들지 말고 assigneeHint에만 기록합니다.
+8. changes에 무엇을 바꿨는지 한국어 한 줄씩 적습니다. 지시가 모호해 반영하지 못한 부분도 changes에 "(반영 못함) ..."으로 적습니다.
+
+[조직 목록]
+${orgUnits.map((o) => o.name).join(', ') || '(없음)'}`;
+
+    const content = String(manual?.content || '').slice(0, 6000);
+    const userMsg = `업무명: ${String(manual?.title || '').trim()}\n\n[현재 BPMN JSON]\n${JSON.stringify(cur)}\n\n[원본 매뉴얼 (참고)]\n${content}\n\n[사용자 수정 지시]\n${instruction}`;
+
+    const editToolSchema = {
+      type: 'object' as const,
+      properties: {
+        bpmnJson: {
+          type: 'object',
+          properties: {
+            nodes: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, type: { type: 'string', enum: ['start', 'end', 'task', 'gateway_xor', 'gateway_parallel'] }, name: { type: 'string' }, taskType: { type: 'string', enum: ['WORKLOG', 'COOPERATION', 'APPROVAL'] }, description: { type: 'string' }, assigneeHint: { type: 'string' }, assigneeOrgUnitName: { type: 'string' }, stageLabel: { type: 'string' }, deadlineOffsetDays: { type: 'number' }, slaHours: { type: 'number' } }, required: ['id', 'type', 'name'] } },
+            edges: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, source: { type: 'string' }, target: { type: 'string' }, condition: { type: 'string' }, isLoopBack: { type: 'boolean' } }, required: ['id', 'source', 'target'] } },
+          },
+          required: ['nodes', 'edges'],
+        },
+        changes: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['bpmnJson'],
+    };
+
+    let parsed: any;
+    try {
+      const result = await callAI({
+        system: sys, user: userMsg, model: aiModel, temperature: 0.1, maxTokens: 8000,
+        thinking: aiModel === 'claude',
+        jsonSchema: aiModel === 'claude' ? { name: 'edit_bpmn', schema: editToolSchema } : undefined,
+      });
+      parsed = result.parsed;
+    } catch (e: any) {
+      throw new BadRequestException(e?.message || 'AI call failed');
+    }
+
+    const bpmnJson = parsed?.bpmnJson;
+    const nodes = Array.isArray(bpmnJson?.nodes) ? bpmnJson.nodes : null;
+    const edges = Array.isArray(bpmnJson?.edges) ? bpmnJson.edges : null;
+    if (!nodes || !edges) throw new BadRequestException('AI JSON missing bpmnJson.nodes/edges');
+
+    // aiBpmn과 동일한 정규화: taskType 보정, 기한 숫자화, 조직명 → OrgUnit ID, 루프백 기본 조건
+    const normalizedNodes = (nodes as any[]).map((n: any) => {
+      if (String(n?.type || '').trim() !== 'task') return n;
+      const rawTt = String(n?.taskType || '').trim().toUpperCase();
+      let nextTt = rawTt || 'WORKLOG';
+      if (nextTt === 'TASK') nextTt = 'WORKLOG';
+      if (!['WORKLOG', 'APPROVAL', 'COOPERATION'].includes(nextTt)) nextTt = 'WORKLOG';
+      const out: any = { ...n, taskType: nextTt };
+      if (out.deadlineOffsetDays != null) {
+        const d = Number(out.deadlineOffsetDays);
+        out.deadlineOffsetDays = (Number.isFinite(d) && d > 0) ? Math.round(d) : undefined;
+      }
+      if (out.slaHours != null) {
+        const h = Number(out.slaHours);
+        out.slaHours = (Number.isFinite(h) && h > 0) ? Math.round(h) : undefined;
+      }
+      if (out.stageLabel != null) out.stageLabel = String(out.stageLabel).trim() || undefined;
+      const orgName = String(out.assigneeOrgUnitName || '').trim();
+      if (orgName) {
+        const oid = orgByName.get(normOrgName(orgName));
+        if (oid) {
+          out.assigneeType = 'ORG_UNIT';
+          out.assigneeOrgUnitId = oid;
+        }
+        if (!out.assigneeHint) out.assigneeHint = orgName;
+      }
+      delete out.assigneeOrgUnitName;
+      return out;
+    });
+    const normalizedEdges = (edges as any[]).map((e: any) => {
+      if (e.isLoopBack) {
+        e.isLoopBack = Boolean(e.isLoopBack);
+        if (e.isLoopBack && !e.condition) e.condition = "last.approval.status == 'REJECTED'";
+      }
+      return e;
+    });
+
+    return { bpmnJson: { ...bpmnJson, nodes: normalizedNodes, edges: normalizedEdges }, changes: Array.isArray(parsed?.changes) ? parsed.changes.map(String).slice(0, 12) : [], aiModel };
+  }
+
   @Post(':id/ai/questions')
   async aiQuestions(@Param('id') id: string, @Body() dto: AiQuestionsDto) {
     const uid = String(dto.userId || '').trim();
