@@ -402,7 +402,11 @@ export class WorkManualsController {
       }),
       (this.prisma as any).processTemplate.findMany({ select: { id: true, sourceManualId: true } }),
       (this.prisma as any).keyResult.findMany({
-        select: { id: true, title: true, unit: true, objective: { select: { orgUnit: { select: { name: true } } } } }, take: 500,
+        select: {
+          id: true, title: true, unit: true, target: true, direction: true, aggregation: true,
+          objective: { select: { orgUnit: { select: { name: true } } } },
+          progressEntries: { select: { periodStart: true, krValue: true }, orderBy: { periodStart: 'desc' }, take: 36 },
+        }, take: 500,
       }).catch(() => []),
     ]);
     const templateByManual = new Map<string, string>();
@@ -427,13 +431,15 @@ export class WorkManualsController {
       if (templateId) d.processized++;
       if (m.status === 'APPROVED') d.approved++;
     }
-    // KPI 매핑 (Auto KR·테스트 지표는 제외)
+    // KPI 매핑 (Auto KR·테스트 지표는 제외) — 실적·달성률은 공용유틸(kpi-calc)로
+    const { kpiStatFromEntries } = await import('./lib/kpi-calc');
     for (const k of (krs as any[]) || []) {
       const title = String(k.title || '');
       if (!title || /^auto kr/i.test(title) || /^\[?테스트\]?|^tsetes/i.test(title)) continue;
       const org = String(k.objective?.orgUnit?.name || '');
       const { l1, l2 } = classifyKpi(title, org);
-      (byKey.get(l1) || byKey.get('etc')!).kpis.push({ id: k.id, title, unit: k.unit || '', org, l2 });
+      const stat = kpiStatFromEntries(k, k.progressEntries || []);
+      (byKey.get(l1) || byKey.get('etc')!).kpis.push({ id: k.id, title, unit: k.unit || '', org, l2, value: stat.latestValue, target: k.target ?? null, pct: stat.pct, status: stat.status });
     }
     // 그룹 정렬(매뉴얼 많은 순), 그룹 내 최신순 유지
     for (const d of domains) d.groups.sort((a, b) => b.manuals.length - a.manuals.length);
@@ -460,22 +466,37 @@ export class WorkManualsController {
     const [all, templates, krs] = await Promise.all([
       (this.prisma as any).workManual.findMany({ select: { id: true, userId: true, title: true, status: true, authorTeamName: true, authorName: true }, take: 2000 }),
       (this.prisma as any).processTemplate.findMany({ select: { id: true, title: true, sourceManualId: true } }),
-      (this.prisma as any).keyResult.findMany({ select: { id: true, title: true, unit: true, objective: { select: { orgUnit: { select: { name: true } } } } }, take: 500 }).catch(() => []),
+      (this.prisma as any).keyResult.findMany({
+        select: {
+          id: true, title: true, unit: true, target: true, direction: true, aggregation: true,
+          objective: { select: { orgUnit: { select: { name: true } } } },
+          progressEntries: { select: { periodStart: true, krValue: true }, orderBy: { periodStart: 'desc' }, take: 36 },
+        }, take: 500,
+      }).catch(() => []),
     ]);
     const templateByManual = new Map<string, { id: string; title: string }>();
     for (const t of templates || []) if (t.sourceManualId) templateByManual.set(String(t.sourceManualId), { id: String(t.id), title: String(t.title || '') });
 
     // 같은 업무군(L2) 형제 매뉴얼
+    const byId = new Map<string, any>((all || []).map((x: any) => [String(x.id), x]));
+    const lite = (x: any, why?: string) => ({ id: x.id, userId: x.userId, title: x.title, team: x.authorTeamName || '', author: x.authorName || '', status: x.status, templateId: templateByManual.get(String(x.id))?.id || null, ...(why ? { why } : {}) });
     const siblings: any[] = [];
     for (const x of all || []) {
       if (String(x.id) === String(id)) continue;
       const c = classifyManual(String(x.id), String(x.title || ''), String(x.authorTeamName || ''));
-      if (c.l1 === me.l1 && c.l2 === me.l2) {
-        siblings.push({ id: x.id, userId: x.userId, title: x.title, team: x.authorTeamName || '', author: x.authorName || '', status: x.status, templateId: templateByManual.get(String(x.id))?.id || null });
-      }
+      if (c.l1 === me.l1 && c.l2 === me.l2) siblings.push(lite(x));
       if (siblings.length >= 20) break;
     }
-    // 연관 KPI: 같은 도메인, l2 일치(직접) 또는 도메인 공통(l2 미지정)
+    // 선행→후행 업무 체인 (AI 전수 추출 데이터)
+    const { MANUAL_CHAINS } = await import('./lib/manual-chains-data');
+    const upstream: any[] = [];
+    const downstream: any[] = [];
+    for (const e of MANUAL_CHAINS) {
+      if (e.to === String(id)) { const x = byId.get(e.from); if (x) upstream.push(lite(x, e.why)); }
+      if (e.from === String(id)) { const x = byId.get(e.to); if (x) downstream.push(lite(x, e.why)); }
+    }
+    // 연관 KPI: 같은 도메인, l2 일치(직접) 또는 도메인 공통(l2 미지정) — 실적·달성률은 공용유틸(kpi-calc)로
+    const { kpiStatFromEntries } = await import('./lib/kpi-calc');
     const kpis: any[] = [];
     for (const k of (krs as any[]) || []) {
       const title = String(k.title || '');
@@ -484,7 +505,8 @@ export class WorkManualsController {
       const c = classifyKpi(title, org);
       if (c.l1 !== me.l1) continue;
       const direct = !!c.l2 && c.l2 === me.l2;
-      kpis.push({ id: k.id, title, unit: k.unit || '', org, direct });
+      const stat = kpiStatFromEntries(k, k.progressEntries || []);
+      kpis.push({ id: k.id, title, unit: k.unit || '', org, direct, value: stat.latestValue, target: k.target ?? null, pct: stat.pct, status: stat.status });
     }
     kpis.sort((a, b) => Number(b.direct) - Number(a.direct));
 
@@ -494,6 +516,8 @@ export class WorkManualsController {
       template: templateByManual.get(String(id)) || null,
       kpis: kpis.slice(0, 20),
       siblings,
+      upstream: upstream.slice(0, 10),
+      downstream: downstream.slice(0, 10),
     };
   }
 

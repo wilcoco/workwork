@@ -13,7 +13,7 @@ type FlowManual = { id: string; userId: string; title: string; team: string; aut
 type FlowDomain = {
   key: string; name: string; kind: 'main' | 'support'; desc: string;
   groups: Array<{ name: string; manuals: FlowManual[] }>;
-  kpis: Array<{ id: string; title: string; unit: string; org: string; l2: string }>;
+  kpis: Array<{ id: string; title: string; unit: string; org: string; l2: string; value: number | null; target: number | null; pct: number | null; status: 'OK' | 'WARN' | 'NONE' }>;
   manualCount: number; processized: number; approved: number;
 };
 
@@ -117,12 +117,20 @@ export function ManualFlowMap() {
             <div style={{ display: 'grid', gap: 4 }}>
               <b style={{ fontSize: 13, color: '#6d28d9' }}>📊 이 단계의 KPI {current.kpis.length}개</b>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {current.kpis.map((k) => (
-                  <span key={k.id} title={`${k.org}${k.l2 ? ` · 연결 업무군: ${k.l2}` : ''}`}
-                    style={{ fontSize: 12, color: '#5b21b6', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 999, padding: '3px 10px' }}>
-                    {k.title}{k.unit ? ` (${k.unit})` : ''}{k.org ? ` · ${k.org}` : ''}
-                  </span>
-                ))}
+                {current.kpis.map((k) => {
+                  const num = (v: number | null) => (v == null ? '' : (Math.round(v * 100) / 100).toLocaleString());
+                  return (
+                    <span key={k.id}
+                      title={`${k.org}${k.l2 ? ` · 연결 업무군: ${k.l2}` : ''}${k.target != null ? ` · 목표 ${num(k.target)}${k.unit || ''}` : ''}${k.value == null ? ' · 실적 입력 없음' : ''}`}
+                      style={{ fontSize: 12, color: '#5b21b6', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 999, padding: '3px 10px' }}>
+                      {k.title}
+                      {k.value != null
+                        ? <b style={{ marginLeft: 4 }}>{num(k.value)}{k.unit || ''}{k.pct != null ? ` · ${Math.round(k.pct)}%` : ''}</b>
+                        : <span style={{ marginLeft: 4, opacity: 0.6 }}>실적없음</span>}
+                      {k.pct != null && <span style={{ marginLeft: 3, fontWeight: 800, color: k.status === 'OK' ? '#15803d' : '#b91c1c' }}>{k.status === 'OK' ? '●' : '▲'}</span>}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -6,14 +6,19 @@ import { apiJson } from '../lib/api';
  * 매뉴얼 연계 섹션 — 가치사슬 위치(앞/뒤 단계), 연관 KPI, 같은 업무군의 다른 업무, 연결 프로세스.
  * 열람 모달(전사 열람·흐름 지도) 공용. onOpenManual을 주면 형제 매뉴얼을 같은 모달에서 이어서 연다.
  */
+type RelManual = { id: string; userId: string; title: string; team: string; author: string; status: string; templateId: string | null; why?: string };
 type Related = {
   l1: string; l2: string; domainName: string;
   prevDomain: { key: string; name: string } | null;
   nextDomain: { key: string; name: string } | null;
   template: { id: string; title: string } | null;
-  kpis: Array<{ id: string; title: string; unit: string; org: string; direct: boolean }>;
-  siblings: Array<{ id: string; userId: string; title: string; team: string; author: string; status: string; templateId: string | null }>;
+  kpis: Array<{ id: string; title: string; unit: string; org: string; direct: boolean; value: number | null; target: number | null; pct: number | null; status: 'OK' | 'WARN' | 'NONE' }>;
+  siblings: RelManual[];
+  upstream: RelManual[];
+  downstream: RelManual[];
 };
+
+const fmtNum = (v: number | null | undefined) => (v == null ? '' : (Math.round(v * 100) / 100).toLocaleString());
 
 const STATUS_KO: Record<string, string> = { DRAFT: '초안', REVIEW: '대기', APPROVED: '승인', REJECTED: '반려' };
 
@@ -48,17 +53,59 @@ export function ManualRelated(props: { manualId: string; userId: string; onOpenM
         <b style={{ fontSize: 12.5, color: '#6d28d9' }}>📊 연관 KPI {rel.kpis.length ? `(${rel.kpis.length})` : ''}</b>
         {rel.kpis.length ? (
           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-            {rel.kpis.map((k) => (
-              <span key={k.id} title={`${k.org}${k.direct ? ' · 이 업무군 직접 지표' : ' · 단계 공통 지표'}`}
-                style={{ fontSize: 11.5, color: k.direct ? '#fff' : '#5b21b6', background: k.direct ? '#7c3aed' : '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 999, padding: '2px 9px' }}>
-                {k.title}{k.unit ? ` (${k.unit})` : ''}{k.org ? ` · ${k.org}` : ''}
-              </span>
-            ))}
+            {rel.kpis.map((k) => {
+              const hasVal = k.value != null;
+              const pctTxt = k.pct != null ? ` · 달성 ${Math.round(k.pct)}%` : '';
+              return (
+                <span key={k.id}
+                  title={`${k.org}${k.direct ? ' · 이 업무군 직접 지표' : ' · 단계 공통 지표'}${k.target != null ? ` · 목표 ${fmtNum(k.target)}${k.unit || ''}` : ''}${hasVal ? '' : ' · 실적 입력 없음'}`}
+                  style={{ fontSize: 11.5, color: k.direct ? '#fff' : '#5b21b6', background: k.direct ? '#7c3aed' : '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 999, padding: '2px 9px' }}>
+                  {k.title}
+                  {hasVal
+                    ? <b style={{ marginLeft: 4 }}>{fmtNum(k.value)}{k.unit || ''}{pctTxt}</b>
+                    : <span style={{ marginLeft: 4, opacity: 0.7 }}>실적없음</span>}
+                  {k.pct != null && (
+                    <span style={{ marginLeft: 4, fontWeight: 800, color: k.direct ? (k.status === 'OK' ? '#bbf7d0' : '#fecaca') : (k.status === 'OK' ? '#15803d' : '#b91c1c') }}>
+                      {k.status === 'OK' ? '●' : '▲'}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           </div>
         ) : (
           <span style={{ fontSize: 12, color: '#b45309' }}>이 업무가 속한 단계에 연결된 KPI가 없습니다 — 측정 없는 실행 영역.</span>
         )}
       </div>
+
+      {/* 업무 체인: 선행 → 이 업무 → 후행 */}
+      {(rel.upstream.length > 0 || rel.downstream.length > 0) && (
+        <div style={{ display: 'grid', gap: 4 }}>
+          <b style={{ fontSize: 12.5, color: '#0f172a' }}>⛓ 업무 체인 <span style={{ fontWeight: 400, color: '#94a3b8' }}>— 이 업무의 앞·뒤 업무</span></b>
+          {rel.upstream.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', fontSize: 12 }}>
+              <span style={{ color: '#64748b', fontWeight: 700, minWidth: 34 }}>선행</span>
+              {rel.upstream.map((s) => (
+                <button key={s.id} type="button" className="btn btn-sm btn-outline" title={`${s.team}${s.why ? ` · ${s.why}` : ''}`}
+                  onClick={() => onOpenManual?.(s)} style={{ fontSize: 11.5 }}>
+                  {s.title} →
+                </button>
+              ))}
+            </div>
+          )}
+          {rel.downstream.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap', fontSize: 12 }}>
+              <span style={{ color: '#64748b', fontWeight: 700, minWidth: 34 }}>후행</span>
+              {rel.downstream.map((s) => (
+                <button key={s.id} type="button" className="btn btn-sm btn-outline" title={`${s.team}${s.why ? ` · ${s.why}` : ''}`}
+                  onClick={() => onOpenManual?.(s)} style={{ fontSize: 11.5 }}>
+                  → {s.title}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 연결 프로세스 */}
       {rel.template && (
