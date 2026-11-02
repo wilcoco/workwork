@@ -397,7 +397,7 @@ export class WorkManualsController {
     const { FLOW_DOMAINS, classifyManual, classifyKpi } = await import('./lib/flow-map');
     const [manuals, templates, krs] = await Promise.all([
       (this.prisma as any).workManual.findMany({
-        select: { id: true, userId: true, title: true, status: true, readinessScore: true, authorName: true, authorTeamName: true, contentHtml: true, content: true, updatedAt: true },
+        select: { id: true, userId: true, title: true, status: true, readinessScore: true, authorName: true, authorTeamName: true, contentHtml: true, content: true, attachments: true, updatedAt: true },
         orderBy: { updatedAt: 'desc' }, take: 2000,
       }),
       (this.prisma as any).processTemplate.findMany({ select: { id: true, sourceManualId: true } }),
@@ -420,8 +420,8 @@ export class WorkManualsController {
       const imageCount = (html.match(/<img\b/gi) || []).length || (String(m.content || '').match(/\[이미지:/g) || []).length;
       const templateId = templateByManual.get(String(m.id)) || null;
       g.manuals.push({
-        id: m.id, title: m.title, team: m.authorTeamName || '', author: m.authorName || '', status: m.status,
-        readinessScore: m.readinessScore ?? 0, imageCount, templateId, updatedAt: m.updatedAt,
+        id: m.id, userId: m.userId, title: m.title, team: m.authorTeamName || '', author: m.authorName || '', status: m.status,
+        readinessScore: m.readinessScore ?? 0, imageCount, attachmentCount: Array.isArray(m.attachments) ? m.attachments.length : 0, templateId, updatedAt: m.updatedAt,
       });
       d.manualCount++;
       if (templateId) d.processized++;

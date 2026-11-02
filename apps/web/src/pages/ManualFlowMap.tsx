@@ -8,7 +8,7 @@ import { ManualDocument } from '../components/ManualDocument';
  * 전사 업무 흐름 지도 — 가치사슬(영업·수주 → … → 물류·출하) 위에 전 매뉴얼과 KPI를 배치.
  * 단계를 클릭하면 업무군(L2)별 매뉴얼 목록이, 매뉴얼을 클릭하면 본문(그림 포함)이 바로 열린다.
  */
-type FlowManual = { id: string; title: string; team: string; author: string; status: string; readinessScore: number; imageCount: number; templateId: string | null; updatedAt: string };
+type FlowManual = { id: string; userId: string; title: string; team: string; author: string; status: string; readinessScore: number; imageCount: number; attachmentCount: number; templateId: string | null; updatedAt: string };
 type FlowDomain = {
   key: string; name: string; kind: 'main' | 'support'; desc: string;
   groups: Array<{ name: string; manuals: FlowManual[] }>;
@@ -146,8 +146,13 @@ export function ManualFlowMap() {
                       {m.imageCount > 0
                         ? <span style={{ fontSize: 11, color: '#15803d' }}>📷{m.imageCount}</span>
                         : <span style={{ fontSize: 11, color: '#d97706' }}>📷없음</span>}
+                      {m.attachmentCount > 0 && <span title="첨부파일 — 열면 본문 아래에 링크로 표시됩니다" style={{ fontSize: 11, color: '#0F3D73' }}>📎{m.attachmentCount}</span>}
                       <span style={{ fontSize: 11, color: st.color, background: st.bg, border: `1px solid ${st.border}`, borderRadius: 999, padding: '1px 7px' }}>{st.label}</span>
                       {m.templateId && <span style={{ fontSize: 11, color: '#0F3D73', background: '#f0f6ff', border: '1px solid #bfdbfe', borderRadius: 999, padding: '1px 7px' }}>🔁 프로세스</span>}
+                      {m.userId === userId && (
+                        <button className="btn btn-sm btn-primary" onClick={(e) => { e.stopPropagation(); nav(`/manuals/mine?edit=${encodeURIComponent(m.id)}`); }}
+                          title="내 매뉴얼 — 표준 에디터에서 바로 수정합니다">✏️ 수정</button>
+                      )}
                     </div>
                   );
                 })}
@@ -164,12 +169,16 @@ export function ManualFlowMap() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 90, padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()}
             style={{ background: '#fff', borderRadius: 12, maxWidth: 860, width: '100%', maxHeight: '88vh', overflow: 'auto', padding: 18, display: 'grid', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <b style={{ fontSize: 15, flex: 1 }}>📖 매뉴얼 열람</b>
               {openManual.templateId && (
                 <button className="btn btn-sm btn-outline" onClick={() => nav(`/process/templates?openId=${encodeURIComponent(openManual.templateId!)}`)}>🔁 프로세스 보기</button>
               )}
-              <button className="btn btn-sm btn-primary" onClick={() => nav(`/manuals/library`)}>전사 열람에서 보기</button>
+              {openManual.userId === userId && (
+                <button className="btn btn-sm btn-primary" onClick={() => nav(`/manuals/mine?edit=${encodeURIComponent(openManual.id)}`)}
+                  title="표준 에디터(내 매뉴얼 입력)에서 그림 붙여넣기·파일 첨부까지 바로 수정합니다">✏️ 표준 에디터에서 수정</button>
+              )}
+              <button className="btn btn-sm btn-outline" onClick={() => nav(`/manuals/library`)}>전사 열람에서 보기</button>
               <button className="btn btn-sm btn-outline" onClick={() => { setOpenManual(null); setDetail(null); }}>닫기</button>
             </div>
             {detailLoading && <div style={{ fontSize: 13, color: '#94a3b8' }}>본문 불러오는 중…</div>}
