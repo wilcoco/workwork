@@ -1,4 +1,9 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { extname, basename } from 'path';
+import { randomUUID } from 'crypto';
+import type { Request } from 'express';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from './prisma.service';
 import { BASE_TYPES, BASE_TYPE_MAP, QUESTION_SETS, TACIT_KNOWLEDGE_QUESTIONS, OPTION_GROUPS, AI_SYSTEM_PROMPT, recommendOptions, detectSecurityInfo, type PhaseData } from './manual-externalization.constants';
@@ -580,6 +585,137 @@ export class WorkManualsController {
     });
     void this.linkManualActivity(created.id, String(dto.title || '')).catch(() => {}); // 온톨로지: 제목 기준 활동 결정론 연결 (AI 불필요)
     return created;
+  }
+
+  /**
+   * 워드(.docx)/파워포인트(.pptx) 파일 업로드 → 업무 매뉴얼 등록.
+   * 본문 텍스트와 그림을 추출해 리치 본문(contentHtml)과 텍스트 사본(content, [이미지: url] 포함)으로 저장.
+   * 그림은 Upload(DB) 테이블에 저장하고 /api/files/<id> URL로 참조 — 기존 업로드 규약과 동일.
+   */
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 40 * 1024 * 1024 } }))
+  async importFile(@UploadedFile() file: Express.Multer.File, @Req() req: Request) {
+    const body: any = req.body || {};
+    const uid = String(body.userId || '').trim();
+    const u = await this.requireUser(uid);
+    if (!file?.buffer) throw new BadRequestException('file is required');
+    const bodyName = String(body.originalName || '').trim();
+    let origName = bodyName || file.originalname || '';
+    if (!bodyName && origName) { try { origName = Buffer.from(origName, 'latin1').toString('utf8'); } catch {} }
+    const ext = extname(origName).toLowerCase();
+    if (ext !== '.docx' && ext !== '.pptx') {
+      throw new BadRequestException('지원 형식은 .docx(워드)와 .pptx(파워포인트)입니다. 97-2003 형식(.doc/.ppt)은 파일을 다시 저장할 때 최신 형식으로 바꿔 올려 주세요.');
+    }
+
+    // 추출된 그림을 DB Upload로 저장하고 /api/files/<id> URL을 돌려준다 (같은 그림은 1번만 저장)
+    const imageCache = new Map<string, string>();
+    const saveImage = async (data: Buffer, contentType: string, name: string, cacheKey?: string) => {
+      if (cacheKey && imageCache.has(cacheKey)) return imageCache.get(cacheKey)!;
+      const extByType = contentType === 'image/png' ? '.png' : contentType === 'image/gif' ? '.gif' : contentType === 'image/webp' ? '.webp' : '.jpg';
+      const rec = await (this.prisma as any).upload.create({
+        data: { filename: `${randomUUID()}${extByType}`, originalName: name || null, contentType, size: data.length, data },
+      });
+      const url = `/api/files/${encodeURIComponent(rec.id)}`;
+      if (cacheKey) imageCache.set(cacheKey, url);
+      return url;
+    };
+    const escHtml = (s: string) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as any)[c]);
+    const decodeXml = (s: string) => String(s || '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+
+    let contentHtml = '';
+    let content = '';
+    if (ext === '.docx') {
+      // 워드: mammoth가 제목/목록/표를 HTML로, 그림은 DB 업로드로 치환
+      const mammoth = require('mammoth');
+      const result = await mammoth.convertToHtml(
+        { buffer: file.buffer },
+        {
+          convertImage: mammoth.images.imgElement(async (img: any) => {
+            try {
+              const b: Buffer = Buffer.from(await img.read());
+              const url = await saveImage(b, String(img.contentType || 'image/png'), '워드 삽입 그림');
+              return { src: url };
+            } catch { return { src: '' }; }
+          }),
+        },
+      );
+      contentHtml = String(result?.value || '').trim();
+      if (!contentHtml) throw new BadRequestException('문서에서 내용을 추출하지 못했습니다.');
+      // 텍스트 사본: 그림은 [이미지: url] 줄로, 블록 태그는 줄바꿈으로
+      content = contentHtml
+        .replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, (_m, src) => (src ? `\n[이미지: ${src}]\n` : ''))
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|h1|h2|h3|h4|li|tr|div)>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .split('\n').map((l: string) => l.trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+      content = decodeXml(content);
+    } else {
+      // 파워포인트: 슬라이드 순서대로 텍스트(<a:t>)와 그림(rels → ppt/media)을 추출
+      const JSZip = require('jszip');
+      const zip = await JSZip.loadAsync(file.buffer);
+      const slideNames: string[] = Object.keys(zip.files)
+        .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+        .sort((a, b) => Number(a.match(/slide(\d+)\.xml/)![1]) - Number(b.match(/slide(\d+)\.xml/)![1]));
+      if (!slideNames.length) throw new BadRequestException('슬라이드를 찾지 못했습니다.');
+      const htmlParts: string[] = [];
+      const textParts: string[] = [];
+      for (let i = 0; i < slideNames.length; i++) {
+        const sn = slideNames[i];
+        const xml: string = await zip.files[sn].async('string');
+        // 문단 단위 텍스트 (같은 <a:p> 안의 런은 이어 붙임)
+        const paras = xml.split(/<\/a:p>/)
+          .map((p) => Array.from(p.matchAll(/<a:t>([^<]*)<\/a:t>/g)).map((m) => decodeXml(m[1])).join(''))
+          .map((s) => s.trim()).filter(Boolean);
+        // 슬라이드 그림: r:embed → _rels 매핑 → ppt/media
+        const relName = sn.replace('ppt/slides/', 'ppt/slides/_rels/') + '.rels';
+        const rels: string = zip.files[relName] ? await zip.files[relName].async('string') : '';
+        const relMap = new Map<string, string>(Array.from(rels.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)).map((m) => [m[1], m[2]] as [string, string]));
+        const embeds = Array.from(new Set(Array.from(xml.matchAll(/r:embed="([^"]+)"/g)).map((m) => m[1])));
+        const imgUrls: string[] = [];
+        for (const rid of embeds) {
+          const target = relMap.get(rid);
+          if (!target) continue;
+          const mediaPath = target.replace(/^\.\.\//, 'ppt/');
+          const mf = zip.files[mediaPath];
+          if (!mf) continue;
+          const mext = extname(mediaPath).toLowerCase();
+          if (!['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'].includes(mext)) continue; // emf/wmf 등 브라우저 미지원 형식 제외
+          try {
+            const data: Buffer = await mf.async('nodebuffer');
+            const ctype = mext === '.png' ? 'image/png' : mext === '.gif' ? 'image/gif' : mext === '.webp' ? 'image/webp' : 'image/jpeg';
+            imgUrls.push(await saveImage(data, ctype, basename(mediaPath), mediaPath));
+          } catch { /* skip broken media */ }
+        }
+        const slideTitle = paras[0] && paras[0].length <= 60 ? paras[0] : '';
+        htmlParts.push(
+          `<h2>슬라이드 ${i + 1}${slideTitle ? ` — ${escHtml(slideTitle)}` : ''}</h2>` +
+          paras.slice(slideTitle ? 1 : 0).map((p) => `<p>${escHtml(p)}</p>`).join('') +
+          imgUrls.map((uurl) => `<p><img src="${uurl}"></p>`).join(''),
+        );
+        textParts.push(
+          `## 슬라이드 ${i + 1}${slideTitle ? ` — ${slideTitle}` : ''}\n` +
+          paras.slice(slideTitle ? 1 : 0).join('\n') +
+          (imgUrls.length ? `\n${imgUrls.map((uurl) => `[이미지: ${uurl}]`).join('\n')}` : ''),
+        );
+      }
+      contentHtml = htmlParts.join('');
+      content = textParts.join('\n\n').trim();
+      if (!content && !imageCache.size) throw new BadRequestException('문서에서 내용을 추출하지 못했습니다.');
+    }
+
+    const title = String(body.title || '').trim() || origName.replace(/\.(docx|pptx)$/i, '').trim() || '가져온 매뉴얼';
+    const authorName = String((u as any)?.name || '').trim();
+    const authorTeamName = String((u as any)?.orgUnit?.name || '').trim();
+    const created = await (this.prisma as any).workManual.create({
+      data: {
+        userId: uid, title, content, contentHtml, authorName, authorTeamName, department: authorTeamName,
+        attachments: [], readinessScore: computeReadiness(content).score, readinessAt: new Date(),
+      },
+    });
+    void this.linkManualActivity(created.id, title).catch(() => {});
+    const imageCount = (contentHtml.match(/<img\b/gi) || []).length;
+    return { id: created.id, title, imageCount, readinessScore: created.readinessScore ?? 0, source: ext.slice(1) };
   }
 
   @Put(':id')

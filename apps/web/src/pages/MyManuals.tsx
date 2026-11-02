@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { apiJson } from '../lib/api';
+import { apiFetch, apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 import { RichTextEditor } from '../components/RichTextEditor';
@@ -164,6 +164,28 @@ export function MyManuals() {
     } finally { setLoadingEdit(false); }
   }
 
+  // PPT(.pptx)/워드(.docx) 파일을 올리면 텍스트·그림을 추출해 매뉴얼로 등록
+  const [importing, setImporting] = useState(false);
+  async function importOffice(f: File | null | undefined) {
+    if (!f) return;
+    if (!/\.(docx|pptx)$/i.test(f.name)) { toast('워드(.docx) 또는 파워포인트(.pptx) 파일만 올릴 수 있습니다. (.doc/.ppt는 최신 형식으로 다시 저장해 주세요)', 'error'); return; }
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('userId', userId);
+      fd.append('originalName', f.name);
+      const res = await apiFetch('/api/work-manuals/import', { method: 'POST', body: fd });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(Array.isArray(d?.message) ? d.message.join(', ') : d?.message || '가져오기 실패');
+      toast(`「${d.title}」 등록 완료 — 그림 ${d.imageCount}장 포함. 내용을 확인한 뒤 🤖 AI 검토로 보완하세요.`, 'success');
+      await load();
+      await openForEdit({ id: d.id, title: d.title } as Manual);
+    } catch (e: any) {
+      toast(e?.message || '파일 가져오기에 실패했습니다', 'error');
+    } finally { setImporting(false); }
+  }
+
   function insertTemplate() {
     setContentHtml((prev) => (htmlToPlainText(prev).trim() ? prev + '<p><br></p>' : '') + plainTextToHtml(STD_TEMPLATE));
     setEditorKey((k) => k + 1);
@@ -238,6 +260,14 @@ export function MyManuals() {
       <div style={{ border: editingId ? '2px solid #0F3D73' : '1px solid #e5e7eb', borderRadius: 10, padding: 12, display: 'grid', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <b style={{ fontSize: 14 }}>{editingId ? '✏️ 매뉴얼 수정' : '새 매뉴얼 작성'}</b>
+          {!editingId && (
+            <label className="btn btn-sm btn-outline" style={{ cursor: importing ? 'wait' : 'pointer', opacity: importing ? 0.6 : 1 }}
+              title="이미 PPT나 워드로 만들어 둔 매뉴얼이 있으면 파일만 올리세요. 텍스트와 그림을 추출해 그대로 등록됩니다.">
+              {importing ? '⏳ 변환 중…' : '📄 PPT/워드 파일로 등록'}
+              <input type="file" accept=".docx,.pptx" style={{ display: 'none' }} disabled={importing}
+                onChange={(e) => { void importOffice(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+            </label>
+          )}
           {editingId && (
             <>
               <span style={{ fontSize: 12, color: '#64748b' }}>내용을 고치거나 파일을 추가/삭제한 뒤 저장하세요.</span>
