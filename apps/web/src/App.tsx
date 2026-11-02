@@ -89,6 +89,7 @@ import { WorkManuals } from './pages/WorkManuals';
 import { KbRanking } from './pages/KbRanking';
 import { MyManuals } from './pages/MyManuals';
 import { ManualLibrary } from './pages/ManualLibrary';
+import { ManualFlowMap } from './pages/ManualFlowMap';
 import { ManualCoverageReport } from './pages/ManualCoverageReport';
 import { WorkManualExt } from './pages/WorkManualExt';
 import { ProcessFromManual } from './pages/ProcessFromManual';
@@ -395,6 +396,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/manuals" element={<WorkManuals />} />
           <Route path="/manuals/mine" element={<MyManuals />} />
           <Route path="/manuals/library" element={<ManualLibrary />} />
+          <Route path="/manuals/flow" element={<ManualFlowMap />} />
           <Route path="/manuals/coverage" element={<ManualCoverageReport />} />
           <Route path="/manuals/ext" element={<WorkManualExt />} />
           <Route path="/process/from-manual" element={<ProcessFromManual />} />
@@ -644,6 +646,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
         <NavDropdown label="매뉴얼" active={location.pathname.startsWith('/manuals')}>
           <Link to="/manuals/mine">내 매뉴얼 입력</Link>
           <Link to="/manuals/library">업무 메뉴얼 조회 (전사)</Link>
+          <Link to="/manuals/flow">전사 업무 흐름 지도</Link>
           <Link to="/manuals">내 매뉴얼 관리</Link>
           <Link to="/knowledge/cards">🧠 암묵지 카드</Link>
           {canEvaluate && <Link to="/manuals/coverage">매뉴얼 입력 현황 (전사)</Link>}
@@ -944,6 +947,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
       return [
         { to: '/manuals/mine', label: '내 매뉴얼 입력' },
         { to: '/manuals/library', label: '업무 메뉴얼 조회 (전사)' },
+        { to: '/manuals/flow', label: '전사 업무 흐름 지도' },
         { to: '/manuals', label: '내 매뉴얼 관리' },
         { to: '/knowledge/cards', label: '🧠 암묵지 카드' },
         ...(canEvaluate ? [{ to: '/manuals/coverage', label: '매뉴얼 입력 현황 (전사)' }] : []),

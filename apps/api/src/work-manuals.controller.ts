@@ -387,6 +387,59 @@ export class WorkManualsController {
     };
   }
 
+  /**
+   * 전사 업무 흐름 지도 — 가치사슬 L1/L2로 전 매뉴얼을 묶고 KPI를 같은 축에 매핑.
+   * 각 업무군에서 매뉴얼을 클릭하면 library/:id 로 본문(그림 포함)을 조회한다.
+   */
+  @Get('flow-map')
+  async flowMap(@Query('userId') userId?: string) {
+    await this.requireUser(String(userId || '').trim());
+    const { FLOW_DOMAINS, classifyManual, classifyKpi } = await import('./lib/flow-map');
+    const [manuals, templates, krs] = await Promise.all([
+      (this.prisma as any).workManual.findMany({
+        select: { id: true, userId: true, title: true, status: true, readinessScore: true, authorName: true, authorTeamName: true, contentHtml: true, content: true, updatedAt: true },
+        orderBy: { updatedAt: 'desc' }, take: 2000,
+      }),
+      (this.prisma as any).processTemplate.findMany({ select: { id: true, sourceManualId: true } }),
+      (this.prisma as any).keyResult.findMany({
+        select: { id: true, title: true, unit: true, objective: { select: { orgUnit: { select: { name: true } } } } }, take: 500,
+      }).catch(() => []),
+    ]);
+    const templateByManual = new Map<string, string>();
+    for (const t of templates || []) if (t.sourceManualId) templateByManual.set(String(t.sourceManualId), String(t.id));
+
+    type G = { name: string; manuals: any[] };
+    const domains = FLOW_DOMAINS.map((d) => ({ ...d, groups: [] as G[], kpis: [] as any[], manualCount: 0, processized: 0, approved: 0 }));
+    const byKey = new Map(domains.map((d) => [d.key, d]));
+    for (const m of manuals || []) {
+      const { l1, l2 } = classifyManual(String(m.id), String(m.title || ''), String(m.authorTeamName || ''));
+      const d = byKey.get(l1) || byKey.get('etc')!;
+      let g = d.groups.find((x) => x.name === l2);
+      if (!g) { g = { name: l2, manuals: [] }; d.groups.push(g); }
+      const html = String(m.contentHtml || '');
+      const imageCount = (html.match(/<img\b/gi) || []).length || (String(m.content || '').match(/\[이미지:/g) || []).length;
+      const templateId = templateByManual.get(String(m.id)) || null;
+      g.manuals.push({
+        id: m.id, title: m.title, team: m.authorTeamName || '', author: m.authorName || '', status: m.status,
+        readinessScore: m.readinessScore ?? 0, imageCount, templateId, updatedAt: m.updatedAt,
+      });
+      d.manualCount++;
+      if (templateId) d.processized++;
+      if (m.status === 'APPROVED') d.approved++;
+    }
+    // KPI 매핑 (Auto KR·테스트 지표는 제외)
+    for (const k of (krs as any[]) || []) {
+      const title = String(k.title || '');
+      if (!title || /^auto kr/i.test(title) || /^\[?테스트\]?|^tsetes/i.test(title)) continue;
+      const org = String(k.objective?.orgUnit?.name || '');
+      const { l1, l2 } = classifyKpi(title, org);
+      (byKey.get(l1) || byKey.get('etc')!).kpis.push({ id: k.id, title, unit: k.unit || '', org, l2 });
+    }
+    // 그룹 정렬(매뉴얼 많은 순), 그룹 내 최신순 유지
+    for (const d of domains) d.groups.sort((a, b) => b.manuals.length - a.manuals.length);
+    return { domains };
+  }
+
   /** 전사 열람용 단건 — 그림 포함 리치 본문과 첨부까지 그대로. 읽기 전용(수정은 작성자가 내 매뉴얼에서). */
   @Get('library/:id')
   async libraryOne(@Param('id') id: string, @Query('userId') userId?: string) {
