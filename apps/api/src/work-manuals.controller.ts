@@ -443,7 +443,9 @@ export class WorkManualsController {
     }
     // 그룹 정렬(매뉴얼 많은 순), 그룹 내 최신순 유지
     for (const d of domains) d.groups.sort((a, b) => b.manuals.length - a.manuals.length);
-    return { domains };
+    // 업무 체인(선행→후행) — 그래프 뷰용
+    const { MANUAL_CHAINS } = await import('./lib/manual-chains-data');
+    return { domains, chains: MANUAL_CHAINS };
   }
 
   /**
