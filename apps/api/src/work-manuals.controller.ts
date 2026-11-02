@@ -351,6 +351,50 @@ export class WorkManualsController {
   }
 
   /**
+   * 전사 매뉴얼 열람(서재) — 로그인 사용자 누구나 모든 매뉴얼 목록을 본다.
+   * 본문은 내려보내지 않고 그림 수·첨부 수·요약만 계산해 가볍게 응답. 단건은 library/:id.
+   */
+  @Get('library')
+  async library(@Query('userId') userId?: string) {
+    await this.requireUser(String(userId || '').trim());
+    const items = await (this.prisma as any).workManual.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take: 1000,
+      select: {
+        id: true, userId: true, title: true, status: true, readinessScore: true, version: true, updatedAt: true,
+        authorName: true, authorTeamName: true, department: true, contentHtml: true, content: true, attachments: true,
+        user: { select: { name: true, orgUnit: { select: { name: true } } } },
+      },
+    });
+    return {
+      items: (items || []).map((it: any) => {
+        const html = String(it.contentHtml || '');
+        const text = String(it.content || '');
+        const imageCount = (html.match(/<img\b/gi) || []).length || (text.match(/\[이미지:/g) || []).length;
+        return {
+          id: it.id, userId: it.userId, title: it.title, status: it.status,
+          readinessScore: it.readinessScore ?? null, version: it.version ?? 1, updatedAt: it.updatedAt,
+          authorName: it.authorName || it.user?.name || '', teamName: it.authorTeamName || it.user?.orgUnit?.name || '', department: it.department || '',
+          imageCount, hasRich: !!html, attachmentCount: Array.isArray(it.attachments) ? it.attachments.length : 0,
+          snippet: text.replace(/\s+/g, ' ').trim().slice(0, 140),
+        };
+      }),
+    };
+  }
+
+  /** 전사 열람용 단건 — 그림 포함 리치 본문과 첨부까지 그대로. 읽기 전용(수정은 작성자가 내 매뉴얼에서). */
+  @Get('library/:id')
+  async libraryOne(@Param('id') id: string, @Query('userId') userId?: string) {
+    await this.requireUser(String(userId || '').trim());
+    const m = await (this.prisma as any).workManual.findUnique({
+      where: { id },
+      include: { user: { select: { id: true, name: true, orgUnit: { select: { name: true } } } } },
+    });
+    if (!m) throw new BadRequestException('manual not found');
+    return m;
+  }
+
+  /**
    * 전사 매뉴얼 입력·프로세스화 현황 리포트 (팀장 이상).
    * 구성원별: 매뉴얼 수, 프로세스화 수(ProcessTemplate.sourceManualId 연결 기준),
    * 진척율, 정체(7일 넘게 프로세스화 안 된 매뉴얼) 수, 평균 품질점수.
@@ -1272,9 +1316,16 @@ targetField 가능한 값: ${allowedFields}
       });
       const qs = Array.isArray(result.parsed?.questions) ? result.parsed.questions : [];
       const cleaned = qs.filter((q: any) => q && q.question).slice(0, max).map((q: any, i: number) => ({ id: i + 1, stepId: String(q.stepId || '*'), field: String(q.field || ''), question: String(q.question), choices: Array.isArray(q.choices) ? q.choices.map(String).slice(0, 5) : undefined }));
-      if (cleaned.length) return { readiness: r, threshold: READINESS_THRESHOLD, questions: cleaned, source: 'ai' };
+      if (cleaned.length) return { readiness: r, threshold: READINESS_THRESHOLD, questions: this.ensureImageQuestion(content, cleaned), source: 'ai' };
     } catch { /* fall through */ }
-    return { readiness: r, threshold: READINESS_THRESHOLD, questions: fallbackQuestions(r, max), source: 'rule' };
+    return { readiness: r, threshold: READINESS_THRESHOLD, questions: this.ensureImageQuestion(content, fallbackQuestions(r, max)), source: 'rule' };
+  }
+
+  /** 그림이 한 장도 없는 매뉴얼이면 화면 캡처·사진 요청 질문을 반드시 포함 — 전사 매뉴얼을 '그림 있는 양식'으로 통일하기 위함 */
+  private ensureImageQuestion(content: string, qs: Array<{ id: number; stepId: string; field: string; question: string; choices?: string[] }>) {
+    if (/\[이미지:/.test(content)) return qs;
+    if (qs.some((q) => q.field === 'screen' && /캡처|사진|이미지/.test(q.question))) return qs;
+    return [...qs, { id: qs.length + 1, stepId: '*', field: 'screen', question: '이 매뉴얼에는 그림이 없습니다. 처음 보는 사람도 따라 할 수 있게 주요 단계의 화면 캡처나 현장 사진을 1장 이상 올려 주세요. (답변란의 이미지 추가 버튼 사용)' }];
   }
 
   /** 2) 재작성 미리보기: 답변을 반영해 STEP 양식으로 다시 쓴다. 저장하지 않음 */

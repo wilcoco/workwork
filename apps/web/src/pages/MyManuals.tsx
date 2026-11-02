@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
 import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
@@ -131,6 +131,17 @@ export function MyManuals() {
     } finally { setLoading(false); }
   }
   useEffect(() => { void load(); /* eslint-disable-next-line */ }, [userId]);
+
+  // 전사 열람(/manuals/library) 등에서 ?edit=<id>로 들어오면 해당 매뉴얼을 바로 수정 모드로 연다
+  const [searchParams] = useSearchParams();
+  const editParamDone = useRef(false);
+  useEffect(() => {
+    const eid = searchParams.get('edit');
+    if (!eid || !userId || editParamDone.current) return;
+    editParamDone.current = true;
+    void openForEdit({ id: eid } as Manual);
+    // eslint-disable-next-line
+  }, [searchParams, userId]);
 
   function resetForm() {
     setTitle(''); setContentHtml(''); setAttachments([]); setEditingId(null);
@@ -281,6 +292,7 @@ export function MyManuals() {
           const canCancel = pending && (!m.approval || !m.approval.anyActed);
           const busy = busyId === m.id;
           const approverName = m.approval?.approverName || m.reviewerName || '';
+          const imageCount = (String(m.contentHtml || '').match(/<img\b/gi) || []).length || (String(m.content || '').match(/\[이미지:/g) || []).length;
           return (
             <div key={m.id} style={{ border: editingId === m.id ? '1px solid #0F3D73' : '1px solid #e5e7eb', background: editingId === m.id ? '#f0f6ff' : undefined, borderRadius: 8, padding: '10px 12px', display: 'grid', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -290,6 +302,11 @@ export function MyManuals() {
                   {st.label}{pending && approverName ? ` · ${approverName}` : ''}
                 </span>
                 <span title="매뉴얼을 단계별 양식으로 정리한 정도. 80점 이상이면 팀장 승인을 요청할 수 있어요. 'AI 검토'로 올립니다." style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '2px 8px', border: '1px solid', borderColor: (m.readinessScore ?? 0) >= READY ? '#86efac' : '#fcd34d', background: (m.readinessScore ?? 0) >= READY ? '#f0fdf4' : '#fffbeb', color: (m.readinessScore ?? 0) >= READY ? '#15803d' : '#b45309' }}>승인 준비도 {m.readinessScore ?? 0}{(m.readinessScore ?? 0) < READY ? ' · AI 검토 필요' : ' ✓'}</span>
+                {imageCount > 0 ? (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 999, padding: '2px 8px' }}>📷 그림 {imageCount}장</span>
+                ) : (
+                  <span title="본문에 화면 캡처를 Ctrl+V로 붙여 넣거나, AI 검토 질문에 이미지를 올리면 추가됩니다" style={{ fontSize: 11, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 999, padding: '2px 8px' }}>📷 그림 없음</span>
+                )}
                 {processed ? (
                   <span style={{ fontSize: 11, color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 999, padding: '2px 8px' }}>✓ 프로세스화 완료</span>
                 ) : (
