@@ -440,6 +440,63 @@ export class WorkManualsController {
     return { domains };
   }
 
+  /**
+   * 매뉴얼 연계 정보 — 이 매뉴얼이 가치사슬 어디에 있고, 어떤 KPI와 연결되며,
+   * 같은 업무군의 다른 업무(형제 매뉴얼)와 프로세스는 무엇인지. 조회 모달의 "연계" 섹션용.
+   */
+  @Get('related/:id')
+  async relatedInfo(@Param('id') id: string, @Query('userId') userId?: string) {
+    await this.requireUser(String(userId || '').trim());
+    const m = await (this.prisma as any).workManual.findUnique({ where: { id }, select: { id: true, title: true, authorTeamName: true } });
+    if (!m) throw new BadRequestException('manual not found');
+    const { FLOW_DOMAINS, classifyManual, classifyKpi } = await import('./lib/flow-map');
+    const me = classifyManual(String(m.id), String(m.title || ''), String(m.authorTeamName || ''));
+    const domain = FLOW_DOMAINS.find((d) => d.key === me.l1) || null;
+    const mains = FLOW_DOMAINS.filter((d) => d.kind === 'main');
+    const idx = mains.findIndex((d) => d.key === me.l1);
+    const prevDomain = idx > 0 ? { key: mains[idx - 1].key, name: mains[idx - 1].name } : null;
+    const nextDomain = idx >= 0 && idx < mains.length - 1 ? { key: mains[idx + 1].key, name: mains[idx + 1].name } : null;
+
+    const [all, templates, krs] = await Promise.all([
+      (this.prisma as any).workManual.findMany({ select: { id: true, userId: true, title: true, status: true, authorTeamName: true, authorName: true }, take: 2000 }),
+      (this.prisma as any).processTemplate.findMany({ select: { id: true, title: true, sourceManualId: true } }),
+      (this.prisma as any).keyResult.findMany({ select: { id: true, title: true, unit: true, objective: { select: { orgUnit: { select: { name: true } } } } }, take: 500 }).catch(() => []),
+    ]);
+    const templateByManual = new Map<string, { id: string; title: string }>();
+    for (const t of templates || []) if (t.sourceManualId) templateByManual.set(String(t.sourceManualId), { id: String(t.id), title: String(t.title || '') });
+
+    // 같은 업무군(L2) 형제 매뉴얼
+    const siblings: any[] = [];
+    for (const x of all || []) {
+      if (String(x.id) === String(id)) continue;
+      const c = classifyManual(String(x.id), String(x.title || ''), String(x.authorTeamName || ''));
+      if (c.l1 === me.l1 && c.l2 === me.l2) {
+        siblings.push({ id: x.id, userId: x.userId, title: x.title, team: x.authorTeamName || '', author: x.authorName || '', status: x.status, templateId: templateByManual.get(String(x.id))?.id || null });
+      }
+      if (siblings.length >= 20) break;
+    }
+    // 연관 KPI: 같은 도메인, l2 일치(직접) 또는 도메인 공통(l2 미지정)
+    const kpis: any[] = [];
+    for (const k of (krs as any[]) || []) {
+      const title = String(k.title || '');
+      if (!title || /^auto kr/i.test(title) || /^\[?테스트\]?|^tsetes/i.test(title)) continue;
+      const org = String(k.objective?.orgUnit?.name || '');
+      const c = classifyKpi(title, org);
+      if (c.l1 !== me.l1) continue;
+      const direct = !!c.l2 && c.l2 === me.l2;
+      kpis.push({ id: k.id, title, unit: k.unit || '', org, direct });
+    }
+    kpis.sort((a, b) => Number(b.direct) - Number(a.direct));
+
+    return {
+      l1: me.l1, l2: me.l2, domainName: domain?.name || '', domainKind: domain?.kind || 'support',
+      prevDomain, nextDomain,
+      template: templateByManual.get(String(id)) || null,
+      kpis: kpis.slice(0, 20),
+      siblings,
+    };
+  }
+
   /** 전사 열람용 단건 — 그림 포함 리치 본문과 첨부까지 그대로. 읽기 전용(수정은 작성자가 내 매뉴얼에서). */
   @Get('library/:id')
   async libraryOne(@Param('id') id: string, @Query('userId') userId?: string) {

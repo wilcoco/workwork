@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
 import { ManualDocument } from '../components/ManualDocument';
+import { ManualRelated } from '../components/ManualRelated';
 
 /**
  * 전사 매뉴얼 열람(서재) — 누구나 다른 사람이 쓴 매뉴얼을 그림·양식이 적용된 모습 그대로 본다.
@@ -217,6 +218,12 @@ export function ManualLibrary() {
                 )}
               </div>
             )}
+            <ManualRelated manualId={open.id} userId={userId}
+              onOpenManual={(m) => {
+                const it = items.find((x) => x.id === m.id);
+                if (it) { void openDetail(it); return; }
+                void openDetail({ id: m.id, userId: m.userId, title: m.title, status: '', readinessScore: null, version: 1, updatedAt: '', authorName: '', teamName: '', department: '', imageCount: 1, hasRich: false, attachmentCount: 0, snippet: '' } as LibItem);
+              }} />
             {detailLoading && <div style={{ fontSize: 13, color: '#94a3b8' }}>본문 불러오는 중…</div>}
             {detail && <ManualDocument manual={detail} />}
           </div>

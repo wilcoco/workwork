@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../lib/api';
 import { toast } from '../components/Toast';
 import { ManualDocument } from '../components/ManualDocument';
+import { ManualRelated } from '../components/ManualRelated';
 
 /**
  * 전사 업무 흐름 지도 — 가치사슬(영업·수주 → … → 물류·출하) 위에 전 매뉴얼과 KPI를 배치.
@@ -181,6 +182,8 @@ export function ManualFlowMap() {
               <button className="btn btn-sm btn-outline" onClick={() => nav(`/manuals/library`)}>전사 열람에서 보기</button>
               <button className="btn btn-sm btn-outline" onClick={() => { setOpenManual(null); setDetail(null); }}>닫기</button>
             </div>
+            <ManualRelated manualId={openManual.id} userId={userId}
+              onOpenManual={(m) => void openDoc({ team: '', author: '', status: '', readinessScore: 0, imageCount: 0, attachmentCount: 0, updatedAt: '', ...m } as FlowManual)} />
             {detailLoading && <div style={{ fontSize: 13, color: '#94a3b8' }}>본문 불러오는 중…</div>}
             {detail && <ManualDocument manual={detail} />}
           </div>
