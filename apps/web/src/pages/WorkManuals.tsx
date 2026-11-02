@@ -829,7 +829,8 @@ export function WorkManuals() {
                     key={String(m.id)}
                     type="button"
                     className="btn btn-ghost"
-                    onClick={() => editManual(m)}
+                    title="고급 편집기(내 매뉴얼 입력)에서 엽니다 — 그림 붙여넣기·파일 첨부·AI 검토"
+                    onClick={() => nav(`/manuals/mine?edit=${encodeURIComponent(String(m.id))}`)}
                     style={{
                       justifyContent: 'flex-start',
                       textAlign: 'left',
