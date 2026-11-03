@@ -869,15 +869,15 @@ function ApprovalBox({ grid }: { grid: ParsedGrid }) {
  * Index 8+ (파일명/imgsort/전결/etc.) is hidden; file metadata is
  * shown via the separate 첨부파일 grid below.
  */
-const PROPOSAL_FIELD_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'date' | 'amount' }> = [
-  { label: '품의번호',   kind: 'mono' },
-  { label: '제목',       kind: 'text' },
-  { label: '목적',       kind: 'text' },
-  { label: '기안자',     kind: 'text' },
-  { label: '기안일자',   kind: 'date' },
-  { label: '완료예정일', kind: 'date' },
-  { label: '소요금액',   kind: 'amount' },
-  { label: '내용',       kind: 'text' },
+const PROPOSAL_FIELD_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'date' | 'amount'; field?: string }> = [
+  { label: '품의번호',   kind: 'mono',   field: 'slpno' },
+  { label: '제목',       kind: 'text',   field: 'title' },
+  { label: '목적',       kind: 'text',   field: 'purpose' },
+  { label: '기안자',     kind: 'text',   field: 'sname' },
+  { label: '기안일자',   kind: 'date',   field: 'date' },
+  { label: '완료예정일', kind: 'date',   field: 'duedate' },
+  { label: '소요금액',   kind: 'amount', field: 'amount' },
+  { label: '내용',       kind: 'text',   field: 'content' },
 ];
 const PROPOSAL_CONTENTS_INDEX = 7; // 내용 — rendered separately at the bottom.
 
@@ -909,6 +909,14 @@ function ProposalForm({
   // list view (so inline-expanded cards never look emptier than the
   // outer list row).
   const valueAt = (idx: number): string => {
+    // CAMS 공식 API 전환 후에는 필드 이름이 분명하므로 이름을 먼저 본다.
+    // (예전 HTML 그리드는 이름이 없어 위치로만 찾았고, 필드가 하나만 늘어도 값이 밀렸다)
+    const named = PROPOSAL_FIELD_LAYOUT[idx]?.field;
+    if (named && mainFields.includes(named)) {
+      const v = row[named];
+      if (v != null && String(v).trim()) return String(v).trim();
+      return '';
+    }
     const fieldCode = mainFields[idx];
     if (fieldCode != null) {
       const v = row[fieldCode];
@@ -1103,16 +1111,16 @@ function ProposalForm({
  *   7      품의자      string (e.g. "203347 정슬아")
  *   8      결재일      date
  */
-const VOUCHER_HEADER_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'date' }> = [
+const VOUCHER_HEADER_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'date' ; field?: string }> = [
   { label: '순번',     kind: 'text' }, // index 0 — hidden in render
-  { label: '전표번호', kind: 'mono' },
-  { label: '기표일자', kind: 'date' },
-  { label: '입력일',   kind: 'text' },
-  { label: '거래형태', kind: 'text' },
-  { label: '결재여부', kind: 'text' },
-  { label: '취소여부', kind: 'text' },
-  { label: '품의자',   kind: 'text' },
-  { label: '결재일',   kind: 'date' },
+  { label: '전표번호', kind: 'mono', field: 'slpno' },
+  { label: '기표일자', kind: 'date', field: 'accdate' },
+  { label: '입력일',   kind: 'text', field: 'inpdt' },
+  { label: '거래형태', kind: 'text', field: 'trantype' },
+  { label: '결재여부', kind: 'text', field: 'apryn' },
+  { label: '취소여부', kind: 'text', field: 'cancelyn' },
+  { label: '품의자',   kind: 'text', field: 'sname' },
+  { label: '결재일',   kind: 'date', field: 'signdate' },
 ];
 
 function VoucherForm({
@@ -1139,6 +1147,12 @@ function VoucherForm({
   const fields = headerGrid?.fields || [];
 
   const valueAt = (idx: number): string => {
+    // 이름이 있으면 이름 우선 (CAMS 공식 API 전환)
+    const named = VOUCHER_HEADER_LAYOUT[idx]?.field;
+    if (named && fields.includes(named)) {
+      const v = row[named];
+      return v != null && String(v).trim() ? String(v).trim() : '';
+    }
     const fc = fields[idx];
     if (fc != null) {
       const v = row[fc];
