@@ -1116,7 +1116,7 @@ const VOUCHER_HEADER_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'dat
   { label: '전표번호', kind: 'mono', field: 'slpno' },
   { label: '기표일자', kind: 'date', field: 'accdate' },
   { label: '입력일',   kind: 'text', field: 'inpdt' },
-  { label: '거래형태', kind: 'text', field: 'trantype' },
+  { label: '차변합계', kind: 'amount', field: 'dramt' },
   { label: '결재여부', kind: 'text', field: 'apryn' },
   { label: '취소여부', kind: 'text', field: 'cancelyn' },
   { label: '품의자',   kind: 'text', field: 'sname' },
@@ -1149,8 +1149,9 @@ function VoucherForm({
   const valueAt = (idx: number): string => {
     // 이름이 있으면 이름 우선 (CAMS 공식 API 전환)
     const named = VOUCHER_HEADER_LAYOUT[idx]?.field;
-    if (named && fields.includes(named)) {
-      const v = row[named];
+    if (named) {
+      // 이름이 지정된 칸은 이름으로만 찾는다 — 없으면 빈칸(위치로 엉뚱한 값이 들어오지 않게)
+      const v = fields.includes(named) ? row[named] : '';
       return v != null && String(v).trim() ? String(v).trim() : '';
     }
     const fc = fields[idx];
