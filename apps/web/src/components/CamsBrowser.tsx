@@ -305,16 +305,20 @@ function ListWithExpand({
   // Declared above the early-return for stable hook order.
   const [closeSignal, setCloseSignal] = useState({ n: 0, owner: '' });
   const [page, setPage] = useState(1);
+  const [onlyDone, setOnlyDone] = useState(false);
   const pageSize = 20;
 
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
   if (!listGrid) return null;
 
-  // 결재완료(09)만 표시, 상태 컬럼 숨김
-  const approvedRows = listGrid.rows.filter((row) => {
-    const st = String(row['status'] ?? row['state'] ?? '').trim();
-    return st === '09';
-  });
+  // 상태가 있는 목록만 "결재완료" 거르기를 제공한다.
+  // CAMS 공식 API의 품의 목록에는 상태 필드가 없고(전표는 결재여부 Y/N), 기간으로 조회하므로 기본은 전체 표시.
+  const statusKey = ['status', 'state', 'apryn', 'signyn'].find((k) => listGrid.fields.includes(k));
+  const isDone = (row: GridRow) => {
+    const v = String((row as any)[statusKey || ''] ?? '').trim();
+    return v === '09' || v === 'Y' || v === '결재' || v === '완료' || v === '결재완료';
+  };
+  const approvedRows = statusKey && onlyDone ? listGrid.rows.filter(isDone) : listGrid.rows;
 
   // Reorder columns so the most useful ones come first. 불필요한 컬럼 숨김
   const colOrder = ['slpno', 'date', 'title', 'aspnote', 'sname', 'dname', 'amt', 'amount'];
@@ -344,10 +348,16 @@ function ListWithExpand({
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <span>
-          결재완료 <strong>{approvedRows.length}</strong>건
-          {q && <> · 검색결과 <strong>{filteredRows.length}</strong>건</>}
-          {filteredRows.length > pageSize && <> · {page}/{totalPages} 페이지</>}
+        <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{onlyDone ? '결재완료' : '전체'} <strong>{approvedRows.length}</strong>건</span>
+          {statusKey && (
+            <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <input type="checkbox" checked={onlyDone} onChange={(e) => { setOnlyDone(e.target.checked); setPage(1); }} style={{ margin: 0, width: 'auto' }} />
+              <span>결재완료만</span>
+            </label>
+          )}
+          {q && <span>· 검색결과 <strong>{filteredRows.length}</strong>건</span>}
+          {filteredRows.length > pageSize && <span>· {page}/{totalPages} 페이지</span>}
         </span>
         {totalPages > 1 && (
           <div style={{ display: 'flex', gap: 4 }}>
