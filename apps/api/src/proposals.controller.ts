@@ -1,234 +1,106 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Query, Res } from '@nestjs/common';
 import { Response } from 'express';
-import { fetchCamsHtml, parseGrids, flattenGrids, buildDiagnostics } from './cams.util';
-
-const ALLOWED_USER_IDS = [
-  'cmkkvpopa0001sbpqnk5cbpiu', // 홍정수
-  'cmouna6bf01w0xjhgf6imupg5', // 김정중
-  'cmoknhiqj0av02rtgo5eou86t', // 김선구
-];
-export type { ParsedGrid } from './cams.util';
+import { PrismaService } from './prisma.service';
+import { tenantGet } from './lib/tenant';
+import { CamsApiService, defaultRange, flatten, puDetailGrids, puListGrids, ymd } from './cams-api.service';
 
 /**
- * Read-only proxy + parser for the legacy CAMS approval pages.
- *
- * There are two distinct pages with different DataGrid layouts:
- *
- * 1. **List page** — `http://cn.icams.co.kr/boss/mpu.aspx` (no params).
- *    Renders all of the current user's proposals as one DataGrid named
- *    `myDataGrid`, with span ids of the form `myDataGrid_lbl<FIELD><N>`
- *    (note: NO underscore between field and index). Fields observed:
- *    `SLPNO`, `SNAME`, `STATUS`, `TITLE`, `DNAME`, `AMT`.
- *
- * 2. **Detail page** — `http://cn.icams.co.kr/acco/masp_list.aspx?slp_no=<N>`.
- *    Despite the URL name it is a single-document detail view that
- *    requires `slp_no`. With no `slp_no` the page returns an empty
- *    ASP.NET WebForms shell (~841 bytes, just `__VIEWSTATE`). With a
- *    valid `slp_no` it renders up to four DataGrids on the same page
- *    (main info, attached files, bidder companies, approval line). Span
- *    ids follow `myDataGrid2_lbl<FIELD>_<N>` (note: WITH underscore).
- *
- * The upstream is plain HTTP and CORS-less, so the browser cannot fetch
- * either page directly from the HTTPS web app — this controller fetches
- * server-side and groups the rows by grid id. The PowerApps source the
- * legacy app uses confirms both URL/regex variants.
+ * 품의서 조회 — CAMS 공식 API(JSON) 기반. 2026-11-04 HTML 스크래핑에서 전환.
+ *  GET  /api/proposals/list[?slpNo=&from=&to=&sbn=]   목록 또는 상세(화면용 grids 구조 유지)
+ *  GET  /api/proposals/file?slpNo=&sort=&filename=    첨부 다운로드(프록시)
+ *  POST /api/proposals/approve | /reject              결재·반려 (기본 잠금, 테넌트 설정으로 해제)
+ * 접근 권한은 테넌트 설정 cams.allowedUserIds.
  */
 @Controller('proposals')
 export class ProposalsController {
-  /**
-   * GET /api/proposals/list[?slpNo=<N>]
-   *
-   * - With no `slpNo`: fetch the list page (`/boss/mpu.aspx`) and parse
-   *   the single `myDataGrid` into one flat list of proposals.
-   * - With `slpNo`: fetch the detail page and return the four DataGrids
-   *   keyed by their grid id, with rows of `{ <fieldCode>: <text> }`.
-   *
-   * Both cases share the same response shape (`grids` + flat `items`)
-   * so the frontend can render either uniformly.
-   */
+  constructor(private prisma: PrismaService, private cams: CamsApiService) {}
+
+  private async assertAllowed(actorId?: string) {
+    const id = String(actorId || '').trim();
+    if (!id) throw new ForbiddenException('접근 권한이 없습니다');
+    const allowed = await tenantGet<string[]>(this.prisma, 'cams.allowedUserIds');
+    if (!Array.isArray(allowed) || !allowed.includes(id)) throw new ForbiddenException('접근 권한이 없습니다');
+    const u = await this.prisma.user.findUnique({ where: { id }, select: { id: true, name: true, employeeNo: true, role: true } });
+    if (!u) throw new ForbiddenException('접근 권한이 없습니다');
+    return u;
+  }
+
   @Get('list')
-  async list(@Query('slpNo') slpNo?: string, @Query('actorId') actorId?: string) {
-    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
-      throw new BadRequestException('접근 권한이 없습니다');
-    }
+  async list(@Query('slpNo') slpNo?: string, @Query('actorId') actorId?: string, @Query('from') from?: string, @Query('to') to?: string, @Query('sbn') sbn?: string) {
+    await this.assertAllowed(actorId);
     const trimmed = String(slpNo || '').trim();
-    const url = trimmed
-      ? `${process.env.CAMS_PROPOSAL_DETAIL_URL || process.env.CAMS_PROPOSAL_LIST_URL || 'http://cn.icams.co.kr/acco/masp_list.aspx'}?slp_no=${encodeURIComponent(trimmed)}`
-      : (process.env.CAMS_PROPOSAL_BOSS_URL || 'http://cn.icams.co.kr/boss/mpu.aspx');
-
-    const html = await fetchCamsHtml(url);
-    const grids = parseGrids(html);
-    const items = flattenGrids(grids);
-    const diagnostics = items.length === 0 ? buildDiagnostics(html, Boolean(trimmed)) : undefined;
-
-    // 상세 조회 시 첨부파일 페이지도 가져오기
-    // HTML 구조: myDataGrid2 테이블
-    // - 순번: span 없이 그냥 숫자 (파싱 안 됨) → 행 인덱스+1 사용
-    // - myDataGrid2_lblSLPNO_0: 품의서번호
-    // - myDataGrid2_lblTITLE_0: 파일명 ← 여기에 파일명!
-    let attachments: Array<{ seq: number; filename: string; sortValue: string; slpNo: string }> = [];
     if (trimmed) {
-      try {
-        const filesUrl = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}`;
-        const filesHtml = await fetchCamsHtml(filesUrl);
-        const filesGrids = parseGrids(filesHtml);
-
-        // myDataGrid2가 첨부파일 그리드 (myDataGrid는 메인 품의서 정보)
-        const fileGrid = filesGrids['myDataGrid2'];
-        console.log('[첨부파일] fileGrid:', fileGrid);
-
-        if (fileGrid && fileGrid.rows.length > 0) {
-          console.log('[첨부파일] fields:', fileGrid.fields);
-          console.log('[첨부파일] rows:', fileGrid.rows);
-
-          // 파일명은 'title' 필드에 있음 (myDataGrid2_lblTITLE_N)
-          attachments = fileGrid.rows.map((row, idx) => {
-            const filename = String(row['title'] ?? `파일${idx + 1}`).trim();
-            // 순번은 span에 없어서 파싱 안 됨 → 행 인덱스+1 사용
-            const sortValue = String(idx + 1);
-            return {
-              seq: idx + 1,
-              filename,
-              sortValue,
-              slpNo: trimmed,
-            };
-          });
-          console.log('[첨부파일] 결과:', attachments);
-        }
-      } catch (e) {
-        // 첨부파일 조회 실패해도 메인 데이터는 반환
-        console.error('첨부파일 조회 실패:', e);
-      }
+      const d = await this.cams.data('pu', { slp_no: trimmed });
+      const { grids, attachments } = puDetailGrids({ ...d, slpNo: trimmed });
+      const items = flatten(grids);
+      return { slpNo: trimmed, sourceUrl: `${this.cams.base}/api/data.ashx?resource=pu&slp_no=${trimmed}`, grids, count: items.length, items, attachments };
     }
-
-    return {
-      slpNo: trimmed,
-      sourceUrl: url,
-      grids,
-      count: items.length,
-      items,
-      attachments,
-      ...(diagnostics ? { diagnostics } : {}),
-    };
+    const r = defaultRange(90);
+    const f = ymd(from) || r.from, t = ymd(to) || r.to;
+    const rows = await this.cams.data<any[]>('pulist', { from: f, to: t, sbn: String(sbn || '').trim() || undefined });
+    const grids = puListGrids(Array.isArray(rows) ? rows : []);
+    const items = flatten(grids);
+    return { slpNo: '', sourceUrl: `${this.cams.base}/api/data.ashx?resource=pulist&from=${f}&to=${t}`, range: { from: f, to: t }, grids, count: items.length, items, attachments: [] };
   }
 
-  /**
-   * GET /api/proposals/file?slpNo=<N>&sort=<N>&filename=<name>
-   * CAMS 첨부파일을 프록시하여 다운로드
-   */
   @Get('file')
-  async downloadFile(
-    @Query('slpNo') slpNo: string,
-    @Query('sort') sort: string,
-    @Query('filename') filename: string,
-    @Query('actorId') actorId: string,
-    @Res() res: Response,
-  ) {
-    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
-      throw new BadRequestException('접근 권한이 없습니다');
-    }
-    if (!slpNo || !sort) {
-      throw new BadRequestException('slpNo와 sort가 필요합니다');
-    }
-
-    const url = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(slpNo)}&sort=${encodeURIComponent(sort)}`;
-    console.log('[파일다운로드] URL:', url);
-
-    try {
-      const f: any = (globalThis as any).fetch;
-      const upstream = await f(url, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-          'Accept': '*/*',
-          'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-          'Referer': 'http://cn.icams.co.kr/acco/mpu_list2.aspx',
-        },
-      });
-
-      console.log('[파일다운로드] 응답 status:', upstream.status, 'content-type:', upstream.headers.get('content-type'));
-
-      if (!upstream.ok) {
-        const errorBody = await upstream.text();
-        console.error('[파일다운로드] 에러 응답:', errorBody.slice(0, 500));
-        throw new BadRequestException(`CAMS 파일 조회 실패: ${upstream.status}`);
-      }
-
-      const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
-      const buffer = Buffer.from(await upstream.arrayBuffer());
-
-      // 파일명 인코딩 (한글 지원)
-      const safeName = filename || `file_${slpNo}_${sort}`;
-      const encodedFilename = encodeURIComponent(safeName);
-
-      res.set({
-        'Content-Type': contentType,
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodedFilename}`,
-        'Content-Length': buffer.length,
-      });
-      res.send(buffer);
-    } catch (e: any) {
-      throw new BadRequestException(`파일 다운로드 실패: ${e?.message || e}`);
-    }
+  async downloadFile(@Query('slpNo') slpNo: string, @Query('sort') sort: string, @Query('filename') filename: string, @Query('actorId') actorId: string, @Res() res: Response) {
+    await this.assertAllowed(actorId);
+    if (!slpNo || !sort) throw new BadRequestException('slpNo와 sort가 필요합니다');
+    const { buffer, contentType, filename: upstreamName } = await this.cams.file(String(slpNo), String(sort), 'pu');
+    const name = filename || upstreamName || `file_${slpNo}_${sort}`;
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+      'Content-Length': String(buffer.length),
+    });
+    res.send(buffer);
   }
 
-  /**
-   * GET /api/proposals/debug?slpNo=...
-   * Returns the raw HTML (truncated) and a few quick diagnostics so we can
-   * see what the upstream page is actually returning when the parsed list
-   * comes back empty.
-   */
-  @Get('debug')
-  async debug(@Query('slpNo') slpNo?: string, @Query('actorId') actorId?: string) {
-    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
-      throw new BadRequestException('접근 권한이 없습니다');
+  /** 결재선에 실제로 들어 있고 아직 미결인 사람만 — 사번은 User.employeeNo 로 맞춘다 */
+  private async assertApprover(user: any, slpNo: string) {
+    if (!(await tenantGet<any>(this.prisma, 'cams.writeEnabled'))) {
+      throw new ForbiddenException('CAMS 결재 기능이 꺼져 있습니다 (관리 → 회사 설정에서 cams.writeEnabled)');
     }
-    const base = process.env.CAMS_PROPOSAL_LIST_URL ||
-      'http://cn.icams.co.kr/acco/masp_list.aspx';
-    const trimmed = String(slpNo || '').trim();
-    const url = trimmed ? `${base}?slp_no=${encodeURIComponent(trimmed)}` : base;
-
-    try {
-      const html = await fetchCamsHtml(url);
-      return { url, ...buildDiagnostics(html, Boolean(trimmed)) };
-    } catch (e: any) {
-      return { url, error: e?.message || String(e) };
-    }
+    const empNo = String(user.employeeNo || '').trim();
+    if (!empNo) throw new BadRequestException('내 사번(employeeNo)이 등록돼 있지 않습니다');
+    const d: any = await this.cams.data('pu', { slp_no: slpNo });
+    const line: any[] = Array.isArray(d?.line) ? d.line : [];
+    const mine = line.find((l) => String(l.SBN).trim() === empNo);
+    if (!mine) throw new ForbiddenException('이 품의의 결재선에 없습니다');
+    if (String(mine.GSTATUS) !== '01') throw new BadRequestException('이미 처리한 건입니다');
+    return empNo;
   }
 
-  /**
-   * GET /api/proposals/debug-files?slpNo=...
-   * 첨부파일 페이지(mpu_list2.aspx)의 구조를 디버깅
-   */
-  @Get('debug-files')
-  async debugFiles(@Query('slpNo') slpNo: string, @Query('actorId') actorId?: string) {
-    if (!actorId || !ALLOWED_USER_IDS.includes(actorId)) {
-      throw new BadRequestException('접근 권한이 없습니다');
-    }
-    if (!slpNo) {
-      throw new BadRequestException('slpNo가 필요합니다');
-    }
-    const trimmed = String(slpNo).trim();
-    const url = `http://cn.icams.co.kr/acco/mpu_list2.aspx?slp_no=${encodeURIComponent(trimmed)}`;
+  @Post('approve')
+  async approve(@Body() b: any) {
+    const user = await this.assertAllowed(b?.actorId);
+    const slpNo = String(b?.slpNo || '').trim();
+    if (!slpNo) throw new BadRequestException('slpNo가 필요합니다');
+    const empNo = await this.assertApprover(user, slpNo);
+    return this.cams.act('pu', 'commit', { slpNo, userId: empNo, comnm: 'WORKWORK', opinion: String(b?.opinion || '').slice(0, 200) });
+  }
 
+  @Post('reject')
+  async reject(@Body() b: any) {
+    const user = await this.assertAllowed(b?.actorId);
+    const slpNo = String(b?.slpNo || '').trim();
+    const opinion = String(b?.opinion || '').trim();
+    if (!slpNo) throw new BadRequestException('slpNo가 필요합니다');
+    if (!opinion) throw new BadRequestException('반려 사유를 적어 주세요');
+    const empNo = await this.assertApprover(user, slpNo);
+    return this.cams.act('pu', 'return', { slpNo, userId: empNo, comnm: 'WORKWORK', opinion: opinion.slice(0, 200) });
+  }
+
+  /** 연결 상태 점검 (키 설정 여부·응답 확인) */
+  @Get('health')
+  async health(@Query('actorId') actorId?: string) {
+    await this.assertAllowed(actorId);
+    if (!this.cams.configured) return { ok: false, reason: 'CAMS_API_KEY 미설정', base: this.cams.base };
+    const r = defaultRange(7);
     try {
-      const html = await fetchCamsHtml(url);
-      const grids = parseGrids(html);
-      const gridSummary = Object.entries(grids).map(([id, g]) => ({
-        id,
-        fields: g.fields,
-        rowCount: g.rows.length,
-        sampleRows: g.rows.slice(0, 3),
-      }));
-      return {
-        url,
-        htmlLength: html.length,
-        grids: gridSummary,
-        htmlSnippet: html.slice(0, 5000),
-      };
-    } catch (e: any) {
-      return { url, error: e?.message || String(e) };
-    }
+      const rows = await this.cams.data<any[]>('pulist', { from: r.from, to: r.to });
+      return { ok: true, base: this.cams.base, range: r, count: Array.isArray(rows) ? rows.length : 0, writeEnabled: !!(await tenantGet<any>(this.prisma, 'cams.writeEnabled')) };
+    } catch (e: any) { return { ok: false, base: this.cams.base, reason: e?.message || String(e) }; }
   }
 }
-

@@ -8,6 +8,8 @@ export const TENANT_DEFAULTS: Record<string, any> = {
   'accounts.hiddenUserIds': ['cmouna6bf01w0xjhgf6imupg5', 'cmoknhiqj0av02rtgo5eou86t'], // 조직도 미배정 활성 계정 — 목록·명단에서만 숨김(삭제 금지)
   'accounts.hiddenNames': ['김정중', '김선구'],
   'logistics.defaultFinalApprovers': ['윤대룡', '최연상'],
+  'cams.allowedUserIds': ['cmkkvpopa0001sbpqnk5cbpiu', 'cmouna6bf01w0xjhgf6imupg5', 'cmoknhiqj0av02rtgo5eou86t'], // 품의서·전표 조회 허용 계정(홍정수·김정중·김선구)
+  'cams.writeEnabled': false, // CAMS 결재·반려(쓰기) — 운영 회계 시스템에 직접 반영되므로 기본 잠금
   'ai.defaultProvider': 'claude',
   'features': { oracleAgent: true, sharepointImport: true, camsAttachments: true, odoo: false, kpiQuiz: true, agenda: true, knowledgeCards: true },
   'onboarding.completedSteps': [],
@@ -15,7 +17,7 @@ export const TENANT_DEFAULTS: Record<string, any> = {
 export const TENANT_KEYS = Object.keys(TENANT_DEFAULTS);
 export const TENANT_KEY_LABELS: Record<string, string> = {
   'company.name': '회사명', 'company.locale': '언어·지역', 'accounts.hiddenUserIds': '명단에서 숨길 계정 ID', 'accounts.hiddenNames': '명단에서 숨길 이름',
-  'logistics.defaultFinalApprovers': '물류 배차 기본 최종 결재자(이름)', 'ai.defaultProvider': 'AI 기본 공급자(claude|openai)', 'features': '기능 플래그', 'onboarding.completedSteps': '온보딩 완료 단계',
+  'logistics.defaultFinalApprovers': '물류 배차 기본 최종 결재자(이름)', 'cams.allowedUserIds': '품의서·전표 조회 허용 계정 ID', 'cams.writeEnabled': 'CAMS 결재·반려 사용 (true/false)', 'ai.defaultProvider': 'AI 기본 공급자(claude|openai)', 'features': '기능 플래그', 'onboarding.completedSteps': '온보딩 완료 단계',
 };
 
 const cache = new Map<string, { v: any; at: number }>();

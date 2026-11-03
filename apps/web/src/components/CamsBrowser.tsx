@@ -49,6 +49,8 @@ interface GridRow {
 
 interface ParsedGrid {
   id: string;
+  /** 서버가 붙인 구역 이름 (CAMS API 전환 후). 있으면 추정 규칙보다 우선. */
+  label?: string;
   fields: string[];
   rows: GridRow[];
 }
@@ -87,6 +89,11 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ListResp | null>(null);
   const [slpNoInput, setSlpNoInput] = useState<string>('');
+  // CAMS API는 기간으로 조회한다 (이전 HTML 화면은 '내 문서' 고정이었다)
+  const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  const daysAgo = (n: number) => new Date(Date.now() + 9 * 3600000 - n * 86400000).toISOString().slice(0, 10);
+  const [fromInput, setFromInput] = useState(daysAgo(config.format === 'voucher' ? 30 : 90));
+  const [toInput, setToInput] = useState(today);
   // Client-side filter applied to the already-fetched list. CAMS
   // upstream returns the page-sized batch as-is, so any further
   // narrowing has to happen here.
@@ -136,6 +143,10 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
       const params = new URLSearchParams();
       if (trimmed) params.set('slpNo', trimmed);
       if (userId) params.set('actorId', userId);
+      if (!trimmed) {
+        params.set('from', fromInput.replace(/-/g, ''));
+        params.set('to', toInput.replace(/-/g, ''));
+      }
       const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await apiJson<ListResp>(`${config.apiPath}/list${qs}`);
       setData(res);
@@ -166,7 +177,7 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: 16 }}>
       <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 6 }}>{config.pageTitle}</h2>
       <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-        CAMS 회계 시스템(<code>cn.icams.co.kr</code>)에서 {config.docNoun}를 조회합니다. 번호없이 조회하면 내 {config.docNoun} 리스트가, <code>slp_no</code>를 넣으면 단일 {config.docNoun} 상세가 나옵니다. 리스트는 업스트림이 반환하는 만큼 한 번에 보여주며, 제목/이름/번호로 화면 내 검색이 가능합니다.
+        CAMS 회계 시스템(<code>cn.icams.co.kr</code>)의 공식 API로 {config.docNoun}를 조회합니다. 번호 없이 조회하면 <b>선택한 기간</b>의 목록이, 번호를 넣으면 단일 {config.docNoun} 상세(결재선·결재이력·첨부 포함)가 나옵니다. 목록은 제목/이름/번호로 화면 내 검색이 됩니다.
       </p>
 
       <form
@@ -181,6 +192,12 @@ export function CamsBrowser({ config }: { config: CamsBrowserConfig }) {
             placeholder="비워두면 리스트 조회"
             style={{ marginLeft: 8, border: '1px solid #cbd5e1', borderRadius: 6, padding: '6px 10px', fontSize: 14, width: 200 }}
           />
+        </label>
+        <label style={{ fontSize: 13, color: '#475569' }}>
+          기간
+          <input type="date" value={fromInput} max={toInput} onChange={(e) => setFromInput(e.target.value)} style={{ marginLeft: 8, border: '1px solid #cbd5e1', borderRadius: 6, padding: '5px 8px', fontSize: 13 }} />
+          <span style={{ margin: '0 4px' }}>~</span>
+          <input type="date" value={toInput} min={fromInput} max={today} onChange={(e) => setToInput(e.target.value)} style={{ border: '1px solid #cbd5e1', borderRadius: 6, padding: '5px 8px', fontSize: 13 }} />
         </label>
         <button
           type="submit"
@@ -586,20 +603,20 @@ function Doc({
 }) {
   const labelFor = useLabelFor();
   const main =
-    grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '품의 정보') ||
-    grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 정보') ||
+    grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '품의 정보') ||
+    grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '전표 정보') ||
     grids[0];
-  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
-  const bidders = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '입찰업체');
-  const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
-  const lineItems = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 명세');
+  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '첨부파일');
+  const bidders = grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '입찰업체');
+  const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '결재선');
+  const lineItems = grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '전표 명세');
   const others = grids.filter((g) => {
     if (g === main || g === files || g === bidders || g === approvers || g === lineItems) return false;
     // Only suppress the redundant single-row debit/credit totals grids
     // when the voucher ledger above has already rendered the totals.
     // If we couldn't identify a line-items grid, keep the totals grid
     // visible so the user never silently loses data.
-    if (lineItems && sectionLabelFor(g.id, g.fields, config) === '_totals') return false;
+    if (lineItems && sectionLabelFor(g.id, g.fields, config, g.label) === '_totals') return false;
     return true;
   });
 
@@ -676,7 +693,7 @@ function Doc({
       )}
 
       {others.map((g) => (
-        <DocSection key={g.id} title={sectionLabelFor(g.id, g.fields, config)} gridId={g.id} count={g.rows.length}>
+        <DocSection key={g.id} title={sectionLabelFor(g.id, g.fields, config, g.label)} gridId={g.id} count={g.rows.length}>
           <CompactTable grid={g} />
         </DocSection>
       ))}
@@ -867,7 +884,7 @@ function ProposalForm({
   attachments?: Attachment[];
   userId?: string;
 }) {
-  const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
+  const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '결재선');
   // Main info: take the first grid that has any row and isn't the
   // approval line. We do NOT use a label heuristic here — the user
   // said positions are authoritative.
@@ -1015,7 +1032,7 @@ function ProposalForm({
                   const sortValue = att.sortValue || String(idx + 1);
                   const handleDownload = async () => {
                     try {
-                      const url = `/api/proposals/file?slpNo=${encodeURIComponent(docSlpNo)}&sort=${encodeURIComponent(sortValue)}&filename=${encodeURIComponent(att.filename)}&actorId=${encodeURIComponent(userId || '')}`;
+                      const url = `${config.apiPath}/file?slpNo=${encodeURIComponent(docSlpNo)}&sort=${encodeURIComponent(sortValue)}&filename=${encodeURIComponent(att.filename)}&actorId=${encodeURIComponent(userId || '')}`;
                       const res = await apiFetch(url);
                       if (!res.ok) {
                         const err = await res.text();
@@ -1097,15 +1114,15 @@ function VoucherForm({
   config: CamsBrowserConfig;
   fallbackHeader?: GridRow;
 }) {
-  const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '결재선');
-  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '첨부파일');
-  const lineItems = grids.find((g) => sectionLabelFor(g.id, g.fields, config) === '전표 명세');
+  const approvers = grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '결재선');
+  const files = grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '첨부파일');
+  const lineItems = grids.find((g) => sectionLabelFor(g.id, g.fields, config, g.label) === '전표 명세');
   // Header info: first non-hidden grid (skip approvers/files/lineItems
   // and the single-row debit/credit totals grids).
   const headerGrid =
     grids.find((g) =>
       g !== approvers && g !== files && g !== lineItems
-      && sectionLabelFor(g.id, g.fields, config) !== '_totals'
+      && sectionLabelFor(g.id, g.fields, config, g.label) !== '_totals'
       && g.rows.length > 0,
     ) || grids[0];
   const row: Record<string, any> = (headerGrid?.rows?.[0] as any) || {};
@@ -1687,7 +1704,9 @@ function DiagnosticsPanel({ d }: { d: ListDiagnostics }) {
  * exposes. The grid ids on the upstream page are not stable enough to
  * fully hard-code, so we fall back to a heuristic.
  */
-function sectionLabelFor(id: string, fields: string[], config: CamsBrowserConfig): string {
+function sectionLabelFor(id: string, fields: string[], config: CamsBrowserConfig, label?: string): string {
+  // 서버(CAMS API)가 구역 이름을 직접 알려주면 그대로 쓴다. 목록 그리드만 페이지별 호칭으로 바꾼다.
+  if (label) return id === 'myDataGrid' ? config.listLabel : label;
   const fset = new Set(fields.map((f) => f.toLowerCase()));
   // List page: `myDataGrid` (no trailing digit) is the only multi-row
   // list grid. Match it exactly so the detail page's main info grid is
