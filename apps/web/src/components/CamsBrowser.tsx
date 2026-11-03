@@ -1105,13 +1105,13 @@ function ProposalForm({
  *   1      전표번호    identifier (mono)
  *   2      기표일자    date (YYYYMMDD → YYYY-MM-DD)
  *   3      입력일      datetime (already formatted, e.g. "2026-05-06 오전 10:36:58")
- *   4      거래형태    string (대체/입금/출금/etc.)
+ *   4      차변합계    amount (CAMS API: PSPDRAMT)
  *   5      결재여부    string (미결/결재/etc.)
  *   6      취소여부    Y/N
  *   7      품의자      string (e.g. "203347 정슬아")
  *   8      결재일      date
  */
-const VOUCHER_HEADER_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'date' ; field?: string }> = [
+const VOUCHER_HEADER_LAYOUT: Array<{ label: string; kind: 'text' | 'mono' | 'date' | 'amount'; field?: string }> = [
   { label: '순번',     kind: 'text' }, // index 0 — hidden in render
   { label: '전표번호', kind: 'mono', field: 'slpno' },
   { label: '기표일자', kind: 'date', field: 'accdate' },
@@ -1176,6 +1176,7 @@ function VoucherForm({
     const layout = VOUCHER_HEADER_LAYOUT[idx];
     if (!layout) return raw;
     if (layout.kind === 'date') return formatValue('date', raw);
+    if (layout.kind === 'amount') { const n = parseAmt(raw); return n ? `${fmtAmt(n)} 원` : raw; }
     return raw;
   };
 
