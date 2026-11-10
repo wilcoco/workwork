@@ -305,7 +305,8 @@ function ListWithExpand({
   // Declared above the early-return for stable hook order.
   const [closeSignal, setCloseSignal] = useState({ n: 0, owner: '' });
   const [page, setPage] = useState(1);
-  const [onlyDone, setOnlyDone] = useState(false);
+  // 상태 필드가 있는 목록(전표: 결재여부 Y/N)은 기본으로 결재완료만 — 품의 목록은 상태가 없어 영향 없음(대표 지시 2026-11-11)
+  const [onlyDone, setOnlyDone] = useState(true);
   const pageSize = 20;
 
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
