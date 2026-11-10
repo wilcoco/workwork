@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Q
 import { Response } from 'express';
 import { PrismaService } from './prisma.service';
 import { tenantGet } from './lib/tenant';
-import { CamsApiService, defaultRange, flatten, puDetailGrids, puListGrids, ymd } from './cams-api.service';
+import { CamsApiService, defaultRange, DOC_STATUS, flatten, puDetailGrids, puListGrids, ymd } from './cams-api.service';
 
 /**
  * 품의서 조회 — CAMS 공식 API(JSON) 기반. 2026-11-04 HTML 스크래핑에서 전환.
@@ -13,6 +13,9 @@ import { CamsApiService, defaultRange, flatten, puDetailGrids, puListGrids, ymd 
  */
 @Controller('proposals')
 export class ProposalsController {
+  /** 품의 상태 캐시 (번호 → 값, 60초) — 목록 20건씩 반복 조회를 줄인다 */
+  private static statusCache = new Map<string, { v: any; at: number }>();
+
   constructor(private prisma: PrismaService, private cams: CamsApiService) {}
 
   private async assertAllowed(actorId?: string) {
@@ -90,6 +93,46 @@ export class ProposalsController {
     if (!opinion) throw new BadRequestException('반려 사유를 적어 주세요');
     const empNo = await this.assertApprover(user, slpNo);
     return this.cams.act('pu', 'return', { slpNo, userId: empNo, comnm: 'WORKWORK', opinion: opinion.slice(0, 200) });
+  }
+
+  /**
+   * GET /api/proposals/status?slpNos=a,b,c
+   * 목록 API에는 결재 상태가 없다(전표와 달리). 화면에 보이는 쪽(20건)만 상세를 병렬로 읽어 상태를 돌려준다.
+   * 같은 번호를 다시 물으면 60초 동안은 캐시로 답한다(페이지를 오가도 다시 호출하지 않게).
+   */
+  @Get('status')
+  async status(@Query('slpNos') slpNos?: string, @Query('actorId') actorId?: string) {
+    await this.assertAllowed(actorId);
+    const ids = String(slpNos || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 30);
+    if (!ids.length) return { items: {} };
+    const now = Date.now();
+    const items: Record<string, any> = {};
+    const todo: string[] = [];
+    for (const id of ids) {
+      const c = ProposalsController.statusCache.get(id);
+      if (c && now - c.at < 60000) items[id] = c.v; else todo.push(id);
+    }
+    // 상류 부담을 줄이려고 6건씩 끊어서 병렬 호출
+    for (let i = 0; i < todo.length; i += 6) {
+      const chunk = todo.slice(i, i + 6);
+      await Promise.all(chunk.map(async (id) => {
+        try {
+          const d: any = await this.cams.data('pu', { slp_no: id });
+          const line: any[] = Array.isArray(d?.line) ? d.line : [];
+          const code = String(d?.status?.STATUS || '');
+          const done = line.filter((l) => String(l.GSTATUS) === '02').length;
+          const next = line.find((l) => String(l.GSTATUS) === '01');
+          const v = {
+            code, label: DOC_STATUS[code] || code || '-', done, total: line.length,
+            current: next ? `${String(next.SNAME || '').trim()}${next.JNAME ? ` ${next.JNAME}` : ''}` : '',
+            files: Array.isArray(d?.files) ? d.files.length : 0,
+          };
+          items[id] = v;
+          ProposalsController.statusCache.set(id, { v, at: Date.now() });
+        } catch { items[id] = { code: '', label: '?', done: 0, total: 0, current: '', files: 0 }; }
+      }));
+    }
+    return { items };
   }
 
   /** 연결 상태 점검 (키 설정 여부·응답 확인) */

@@ -307,6 +307,8 @@ function ListWithExpand({
   const [page, setPage] = useState(1);
   // 상태 필드가 있는 목록(전표: 결재여부 Y/N)은 기본으로 결재완료만 — 품의 목록은 상태가 없어 영향 없음(대표 지시 2026-11-11)
   const [onlyDone, setOnlyDone] = useState(true);
+  const [docStatus, setDocStatus] = useState<Record<string, DocStatus>>({});
+  const [statusLoading, setStatusLoading] = useState(false);
   const pageSize = 20;
 
   const listGrid = grids.find((g) => g.fields.includes('slpno')) || grids[0];
@@ -345,6 +347,24 @@ function ListWithExpand({
   useEffect(() => {
     setPage(1);
   }, [filterText]);
+
+  // 품의 목록에는 결재 상태가 없다(전표는 있음). 지금 보이는 쪽(20건)만 상세에서 상태를 가져와 뱃지로 보여준다.
+  const needStatus = config.format === 'proposal' && !statusKey;
+  const visibleSlpNos = needStatus ? visibleRows.map((r) => String(r['slpno'] ?? '')).filter(Boolean) : [];
+  const visibleKey = visibleSlpNos.join(',');
+  useEffect(() => {
+    if (!needStatus || !visibleKey || !userId) return;
+    let alive = true;
+    const missing = visibleKey.split(',').filter((n) => !docStatus[n]);
+    if (!missing.length) return;
+    setStatusLoading(true);
+    apiJson<{ items: Record<string, DocStatus> }>(`${config.apiPath}/status?slpNos=${encodeURIComponent(missing.join(','))}&actorId=${encodeURIComponent(userId)}`)
+      .then((r) => { if (alive) setDocStatus((m) => ({ ...m, ...(r.items || {}) })); })
+      .catch(() => {})
+      .finally(() => { if (alive) setStatusLoading(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKey, needStatus, userId]);
 
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
@@ -401,6 +421,7 @@ function ListWithExpand({
               <th style={{ ...th, width: 32 }}></th>
               <th style={{ ...th, width: 40 }}>#</th>
               <th style={{ ...th, width: 60 }}>읽음</th>
+              {needStatus && <th style={{ ...th, width: 110 }}>결재</th>}
               {cols.map((c) => (
                 <th key={c} style={th}>{labelFor(c)}</th>
               ))}
@@ -409,7 +430,7 @@ function ListWithExpand({
           <tbody>
             {visibleRows.length === 0 ? (
               <tr>
-                <td colSpan={cols.length + 3} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
+                <td colSpan={cols.length + (needStatus ? 4 : 3)} style={{ ...td, textAlign: 'center', color: '#94a3b8', padding: 24 }}>
                   검색 결과 없음
                 </td>
               </tr>
@@ -429,6 +450,7 @@ function ListWithExpand({
                     userId={userId}
                     viewed={viewedDocIds.has(key)}
                     onView={onView}
+                    statusCell={needStatus ? <DocStatusCell st={docStatus[key]} loading={statusLoading} /> : undefined}
                   />
                 );
               })
@@ -484,6 +506,7 @@ function ListRow({
   userId,
   viewed,
   onView,
+  statusCell,
 }: {
   rowKey: string;
   row: GridRow;
@@ -495,6 +518,8 @@ function ListRow({
   userId: string;
   viewed: boolean;
   onView: (docId: string) => void;
+  /** 품의 목록 전용: 상세에서 가져온 결재 상태 뱃지 */
+  statusCell?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState<ListResp | null>(null);
@@ -556,13 +581,14 @@ function ListRow({
             <span style={{ color: '#94a3b8', fontSize: 12 }}>-</span>
           )}
         </td>
+        {statusCell !== undefined && <td style={{ ...td, width: 110 }}>{statusCell}</td>}
         {cols.map((c) => (
           <td key={c} style={td}>{String(row[c] ?? '')}</td>
         ))}
       </tr>
       {open && (
         <tr style={{ background: '#f8fafc', borderTop: '1px solid #e5e7eb' }}>
-          <td colSpan={cols.length + 3} style={{ padding: 16 }}>
+          <td colSpan={cols.length + (statusCell !== undefined ? 4 : 3)} style={{ padding: 16 }}>
             {loading && <div style={{ fontSize: 13, color: '#64748b' }}>조회 중…</div>}
             {error && (
               <div style={{ fontSize: 13, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 10 }}>
@@ -1731,6 +1757,27 @@ function DiagnosticsPanel({ d }: { d: ListDiagnostics }) {
  * exposes. The grid ids on the upstream page are not stable enough to
  * fully hard-code, so we fall back to a heuristic.
  */
+type DocStatus = { code: string; label: string; done: number; total: number; current?: string; files?: number };
+const DOC_STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
+  '09': { bg: '#dcfce7', fg: '#166534' }, // 완료
+  '02': { bg: '#dbeafe', fg: '#1e3a8a' }, // 결재중
+  '01': { bg: '#fef9c3', fg: '#854d0e' }, // 상신
+  '20': { bg: '#fee2e2', fg: '#991b1b' }, // 반려중
+  '21': { bg: '#fee2e2', fg: '#991b1b' }, // 반려완료
+};
+function DocStatusCell({ st, loading }: { st?: DocStatus; loading?: boolean }) {
+  if (!st) return <span style={{ fontSize: 11, color: '#cbd5e1' }}>{loading ? '…' : '-'}</span>;
+  const c = DOC_STATUS_COLOR[st.code] || { bg: '#f1f5f9', fg: '#475569' };
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}>
+      <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: c.bg, color: c.fg, whiteSpace: 'nowrap' }}>
+        {st.label}{st.total ? ` ${st.done}/${st.total}` : ''}
+      </span>
+      {st.code !== '09' && st.current && <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>▸ {st.current}</span>}
+    </span>
+  );
+}
+
 function sectionLabelFor(id: string, fields: string[], config: CamsBrowserConfig, label?: string): string {
   // 서버(CAMS API)가 구역 이름을 직접 알려주면 그대로 쓴다. 목록 그리드만 페이지별 호칭으로 바꾼다.
   if (label) return id === 'myDataGrid' ? config.listLabel : label;
