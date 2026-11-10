@@ -219,13 +219,34 @@ export function MyManuals() {
     } finally { setSaving(false); }
   }
 
-  /** 팀장 승인 요청 — 조직도 라인(팀 책임자 → 팀장 → 상위 조직 → 대표)으로 결재 상신 */
+  /** 팀장 승인 요청 — 검토자(팀장)를 직접 선택하거나 조직도 라인 자동 지정으로 상신 */
+  const [pickReviewer, setPickReviewer] = useState<Manual | null>(null); // 검토자 선택 모달 대상
+  const [reviewerId, setReviewerId] = useState('');
+  const [reviewerQuery, setReviewerQuery] = useState('');
+  const [users, setUsers] = useState<Array<{ id: string; name: string; role: string; orgName: string }>>([]);
+
   async function requestApproval(m: Manual) {
     if ((m.readinessScore ?? 0) < READY) { toast(`프로세스화 준비도 ${m.readinessScore ?? 0}점 — ${READY}점 이상이어야 팀장 승인을 요청할 수 있습니다. 'AI 검토'를 먼저 진행하세요.`, 'warning'); setCoach({ id: m.id, title: m.title }); return; }
-    setBusyId(m.id);
+    // 검토자 선택 모달 열기 (사용자 목록은 최초 1회 로드)
+    if (!users.length) {
+      try {
+        const r = await apiJson<{ items: any[] }>(`/api/users?take=300`);
+        setUsers((r.items || []).map((u) => ({ id: u.id, name: u.name, role: u.role, orgName: u.orgName || '' })).filter((u) => u.id !== userId));
+      } catch { /* 목록 실패해도 자동 지정은 가능 */ }
+    }
+    setReviewerId(''); setReviewerQuery('');
+    setPickReviewer(m);
+  }
+
+  /** 상신 실행 — reviewerId 없으면 조직도 라인(팀 책임자 → 팀장 → 상위 조직 → 대표) 자동 지정 */
+  async function submitApproval(m: Manual, pickedReviewerId: string) {
+    setBusyId(m.id); setPickReviewer(null);
     try {
-      await apiJson(`/api/work-manuals/${encodeURIComponent(m.id)}/status`, { method: 'POST', body: JSON.stringify({ userId, status: 'REVIEW' }) });
-      toast('팀장에게 승인 요청을 보냈습니다. 결재함에서 처리됩니다.', 'success');
+      await apiJson(`/api/work-manuals/${encodeURIComponent(m.id)}/status`, {
+        method: 'POST', body: JSON.stringify({ userId, status: 'REVIEW', ...(pickedReviewerId ? { reviewerId: pickedReviewerId } : {}) }),
+      });
+      const picked = users.find((u) => u.id === pickedReviewerId);
+      toast(`${picked ? `${picked.name}님에게` : '팀장에게'} 승인 요청을 보냈습니다. 결재함에서 처리됩니다.`, 'success');
       await load();
     } catch (e: any) {
       toast(e?.message || '승인 요청 실패', 'error');
@@ -440,6 +461,44 @@ export function MyManuals() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {/* 검토자(팀장) 선택 모달 */}
+      {pickReviewer && (
+        <div onClick={() => setPickReviewer(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 95, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, maxWidth: 480, width: '100%', maxHeight: '80vh', overflow: 'auto', padding: 18, display: 'grid', gap: 10 }}>
+            <b style={{ fontSize: 15 }}>✅ 승인 요청 — 검토자 선택</b>
+            <div style={{ fontSize: 12.5, color: '#64748b' }}>
+              「{pickReviewer.title}」을(를) 누구에게 검토받을까요? 선택하지 않으면 <b>조직도 라인(팀 책임자 → 팀장 → 상위 조직 → 대표)</b>으로 자동 지정됩니다.
+            </div>
+            <input value={reviewerQuery} onChange={(e) => setReviewerQuery(e.target.value)} placeholder="이름·팀으로 검색" />
+            <div style={{ display: 'grid', gap: 3, maxHeight: 260, overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, padding: 6 }}>
+              {users
+                .filter((u) => { const q = reviewerQuery.trim().toLowerCase(); return !q || `${u.name} ${u.orgName}`.toLowerCase().includes(q); })
+                .slice(0, 80)
+                .map((u) => (
+                  <div key={u.id} onClick={() => setReviewerId(u.id === reviewerId ? '' : u.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
+                      background: reviewerId === u.id ? '#f0f6ff' : 'transparent', border: reviewerId === u.id ? '1px solid #0F3D73' : '1px solid transparent' }}>
+                    <span style={{ fontWeight: 600 }}>{u.name}</span>
+                    <span style={{ color: '#64748b', fontSize: 12 }}>{u.orgName}{u.role === 'CEO' ? ' · 대표' : u.role === 'EXEC' ? ' · 임원' : ''}</span>
+                    <span style={{ flex: 1 }} />
+                    {reviewerId === u.id && <span style={{ color: '#0F3D73', fontWeight: 700 }}>✓</span>}
+                  </div>
+                ))}
+              {!users.length && <div style={{ fontSize: 12.5, color: '#94a3b8', padding: 6 }}>사용자 목록을 불러오지 못했습니다 — 자동 지정으로 보내세요.</div>}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button className="btn btn-sm btn-outline" onClick={() => setPickReviewer(null)}>취소</button>
+              <button className="btn btn-sm" onClick={() => void submitApproval(pickReviewer, '')}
+                title="조직도 라인에서 자동으로 검토자를 찾습니다">조직도 자동 지정으로 보내기</button>
+              <button className="btn btn-sm btn-primary" disabled={!reviewerId} onClick={() => void submitApproval(pickReviewer, reviewerId)}>
+                {reviewerId ? `${users.find((u) => u.id === reviewerId)?.name || ''}님에게 보내기` : '검토자를 선택하세요'}
+              </button>
+            </div>
           </div>
         </div>
       )}
