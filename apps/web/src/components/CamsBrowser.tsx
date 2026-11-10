@@ -370,7 +370,7 @@ function ListWithExpand({
     <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span>{onlyDone ? '결재완료' : '전체'} <strong>{approvedRows.length}</strong>건</span>
+          <span>{statusKey && onlyDone ? '결재완료' : '전체'} <strong>{approvedRows.length}</strong>건</span>
           {statusKey && (
             <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               <input type="checkbox" checked={onlyDone} onChange={(e) => { setOnlyDone(e.target.checked); setPage(1); }} style={{ margin: 0, width: 'auto' }} />
