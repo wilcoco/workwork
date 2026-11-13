@@ -13,8 +13,11 @@ export function getSocket(): Socket | null {
   const token = localStorage.getItem('token');
   if (!token) return null;
   if (socket) return socket;
-  const base = API_BASE || window.location.origin;
-  socket = io(`${base.replace(/\/$/, '')}/ws/messaging`, {
+  // 주소 정규화 — VITE_API_BASE가 'HTTPS://...'처럼 대문자면 socket.io 주소 파서가 못 읽는다(실측 확인)
+  const raw = (API_BASE || window.location.origin).trim().replace(/\/+$/, '');
+  let base = raw;
+  try { base = new URL(raw).origin; } catch { base = raw.replace(/^(https?):\/\//i, (_m, p) => `${String(p).toLowerCase()}://`); }
+  socket = io(`${base}/ws/messaging`, {
     transports: ['websocket', 'polling'],
     auth: { token },
     reconnection: true,
