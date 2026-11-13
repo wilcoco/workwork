@@ -3,6 +3,7 @@ import { apiJson, apiUrl } from '../lib/api';
 import { uploadPhotosDisk, type UploadResp } from '../lib/upload';
 import { toast } from '../components/Toast';
 import { emitWithAck, getSocket } from '../lib/messagingSocket';
+import { disablePush, enablePush, pushState, sendTestPush, type PushState } from '../lib/push';
 
 /**
  * 사내 메시지 — Teams식 3단 구성(대화 목록 / 대화창 / 참여자).
@@ -59,6 +60,7 @@ export function Messenger() {
   const [people, setPeople] = useState<Person[]>([]);
   const [pickSel, setPickSel] = useState<string[]>([]);
   const [groupTitle, setGroupTitle] = useState('');
+  const [push, setPush] = useState<PushState>('unsupported');
   const [pendingFiles, setPendingFiles] = useState<UploadResp[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -93,6 +95,16 @@ export function Messenger() {
 
   // 최초 로드
   useEffect(() => { if (userId) void loadConvs(); }, [userId, loadConvs]);
+  useEffect(() => { void pushState().then(setPush); }, []);
+
+  async function togglePush() {
+    if (push === 'on') { await disablePush(userId); setPush('off'); toast('이 기기에서 알림을 껐습니다', 'info'); return; }
+    const r = await enablePush(userId);
+    if (!r.ok) { toast(r.reason || '켜지 못했습니다', 'error', 6000); setPush(await pushState()); return; }
+    setPush('on');
+    try { const t = await sendTestPush(userId); toast(t.sent ? '알림을 켰습니다 — 시험 알림을 보냈습니다' : '켰지만 시험 알림이 가지 않았습니다', t.sent ? 'success' : 'error'); }
+    catch { toast('알림을 켰습니다', 'success'); }
+  }
 
   // 소켓 — 연결/수신/재연결 복구
   useEffect(() => {
@@ -241,6 +253,13 @@ export function Messenger() {
           {connected ? '실시간 연결됨' : '연결 중…'}
         </span>
         <span style={{ flex: 1 }} />
+        {push !== 'unsupported' && (
+          <button className="btn btn-sm btn-outline" onClick={() => void togglePush()}
+            title={push === 'on' ? '이 기기에서 알림 끄기' : '앱을 꺼 둬도 알림을 받습니다'}
+            style={push === 'on' ? { borderColor: '#6BB700', color: '#0B6A0B' } : undefined}>
+            {push === 'on' ? '🔔 알림 켜짐' : push === 'denied' ? '🔕 알림 차단됨' : '🔔 알림 켜기'}
+          </button>
+        )}
         <button className="btn btn-sm btn-outline" onClick={() => void openPicker('dm')}>+ 새 대화</button>
         <button className="btn btn-sm btn-outline" onClick={() => void openPicker('group')}>+ 그룹</button>
       </div>

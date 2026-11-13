@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { TeamsNotificationService } from './teams-notification.service';
+import { emitNotification } from './lib/notification-relay';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
@@ -81,6 +82,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
                 } catch {}
               }
 
+              // 브라우저 푸시 등 다른 통로로도 내보낸다 (실패해도 Teams 중계를 막지 않는다)
+              emitNotification(String(user.id), notification);
               await this.teamsNotificationService.sendForNotification(user as any, notification);
             } catch (e) {
               this.logger.error(

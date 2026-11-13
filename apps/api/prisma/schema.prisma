@@ -2093,6 +2093,21 @@ model Message {
   @@index([senderId])
 }
 
+/// 브라우저 푸시 구독 — 기기(브라우저)마다 1건. Teams 알림을 대체하기 위한 마지막 조각.
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  failCount  Int       @default(0)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
 model OpsMetricDaily {
   id         String   @id @default(cuid())
   date       String   @unique // KST 'YYYY-MM-DD'
