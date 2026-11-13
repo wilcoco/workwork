@@ -39,9 +39,11 @@ export class MessagingService {
         ...(t ? { OR: [{ name: { contains: t } }, { email: { contains: t } }] } : {}),
       },
       select: { id: true, name: true, email: true, orgUnit: { select: { name: true } } },
-      orderBy: { name: 'asc' }, take: 200,
+      orderBy: { name: 'asc' }, take: 300,
     });
-    return users.map((u) => ({ id: u.id, name: u.name, team: u.orgUnit?.name || '', email: u.email }));
+    // 사람이 아닌 계정(로봇·봇) 제외 — 대화 상대로 뜨면 안 된다
+    const isBot = (u: { name: string; email: string }) => /로봇|robot|^bot$|claude/i.test(String(u.name || '')) || /^robot@|@workwork\.local$/i.test(String(u.email || ''));
+    return users.filter((u) => !isBot(u as any)).slice(0, 200).map((u) => ({ id: u.id, name: u.name, team: u.orgUnit?.name || '', email: u.email }));
   }
 
   /** 1:1 대화 열기 (없으면 생성) */
