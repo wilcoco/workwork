@@ -17,6 +17,25 @@ const PHOTO_DIR = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
 export class UploadsController {
   constructor(private prisma: PrismaService) {}
 
+  // 메시지 첨부(사진·동영상·문서) — 디스크 볼륨에 스트리밍 저장. 사진 경로(25MB)와 달리 영상도 받도록 크게 잡는다.
+  @Post('uploads/attachment')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => { try { if (!existsSync(PHOTO_DIR)) mkdirSync(PHOTO_DIR, { recursive: true }); } catch {} cb(null, PHOTO_DIR); },
+        filename: (_req, file, cb) => cb(null, `${randomUUID()}${extname(file.originalname || '') || ''}`),
+      }),
+      limits: { fileSize: 200 * 1024 * 1024 }, // 200MB — 휴대폰 영상 대부분 수용
+    }),
+  )
+  async uploadAttachment(@UploadedFile() file: Express.Multer.File, @Req() req: Request) {
+    if (!file) throw new BadRequestException('file is required');
+    const bodyName = String((req.body as any)?.originalName || '').trim();
+    let origName = bodyName || file.originalname || '';
+    if (!bodyName && origName) { try { origName = Buffer.from(origName, 'latin1').toString('utf8'); } catch {} }
+    return { url: `/uploads/${file.filename}`, name: origName || file.filename, filename: file.filename, size: file.size, type: file.mimetype };
+  }
+
   // 디스크(볼륨) 사진 업로드
   @Post('uploads/photo')
   @UseInterceptors(

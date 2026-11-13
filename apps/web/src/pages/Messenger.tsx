@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiJson, apiUrl } from '../lib/api';
-import { uploadPhotosDisk, type UploadResp } from '../lib/upload';
+import { ATTACH_MAX_BYTES, uploadAttachments, type UploadResp } from '../lib/upload';
+import { OneDriveFilePicker } from '../components/OneDriveFilePicker';
 import { toast } from '../components/Toast';
 import { emitWithAck, getSocket } from '../lib/messagingSocket';
 import { disablePush, enablePush, pushState, sendTestPush, type PushState } from '../lib/push';
@@ -82,8 +83,9 @@ export function Messenger() {
   const [pickerQ, setPickerQ] = useState('');
   const [push, setPush] = useState<PushState>('unsupported');
   const [pendingFiles, setPendingFiles] = useState<UploadResp[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<{ name: string; percent: number } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [odPicker, setOdPicker] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef(activeId);
   const lastIdRef = useRef<string>('');
@@ -229,12 +231,20 @@ export function Messenger() {
   const composingRef = useRef(false);
   async function pickFiles(list: FileList | null) {
     if (!list || !list.length) return;
-    setUploading(true);
+    // 올리기 전에 크기부터 본다 — 큰 영상을 몇 분 올린 뒤 거절당하지 않게
+    const tooBig = Array.from(list).find((f) => f.size > ATTACH_MAX_BYTES && !f.type.startsWith('image/'));
+    if (tooBig) {
+      toast(`${tooBig.name}은(는) ${Math.round(tooBig.size / 1024 / 1024)}MB입니다. 한 개 ${ATTACH_MAX_BYTES / 1024 / 1024}MB까지 보낼 수 있습니다 — 큰 파일은 ☁ 버튼으로 OneDrive 링크를 보내세요.`, 'error', 8000);
+      if (fileRef.current) fileRef.current.value = '';
+      setOdPicker(true);
+      return;
+    }
+    setUploading({ name: '', percent: 0 });
     try {
-      const ups = await uploadPhotosDisk(list);   // 디스크 볼륨(/data)에 저장 — DB에 넣지 않는다
+      const ups = await uploadAttachments(list, (_i, percent, name) => setUploading({ name, percent }));  // 디스크 볼륨(/data)에 저장 — DB에 넣지 않는다
       setPendingFiles((p) => [...p, ...ups].slice(0, 10));
-    } catch (e: any) { toast(e?.message || '업로드 실패', 'error'); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+    } catch (e: any) { toast(e?.message || '업로드 실패', 'error', 7000); }
+    finally { setUploading(null); if (fileRef.current) fileRef.current.value = ''; }
   }
 
   const typingTimer = useRef<any>(null);
@@ -384,6 +394,19 @@ export function Messenger() {
                                 {m.attachments.map((a: any, k: number) => {
                                   const href = String(a?.url || '').startsWith('http') ? a.url : apiUrl(String(a?.url || ''));
                                   const isImg = /^image\//i.test(String(a?.type || '')) || /\.(png|jpe?g|gif|webp)$/i.test(String(a?.name || ''));
+                                  const isVid = /^video\//i.test(String(a?.type || '')) || /\.(mp4|mov|webm|m4v|avi)$/i.test(String(a?.name || ''));
+                                  const isLink = a?.type === 'onedrive' || /sharepoint\.com|1drv\.ms/i.test(String(a?.url || ''));
+                                  if (isLink) return (
+                                    <a key={k} href={href} target="_blank" rel="noopener noreferrer"
+                                      style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '6px 10px', fontSize: 12.5, color: '#252423', textDecoration: 'none', maxWidth: 280 }}>
+                                      <span>☁</span>
+                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a?.name || 'OneDrive 파일'}</span>
+                                      <span style={{ color: '#A19F9D', fontSize: 11 }}>열기</span>
+                                    </a>
+                                  );
+                                  if (isVid) return (
+                                    <video key={k} src={href} controls preload="metadata" style={{ maxWidth: 280, maxHeight: 220, borderRadius: 6, display: 'block', border: `1px solid ${BORDER}`, background: '#000' }} />
+                                  );
                                   return isImg ? (
                                     <a key={k} href={href} target="_blank" rel="noopener noreferrer">
                                       <img src={href} alt={a?.name || ''} style={{ maxWidth: 260, maxHeight: 220, borderRadius: 6, display: 'block', border: `1px solid ${BORDER}` }} />
@@ -411,12 +434,20 @@ export function Messenger() {
                 <div ref={bottomRef} />
               </div>
 
-              {(pendingFiles.length > 0 || uploading) && (
+              {(pendingFiles.length > 0 || !!uploading) && (
                 <div style={{ borderTop: `1px solid ${BORDER}`, padding: '8px 10px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', background: '#FAFAFA' }}>
-                  {uploading && <span style={{ fontSize: 12, color: '#616161' }}>올리는 중…</span>}
+                  {uploading && (
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#616161' }}>
+                      <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploading.name || '파일'} 올리는 중</span>
+                      <span style={{ width: 90, height: 6, background: '#E1DFDD', borderRadius: 999, overflow: 'hidden' }}>
+                        <span style={{ display: 'block', width: `${uploading.percent}%`, height: '100%', background: ACCENT }} />
+                      </span>
+                      <b>{uploading.percent}%</b>
+                    </span>
+                  )}
                   {pendingFiles.map((f, i) => (
                     <span key={i} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 999, padding: '3px 8px', fontSize: 12 }}>
-                      📎 <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                      {f.type === 'onedrive' ? '☁' : '📎'} <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
                       <button type="button" onClick={() => setPendingFiles((p) => p.filter((_, k) => k !== i))}
                         style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#A19F9D', fontSize: 13, lineHeight: 1 }}>✕</button>
                     </span>
@@ -425,8 +456,10 @@ export function Messenger() {
               )}
               <div style={{ borderTop: `1px solid ${BORDER}`, padding: 10, display: 'flex', gap: 8, alignItems: 'flex-end', background: '#fff' }}>
                 <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => void pickFiles(e.target.files)} />
-                <button type="button" title="파일 첨부 (한 개당 25MB까지)" onClick={() => fileRef.current?.click()}
+                <button type="button" title={`파일 첨부 (한 개 ${ATTACH_MAX_BYTES / 1024 / 1024}MB까지)`} onClick={() => fileRef.current?.click()}
                   style={{ border: `1px solid ${BORDER}`, background: '#fff', borderRadius: 6, padding: '9px 11px', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>📎</button>
+                <button type="button" title="OneDrive 파일을 링크로 보내기 (용량 제한 없음)" onClick={() => setOdPicker(true)}
+                  style={{ border: `1px solid ${BORDER}`, background: '#fff', borderRadius: 6, padding: '9px 11px', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>☁</button>
                 <textarea
                   value={draft}
                   onChange={(e) => onDraftChange(e.target.value)}
@@ -452,6 +485,19 @@ export function Messenger() {
           )}
         </section>
       </div>
+
+      {odPicker && (
+        <OneDriveFilePicker
+          userId={userId}
+          multiple
+          onClose={() => setOdPicker(false)}
+          onSelect={(files) => {
+            // OneDrive는 링크만 받는다 — 큰 영상·대용량 문서는 우리 디스크에 복사하지 않는다
+            setPendingFiles((p) => [...p, ...files.map((f) => ({ url: f.url, name: f.name, size: 0, type: 'onedrive', filename: f.name }))].slice(0, 10));
+            setOdPicker(false);
+          }}
+        />
+      )}
 
       {picker && (
         <div onClick={() => setPicker(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'grid', placeItems: 'center', zIndex: 3000, padding: 16 }}>

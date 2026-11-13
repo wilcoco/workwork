@@ -1,4 +1,5 @@
 import { apiFetch, API_BASE, apiUrl } from './api';
+import { getToken } from './auth';
 
 export type UploadResp = {
   url: string;
@@ -219,6 +220,47 @@ export async function uploadFiles(list: FileList | File[]): Promise<UploadResp[]
   for (const f of files) {
     // eslint-disable-next-line no-await-in-loop
     out.push(await uploadFile(f));
+  }
+  return out;
+}
+
+/** 메시지 첨부 업로드 — 영상 등 큰 파일을 진행률과 함께 올린다 (한 개 200MB까지) */
+export const ATTACH_MAX_BYTES = 200 * 1024 * 1024;
+export async function uploadAttachments(
+  list: FileList | File[],
+  onProgress?: (fileIndex: number, percent: number, name: string) => void,
+): Promise<UploadResp[]> {
+  const files: File[] = Array.from(list as any);
+  const out: UploadResp[] = [];
+  for (let i = 0; i < files.length; i++) {
+    let f = files[i];
+    // 사진은 그대로 올리면 큰 경우가 많아 먼저 줄인다. 영상·문서는 손대지 않는다.
+    try { if (f?.type?.startsWith('image/')) f = await compressImageToLimits(f); } catch { /* 원본 유지 */ }
+    if (f.size > ATTACH_MAX_BYTES) {
+      throw new Error(`${f.name}은(는) ${Math.round(f.size / 1024 / 1024)}MB로 너무 큽니다 (한 개 ${ATTACH_MAX_BYTES / 1024 / 1024}MB까지)`);
+    }
+    const fd = new FormData();
+    fd.append('file', f);
+    if (f.name) fd.append('originalName', f.name);
+    const token = getToken();
+    const data: UploadResp = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', apiUrl('/api/uploads/attachment'));
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(i, Math.round((e.loaded / e.total) * 100), f.name); };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) { try { resolve(JSON.parse(xhr.responseText)); } catch { reject(new Error('응답 해석 실패')); } }
+        else if (xhr.status === 413) reject(new Error(`${f.name}이(가) 너무 큽니다`));
+        else reject(new Error(xhr.responseText || `업로드 실패 (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error('네트워크 오류로 업로드하지 못했습니다'));
+      xhr.ontimeout = () => reject(new Error('업로드 시간이 초과됐습니다'));
+      xhr.timeout = 10 * 60 * 1000; // 큰 영상 대비 10분
+      xhr.send(fd);
+    });
+    if (f.name) data.name = f.name;
+    if (data?.url && !/^https?:\/\//i.test(data.url)) data.url = new URL(data.url, API_BASE).toString();
+    out.push(data);
   }
   return out;
 }
