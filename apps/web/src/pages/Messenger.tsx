@@ -175,6 +175,9 @@ export function Messenger() {
     }
   }
 
+  // 한글 IME: 조합(composition) 중에는 Enter를 전송으로 쓰면 안 된다.
+  // 조합 중 Enter는 '글자 확정'이 먼저 일어나므로, 전송하고 입력칸을 비우면 확정된 끝 글자가 다시 들어온다.
+  const composingRef = useRef(false);
   const typingTimer = useRef<any>(null);
   function onDraftChange(v: string) {
     setDraft(v);
@@ -313,7 +316,15 @@ export function Messenger() {
                 <textarea
                   value={draft}
                   onChange={(e) => onDraftChange(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                  onCompositionStart={() => { composingRef.current = true; }}
+                  onCompositionEnd={(e) => { composingRef.current = false; setDraft((e.target as HTMLTextAreaElement).value); }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' || e.shiftKey) return;
+                    // 조합 중(한글 입력 중)이면 Enter는 글자 확정용 — 전송하지 않는다
+                    if (composingRef.current || (e.nativeEvent as any)?.isComposing || (e as any).keyCode === 229) return;
+                    e.preventDefault();
+                    void send();
+                  }}
                   placeholder="메시지를 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)"
                   rows={1}
                   style={{ flex: 1, resize: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '9px 12px', fontSize: 13.5, maxHeight: 120, fontFamily: 'inherit' }}
