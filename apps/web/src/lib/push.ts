@@ -7,7 +7,9 @@ import { apiJson } from './api';
  */
 export type PushState = 'unsupported' | 'denied' | 'off' | 'on';
 
-const VAPID = String((import.meta as any)?.env?.VITE_VAPID_PUBLIC_KEY || '');
+// Vite는 `import.meta.env.VITE_X` 라는 '정적인 모양'만 빌드 때 값으로 바꿔 넣는다.
+// 옵셔널 체이닝으로 쓰면 치환되지 않아 실행 시 undefined가 되고, 푸시가 통째로 꺼져 버린다(실제로 겪음).
+const VAPID = String((import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) || '');
 
 function urlBase64ToUint8Array(base64: string) {
   const padding = '='.repeat((4 - (base64.length % 4)) % 4);
