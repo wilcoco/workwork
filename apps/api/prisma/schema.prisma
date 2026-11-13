@@ -2045,6 +2045,54 @@ model AlignmentReview {
   @@unique([itemType, itemId])
 }
 
+/// 사내 메시징 — 1:1(DM)·그룹 대화. Teams 알림을 대체하기 위한 자체 메시징의 뼈대.
+model Conversation {
+  id            String               @id @default(cuid())
+  type          String               @default("DM") // DM | GROUP
+  title         String? // GROUP 전용 (DM은 상대 이름으로 표시)
+  dmKey         String?              @unique // DM 중복 생성 방지: 두 사용자 id를 정렬해 이어붙인 값
+  createdById   String
+  lastMessageAt DateTime?
+  lastPreview   String? // 목록에 보여줄 마지막 메시지 요약
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  members       ConversationMember[]
+  messages      Message[]
+
+  @@index([lastMessageAt])
+}
+
+model ConversationMember {
+  id                String       @id @default(cuid())
+  conversationId    String
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId            String
+  lastReadMessageId String?
+  lastReadAt        DateTime?
+  mutedUntil        DateTime?
+  leftAt            DateTime?
+  joinedAt          DateTime     @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  body           String       @db.Text
+  attachments    Json? // [{url,name,size,contentType}]
+  mentions       Json? // string[] userId — 멘션된 사람
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
 model OpsMetricDaily {
   id         String   @id @default(cuid())
   date       String   @unique // KST 'YYYY-MM-DD'

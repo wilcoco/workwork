@@ -19,7 +19,8 @@
     "react-router-dom": "^6.26.2",
     "reactflow": "^11.10.0",
     "remark-gfm": "4.0.1",
-    "serve": "^14.2.1"
+    "serve": "^14.2.1",
+    "socket.io-client": "4.8.4"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

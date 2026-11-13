@@ -61,6 +61,9 @@ import { TenantController } from './tenant.controller';
 import { AlignmentController } from './alignment.controller';
 import { AlignmentService } from './alignment.service';
 import { CamsApiService } from './cams-api.service';
+import { MessagingController } from './messaging.controller';
+import { MessagingService } from './messaging.service';
+import { MessagingGateway } from './messaging.gateway';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
@@ -146,6 +149,7 @@ import { AuditLogService } from './audit-log.service';
     KnowledgeCardsController,
     TenantController,
     AlignmentController,
+    MessagingController,
   ],
   providers: [
     PrismaService,
@@ -163,6 +167,8 @@ import { AuditLogService } from './audit-log.service';
     KnowledgeCardsService,
     AlignmentService,
     CamsApiService,
+    MessagingService,
+    MessagingGateway,
     DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

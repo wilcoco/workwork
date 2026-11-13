@@ -523,6 +523,18 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
 }
 
 function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: { SHOW_APPROVALS: boolean; SHOW_COOPS: boolean; isCeo: boolean; isExec: boolean; canEvaluate: boolean }) {
+  // 메시지 안 읽은 수 배지 — 60초마다 갱신
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  useEffect(() => {
+    const uid = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : '';
+    if (!uid) return;
+    let alive = true;
+    const tick = () => { apiJson<{ count: number }>(`/api/messaging/unread?userId=${encodeURIComponent(uid)}`).then((r) => { if (alive) setUnreadMsgs(r?.count || 0); }).catch(() => {}); };
+    tick();
+    const t = setInterval(tick, 60000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
   const nav = useNavigate();
   const location = useLocation();
   // 알림함 미읽음 배지 — 2분 폴링 + 라우트 이동 시 갱신
@@ -587,6 +599,9 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           <img src={logoSrc} alt={`${brandLabel} 로고`} />
         </Link>
         <Link to="/" style={{ marginLeft: 12, ...(location.pathname === '/' ? activeStyle : {}) }}>홈</Link>
+        <Link to="/messages" style={{ marginLeft: 12, position: 'relative', ...(location.pathname === '/messages' ? activeStyle : {}) }}>
+          메시지{unreadMsgs > 0 && <span style={{ marginLeft: 4, background: '#C4314B', color: '#fff', borderRadius: 999, fontSize: 10, fontWeight: 800, padding: '1px 5px' }}>{unreadMsgs > 99 ? '99+' : unreadMsgs}</span>}
+        </Link>
         <NavDropdown label="업무일지" active={(location.pathname === '/quick') || location.pathname.startsWith('/search') || location.pathname.startsWith('/worklogs')}>
           <Link to="/quick">작성</Link>
           <Link to="/search">조회</Link>
