@@ -42,6 +42,25 @@ function fmtTime(iso?: string) {
   if (yest) return '어제';
   return d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
 }
+/** 한글 초성 추출 — "ㄱㅂㅇ"으로 "김부영"을 찾을 수 있게 */
+const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+function initialsOf(text: string) {
+  let out = '';
+  for (const ch of String(text || '')) {
+    const c = ch.charCodeAt(0);
+    out += (c >= 0xac00 && c <= 0xd7a3) ? CHO[Math.floor((c - 0xac00) / 588)] : ch;
+  }
+  return out;
+}
+/** 이름·팀을 글자/초성 양쪽으로 맞춰 본다 */
+function personMatches(p: { name: string; team: string }, q: string) {
+  const t = q.trim().toLowerCase();
+  if (!t) return true;
+  const hay = `${p.name} ${p.team}`.toLowerCase();
+  if (hay.includes(t)) return true;
+  return initialsOf(hay).toLowerCase().includes(initialsOf(t).toLowerCase());
+}
+
 const dayLabel = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
 
 export function Messenger() {
@@ -60,6 +79,7 @@ export function Messenger() {
   const [people, setPeople] = useState<Person[]>([]);
   const [pickSel, setPickSel] = useState<string[]>([]);
   const [groupTitle, setGroupTitle] = useState('');
+  const [pickerQ, setPickerQ] = useState('');
   const [push, setPush] = useState<PushState>('unsupported');
   const [pendingFiles, setPendingFiles] = useState<UploadResp[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -228,7 +248,7 @@ export function Messenger() {
   }
 
   async function openPicker(kind: 'dm' | 'group') {
-    setPicker(kind); setPickSel([]); setGroupTitle('');
+    setPicker(kind); setPickSel([]); setGroupTitle(''); setPickerQ('');
     try { const r = await apiJson<{ items: Person[] }>(`/api/messaging/directory?userId=${encodeURIComponent(userId)}`); setPeople(r.items || []); }
     catch (e: any) { toast(e?.message || '구성원을 불러오지 못했습니다', 'error'); }
   }
@@ -244,6 +264,19 @@ export function Messenger() {
 
   const filtered = convs.filter((c) => !search.trim() || c.title.includes(search.trim()) || (c.lastPreview || '').includes(search.trim()));
   const typingNames = (active ? (typingIn[active.id] || []) : []).map((id) => active?.members.find((m) => m.id === id)?.name).filter(Boolean);
+  // 고를 수 있는 사람: 검색어로 거르되, 그룹에서 이미 고른 사람은 항상 보이게
+  const shownPeople = people.filter((p) => personMatches(p, pickerQ) || (picker === 'group' && pickSel.includes(p.id)));
+  // 팀 먼저 — 그룹 대화는 보통 팀 단위로 만든다
+  const teamGroups = (() => {
+    const m = new Map<string, Person[]>();
+    for (const p of shownPeople) { const k = p.team || '(소속 없음)'; m.set(k, [...(m.get(k) || []), p]); }
+    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  })();
+  const toggleTeam = (members: Person[]) => {
+    const ids = members.map((m) => m.id);
+    const allIn = ids.every((id) => pickSel.includes(id));
+    setPickSel((sel) => (allIn ? sel.filter((id) => !ids.includes(id)) : Array.from(new Set([...sel, ...ids]))));
+  };
 
   return (
     <div style={{ maxWidth: 1240, margin: '0 auto', padding: '0 8px' }}>
@@ -422,7 +455,7 @@ export function Messenger() {
 
       {picker && (
         <div onClick={() => setPicker(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'grid', placeItems: 'center', zIndex: 3000, padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: 420, maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 3001, boxShadow: '0 16px 48px rgba(0,0,0,.28)' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: 440, maxWidth: 'min(440px, 94vw)', maxHeight: '82vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 3001, boxShadow: '0 16px 48px rgba(0,0,0,.28)' }}>
             <div style={{ padding: '12px 16px', borderBottom: `1px solid ${BORDER}`, fontWeight: 700 }}>{picker === 'dm' ? '새 대화 — 상대 고르기' : '그룹 대화 만들기'}</div>
             {picker === 'group' && (
               <div style={{ padding: '10px 16px', borderBottom: `1px solid ${BORDER}` }}>
@@ -430,20 +463,58 @@ export function Messenger() {
                   style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: 4, padding: '7px 10px', fontSize: 13 }} />
               </div>
             )}
+            <div style={{ padding: '10px 16px', borderBottom: `1px solid ${BORDER}` }}>
+              <input autoFocus value={pickerQ} onChange={(e) => setPickerQ(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && picker === 'dm' && shownPeople.length === 1) void startDm(shownPeople[0].id); }}
+                placeholder="이름 · 팀 검색 (초성도 됩니다, 예: ㄱㅂㅇ)"
+                style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${BORDER}`, borderRadius: 4, padding: '7px 10px', fontSize: 13 }} />
+              <div style={{ fontSize: 11, color: '#A19F9D', marginTop: 4 }}>
+                {shownPeople.length}명{picker === 'group' && pickSel.length ? ` · 선택 ${pickSel.length}명` : ''}
+              </div>
+            </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              {people.map((p) => (
-                <div key={p.id}
-                  onClick={() => picker === 'dm' ? void startDm(p.id) : setPickSel((s) => s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id])}
-                  style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 16px', cursor: 'pointer', background: pickSel.includes(p.id) ? ACCENT_SOFT : undefined }}>
-                  <Avatar id={p.id} name={p.name} size={30} online={online.has(p.id)} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{p.name}</div>
-                    <div style={{ fontSize: 11.5, color: '#616161' }}>{p.team}</div>
+              {picker === 'group' && teamGroups.length > 1 && (
+                <div style={{ padding: '8px 16px', borderBottom: `1px solid ${BORDER}`, background: '#FAFAFA' }}>
+                  <div style={{ fontSize: 11, color: '#616161', marginBottom: 6 }}>팀으로 한 번에 고르기</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {teamGroups.map(([team, members]) => {
+                      const n = members.filter((m) => pickSel.includes(m.id)).length;
+                      const all = n === members.length;
+                      return (
+                        <button key={team} type="button" onClick={() => toggleTeam(members)}
+                          style={{ border: `1px solid ${all ? ACCENT : BORDER}`, background: all ? ACCENT_SOFT : '#fff', color: all ? '#3B3F9E' : '#252423',
+                                   borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer', width: 'auto' }}>
+                          {team} <span style={{ color: '#A19F9D' }}>{n ? `${n}/${members.length}` : members.length}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  {picker === 'group' && <input type="checkbox" readOnly checked={pickSel.includes(p.id)} />}
+                </div>
+              )}
+              {teamGroups.map(([team, members]) => (
+                <div key={team}>
+                  {picker === 'group' && teamGroups.length > 1 && (
+                    <div style={{ padding: '6px 16px 2px', fontSize: 11, color: '#A19F9D', background: '#fff', position: 'sticky', top: 0 }}>{team}</div>
+                  )}
+                  {members.map((p) => (
+                    <div key={p.id}
+                      onClick={() => picker === 'dm' ? void startDm(p.id) : setPickSel((s) => s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id])}
+                      style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 16px', cursor: 'pointer', background: pickSel.includes(p.id) ? ACCENT_SOFT : undefined }}>
+                      <Avatar id={p.id} name={p.name} size={28} online={online.has(p.id)} />
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+                        <span style={{ fontSize: 11.5, color: '#616161', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.team}</span>
+                      </div>
+                      {picker === 'group' && (
+                        <input type="checkbox" readOnly checked={pickSel.includes(p.id)}
+                          style={{ width: 'auto', minWidth: 0, flex: '0 0 auto', margin: 0, padding: 0 }} />
+                      )}
+                    </div>
+                  ))}
                 </div>
               ))}
               {!people.length && <div style={{ padding: 20, textAlign: 'center', color: '#A19F9D', fontSize: 13 }}>구성원을 불러오는 중…</div>}
+              {!!people.length && !shownPeople.length && <div style={{ padding: 20, textAlign: 'center', color: '#A19F9D', fontSize: 13 }}>검색 결과가 없습니다</div>}
             </div>
             <div style={{ padding: 12, borderTop: `1px solid ${BORDER}`, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn btn-sm btn-outline" onClick={() => setPicker(null)}>취소</button>
