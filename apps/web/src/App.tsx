@@ -79,6 +79,7 @@ import { AgendaPage } from './pages/Agenda';
 import { KnowledgeCards } from './pages/KnowledgeCards';
 import { AdminTenant } from './pages/AdminTenant';
 import { AlignmentWorkbench } from './pages/AlignmentWorkbench';
+import { Messenger } from './pages/Messenger';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -483,6 +484,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/agenda" element={<AgendaPage />} />
           <Route path="/okr/agenda/:id" element={<AgendaPage />} />
           <Route path="/goals/align" element={<AlignmentWorkbench />} />
+          <Route path="/messages" element={<Messenger />} />
           <Route path="/knowledge/cards" element={<KnowledgeCards />} />
           <Route path="/admin/tenant" element={<AdminTenant />} />
           <Route path="/process/my" element={<ProcessMy />} />
