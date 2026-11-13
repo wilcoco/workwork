@@ -329,8 +329,8 @@ export function Messenger() {
       </div>
 
       {picker && (
-        <div onClick={() => setPicker(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'grid', placeItems: 'center', zIndex: 1000 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: 420, maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div onClick={() => setPicker(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', display: 'grid', placeItems: 'center', zIndex: 3000, padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 8, width: 420, maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 3001, boxShadow: '0 16px 48px rgba(0,0,0,.28)' }}>
             <div style={{ padding: '12px 16px', borderBottom: `1px solid ${BORDER}`, fontWeight: 700 }}>{picker === 'dm' ? '새 대화 — 상대 고르기' : '그룹 대화 만들기'}</div>
             {picker === 'group' && (
               <div style={{ padding: '10px 16px', borderBottom: `1px solid ${BORDER}` }}>
