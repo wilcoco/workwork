@@ -67,7 +67,7 @@ export class MessagingController {
     const msg = await this.svc.send(id, u.id, String(b?.body || ''), b?.attachments, b?.mentions);
     const members: any[] = await (this.prisma as any).conversationMember.findMany({ where: { conversationId: id, leftAt: null }, select: { userId: true } });
     for (const m of members) this.gw.server?.to(`user:${m.userId}`).emit('message', msg);
-    void this.svc.notifyOffline(id, msg, this.gw.onlineUserIds());
+    void this.svc.notifyOffline(id, msg, this.gw.viewersOf(id));
     return msg;
   }
 

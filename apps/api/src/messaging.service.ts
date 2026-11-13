@@ -194,8 +194,8 @@ export class MessagingService {
     return n;
   }
 
-  /** 접속해 있지 않은 참여자에게 알림 생성 → 알림함·홈 배너·(당분간) Teams 중계가 받는다 */
-  async notifyOffline(conversationId: string, msg: any, onlineUserIds: Set<string>) {
+  /** 지금 그 대화를 보고 있지 않은 참여자에게 알림 생성 → 알림함·홈 배너·(당분간) Teams 중계가 받는다 */
+  async notifyOffline(conversationId: string, msg: any, activeViewerIds: Set<string>) {
     try {
       const members: any[] = await (this.prisma as any).conversationMember.findMany({ where: { conversationId, leftAt: null } });
       const conv = await (this.prisma as any).conversation.findUnique({ where: { id: conversationId }, select: { type: true, title: true } });
@@ -203,7 +203,7 @@ export class MessagingService {
       const now = new Date();
       for (const m of members) {
         if (m.userId === msg.senderId) continue;
-        if (onlineUserIds.has(m.userId)) continue;
+        if (activeViewerIds.has(m.userId)) continue;
         if (m.mutedUntil && m.mutedUntil > now) continue;
         await this.prisma.notification.create({
           data: {

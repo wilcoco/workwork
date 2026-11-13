@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { apiJson } from '../lib/api';
+import { apiJson, apiUrl } from '../lib/api';
+import { uploadPhotosDisk, type UploadResp } from '../lib/upload';
 import { toast } from '../components/Toast';
 import { emitWithAck, getSocket } from '../lib/messagingSocket';
 
@@ -58,6 +59,9 @@ export function Messenger() {
   const [people, setPeople] = useState<Person[]>([]);
   const [pickSel, setPickSel] = useState<string[]>([]);
   const [groupTitle, setGroupTitle] = useState('');
+  const [pendingFiles, setPendingFiles] = useState<UploadResp[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef(activeId);
   const lastIdRef = useRef<string>('');
@@ -151,14 +155,27 @@ export function Messenger() {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, activeId]);
 
+  // 지금 보고 있는 대화를 서버에 알린다 → 보고 있는 사람에게는 알림을 보내지 않는다
+  useEffect(() => {
+    const s = getSocket();
+    if (!s) return;
+    const tell = () => s.emit('view', { conversationId: activeId || null });
+    tell();
+    s.on('connect', tell);
+    const onHide = () => s.emit('view', { conversationId: document.hidden ? null : (activeId || null) });
+    document.addEventListener('visibilitychange', onHide);
+    return () => { s.off('connect', tell); document.removeEventListener('visibilitychange', onHide); s.emit('view', { conversationId: null }); };
+  }, [activeId]);
+
   async function send() {
     const text = draft.trim();
-    if (!text || !activeId) return;
+    const atts = pendingFiles;
+    if ((!text && !atts.length) || !activeId) return;
     const tempId = `t${Date.now()}`;
-    const optimistic: Msg = { id: tempId, tempId, conversationId: activeId, senderId: userId, senderName: myName, body: text, createdAt: new Date().toISOString(), pending: true };
+    const optimistic: Msg = { id: tempId, tempId, conversationId: activeId, senderId: userId, senderName: myName, body: text, attachments: atts, createdAt: new Date().toISOString(), pending: true };
     setMsgs((p) => [...p, optimistic]);
-    setDraft('');
-    const res = await emitWithAck<{ ok: boolean; message?: Msg; error?: string }>('send', { conversationId: activeId, body: text, tempId });
+    setDraft(''); setPendingFiles([]);
+    const res = await emitWithAck<{ ok: boolean; message?: Msg; error?: string }>('send', { conversationId: activeId, body: text, attachments: atts, tempId });
     if (res?.ok && res.message) {
       setMsgs((p) => p.map((m) => (m.tempId === tempId ? { ...res.message!, tempId: undefined } : m)));
       lastIdRef.current = res.message.id;
@@ -166,7 +183,7 @@ export function Messenger() {
     }
     // 소켓이 안 되면 HTTP로 다시 시도
     try {
-      const m = await apiJson<Msg>(`/api/messaging/conversations/${activeId}/messages`, { method: 'POST', body: JSON.stringify({ userId, body: text }) });
+      const m = await apiJson<Msg>(`/api/messaging/conversations/${activeId}/messages`, { method: 'POST', body: JSON.stringify({ userId, body: text, attachments: atts }) });
       setMsgs((p) => p.map((x) => (x.tempId === tempId ? m : x)));
       lastIdRef.current = m.id;
     } catch (e: any) {
@@ -178,6 +195,16 @@ export function Messenger() {
   // 한글 IME: 조합(composition) 중에는 Enter를 전송으로 쓰면 안 된다.
   // 조합 중 Enter는 '글자 확정'이 먼저 일어나므로, 전송하고 입력칸을 비우면 확정된 끝 글자가 다시 들어온다.
   const composingRef = useRef(false);
+  async function pickFiles(list: FileList | null) {
+    if (!list || !list.length) return;
+    setUploading(true);
+    try {
+      const ups = await uploadPhotosDisk(list);   // 디스크 볼륨(/data)에 저장 — DB에 넣지 않는다
+      setPendingFiles((p) => [...p, ...ups].slice(0, 10));
+    } catch (e: any) { toast(e?.message || '업로드 실패', 'error'); }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  }
+
   const typingTimer = useRef<any>(null);
   function onDraftChange(v: string) {
     setDraft(v);
@@ -300,6 +327,26 @@ export function Messenger() {
                             whiteSpace: 'pre-wrap', wordBreak: 'break-word', opacity: m.pending ? 0.6 : 1,
                           }}>
                             {m.body}
+                            {!!m.attachments?.length && (
+                              <div style={{ display: 'grid', gap: 6, marginTop: m.body ? 6 : 0 }}>
+                                {m.attachments.map((a: any, k: number) => {
+                                  const href = String(a?.url || '').startsWith('http') ? a.url : apiUrl(String(a?.url || ''));
+                                  const isImg = /^image\//i.test(String(a?.type || '')) || /\.(png|jpe?g|gif|webp)$/i.test(String(a?.name || ''));
+                                  return isImg ? (
+                                    <a key={k} href={href} target="_blank" rel="noopener noreferrer">
+                                      <img src={href} alt={a?.name || ''} style={{ maxWidth: 260, maxHeight: 220, borderRadius: 6, display: 'block', border: `1px solid ${BORDER}` }} />
+                                    </a>
+                                  ) : (
+                                    <a key={k} href={href} target="_blank" rel="noopener noreferrer" download={a?.name}
+                                      style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '6px 10px', fontSize: 12.5, color: '#252423', textDecoration: 'none', maxWidth: 280 }}>
+                                      <span>📎</span>
+                                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a?.name || '첨부파일'}</span>
+                                      {a?.size ? <span style={{ color: '#A19F9D', fontSize: 11 }}>{Math.round(a.size / 1024).toLocaleString()}KB</span> : null}
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            )}
                             {m.failed && <div style={{ fontSize: 11, color: '#A4262C', marginTop: 3 }}>전송 실패 — 다시 보내 주세요</div>}
                           </div>
                         </div>
@@ -312,7 +359,22 @@ export function Messenger() {
                 <div ref={bottomRef} />
               </div>
 
+              {(pendingFiles.length > 0 || uploading) && (
+                <div style={{ borderTop: `1px solid ${BORDER}`, padding: '8px 10px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', background: '#FAFAFA' }}>
+                  {uploading && <span style={{ fontSize: 12, color: '#616161' }}>올리는 중…</span>}
+                  {pendingFiles.map((f, i) => (
+                    <span key={i} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', background: '#fff', border: `1px solid ${BORDER}`, borderRadius: 999, padding: '3px 8px', fontSize: 12 }}>
+                      📎 <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                      <button type="button" onClick={() => setPendingFiles((p) => p.filter((_, k) => k !== i))}
+                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#A19F9D', fontSize: 13, lineHeight: 1 }}>✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div style={{ borderTop: `1px solid ${BORDER}`, padding: 10, display: 'flex', gap: 8, alignItems: 'flex-end', background: '#fff' }}>
+                <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => void pickFiles(e.target.files)} />
+                <button type="button" title="파일 첨부 (한 개당 25MB까지)" onClick={() => fileRef.current?.click()}
+                  style={{ border: `1px solid ${BORDER}`, background: '#fff', borderRadius: 6, padding: '9px 11px', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}>📎</button>
                 <textarea
                   value={draft}
                   onChange={(e) => onDraftChange(e.target.value)}
@@ -329,8 +391,8 @@ export function Messenger() {
                   rows={1}
                   style={{ flex: 1, resize: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '9px 12px', fontSize: 13.5, maxHeight: 120, fontFamily: 'inherit' }}
                 />
-                <button onClick={() => void send()} disabled={!draft.trim()}
-                  style={{ background: draft.trim() ? ACCENT : '#E1DFDD', color: draft.trim() ? '#fff' : '#A19F9D', border: 'none', borderRadius: 6, padding: '9px 18px', fontWeight: 700, fontSize: 13.5, cursor: draft.trim() ? 'pointer' : 'default' }}>
+                <button onClick={() => void send()} disabled={!draft.trim() && !pendingFiles.length}
+                  style={{ background: (draft.trim() || pendingFiles.length) ? ACCENT : '#E1DFDD', color: (draft.trim() || pendingFiles.length) ? '#fff' : '#A19F9D', border: 'none', borderRadius: 6, padding: '9px 18px', fontWeight: 700, fontSize: 13.5, cursor: (draft.trim() || pendingFiles.length) ? 'pointer' : 'default' }}>
                   보내기
                 </button>
               </div>

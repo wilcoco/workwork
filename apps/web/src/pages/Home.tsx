@@ -59,6 +59,7 @@ export function Home() {
   const [pendingSwaps, setPendingSwaps] = useState<any[]>([]); // 내게 온 차량 교환 요청 (대기중)
   const [pendingQuizzes, setPendingQuizzes] = useState<any[]>([]); // 내게 온 관리자 시험지 (응답 대기)
   const [pendingCards, setPendingCards] = useState(0); // 내 기록에서 뽑힌 암묵지 카드 (확인 대기)
+  const [unreadMsgs, setUnreadMsgs] = useState(0); // 안 읽은 사내 메시지
   const [approvalNotices, setApprovalNotices] = useState<any[]>([]); // 결재 소식: 의견/최종 승인·반려 (안 읽은 것)
   const [weeklyDigest, setWeeklyDigest] = useState<any | null>(null); // 온톨로지 주간 리포트 (안 읽은 것)
   const [myName, setMyName] = useState('');
@@ -380,6 +381,13 @@ export function Home() {
       } catch {
         setPendingCards(0);
       }
+      // 안 읽은 사내 메시지
+      try {
+        const res = await apiJson<{ count: number }>(`/api/messaging/unread?userId=${encodeURIComponent(viewerId)}`);
+        setUnreadMsgs(res?.count || 0);
+      } catch {
+        setUnreadMsgs(0);
+      }
     })(), 800);
     return () => window.clearTimeout(timer);
   }, []);
@@ -459,11 +467,11 @@ export function Home() {
         </div>
       )}
       {/* 알림 배너 */}
-      {(!hideApproval || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || pendingQuizzes.length > 0 || pendingCards > 0) && (
+      {(!hideApproval || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || pendingQuizzes.length > 0 || pendingCards > 0 || unreadMsgs > 0) && (
         <div style={{ background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)', border: '1px solid #f59e0b', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
-            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>{(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0 || pendingQuizzes.length > 0 || pendingCards > 0) ? '처리가 필요한 항목이 있습니다' : '오늘의 알림'}</span>
+            <span style={{ fontWeight: 800, color: '#92400e', fontSize: 15 }}>{(pendingApprovalsTotal > 0 || pendingInstructions.length > 0 || pendingComments.length > 0 || pendingSwaps.length > 0 || approvalNotices.length > 0 || pendingQuizzes.length > 0 || pendingCards > 0 || unreadMsgs > 0) ? '처리가 필요한 항목이 있습니다' : '오늘의 알림'}</span>
           </div>
           {weeklyDigest && (
             <div
@@ -551,6 +559,11 @@ export function Home() {
                   <div style={{ fontSize: 12, color: '#9333ea' }}>외 {approvalNotices.length - 3}건 더... (알림함에서 확인)</div>
                 )}
               </div>
+            </div>
+          )}
+          {unreadMsgs > 0 && (
+            <div onClick={() => nav('/messages')} style={{ background: '#EEF0FB', border: '1px solid #A6ABE8', borderRadius: 8, padding: 10, cursor: 'pointer' }}>
+              <div style={{ fontWeight: 700, color: '#3B3F9E', fontSize: 13 }}>💬 읽지 않은 메시지 {unreadMsgs}건 →</div>
             </div>
           )}
           {pendingCards > 0 && (
