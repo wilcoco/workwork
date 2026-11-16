@@ -564,6 +564,19 @@ export class GraphTasksController {
   }
 
   /** 사용자 색인 확보: 없으면 구축 시작(최대 8초 대기 후 백그라운드), 있으면 15초 지났을 때 변경분 반영 */
+  /** 내 OneDrive의 driveId (검색 결과가 내 것인지 가르는 기준). 짧게 캐시 */
+  private myDriveIdCache = new Map<string, { id: string; at: number }>();
+  private async myDriveId(userId: string, token: string): Promise<string> {
+    const c = this.myDriveIdCache.get(userId);
+    if (c && Date.now() - c.at < 10 * 60 * 1000) return c.id;
+    try {
+      const d = await this.graphGet(token, '/me/drive?$select=id');
+      const id = String(d?.id || '');
+      if (id) this.myDriveIdCache.set(userId, { id, at: Date.now() });
+      return id;
+    } catch { return ''; }
+  }
+
   private async ensureDriveIdx(userId: string, token: string): Promise<DriveIdx> {
     // 오래 안 쓴 캐시 정리
     const now = Date.now();
@@ -1495,6 +1508,7 @@ export class GraphTasksController {
     @Query('userId') userId: string,
     @Query('folderId') folderId?: string,
     @Query('search') search?: string,
+    @Query('scope') scope?: string,
   ) {
     if (!userId) throw new BadRequestException('userId required');
     const token = await this.getGraphToken(userId);
@@ -1510,7 +1524,7 @@ export class GraphTasksController {
         const resp = await fetch('https://graph.microsoft.com/v1.0/search/query', {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests: [{ entityTypes: ['driveItem'], query: { queryString: kql }, from: 0, size: 50, sharePointOneDriveOptions: { includeContent: 'privateContent' } }] }),
+          body: JSON.stringify({ requests: [{ entityTypes: ['driveItem'], query: { queryString: kql }, from: 0, size: 50, fields: ['id', 'name', 'size', 'lastModifiedDateTime', 'webUrl', 'parentReference', 'file', 'folder'], sharePointOneDriveOptions: { includeContent: 'privateContent' } }] }),
         });
         if (resp.ok) {
           const j: any = await resp.json();
@@ -1536,8 +1550,18 @@ export class GraphTasksController {
       const seen = new Set<string>();
       const merged: any[] = [];
       for (const it of [...live, ...(items || [])]) { if (!it?.id || seen.has(it.id)) continue; seen.add(it.id); merged.push(it); }
-      merged.sort((a: any, b: any) => String(b?.lastModifiedDateTime || '').localeCompare(String(a?.lastModifiedDateTime || '')));
-      data = { value: merged.slice(0, 80), _index: idxState };
+      // Microsoft Search는 "이 사람이 볼 수 있는 모든 것"(공유받은 파일·SharePoint 사이트 포함)을 돌려준다.
+      // 그대로 보여 주면 "내 것이 아닌 낯선 목록"으로 보이므로, 기본은 내 OneDrive만 보여 주고 출처를 표시한다.
+      const myDrive = await this.myDriveId(userId, token).catch(() => '');
+      for (const it of merged) {
+        const dId = String(it?.parentReference?.driveId || '');
+        const mine = !dId || !myDrive || dId === myDrive;
+        it._mine = mine;
+        it._source = mine ? '내 OneDrive' : (String(it?.parentReference?.siteId || '') ? '팀 사이트(SharePoint)' : '공유받은 파일');
+      }
+      const onlyMine = String(scope || 'mine') !== 'all';
+      const visible = onlyMine ? merged.filter((it) => it._mine) : merged;
+      data = { value: visible.slice(0, 80), _index: idxState, _scope: onlyMine ? 'mine' : 'all', _otherCount: merged.length - merged.filter((it) => it._mine).length };
     } else {
       // List children of a folder
       const folder = folderId && folderId !== 'root' ? `/me/drive/items/${encodeURIComponent(folderId)}` : '/me/drive/root';
@@ -1557,8 +1581,10 @@ export class GraphTasksController {
       childCount: f.folder?.childCount,
       mimeType: f.file?.mimeType,
       path: f.parentPath ? String(f.parentPath).replace(/^\/drive\/root:?/, '') : undefined,
+      source: f._source || undefined,   // '내 OneDrive' | '팀 사이트(SharePoint)' | '공유받은 파일'
+      mine: f._mine !== false,
     }));
-    return { items, index: data?._index || null };
+    return { items, index: data?._index || null, scope: data?._scope || 'mine', otherCount: data?._otherCount || 0 };
   }
 
   /**

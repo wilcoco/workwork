@@ -11,6 +11,9 @@ interface OneDriveItem {
   childCount?: number;
   mimeType?: string;
   path?: string;
+  /** '내 OneDrive' | '팀 사이트(SharePoint)' | '공유받은 파일' */
+  source?: string;
+  mine?: boolean;
 }
 
 interface Props {
@@ -37,6 +40,11 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
     loadFiles(currentFolderId);
   }, [currentFolderId]);
 
+  // 검색은 기본으로 "내 OneDrive"만 본다 — Microsoft 검색은 공유받은 파일·팀 사이트까지 돌려줘
+  // 쓰는 사람에게는 "내 것이 아닌 낯선 목록"으로 보인다.
+  const [searchAll, setSearchAll] = useState(false);
+  const [otherCount, setOtherCount] = useState(0);
+
   async function loadFiles(folderId: string, searchQuery?: string) {
     setLoading(true);
     setError(null);
@@ -44,11 +52,13 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
       const params = new URLSearchParams({ userId });
       if (searchQuery) {
         params.set('search', searchQuery);
+        params.set('scope', searchAll ? 'all' : 'mine');
       } else {
         params.set('folderId', folderId);
       }
-      const data = await apiJson<{ items: OneDriveItem[]; index?: { complete: boolean; count: number } | null }>(`/api/graph-tasks/onedrive/files?${params.toString()}`);
+      const data = await apiJson<{ items: OneDriveItem[]; index?: { complete: boolean; count: number } | null; otherCount?: number }>(`/api/graph-tasks/onedrive/files?${params.toString()}`);
       setItems(data.items || []);
+      setOtherCount(data.otherCount || 0);
       setIndexNote(searchQuery && data.index && !data.index.complete ? `파일 목록을 아직 읽는 중입니다(${data.index.count}개 확인) — 잠시 후 다시 검색하면 더 나옵니다.` : null);
     } catch (e: any) {
       setError(e?.message || '파일 목록 로딩 실패');
@@ -183,6 +193,21 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
           </button>
         </div>
 
+        {/* 검색 범위 — 기본은 내 OneDrive. 켜면 공유받은 파일·팀 사이트까지 */}
+        {searchMode && (
+          <div style={{ padding: '0 20px 8px', display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+            <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <input type="checkbox" checked={searchAll}
+                onChange={(e) => { setSearchAll(e.target.checked); if (search.trim()) setTimeout(() => doSearch(), 0); }}
+                style={{ width: 'auto', minWidth: 0, margin: 0 }} />
+              <span>공유받은 파일·팀 사이트도 함께 찾기</span>
+            </label>
+            {!searchAll && otherCount > 0 && (
+              <span style={{ color: '#b45309' }}>내 OneDrive 밖에서 {otherCount}건 더 있습니다</span>
+            )}
+          </div>
+        )}
+
         {/* Breadcrumb */}
         {!searchMode && (
           <div style={{ padding: '4px 20px 8px', display: 'flex', gap: 4, alignItems: 'center', fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
@@ -251,6 +276,9 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
                         {item.name}
                       </div>
                       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                        {item.source && item.mine === false && (
+                          <span style={{ marginRight: 6, padding: '0 5px', borderRadius: 999, background: '#FEF3C7', color: '#92400E', fontWeight: 600 }}>{item.source}</span>
+                        )}
                         {item.isFolder ? `${item.childCount ?? ''}개 항목` : formatSize(item.size)}
                         {item.lastModified ? ` · ${formatDate(item.lastModified)}` : ''}
                         {searchMode && item.path ? ` · ${item.path}` : ''}
