@@ -44,6 +44,7 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
   // 쓰는 사람에게는 "내 것이 아닌 낯선 목록"으로 보인다.
   const [searchAll, setSearchAll] = useState(false);
   const [otherCount, setOtherCount] = useState(0);
+  const [owner, setOwner] = useState<{ name: string; upn: string } | null>(null);
 
   async function loadFiles(folderId: string, searchQuery?: string) {
     setLoading(true);
@@ -56,9 +57,10 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
       } else {
         params.set('folderId', folderId);
       }
-      const data = await apiJson<{ items: OneDriveItem[]; index?: { complete: boolean; count: number } | null; otherCount?: number }>(`/api/graph-tasks/onedrive/files?${params.toString()}`);
+      const data = await apiJson<{ items: OneDriveItem[]; index?: { complete: boolean; count: number } | null; otherCount?: number; owner?: { name: string; upn: string } }>(`/api/graph-tasks/onedrive/files?${params.toString()}`);
       setItems(data.items || []);
       setOtherCount(data.otherCount || 0);
+      if (data.owner?.upn) setOwner(data.owner);
       setIndexNote(searchQuery && data.index && !data.index.complete ? `파일 목록을 아직 읽는 중입니다(${data.index.count}개 확인) — 잠시 후 다시 검색하면 더 나옵니다.` : null);
     } catch (e: any) {
       setError(e?.message || '파일 목록 로딩 실패');
@@ -175,7 +177,13 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
       >
         {/* Header */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, flex: 1 }}>OneDrive 파일 선택</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>OneDrive 파일 선택</div>
+            {/* 누구 드라이브인지 분명히 — "내 것이 아닌 낯선 목록"으로 오해하지 않게 */}
+            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {owner?.upn ? <>내 OneDrive · <b style={{ color: '#334155' }}>{owner.name || owner.upn}</b> ({owner.upn})</> : '내 OneDrive'}
+            </div>
+          </div>
           <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#64748b' }}>✕</button>
         </div>
 
@@ -193,20 +201,26 @@ export function OneDriveFilePicker({ userId, onSelect, onClose, multiple = true 
           </button>
         </div>
 
-        {/* 검색 범위 — 기본은 내 OneDrive. 켜면 공유받은 파일·팀 사이트까지 */}
-        {searchMode && (
-          <div style={{ padding: '0 20px 8px', display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
-            <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              <input type="checkbox" checked={searchAll}
-                onChange={(e) => { setSearchAll(e.target.checked); if (search.trim()) setTimeout(() => doSearch(), 0); }}
-                style={{ width: 'auto', minWidth: 0, margin: 0 }} />
-              <span>공유받은 파일·팀 사이트도 함께 찾기</span>
-            </label>
-            {!searchAll && otherCount > 0 && (
-              <span style={{ color: '#b45309' }}>내 OneDrive 밖에서 {otherCount}건 더 있습니다</span>
-            )}
+        {!searchMode && (
+          <div style={{ padding: '0 20px 8px', fontSize: 11.5, color: '#94a3b8' }}>
+            내 OneDrive의 파일만 보입니다. 이름으로 찾으려면 위에 입력하고 Enter를 누르세요.
           </div>
         )}
+
+        {/* 검색 범위 — 항상 보이게 둔다. 전에는 검색 모드에서만 떠서 아무도 못 찾았다. */}
+        <div style={{ padding: '0 20px 8px', display: 'flex', gap: 10, alignItems: 'center', fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+          <span style={{ color: '#94a3b8' }}>검색 범위</span>
+          <label style={{ display: 'inline-flex', gap: 5, alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={searchAll}
+              onChange={(e) => { setSearchAll(e.target.checked); if (search.trim()) setTimeout(() => doSearch(), 0); }}
+              style={{ width: 'auto', minWidth: 0, margin: 0 }} />
+            <span>공유받은 파일·팀 사이트도 함께 찾기</span>
+          </label>
+          {searchMode && !searchAll && otherCount > 0 && (
+            <span style={{ color: '#b45309' }}>내 OneDrive 밖에서 {otherCount}건 더 있습니다</span>
+          )}
+          {!searchMode && <span style={{ color: '#cbd5e1' }}>· Enter를 누르면 OneDrive 전체에서 찾습니다</span>}
+        </div>
 
         {/* Breadcrumb */}
         {!searchMode && (
