@@ -22,6 +22,9 @@ type Graph = { month: string; nodes: Node[]; edges: Edge[]; ghosts: Ghost[]; sum
 type Ev = { at: string; kind: 'record' | 'intent' | 'verify' | 'ghost'; path: string[]; t?: number };
 type Events = { from: string; to: string; hours: number; events: Ev[]; sampled: boolean; counters: any };
 type Dot = { u: number; kind: string; path: string[] };
+type TraceStep = { worklogId: string; at: string; title: string; activity: string; domain: string; node: string; edge: 'start' | 'same' | 'defined' | 'ghost'; gapMinutes: number | null };
+type Trace = { entity: { id: string; name: string; kind: string }; steps: TraceStep[]; defined: number; ghost: number; days: number };
+type Hit = { id: string; name: string; kind: string; records: number };
 
 const COLS = [
   { title: '앱 · 현장', sub: 'ERP · MES · 기록' },
@@ -69,6 +72,11 @@ export function FlowMap() {
   const [speed, setSpeed] = useState(1);
   const [cursorUi, setCursorUi] = useState(0);
   const [evBusy, setEvBusy] = useState(false);
+  const [traceOn, setTraceOn] = useState(false);
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState<Hit[]>([]);
+  const [trace, setTrace] = useState<Trace | null>(null);
+  const [step, setStep] = useState(0);
   const cursorRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const cvRef = useRef<HTMLCanvasElement | null>(null);
@@ -263,7 +271,29 @@ export function FlowMap() {
         ctx.globalAlpha = 1;
       }
     }
-  }, [g, layout, sel, showGhost, showCand, hlGhost]);
+    // ── 한 건 따라가기 — 대상 하나가 지나온 길
+    if (trace && trace.steps.length) {
+      const upto = trace.steps.slice(0, step + 1);
+      ctx.lineCap = 'round';
+      for (let i = 1; i < upto.length; i++) {
+        const a = byId.get(upto[i - 1].node), b = byId.get(upto[i].node);
+        if (!a || !b || a.x == null || b.x == null || a.id === b.id) continue;
+        const gh = upto[i].edge === 'ghost';
+        ctx.strokeStyle = gh ? C.amber : C.navy;
+        ctx.lineWidth = 2.6; ctx.setLineDash(gh ? [7, 5] : []); ctx.globalAlpha = 0.85;
+        const cx = a.x + 95, cy = (a.y! + b.y!) / 2;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y!); ctx.quadraticCurveTo(cx, cy, b.x, b.y!); ctx.stroke();
+      }
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+      const cur = byId.get(upto[upto.length - 1].node);
+      if (cur && cur.x != null) {
+        ctx.strokeStyle = C.navy; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(cur.x, cur.y!, 17, 0, 7); ctx.stroke();
+        ctx.fillStyle = C.navy; ctx.font = `700 11px ${font}`; ctx.textAlign = 'center';
+        ctx.fillText(`${step + 1}`, cur.x, cur.y! - 22);
+      }
+    }
+  }, [g, layout, sel, showGhost, showCand, hlGhost, trace, step]);
 
   useEffect(() => { paint([]); }, [paint]);
 
@@ -309,6 +339,22 @@ export function FlowMap() {
   }, [playing, ev, speed, paint, dotsAt]);
 
   const seek = (c: number) => { cursorRef.current = c; setCursorUi(c); paint(dotsAt(c)); };
+
+  // ── 한 건 따라가기
+  const search = useCallback(async (term: string) => {
+    if (term.trim().length < 1) { setHits([]); return; }
+    try { setHits((await apiJson<{ items: Hit[] }>(`/api/ontology/trace/search?q=${encodeURIComponent(term)}&actorId=${encodeURIComponent(userId)}`)).items); }
+    catch { setHits([]); }
+  }, [userId]);
+  useEffect(() => { const h = setTimeout(() => void search(q), 250); return () => clearTimeout(h); }, [q, search]);
+
+  async function openTrace(h: Hit) {
+    try {
+      const r = await apiJson<Trace>(`/api/ontology/trace?entityId=${encodeURIComponent(h.id)}&actorId=${encodeURIComponent(userId)}`);
+      if (!r.steps.length) { toast('최근 기록이 없습니다', 'error'); return; }
+      setTrace(r); setStep(0); setHits([]); setQ('');
+    } catch (e: any) { toast(e?.message || '불러오지 못했습니다', 'error'); }
+  }
 
   function onCanvasClick(ev: React.MouseEvent<HTMLCanvasElement>) {
     const cv = cvRef.current; if (!cv || !g) return;
@@ -359,7 +405,72 @@ export function FlowMap() {
           onClick={() => { const on = !replayOn; setReplayOn(on); if (on && !ev) void loadEvents(hours); if (!on) { setPlaying(false); paint([]); } }}>
           {replayOn ? '재생 닫기' : '흐름 재생'}
         </button>
+        <button className="btn btn-sm btn-outline"
+          onClick={() => { const on = !traceOn; setTraceOn(on); if (!on) { setTrace(null); setHits([]); setQ(''); } }}>
+          {traceOn ? '따라가기 닫기' : '한 건 따라가기'}
+        </button>
       </div>
+
+      {traceOn && (
+        <div style={{ background: '#fff', border: `1px solid ${C.rule}`, borderRadius: 10, padding: '10px 14px', display: 'grid', gap: 8 }}>
+          {!trace ? (
+            <>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="금형·부품·설비·협력사 이름으로 찾기"
+                  style={{ flex: '1 1 260px', minWidth: 200, fontSize: 13, padding: '6px 9px', border: `1px solid ${C.rule}`, borderRadius: 8 }} />
+                <span style={{ fontSize: 12, color: C.muted }}>대상 하나가 지나온 길을 걸음마다 따라갑니다</span>
+              </div>
+              {!!hits.length && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {hits.map((h) => (
+                    <button key={h.id} className="btn btn-sm btn-outline" onClick={() => void openTrace(h)}>
+                      {h.name} <span style={{ color: C.muted }}>· {h.kind} · 기록 {h.records}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <b style={{ fontSize: 14 }}>{trace.entity.name}</b>
+                <span style={{ fontSize: 12, color: C.muted }}>{trace.entity.kind} · 걸음 {trace.steps.length} · 정의된 넘김 {trace.defined} · 정의 밖 {trace.ghost}</span>
+                <span style={{ flex: 1 }} />
+                <button className="btn btn-sm btn-outline" disabled={step <= 0} onClick={() => setStep((v) => Math.max(0, v - 1))}>이전</button>
+                <button className="btn btn-sm" disabled={step >= trace.steps.length - 1} onClick={() => setStep((v) => Math.min(trace.steps.length - 1, v + 1))}>다음 걸음</button>
+                <button className="btn btn-sm btn-outline" onClick={() => { setTrace(null); setStep(0); }}>다른 대상</button>
+              </div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {trace.steps.map((st, i) => (
+                  <button key={st.worklogId + i} onClick={() => setStep(i)} title={`${st.activity} · ${new Date(st.at).toLocaleDateString('ko-KR')}`}
+                    style={{
+                      width: 13, height: 13, borderRadius: 13, padding: 0, cursor: 'pointer',
+                      border: `1px solid ${st.edge === 'ghost' ? C.amber : C.rule}`,
+                      background: i === step ? C.navy : st.edge === 'ghost' ? '#fdf0dc' : i < step ? '#dbe3e8' : '#fff',
+                    }} />
+                ))}
+              </div>
+              {(() => {
+                const st = trace.steps[step];
+                return (
+                  <div style={{ fontSize: 12.5, display: 'grid', gap: 3 }}>
+                    <div>
+                      <b>{step + 1}. {st.activity}</b>
+                      <span style={{ color: C.muted }}> · {st.domain} · {new Date(st.at).toLocaleDateString('ko-KR')}</span>
+                      {st.edge === 'ghost' && <span style={{ color: C.amber, fontWeight: 700 }}> · 정의 밖으로 넘어옴</span>}
+                      {st.edge === 'defined' && <span style={{ color: C.green }}> · 정의된 길로 넘어옴</span>}
+                      {st.gapMinutes != null && st.gapMinutes > 0 && <span style={{ color: C.muted }}> · 앞 걸음에서 {Math.round(st.gapMinutes / 1440)}일</span>}
+                    </div>
+                    {!!st.title && <div style={{ color: C.muted }}>{st.title}</div>}
+                    <button className="btn btn-sm btn-outline" style={{ justifySelf: 'start' }}
+                      onClick={() => nav(`/worklogs/${encodeURIComponent(st.worklogId)}`)}>그 일지 열기</button>
+                  </div>
+                );
+              })()}
+            </>
+          )}
+        </div>
+      )}
 
       {replayOn && (
         <div style={{ background: '#fff', border: `1px solid ${C.rule}`, borderRadius: 10, padding: '10px 14px', display: 'grid', gap: 8 }}>

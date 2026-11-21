@@ -185,6 +185,21 @@ export class OntologyController {
     return this.flow.events(Number.isFinite(h) && h > 0 ? h : 24);
   }
 
+  /** GET /api/ontology/trace/search?q= — 따라갈 대상 찾기 */
+  @Get('trace/search')
+  async traceSearch(@Query('q') q?: string, @Query('actorId') actorId?: string) {
+    await this.assertExec(actorId);
+    return this.flow.traceSearch(String(q || ''));
+  }
+
+  /** GET /api/ontology/trace?entityId= — 대상 하나가 지나온 길 */
+  @Get('trace')
+  async trace(@Query('entityId') entityId?: string, @Query('days') days?: string, @Query('actorId') actorId?: string) {
+    await this.assertExec(actorId);
+    const d = Number(days);
+    return this.flow.trace(String(entityId || ''), Number.isFinite(d) && d > 0 ? d : 120);
+  }
+
   /** POST /api/ontology/graph/scan — 관찰 전이 추출(해당 월). 무거우므로 수동·야간 실행 */
   @Post('graph/scan')
   async graphScan(@Body() b: any) {

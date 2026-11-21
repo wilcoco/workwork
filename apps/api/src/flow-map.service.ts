@@ -445,6 +445,70 @@ export class FlowMapService {
   }
 
   /** 프로세스 템플릿에 정의된 이웃 태스크의 활동 대분류 쌍 */
+  /**
+   * 업무 한 건 따라가기(P1) — 대상(금형·부품·설비·협력사) 하나가 지나온 길을 시간순으로 돌려준다.
+   *
+   * 핸드오프는 "프로세스 인스턴스 하나"를 전제했지만 인스턴스는 20건뿐이라 따라갈 것이 없다.
+   * 실제로 건을 잇고 있는 식별자는 **대상 공유**다(4-1 참조). 그래서 대상 하나를 건으로 본다.
+   * 걸음마다 앞 걸음에서 넘어온 길이 템플릿에 정의된 길인지 표시한다.
+   */
+  async traceSearch(q: string, limit = 12) {
+    const p: any = this.prisma;
+    const term = String(q || '').trim();
+    if (term.length < 1) return { items: [] };
+    const ents: any[] = await p.ontologyEntity.findMany({
+      where: { name: { contains: term, mode: 'insensitive' } },
+      select: { id: true, name: true, kind: true, _count: { select: { worklogLinks: true } } },
+      orderBy: { worklogLinks: { _count: 'desc' } },
+      take: limit,
+    });
+    return { items: ents.map((e) => ({ id: e.id, name: e.name, kind: e.kind, records: e._count?.worklogLinks || 0 })) };
+  }
+
+  async trace(entityId: string, days = 120) {
+    const p: any = this.prisma;
+    const id = String(entityId || '').trim();
+    if (!id) throw new Error('대상을 고르세요');
+    const ent = await p.ontologyEntity.findUnique({ where: { id }, select: { id: true, name: true, kind: true } });
+    if (!ent) throw new Error('대상을 찾지 못했습니다');
+
+    const since = new Date(Date.now() - Math.max(7, Math.min(400, days)) * 86400000);
+    const links: any[] = await p.worklogEntity.findMany({ where: { entityId: id }, select: { worklogId: true } });
+    const wlIds = links.map((l) => String(l.worklogId));
+    if (!wlIds.length) return { entity: ent, steps: [], defined: 0, ghost: 0 };
+
+    const wls: any[] = await p.worklog.findMany({
+      where: { id: { in: wlIds }, date: { gte: since }, activityId: { not: null } },
+      select: { id: true, date: true, createdAt: true, activityId: true, title: true },
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      take: 300,
+    });
+    const actIds = Array.from(new Set(wls.map((w) => String(w.activityId))));
+    const acts: any[] = actIds.length ? await p.activity.findMany({ where: { id: { in: actIds } }, select: { id: true, name: true, domain: true } }) : [];
+    const actById = new Map(acts.map((a) => [String(a.id), a]));
+    const definedPairs = await this.definedDomainPairs();
+
+    let defined = 0, ghost = 0;
+    const steps = wls.map((w, i) => {
+      const a = actById.get(String(w.activityId));
+      const dom = String(a?.domain || '(미분류 대분류)');
+      const prev = i > 0 ? actById.get(String(wls[i - 1].activityId)) : null;
+      const prevDom = prev ? String(prev.domain || '(미분류 대분류)') : null;
+      let edge: 'start' | 'same' | 'defined' | 'ghost' = 'start';
+      if (prevDom) {
+        if (prevDom === dom) edge = 'same';
+        else if (definedPairs.has(`${prevDom}>${dom}`)) { edge = 'defined'; defined++; }
+        else { edge = 'ghost'; ghost++; }
+      }
+      const gapMin = i > 0 ? Math.round((new Date(w.date).getTime() - new Date(wls[i - 1].date).getTime()) / 60000) : null;
+      return {
+        worklogId: String(w.id), at: w.date, title: String(w.title || '').slice(0, 80),
+        activity: a?.name || '(활동 없음)', domain: dom, node: `dom:${dom}`, edge, gapMinutes: gapMin,
+      };
+    });
+    return { entity: ent, steps, defined, ghost, days };
+  }
+
   private async definedDomainPairs(): Promise<Set<string>> {
     const p: any = this.prisma;
     const tasks: any[] = await p.processTaskTemplate.findMany({
