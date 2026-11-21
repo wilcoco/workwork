@@ -80,12 +80,14 @@ export class FlowMapService {
     ]);
 
     // ── 목표 층
+    // 'test' 같은 시험용 목표는 맵에서만 가린다(계정·데이터는 그대로 둔다).
+    const NOISE_TITLES = ['test', 'TEST', 'Test', '테스트'];
     const objs: any[] = await p.objective.findMany({
-      where: { status: { in: ['ACTIVE', 'LOCKED'] } },
+      where: { status: { in: ['ACTIVE', 'LOCKED'] }, title: { notIn: NOISE_TITLES } },
       select: { id: true, title: true, pillar: true, orgUnit: { select: { name: true } }, alignsToKrId: true },
     });
     const krs: any[] = await p.keyResult.findMany({
-      where: { objective: { status: { in: ['ACTIVE', 'LOCKED'] } } },
+      where: { objective: { status: { in: ['ACTIVE', 'LOCKED'] }, title: { notIn: NOISE_TITLES } } },
       select: { id: true, title: true, objectiveId: true, activityId: true, unit: true, binding: { select: { sourceType: true, lastError: true } } },
     });
     const kis: any[] = await p.keyInitiative.findMany({ select: { id: true, title: true, activityId: true, alignsToObjectiveId: true, status: true } });
@@ -119,7 +121,16 @@ export class FlowMapService {
     for (const k of krs) push({ id: `kr:${k.id}`, type: 'kpi', col: 2, label: k.title, status: k.binding && !k.binding.lastError ? 'ok' : 'cand', metrics: { bound: !!k.binding, unit: k.unit } });
     for (const t of kis) push({ id: `ki:${t.id}`, type: 'task', col: 2, label: t.title, status: 'ok', metrics: { state: t.status } });
     // 3열 목표
-    for (const o of objs) push({ id: `obj:${o.id}`, type: 'obj', col: 3, label: o.title, status: 'ok', metrics: { team: o.orgUnit?.name || '' } });
+    for (const o of objs) {
+      // 'Auto Objective - 팀명'은 팀 KPI를 담으려고 기계가 만든 그릇이다. 대표가 세운 목표와 섞이면 안 되므로 후보층으로 표시.
+      const auto = /^Auto Objective/i.test(String(o.title || ''));
+      push({
+        id: `obj:${o.id}`, type: 'obj', col: 3,
+        label: auto ? `${o.orgUnit?.name || '팀'} · 자동 생성 그릇` : o.title,
+        status: auto ? 'cand' : 'ok',
+        metrics: { team: o.orgUnit?.name || '', auto },
+      });
+    }
     // 4열 기둥
     const pillars = Array.from(new Set(objs.map((o) => o.pillar).filter(Boolean)));
     for (const pl of pillars) push({ id: `pillar:${pl}`, type: 'pillar', col: 4, label: PILLAR_LABEL[String(pl)] || String(pl), status: 'ok', metrics: {} });
@@ -159,9 +170,10 @@ export class FlowMapService {
 
     // ── 정의 밖 경로(저장된 관찰 전이)
     const trans: any[] = await p.observedTransition.findMany({
-      where: { month, level: 'DOMAIN' }, include: { decision: true }, orderBy: { count: 'desc' }, take: 40,
+      where: { month, level: 'DOMAIN', defined: false }, include: { decision: true }, orderBy: { count: 'desc' }, take: 25,
     });
-    const ghosts = trans.filter((t) => !t.defined).map((t) => ({
+    const scanned = await p.observedTransition.findFirst({ where: { month, level: 'DOMAIN' }, orderBy: { computedAt: 'desc' }, select: { computedAt: true } });
+    const ghosts = trans.map((t) => ({
       id: t.id, from: `dom:${t.fromKey}`, to: `dom:${t.toKey}`, fromLabel: t.fromLabel, toLabel: t.toLabel,
       count: t.count, ofCount: t.ofCount, confidence: t.confidence, medianGapMinutes: t.medianGapMinutes,
       offHoursRatio: t.offHoursRatio, sampleCases: t.sampleCases || [],
@@ -179,7 +191,7 @@ export class FlowMapService {
         outsideGoalMinutes, outsideGoalHours: Math.round(outsideGoalMinutes / 60),
         boundKpis: bindings.length, kpis: krs.length, objectives: objs.length,
         ghostCount: ghosts.length, ghostDecided: ghosts.filter((g) => g.decision).length,
-        scannedAt: trans[0]?.computedAt || null,
+        scannedAt: scanned?.computedAt || null,
       },
     };
   }
