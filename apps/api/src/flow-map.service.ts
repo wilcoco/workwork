@@ -479,7 +479,7 @@ export class FlowMapService {
 
     const wls: any[] = await p.worklog.findMany({
       where: { id: { in: wlIds }, date: { gte: since }, activityId: { not: null } },
-      select: { id: true, date: true, createdAt: true, activityId: true, title: true },
+      select: { id: true, date: true, createdAt: true, activityId: true, note: true },
       orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
       take: 300,
     });
@@ -502,7 +502,7 @@ export class FlowMapService {
       }
       const gapMin = i > 0 ? Math.round((new Date(w.date).getTime() - new Date(wls[i - 1].date).getTime()) / 60000) : null;
       return {
-        worklogId: String(w.id), at: w.date, title: String(w.title || '').slice(0, 80),
+        worklogId: String(w.id), at: w.date, title: String(w.note || '').replace(/\s+/g, ' ').trim().slice(0, 90),
         activity: a?.name || '(활동 없음)', domain: dom, node: `dom:${dom}`, edge, gapMinutes: gapMin,
       };
     });
