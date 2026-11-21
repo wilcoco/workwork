@@ -255,6 +255,7 @@ export function FlowMap() {
         {s && (
           <span style={{ fontSize: 12, color: '#5d6b75', fontVariantNumeric: 'tabular-nums' }}>
             활동 {s.activities} · 대분류 {s.domains} · 일지 {s.worklogs} · 미분류 {s.unclassifiedRatio}% · 목표 밖 {s.outsideGoalHours}시간 · 정의 밖 경로 {s.ghostCount}
+            {s.hiddenEmptyGoals ? <span title="활동·지표·담당이 하나도 붙지 않은 자동 생성 목표입니다. 지우지 않고 맵에서만 가렸습니다." style={{ color: C.muted }}> · 빈 자동 목표 {s.hiddenEmptyGoals}개 가림</span> : null}
           </span>
         )}
         <button className="btn btn-sm btn-outline" disabled={busy} onClick={() => void scan()}>{busy ? '분석 중…' : '흐름 다시 분석'}</button>

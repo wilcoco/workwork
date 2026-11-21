@@ -93,6 +93,29 @@ export class FlowMapService {
     const kis: any[] = await p.keyInitiative.findMany({ select: { id: true, title: true, activityId: true, alignsToObjectiveId: true, status: true } });
     const gLinks: any[] = await p.goalActivityLink.findMany({ select: { goalType: true, goalId: true, activityId: true } });
 
+    // ── 빈 자동 그릇 걷어내기
+    // 'Auto Objective - 팀명' + 'Auto KR' 짝은 어떤 자동 처리가 만들어 둔 빈 껍데기다.
+    // 활동도 바인딩도 담당자도 붙어 있지 않아 아무것도 알려 주지 않으면서 열의 1/4를 차지한다.
+    // 지우지는 않고(데이터는 그대로 둔다) 맵에서만 걷어내고, 몇 개인지만 요약에 남긴다.
+    const assigned = new Set(
+      (await p.keyResultAssignment.findMany({ select: { keyResultId: true } })).map((a: any) => String(a.keyResultId)),
+    );
+    const linkedGoalIds = new Set(gLinks.map((g: any) => `${g.goalType}:${g.goalId}`));
+    const isEmptyKr = (k: any) =>
+      /^Auto KR$/i.test(String(k.title || '').trim()) &&
+      !k.activityId && !k.binding && !assigned.has(String(k.id)) && !linkedGoalIds.has(`KR:${k.id}`);
+    const emptyKrIds = new Set(krs.filter(isEmptyKr).map((k) => String(k.id)));
+    const liveKrs = krs.filter((k) => !emptyKrIds.has(String(k.id)));
+    const keptObjs = objs.filter((o) => {
+      if (!/^Auto Objective/i.test(String(o.title || ''))) return true;
+      if (liveKrs.some((k) => k.objectiveId === o.id)) return true;         // 살아 있는 KR을 품고 있으면 남긴다
+      if (kis.some((t) => t.alignsToObjectiveId === o.id)) return true;     // 중점과제가 걸려 있어도 남긴다
+      return linkedGoalIds.has(`OBJECTIVE:${o.id}`);
+    });
+    const hiddenEmptyGoals = objs.length - keptObjs.length;
+    objs.length = 0; objs.push(...keptObjs);
+    krs.length = 0; krs.push(...liveKrs);
+
     // ── 노드
     const nodes: any[] = [];
     const push = (n: any) => { nodes.push(n); return n.id; };
@@ -191,6 +214,7 @@ export class FlowMapService {
         outsideGoalMinutes, outsideGoalHours: Math.round(outsideGoalMinutes / 60),
         boundKpis: bindings.length, kpis: krs.length, objectives: objs.length,
         ghostCount: ghosts.length, ghostDecided: ghosts.filter((g) => g.decision).length,
+        hiddenEmptyGoals,
         scannedAt: scanned?.computedAt || null,
       },
     };
