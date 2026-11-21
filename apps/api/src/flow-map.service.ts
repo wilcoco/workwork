@@ -1,0 +1,295 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from './prisma.service';
+
+/**
+ * 온톨로지 흐름 맵 (P0) — 회사 객체를 한 장의 그래프로 그리고, 정의 밖으로 흐르는 업무를 뽑아낸다.
+ *
+ * 열: 앱·현장(원천) → 활동 → KPI·중점과제 → 목표 → 전략 기둥 → 대표
+ *
+ * 활동 열을 "활동 하나당 노드"로 그리지 않고 **대분류(domain)** 로 묶는다.
+ *   근거(2026-11-21 운영 데이터): 활동 사전 6,492개 중 최근 30일에 쓰인 것만 811개이고
+ *   상위 20개가 전체 일지의 10%뿐인 긴 꼬리다. 활동 단위로 그리면 800개 점이 되어 읽을 수 없다.
+ *   대분류는 12~15개라 한눈에 들어오고, 클릭하면 그 안의 활동으로 내려간다.
+ *
+ * 정의 밖 경로는 **같은 대상(금형·부품·설비·협력사)을 공유하는 기록**을 시간순으로 이어 만든다.
+ *   WorklogEntity가 90일 7,777건 있어 신호가 충분하다. 프로세스 인스턴스는 20건뿐이라 보조로만 쓴다.
+ */
+const KST = 9 * 3600000;
+export const monthKey = (d = new Date()) => new Date(d.getTime() + KST).toISOString().slice(0, 7);
+function monthRange(month: string) {
+  const [y, m] = month.split('-').map(Number);
+  return { start: new Date(Date.UTC(y, m - 1, 1) - KST), end: new Date(Date.UTC(y, m, 1) - KST) };
+}
+const PILLAR_LABEL: Record<string, string> = { Q: 'Q · 품질', C: 'C · 원가', D: 'D · 납기', DEV: 'DEV · 개발', P: 'P · 사람' };
+const SOURCE_LABEL: Record<string, string> = { ORACLE_AGENT: '오라클(사내 에이전트)', ODOO_RPC: 'Odoo MES/ERP', INTERNAL: '내부 데이터', REST: '외부 REST' };
+
+@Injectable()
+export class FlowMapService {
+  private readonly logger = new Logger(FlowMapService.name);
+  constructor(private prisma: PrismaService) {}
+
+  /** 목표(KPI·중점과제)에 연결된 활동 id 집합 */
+  private async goalLinkedActivityIds(): Promise<Set<string>> {
+    const p: any = this.prisma;
+    const [links, krs, kis] = await Promise.all([
+      p.goalActivityLink.findMany({ select: { activityId: true } }),
+      p.keyResult.findMany({ where: { activityId: { not: null } }, select: { activityId: true } }),
+      p.keyInitiative.findMany({ where: { activityId: { not: null } }, select: { activityId: true } }),
+    ]);
+    return new Set<string>([...links, ...krs, ...kis].map((x: any) => String(x.activityId)));
+  }
+
+  /** 전 층 그래프 */
+  async graph(month: string) {
+    const p: any = this.prisma;
+    const { start, end } = monthRange(month);
+
+    // ── 활동 열: 이번 달 기록이 있는 활동을 대분류로 묶는다
+    const wlAgg: any[] = await p.worklog.groupBy({
+      by: ['activityId'],
+      where: { date: { gte: start, lt: end }, activityId: { not: null } },
+      _count: { _all: true }, _sum: { timeSpentMinutes: true },
+    });
+    const actIds = wlAgg.map((r) => String(r.activityId));
+    const acts: any[] = actIds.length
+      ? await p.activity.findMany({ where: { id: { in: actIds } }, select: { id: true, name: true, domain: true, status: true } })
+      : [];
+    const actById = new Map(acts.map((a) => [a.id, a]));
+    const goalLinked = await this.goalLinkedActivityIds();
+
+    type Dom = { key: string; label: string; activities: number; worklogs: number; minutes: number; confirmed: number; linked: number; linkedMinutes: number; top: Array<{ id: string; name: string; n: number; linked: boolean }> };
+    const doms = new Map<string, Dom>();
+    for (const r of wlAgg) {
+      const a = actById.get(String(r.activityId));
+      const key = String(a?.domain || '(미분류 대분류)');
+      const d = doms.get(key) || { key, label: key, activities: 0, worklogs: 0, minutes: 0, confirmed: 0, linked: 0, linkedMinutes: 0, top: [] };
+      const n = r._count._all, mins = r._sum.timeSpentMinutes || 0;
+      const isLinked = a ? goalLinked.has(a.id) : false;
+      d.activities++; d.worklogs += n; d.minutes += mins;
+      if (String(a?.status) === 'CONFIRMED') d.confirmed++;
+      if (isLinked) { d.linked++; d.linkedMinutes += mins; }
+      d.top.push({ id: String(r.activityId), name: a?.name || '(이름 없음)', n, linked: isLinked });
+      doms.set(key, d);
+    }
+    for (const d of doms.values()) { d.top.sort((x, y) => y.n - x.n); d.top = d.top.slice(0, 8); }
+
+    // ── 미분류 일지(활동에 귀속되지 않은 기록)
+    const [unclassified, totalWl] = await Promise.all([
+      p.worklog.count({ where: { date: { gte: start, lt: end }, activityId: null } }),
+      p.worklog.count({ where: { date: { gte: start, lt: end } } }),
+    ]);
+
+    // ── 목표 층
+    const objs: any[] = await p.objective.findMany({
+      where: { status: { in: ['ACTIVE', 'LOCKED'] } },
+      select: { id: true, title: true, pillar: true, orgUnit: { select: { name: true } }, alignsToKrId: true },
+    });
+    const krs: any[] = await p.keyResult.findMany({
+      where: { objective: { status: { in: ['ACTIVE', 'LOCKED'] } } },
+      select: { id: true, title: true, objectiveId: true, activityId: true, unit: true, binding: { select: { sourceType: true, lastError: true } } },
+    });
+    const kis: any[] = await p.keyInitiative.findMany({ select: { id: true, title: true, activityId: true, alignsToObjectiveId: true, status: true } });
+    const gLinks: any[] = await p.goalActivityLink.findMany({ select: { goalType: true, goalId: true, activityId: true } });
+
+    // ── 노드
+    const nodes: any[] = [];
+    const push = (n: any) => { nodes.push(n); return n.id; };
+    // 0열 원천
+    const bindings: any[] = await p.kpiBinding.findMany({ where: { enabled: true }, select: { keyResultId: true, sourceType: true, lastError: true } });
+    const srcTypes = Array.from(new Set(bindings.map((b) => String(b.sourceType))));
+    for (const st of srcTypes) push({ id: `src:${st}`, type: 'app', col: 0, label: SOURCE_LABEL[st] || st, status: 'ok', metrics: { kpis: bindings.filter((b) => b.sourceType === st).length } });
+    push({ id: 'src:WORKLOG', type: 'app', col: 0, label: '업무일지', status: 'ok', metrics: { worklogs: totalWl } });
+    const apprCount = await p.approvalRequest.count({ where: { createdAt: { gte: start, lt: end } } });
+    push({ id: 'src:APPROVAL', type: 'app', col: 0, label: '결재 · 협조', status: 'ok', metrics: { approvals: apprCount } });
+
+    // 1열 활동(대분류)
+    const domList = Array.from(doms.values()).sort((a, b) => b.worklogs - a.worklogs);
+    for (const d of domList) {
+      push({
+        id: `dom:${d.key}`, type: 'activity', col: 1, label: d.label,
+        status: d.confirmed > d.activities / 2 ? 'ok' : 'cand',
+        outsideGoal: d.linked === 0,
+        metrics: { activities: d.activities, worklogs: d.worklogs, minutes: d.minutes, goalLinked: d.linked, confirmed: d.confirmed },
+        top: d.top,
+      });
+    }
+    if (unclassified > 0) push({ id: 'dom:__unclassified', type: 'cloud', col: 1, label: '미분류 일지', status: 'ghost', metrics: { worklogs: unclassified, ratio: totalWl ? Math.round((unclassified / totalWl) * 100) : 0 } });
+
+    // 2열 KPI·중점과제
+    for (const k of krs) push({ id: `kr:${k.id}`, type: 'kpi', col: 2, label: k.title, status: k.binding && !k.binding.lastError ? 'ok' : 'cand', metrics: { bound: !!k.binding, unit: k.unit } });
+    for (const t of kis) push({ id: `ki:${t.id}`, type: 'task', col: 2, label: t.title, status: 'ok', metrics: { state: t.status } });
+    // 3열 목표
+    for (const o of objs) push({ id: `obj:${o.id}`, type: 'obj', col: 3, label: o.title, status: 'ok', metrics: { team: o.orgUnit?.name || '' } });
+    // 4열 기둥
+    const pillars = Array.from(new Set(objs.map((o) => o.pillar).filter(Boolean)));
+    for (const pl of pillars) push({ id: `pillar:${pl}`, type: 'pillar', col: 4, label: PILLAR_LABEL[String(pl)] || String(pl), status: 'ok', metrics: {} });
+    push({ id: 'ceo', type: 'ceo', col: 5, label: '대표이사', status: 'ok', metrics: {} });
+
+    // ── 엣지
+    const ids = new Set(nodes.map((n) => n.id));
+    const edges: any[] = [];
+    const link = (from: string, to: string, kind: string, status: 'ok' | 'cand', count?: number) => {
+      if (!ids.has(from) || !ids.has(to)) return;
+      edges.push({ from, to, kind, status, count: count || 0 });
+    };
+    // 원천 → 활동 대분류 (일지)
+    for (const d of domList) link('src:WORKLOG', `dom:${d.key}`, 'record', d.confirmed > 0 ? 'ok' : 'cand', d.worklogs);
+    if (unclassified > 0) link('src:WORKLOG', 'dom:__unclassified', 'record', 'cand', unclassified);
+    // 원천 → KPI (바인딩)
+    for (const b of bindings) link(`src:${b.sourceType}`, `kr:${b.keyResultId}`, 'binding', b.lastError ? 'cand' : 'ok');
+    // 활동 대분류 → KPI/과제 (그 대분류에 속한 활동이 목표에 연결된 경우)
+    const domOfActivity = (aid: string) => { const a = actById.get(aid); return a ? `dom:${String(a.domain || '(미분류 대분류)')}` : null; };
+    const seen = new Set<string>();
+    for (const g of [...gLinks.map((g) => ({ goalType: g.goalType, goalId: g.goalId, activityId: g.activityId })),
+      ...krs.filter((k) => k.activityId).map((k) => ({ goalType: 'KR', goalId: k.id, activityId: k.activityId })),
+      ...kis.filter((t) => t.activityId).map((t) => ({ goalType: 'KI', goalId: t.id, activityId: t.activityId }))]) {
+      const from = domOfActivity(String(g.activityId));
+      if (!from) continue;
+      const to = g.goalType === 'KR' ? `kr:${g.goalId}` : `ki:${g.goalId}`;
+      const key = `${from}>${to}`;
+      if (seen.has(key)) continue; seen.add(key);
+      link(from, to, 'contribution', 'ok');
+    }
+    // KPI/과제 → 목표
+    for (const k of krs) link(`kr:${k.id}`, `obj:${k.objectiveId}`, 'belongs', 'ok');
+    for (const t of kis) if (t.alignsToObjectiveId) link(`ki:${t.id}`, `obj:${t.alignsToObjectiveId}`, 'aligns', 'ok');
+    // 목표 → 기둥 → 대표
+    for (const o of objs) if (o.pillar) link(`obj:${o.id}`, `pillar:${o.pillar}`, 'pillar', 'ok');
+    for (const pl of pillars) link(`pillar:${pl}`, 'ceo', 'owns', 'ok');
+
+    // ── 정의 밖 경로(저장된 관찰 전이)
+    const trans: any[] = await p.observedTransition.findMany({
+      where: { month, level: 'DOMAIN' }, include: { decision: true }, orderBy: { count: 'desc' }, take: 40,
+    });
+    const ghosts = trans.filter((t) => !t.defined).map((t) => ({
+      id: t.id, from: `dom:${t.fromKey}`, to: `dom:${t.toKey}`, fromLabel: t.fromLabel, toLabel: t.toLabel,
+      count: t.count, ofCount: t.ofCount, confidence: t.confidence, medianGapMinutes: t.medianGapMinutes,
+      offHoursRatio: t.offHoursRatio, sampleCases: t.sampleCases || [],
+      decision: t.decision ? { choice: t.decision.choice, rationale: t.decision.rationale, decidedAt: t.decision.decidedAt } : null,
+    }));
+
+    const outsideGoalMinutes = domList.filter((d) => d.linked === 0).reduce((s, d) => s + d.minutes, 0);
+    return {
+      month,
+      nodes, edges, ghosts,
+      summary: {
+        activities: actIds.length, domains: domList.length,
+        worklogs: totalWl, unclassified, unclassifiedRatio: totalWl ? Math.round((unclassified / totalWl) * 100) : 0,
+        goalLinkedActivities: actIds.filter((a) => goalLinked.has(a)).length,
+        outsideGoalMinutes, outsideGoalHours: Math.round(outsideGoalMinutes / 60),
+        boundKpis: bindings.length, kpis: krs.length, objectives: objs.length,
+        ghostCount: ghosts.length, ghostDecided: ghosts.filter((g) => g.decision).length,
+        scannedAt: trans[0]?.computedAt || null,
+      },
+    };
+  }
+
+  /**
+   * 관찰 전이 추출 — 같은 대상을 공유하는 기록을 시간순으로 이어 활동 대분류 전이를 센다.
+   * 14일 안에 이어진 것만 한 건의 흐름으로 본다(그보다 멀면 다른 일로 간주).
+   */
+  async scan(month: string) {
+    const p: any = this.prisma;
+    const { start, end } = monthRange(month);
+    // 이번 달 기록 ± 앞뒤 여유(전이는 달을 걸칠 수 있다)
+    const from = new Date(start.getTime() - 14 * 86400000);
+    const rows: any[] = await p.$queryRawUnsafe(`
+      WITH w AS (
+        SELECT we."entityId" AS eid, wl.id AS wid, wl.date AS at,
+               COALESCE(a.domain, '(미분류 대분류)') AS dom
+        FROM "WorklogEntity" we
+        JOIN "Worklog" wl ON wl.id = we."worklogId"
+        JOIN "Activity" a ON a.id = wl."activityId"
+        WHERE wl.date >= $1 AND wl.date < $2 AND wl."activityId" IS NOT NULL
+      ), seq AS (
+        SELECT eid, wid, at, dom,
+               LEAD(dom) OVER (PARTITION BY eid ORDER BY at) AS nxt,
+               LEAD(at)  OVER (PARTITION BY eid ORDER BY at) AS nxt_at,
+               LEAD(wid) OVER (PARTITION BY eid ORDER BY at) AS nxt_wid
+        FROM w
+      )
+      SELECT dom AS "fromKey", nxt AS "toKey", COUNT(*)::int AS cnt,
+             (PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (nxt_at - at))/60))::int AS "medianGapMinutes",
+             (100.0 * SUM(CASE WHEN nxt_at - at > interval '3 days' THEN 1 ELSE 0 END) / COUNT(*))::int AS "offHoursRatio",
+             (ARRAY_AGG(eid ORDER BY at DESC))[1:5] AS "sampleEntityIds",
+             (ARRAY_AGG(wid ORDER BY at DESC))[1:5] AS "sampleWorklogIds"
+      FROM seq
+      WHERE nxt IS NOT NULL AND nxt <> dom AND nxt_at - at < interval '14 days' AND nxt_at >= $3
+      GROUP BY dom, nxt
+      HAVING COUNT(*) >= 3
+      ORDER BY cnt DESC
+      LIMIT 80
+    `, from, end, start);
+
+    // 분모: 출발 대분류에서 나간 전체 전이 수
+    const outTotal = new Map<string, number>();
+    for (const r of rows) outTotal.set(r.fromKey, (outTotal.get(r.fromKey) || 0) + Number(r.cnt));
+
+    // 정의된 길: 같은 프로세스 템플릿에서 이웃한 태스크의 활동 대분류 쌍
+    const defined = await this.definedDomainPairs();
+
+    // 대상 이름
+    const entIds = Array.from(new Set(rows.flatMap((r) => (r.sampleEntityIds || []).map(String))));
+    const ents: any[] = entIds.length ? await p.ontologyEntity.findMany({ where: { id: { in: entIds } }, select: { id: true, name: true, kind: true } }) : [];
+    const entName = new Map(ents.map((e) => [e.id, `${e.name}${e.kind && e.kind !== 'OTHER' ? ` (${e.kind})` : ''}`]));
+
+    let saved = 0;
+    for (const r of rows) {
+      const fromKey = String(r.fromKey), toKey = String(r.toKey);
+      const sample = (r.sampleEntityIds || []).map((id: any, i: number) => ({
+        entityId: String(id), entityName: entName.get(String(id)) || '(대상)', worklogId: String((r.sampleWorklogIds || [])[i] || ''),
+      })).filter((x: any) => x.worklogId);
+      await p.observedTransition.upsert({
+        where: { month_level_fromKey_toKey: { month, level: 'DOMAIN', fromKey, toKey } },
+        create: {
+          month, level: 'DOMAIN', fromKey, toKey, fromLabel: fromKey, toLabel: toKey,
+          count: Number(r.cnt), ofCount: outTotal.get(fromKey) || Number(r.cnt),
+          confidence: 'LINKED', defined: defined.has(`${fromKey}>${toKey}`),
+          medianGapMinutes: r.medianGapMinutes ?? null, offHoursRatio: r.offHoursRatio ?? null, sampleCases: sample,
+        },
+        update: {
+          count: Number(r.cnt), ofCount: outTotal.get(fromKey) || Number(r.cnt),
+          defined: defined.has(`${fromKey}>${toKey}`),
+          medianGapMinutes: r.medianGapMinutes ?? null, offHoursRatio: r.offHoursRatio ?? null, sampleCases: sample,
+          computedAt: new Date(),
+        },
+      });
+      saved++;
+    }
+    this.logger.log(`flow scan ${month}: 전이 ${saved}건 저장 (정의 밖 ${rows.filter((r) => !defined.has(`${r.fromKey}>${r.toKey}`)).length}건)`);
+    return { month, scanned: rows.length, saved, definedPairs: defined.size };
+  }
+
+  /** 프로세스 템플릿에 정의된 이웃 태스크의 활동 대분류 쌍 */
+  private async definedDomainPairs(): Promise<Set<string>> {
+    const p: any = this.prisma;
+    const tasks: any[] = await p.processTaskTemplate.findMany({
+      where: { activityId: { not: null } },
+      select: { processTemplateId: true, activityId: true, orderHint: true },
+      orderBy: [{ processTemplateId: 'asc' }, { orderHint: 'asc' }],
+    }).catch(() => []);
+    if (!tasks.length) return new Set();
+    const aIds = Array.from(new Set(tasks.map((t) => String(t.activityId))));
+    const acts: any[] = await p.activity.findMany({ where: { id: { in: aIds } }, select: { id: true, domain: true } });
+    const dom = new Map(acts.map((a) => [a.id, String(a.domain || '(미분류 대분류)')]));
+    const out = new Set<string>();
+    let prev: any = null;
+    for (const t of tasks) {
+      if (prev && prev.processTemplateId === t.processTemplateId) {
+        const a = dom.get(String(prev.activityId)), b = dom.get(String(t.activityId));
+        if (a && b && a !== b) out.add(`${a}>${b}`);
+      }
+      prev = t;
+    }
+    return out;
+  }
+
+  async decide(transitionId: string, choice: 'NORM' | 'FIX' | 'KEEP', rationale: string, decidedById: string) {
+    const p: any = this.prisma;
+    return p.deviationDecision.upsert({
+      where: { transitionId },
+      create: { transitionId, choice, rationale: rationale || null, decidedById },
+      update: { choice, rationale: rationale || null, decidedById, decidedAt: new Date() },
+    });
+  }
+}

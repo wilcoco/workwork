@@ -564,6 +564,19 @@ export class GraphTasksController {
   }
 
   /** 사용자 색인 확보: 없으면 구축 시작(최대 8초 대기 후 백그라운드), 있으면 15초 지났을 때 변경분 반영 */
+  /** 지금 보고 있는 OneDrive가 "누구 것"인지 — 낯선 파일 목록을 보고 당황하지 않게 화면에 띄운다 */
+  private driveOwnerCache = new Map<string, { v: { name: string; upn: string }; at: number }>();
+  private async driveOwner(userId: string, token: string): Promise<{ name: string; upn: string }> {
+    const c = this.driveOwnerCache.get(userId);
+    if (c && Date.now() - c.at < 10 * 60 * 1000) return c.v;
+    try {
+      const me = await this.graphGet(token, '/me?$select=displayName,userPrincipalName,mail');
+      const v = { name: String(me?.displayName || ''), upn: String(me?.userPrincipalName || me?.mail || '') };
+      this.driveOwnerCache.set(userId, { v, at: Date.now() });
+      return v;
+    } catch { return { name: '', upn: '' }; }
+  }
+
   /** 내 OneDrive의 driveId (검색 결과가 내 것인지 가르는 기준). 짧게 캐시 */
   private myDriveIdCache = new Map<string, { id: string; at: number }>();
   private async myDriveId(userId: string, token: string): Promise<string> {
@@ -1584,7 +1597,8 @@ export class GraphTasksController {
       source: f._source || undefined,   // '내 OneDrive' | '팀 사이트(SharePoint)' | '공유받은 파일'
       mine: f._mine !== false,
     }));
-    return { items, index: data?._index || null, scope: data?._scope || 'mine', otherCount: data?._otherCount || 0 };
+    const owner = await this.driveOwner(userId, token).catch(() => ({ name: '', upn: '' }));
+    return { items, index: data?._index || null, scope: data?._scope || 'mine', otherCount: data?._otherCount || 0, owner };
   }
 
   /**

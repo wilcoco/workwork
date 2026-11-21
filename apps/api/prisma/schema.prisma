@@ -2108,6 +2108,41 @@ model PushSubscription {
   @@index([userId])
 }
 
+/// 관찰된 전이 — 같은 대상(금형·부품·설비·협력사)을 공유하는 기록을 시간순으로 이어 만든 "실제로 일이 흐른 길".
+/// 온톨로지·프로세스 템플릿에 정의된 길과 비교해 defined=false 면 '정의 밖 경로'.
+model ObservedTransition {
+  id               String             @id @default(cuid())
+  month            String // 'YYYY-MM' (KST)
+  level            String             @default("DOMAIN") // DOMAIN(활동 대분류) | ACTIVITY
+  fromKey          String
+  toKey            String
+  fromLabel        String
+  toLabel          String
+  count            Int                @default(0)
+  ofCount          Int                @default(0) // 같은 출발점에서 나간 전체 전이 수(비율의 분모)
+  confidence       String             @default("LINKED") // LINKED(같은 대상으로 묶임) | INFERRED(추정)
+  defined          Boolean            @default(false) // 프로세스 템플릿·목표 연결로 설명되는 길인가
+  medianGapMinutes Int? // 두 기록 사이 간격 중앙값 — 비정상 공백 판단에 쓴다
+  offHoursRatio    Int? // 간격이 비정상으로 긴 비율(%) — '시스템 밖 처리' 추정 신호
+  sampleCases      Json? // [{entityId,entityName,worklogIds:[..]}] 근거 샘플 (개인 이름 없음)
+  computedAt       DateTime           @default(now())
+  decision         DeviationDecision?
+
+  @@unique([month, level, fromKey, toKey])
+  @@index([month, defined])
+}
+
+/// 정의 밖 경로에 대한 처리 결정 — 규범을 고친다 / 현실을 고친다 / 그냥 둔다
+model DeviationDecision {
+  id           String             @id @default(cuid())
+  transitionId String             @unique
+  transition   ObservedTransition @relation(fields: [transitionId], references: [id], onDelete: Cascade)
+  choice       String // NORM | FIX | KEEP
+  rationale    String?
+  decidedById  String
+  decidedAt    DateTime           @default(now())
+}
+
 model OpsMetricDaily {
   id         String   @id @default(cuid())
   date       String   @unique // KST 'YYYY-MM-DD'

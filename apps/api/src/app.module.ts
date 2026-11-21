@@ -66,6 +66,7 @@ import { MessagingService } from './messaging.service';
 import { MessagingGateway } from './messaging.gateway';
 import { PushController } from './push.controller';
 import { PushService } from './push.service';
+import { FlowMapService } from './flow-map.service';
 import { GraphTasksController } from './graph-tasks.controller';
 import { CompanyDataController } from './company-data.controller';
 import { SharePointSyncController } from './sharepoint-sync.controller';
@@ -173,6 +174,7 @@ import { AuditLogService } from './audit-log.service';
     MessagingService,
     MessagingGateway,
     PushService,
+    FlowMapService,
     DataverseService,
     Reflector,
     { provide: APP_GUARD, useClass: JwtAuthGuard },

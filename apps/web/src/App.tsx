@@ -80,6 +80,7 @@ import { KnowledgeCards } from './pages/KnowledgeCards';
 import { AdminTenant } from './pages/AdminTenant';
 import { AlignmentWorkbench } from './pages/AlignmentWorkbench';
 import { Messenger } from './pages/Messenger';
+import { FlowMap } from './pages/FlowMap';
 import { ProcessInbox } from './pages/ProcessInbox';
 import { MasterManagement } from './pages/MasterManagement';
 import { AuthEntraComplete } from './pages/AuthEntraComplete';
@@ -485,6 +486,7 @@ function AppShell({ SHOW_APPROVALS, SHOW_COOPS }: { SHOW_APPROVALS: boolean; SHO
           <Route path="/okr/agenda/:id" element={<AgendaPage />} />
           <Route path="/goals/align" element={<AlignmentWorkbench />} />
           <Route path="/messages" element={<Messenger />} />
+          <Route path="/process/flow-map" element={execGuard(<FlowMap />)} />
           <Route path="/knowledge/cards" element={<KnowledgeCards />} />
           <Route path="/admin/tenant" element={<AdminTenant />} />
           <Route path="/process/my" element={<ProcessMy />} />
@@ -681,6 +683,7 @@ function HeaderBar({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec, canEvaluate }: {
           {isExec && <Link to="/process/strategy-map">전략 정렬 지도</Link>}
           {isExec && <Link to="/process/atlas">회사 조감도</Link>}
           {isExec && <Link to="/process/ontology">온톨로지 탐색기</Link>}
+          {isExec && <Link to="/process/flow-map">🕸 온톨로지 흐름 맵</Link>}
           {isExec && <Link to="/process/kpi-contribution">KPI 기여 분석</Link>}
           {isExec && <Link to="/process/company-pulse">회사 실행 현황판</Link>}
           {isExec && <Link to="/process/maturity">온톨로지 완성도 계기판</Link>}
@@ -984,7 +987,7 @@ function SubNav({ SHOW_APPROVALS, SHOW_COOPS, isCeo, isExec = false, canEvaluate
         ...(isExec ? [{ to: '/process/activity-map', label: '회사 활동 지도' }] : []),
         ...(isExec ? [{ to: '/process/strategy-map', label: '전략 정렬 지도' }] : []),
         ...(isExec ? [{ to: '/process/atlas', label: '회사 조감도' }] : []),
-        ...(isExec ? [{ to: '/process/ontology', label: '온톨로지 탐색기' }] : []),
+        ...(isExec ? [{ to: '/process/ontology', label: '온톨로지 탐색기' }, { to: '/process/flow-map', label: '온톨로지 흐름 맵' }] : []),
         ...(isExec ? [{ to: '/process/kpi-contribution', label: 'KPI 기여 분석' }] : []),
         ...(isExec ? [{ to: '/process/company-pulse', label: '회사 실행 현황판' }] : []),
         { to: '/process/templates', label: '프로세스 템플릿' },

@@ -1,7 +1,8 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Query } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { ActivitiesController } from './activities.controller';
 import { callAI } from './llm/ai-client';
+import { FlowMapService, monthKey } from './flow-map.service';
 
 const ENTITY_KIND_KO: Record<string, string> = { EQUIPMENT: '설비', VEHICLE: '차종', CUSTOMER: '고객사', SUPPLIER: '협력사', PART: '부품', SYSTEM: '시스템', OTHER: '대상' };
 
@@ -12,7 +13,7 @@ const ENTITY_KIND_KO: Record<string, string> = { EQUIPMENT: '설비', VEHICLE: '
  */
 @Controller('ontology')
 export class OntologyController {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private flow: FlowMapService) {}
 
   private async assertExec(uid?: string): Promise<string> {
     const id = String(uid || '').trim();
@@ -162,6 +163,37 @@ export class OntologyController {
   }
 
   /** 객체 중심 연결 조회 — 중심 노드 + 축별(정의/실행/지식/측정/변경/조직) 연결 */
+  /**
+   * GET /api/ontology/graph?month=YYYY-MM — 전 층 흐름 맵 (대표·임원)
+   * 노드/엣지/정의 밖 경로/요약을 한 번에 돌려준다.
+   */
+  @Get('graph')
+  async graph(@Query('month') month?: string, @Query('actorId') actorId?: string) {
+    await this.assertExec(actorId);
+    const m = /^\d{4}-\d{2}$/.test(String(month || '')) ? String(month) : monthKey();
+    return this.flow.graph(m);
+  }
+
+  /** POST /api/ontology/graph/scan — 관찰 전이 추출(해당 월). 무거우므로 수동·야간 실행 */
+  @Post('graph/scan')
+  async graphScan(@Body() b: any) {
+    await this.assertExec(b?.actorId);
+    const m = /^\d{4}-\d{2}$/.test(String(b?.month || '')) ? String(b.month) : monthKey();
+    return this.flow.scan(m);
+  }
+
+  /** POST /api/ontology/graph/deviations/:id/decide — 규범을 고친다 / 현실을 고친다 / 그냥 둔다 */
+  @Post('graph/deviations/:id/decide')
+  async graphDecide(@Param('id') id: string, @Body() b: any) {
+    await this.assertExec(b?.actorId);
+    const choice = String(b?.choice || '').toUpperCase();
+    if (!['NORM', 'FIX', 'KEEP'].includes(choice)) throw new BadRequestException('choice는 NORM·FIX·KEEP 중 하나');
+    const rationale = String(b?.rationale || '').trim();
+    if (choice === 'KEEP' && !rationale) throw new BadRequestException('"그냥 둔다"는 사유가 필요합니다');
+    await this.flow.decide(id, choice as any, rationale, String(b.actorId));
+    return { ok: true };
+  }
+
   @Get('explore')
   async explore(@Query('type') type?: string, @Query('id') id?: string, @Query('actorId') actorId?: string) {
     const role = await this.assertExec(actorId);
