@@ -174,6 +174,17 @@ export class OntologyController {
     return this.flow.graph(m);
   }
 
+  /**
+   * GET /api/ontology/events?hours=24 — 흐름 재생(P1)
+   * 최근 창 안의 사건을 시간순으로. 경로(노드 id)만 담고 사람 이름은 담지 않는다.
+   */
+  @Get('events')
+  async graphEvents(@Query('hours') hours?: string, @Query('actorId') actorId?: string) {
+    await this.assertExec(actorId);
+    const h = Number(hours);
+    return this.flow.events(Number.isFinite(h) && h > 0 ? h : 24);
+  }
+
   /** POST /api/ontology/graph/scan — 관찰 전이 추출(해당 월). 무거우므로 수동·야간 실행 */
   @Post('graph/scan')
   async graphScan(@Body() b: any) {

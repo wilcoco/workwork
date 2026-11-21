@@ -19,6 +19,9 @@ type Ghost = {
   decision?: { choice: string; rationale?: string; decidedAt: string } | null;
 };
 type Graph = { month: string; nodes: Node[]; edges: Edge[]; ghosts: Ghost[]; summary: any };
+type Ev = { at: string; kind: 'record' | 'intent' | 'verify' | 'ghost'; path: string[]; t?: number };
+type Events = { from: string; to: string; hours: number; events: Ev[]; sampled: boolean; counters: any };
+type Dot = { u: number; kind: string; path: string[] };
 
 const COLS = [
   { title: '앱 · 현장', sub: 'ERP · MES · 기록' },
@@ -40,6 +43,13 @@ const C = {
   cand: '#8a97a1', ghost: '#a7aeb4', node: '#ffffff', nodeStroke: '#9fb0b9', edge: 'rgba(20,35,47,.13)',
   surface: '#ffffff', glow: 'rgba(31,122,77,.18)',
 };
+/** 재생 점의 색 — 핸드오프 2절의 네 가지 */
+const EV_COLOR: Record<string, string> = { record: '#1f7a4d', intent: '#0b2545', verify: '#b86a12', ghost: '#8a97a1' };
+const EV_LABEL: Record<string, string> = { record: '올라온 기록', intent: '내려간 의도', verify: '확인', ghost: '정의 밖' };
+/** 창 전체를 몇 초에 재생할지 */
+const PLAY_MS = 45000;
+/** 점 하나가 경로를 지나는 데 쓰는 시간(전체 창 대비 비율) */
+const TRAVEL = 0.03;
 
 export function FlowMap() {
   const userId = useMemo(() => (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') || '' : ''), []);
@@ -52,6 +62,15 @@ export function FlowMap() {
   const [showCand, setShowCand] = useState(true);
   const [hlGhost, setHlGhost] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [replayOn, setReplayOn] = useState(false);
+  const [hours, setHours] = useState(24);
+  const [ev, setEv] = useState<Events | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [cursorUi, setCursorUi] = useState(0);
+  const [evBusy, setEvBusy] = useState(false);
+  const cursorRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
   const cvRef = useRef<HTMLCanvasElement | null>(null);
   const laidOut = useRef<{ nodes: Node[]; w: number; h: number }>({ nodes: [], w: 1200, h: 700 });
 
@@ -106,8 +125,8 @@ export function FlowMap() {
   }, [g]);
   laidOut.current = layout;
 
-  // ── 그리기
-  useEffect(() => {
+  // ── 그리기 (재생 중에는 점 목록을 받아 매 프레임 다시 그린다)
+  const paint = useCallback((dots: Dot[]) => {
     const cv = cvRef.current;
     if (!cv || !g) return;
     const { w, h } = layout;
@@ -212,7 +231,84 @@ export function FlowMap() {
       }
       ctx.globalAlpha = 1;
     }
+
+    // ── 재생 점
+    // 선을 그릴 때 쓴 곡선과 같은 식으로 위치를 구한다. 선 위를 벗어나면 흐름으로 보이지 않는다.
+    if (dots.length) {
+      const at = (a: Node, b: Node, t: number) => {
+        if (a.col === b.col) {                       // 정의 밖 경로 — 왼쪽으로 부푼 2차 곡선
+          const cx = a.x! + 95, cy = (a.y! + b.y!) / 2, m = 1 - t;
+          return [m * m * a.x! + 2 * m * t * cx + t * t * b.x!, m * m * a.y! + 2 * m * t * cy + t * t * b.y!];
+        }
+        const mx = (a.x! + b.x!) / 2, m = 1 - t;     // 층 사이 — 3차 베지에
+        return [
+          m ** 3 * a.x! + 3 * m * m * t * mx + 3 * m * t * t * mx + t ** 3 * b.x!,
+          m ** 3 * a.y! + 3 * m * m * t * a.y! + 3 * m * t * t * b.y! + t ** 3 * b.y!,
+        ];
+      };
+      for (const d of dots) {
+        const ns = d.path.map((id) => byId.get(id)).filter((n): n is Node => !!n && n.x != null);
+        if (!ns.length) continue;
+        let x: number, y: number;
+        if (ns.length === 1) { x = ns[0].x!; y = ns[0].y!; }   // 갈 곳이 없는 사건은 제자리에서 깜빡인다
+        else {
+          const segs = ns.length - 1;
+          const i = Math.min(segs - 1, Math.floor(d.u * segs));
+          [x, y] = at(ns[i], ns[i + 1], d.u * segs - i);
+        }
+        const fade = Math.sin(Math.PI * Math.min(1, Math.max(0, d.u)));
+        ctx.globalAlpha = 0.25 + 0.75 * fade;
+        ctx.fillStyle = EV_COLOR[d.kind] || C.muted;
+        ctx.beginPath(); ctx.arc(x, y, ns.length === 1 ? 3 + 4 * fade : 3.6, 0, 7); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
   }, [g, layout, sel, showGhost, showCand, hlGhost]);
+
+  useEffect(() => { paint([]); }, [paint]);
+
+  // ── 재생
+  const loadEvents = useCallback(async (h: number) => {
+    setEvBusy(true);
+    try {
+      const r = await apiJson<Events>(`/api/ontology/events?hours=${h}&actorId=${encodeURIComponent(userId)}`);
+      const t0 = new Date(r.from).getTime(), span = Math.max(1, new Date(r.to).getTime() - t0);
+      r.events = r.events.map((e) => ({ ...e, t: (new Date(e.at).getTime() - t0) / span }));
+      setEv(r); cursorRef.current = 0; setCursorUi(0);
+    } catch (e: any) { toast(e?.message || '재생할 사건을 불러오지 못했습니다', 'error'); }
+    finally { setEvBusy(false); }
+  }, [userId]);
+
+  const dotsAt = useCallback((c: number): Dot[] => {
+    if (!ev) return [];
+    const out: Dot[] = [];
+    for (const e of ev.events) {
+      const t = e.t ?? 0;
+      if (c < t || c > t + TRAVEL) continue;
+      out.push({ u: (c - t) / TRAVEL, kind: e.kind, path: e.path });
+      if (out.length >= 200) break;     // 한 프레임에 200개면 충분하다. 더 그려도 읽히지 않는다.
+    }
+    return out;
+  }, [ev]);
+
+  useEffect(() => {
+    if (!playing || !ev) return;
+    let last = performance.now(), lastUi = 0;
+    const step = (now: number) => {
+      const dt = now - last; last = now;
+      let c = cursorRef.current + (dt / PLAY_MS) * speed;
+      if (c >= 1) c = 1;
+      cursorRef.current = c;
+      paint(dotsAt(c));
+      if (now - lastUi > 120) { lastUi = now; setCursorUi(c); }
+      if (c >= 1) { setCursorUi(1); setPlaying(false); return; }
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [playing, ev, speed, paint, dotsAt]);
+
+  const seek = (c: number) => { cursorRef.current = c; setCursorUi(c); paint(dotsAt(c)); };
 
   function onCanvasClick(ev: React.MouseEvent<HTMLCanvasElement>) {
     const cv = cvRef.current; if (!cv || !g) return;
@@ -259,7 +355,65 @@ export function FlowMap() {
           </span>
         )}
         <button className="btn btn-sm btn-outline" disabled={busy} onClick={() => void scan()}>{busy ? '분석 중…' : '흐름 다시 분석'}</button>
+        <button className="btn btn-sm btn-outline"
+          onClick={() => { const on = !replayOn; setReplayOn(on); if (on && !ev) void loadEvents(hours); if (!on) { setPlaying(false); paint([]); } }}>
+          {replayOn ? '재생 닫기' : '흐름 재생'}
+        </button>
       </div>
+
+      {replayOn && (
+        <div style={{ background: '#fff', border: `1px solid ${C.rule}`, borderRadius: 10, padding: '10px 14px', display: 'grid', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select value={hours} onChange={(e) => { const h = Number(e.target.value); setHours(h); setPlaying(false); void loadEvents(h); }}
+              style={{ width: 'auto', fontSize: 13, padding: '4px 8px', border: `1px solid ${C.rule}`, borderRadius: 8 }}>
+              <option value={24}>최근 24시간</option>
+              <option value={168}>최근 7일</option>
+            </select>
+            <button className="btn btn-sm" disabled={!ev || evBusy}
+              onClick={() => { if (cursorRef.current >= 1) seek(0); setPlaying((v) => !v); }}>
+              {evBusy ? '불러오는 중…' : playing ? '멈춤' : '재생'}
+            </button>
+            <button className="btn btn-sm btn-outline" disabled={!ev} onClick={() => { setPlaying(false); seek(0); }}>처음으로</button>
+            <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}
+              style={{ width: 'auto', fontSize: 13, padding: '4px 8px', border: `1px solid ${C.rule}`, borderRadius: 8 }}>
+              <option value={0.5}>0.5배</option><option value={1}>1배</option><option value={2}>2배</option><option value={4}>4배</option>
+            </select>
+            <input type="range" min={0} max={1000} value={Math.round(cursorUi * 1000)} disabled={!ev}
+              onChange={(e) => { setPlaying(false); seek(Number(e.target.value) / 1000); }}
+              style={{ flex: '1 1 220px', minWidth: 160, accentColor: C.navy }} />
+            {ev && (
+              <span style={{ fontSize: 12, color: C.muted, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                {new Date(new Date(ev.from).getTime() + cursorUi * (new Date(ev.to).getTime() - new Date(ev.from).getTime()))
+                  .toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          {ev && (
+            <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', fontSize: 12.5 }}>
+              {(['record', 'intent', 'verify', 'ghost'] as const).map((k) => (
+                <span key={k} style={{ display: 'inline-flex', gap: 6, alignItems: 'center', whiteSpace: 'nowrap' }}>
+                  <i style={{ width: 9, height: 9, borderRadius: 9, background: EV_COLOR[k], display: 'inline-block' }} />
+                  {EV_LABEL[k]} <b style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {k === 'record' ? ev.counters.up : k === 'intent' ? ev.counters.down : k === 'verify' ? ev.counters.verify : ev.counters.ghost}
+                  </b>
+                </span>
+              ))}
+              <span style={{ color: ev.counters.ghostRatio >= 30 ? C.amber : C.muted, whiteSpace: 'nowrap' }}>
+                정의 밖 비율 <b>{ev.counters.ghostRatio}%</b>
+              </span>
+              <span style={{ flex: 1 }} />
+              <span style={{ color: C.muted }}>
+                {ev.counters.total === 0 ? '이 창에는 사건이 없습니다' : `사건 ${ev.counters.total}건`}
+                {ev.sampled ? ' · 많아서 고르게 추려 그립니다' : ''}
+              </span>
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: C.muted }}>
+            경로만 돌려받아 그립니다. 누가 썼는지는 내려오지 않습니다. 정의 밖 경로는 대상(금형·부품·설비·협력사)을 공유하는 기록이 이어진 순간에 찍힙니다.
+          </div>
+        </div>
+      )}
 
       {!g ? <div style={{ padding: 30, color: '#94a3b8' }}>그리는 중…</div> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 12, alignItems: 'start' }}>

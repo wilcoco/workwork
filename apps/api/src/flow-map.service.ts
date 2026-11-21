@@ -224,6 +224,154 @@ export class FlowMapService {
    * 관찰 전이 추출 — 같은 대상을 공유하는 기록을 시간순으로 이어 활동 대분류 전이를 센다.
    * 14일 안에 이어진 것만 한 건의 흐름으로 본다(그보다 멀면 다른 일로 간주).
    */
+  /**
+   * 흐름 재생(P1) — 최근 24시간/7일에 실제로 일어난 사건을 시간순으로 돌려준다.
+   *
+   * 집계가 아니라 사건 하나하나지만 **경로(노드 id)만** 담는다. 누가 썼는지는 담지 않는다.
+   * 화면은 이 경로 위로 점을 흘린다. 색은 네 가지다.
+   *   record  녹색 — 아래에서 올라온 기록(일지)
+   *   intent  남색 — 위에서 내려간 의도(KPI 담당 배정·중점과제 등록)
+   *   verify  주황 — 확인(지표 수집, 일지 결재)
+   *   ghost   회색 — 정의 밖 경로로 샌 업무
+   */
+  async events(hours: number) {
+    const p: any = this.prisma;
+    const to = new Date();
+    const from = new Date(to.getTime() - Math.max(1, Math.min(24 * 30, hours)) * 3600000);
+    const CAP = 1200;
+
+    // 활동 → 대분류 / 활동 → 목표(KPI·과제 → 목표)
+    const acts: any[] = await p.activity.findMany({ select: { id: true, domain: true } });
+    const domOf = new Map<string, string>(acts.map((a) => [String(a.id), `dom:${String(a.domain || '(미분류 대분류)')}`]));
+    const krs: any[] = await p.keyResult.findMany({ select: { id: true, objectiveId: true, activityId: true } });
+    const kis: any[] = await p.keyInitiative.findMany({ select: { id: true, alignsToObjectiveId: true, activityId: true } });
+    const gLinks: any[] = await p.goalActivityLink.findMany({ select: { goalType: true, goalId: true, activityId: true } });
+    const objOfKr = new Map<string, string>(krs.map((k) => [String(k.id), String(k.objectiveId)]));
+    const objOfKi = new Map<string, string>(kis.filter((t) => t.alignsToObjectiveId).map((t) => [String(t.id), String(t.alignsToObjectiveId)]));
+
+    // 활동 하나가 닿는 목표 꼬리(가장 짧은 하나만 — 점이 여러 갈래로 갈라지면 읽히지 않는다)
+    const tailOf = new Map<string, string[]>();
+    const setTail = (actId: string, goal: string, obj?: string) => {
+      if (!actId || tailOf.has(actId)) return;
+      tailOf.set(actId, obj ? [goal, `obj:${obj}`] : [goal]);
+    };
+    for (const k of krs) if (k.activityId) setTail(String(k.activityId), `kr:${k.id}`, String(k.objectiveId));
+    for (const t of kis) if (t.activityId) setTail(String(t.activityId), `ki:${t.id}`, objOfKi.get(String(t.id)));
+    for (const g of gLinks) {
+      const gid = String(g.goalId);
+      if (g.goalType === 'KR') setTail(String(g.activityId), `kr:${gid}`, objOfKr.get(gid));
+      else if (g.goalType === 'KI') setTail(String(g.activityId), `ki:${gid}`, objOfKi.get(gid));
+    }
+
+    const events: Array<{ at: Date; kind: string; path: string[] }> = [];
+
+    // ① 올라온 기록 — 일지
+    const wls: any[] = await p.worklog.findMany({
+      where: { createdAt: { gte: from, lt: to }, activityId: { not: null } },
+      select: { id: true, createdAt: true, activityId: true }, orderBy: { createdAt: 'asc' }, take: CAP,
+    });
+    const domOfWorklog = new Map<string, string>();
+    for (const w of wls) {
+      const dom = domOf.get(String(w.activityId));
+      if (!dom) continue;
+      domOfWorklog.set(String(w.id), dom);
+      events.push({ at: w.createdAt, kind: 'record', path: ['src:WORKLOG', dom, ...(tailOf.get(String(w.activityId)) || [])] });
+    }
+
+    // ② 내려간 의도 — KPI 담당 배정, 중점과제 등록
+    const asg: any[] = await p.keyResultAssignment.findMany({
+      where: { createdAt: { gte: from, lt: to } }, select: { keyResultId: true, createdAt: true }, take: 300,
+    });
+    for (const a of asg) {
+      const obj = objOfKr.get(String(a.keyResultId));
+      if (obj) events.push({ at: a.createdAt, kind: 'intent', path: [`obj:${obj}`, `kr:${a.keyResultId}`] });
+    }
+    const newKis: any[] = await p.keyInitiative.findMany({
+      where: { createdAt: { gte: from, lt: to }, alignsToObjectiveId: { not: null } },
+      select: { id: true, createdAt: true, alignsToObjectiveId: true }, take: 300,
+    });
+    for (const t of newKis) events.push({ at: t.createdAt, kind: 'intent', path: [`obj:${t.alignsToObjectiveId}`, `ki:${t.id}`] });
+
+    // ③ 확인 — 지표 수집(바인딩 작업), 일지 결재
+    const jobs: any[] = await p.kpiBindingJob.findMany({
+      where: { finishedAt: { gte: from, lt: to }, keyResultId: { not: null } },
+      select: { keyResultId: true, finishedAt: true, status: true, binding: { select: { sourceType: true } } }, take: 300,
+    });
+    for (const j of jobs) {
+      const src = j.binding?.sourceType ? `src:${j.binding.sourceType}` : null;
+      if (src) events.push({ at: j.finishedAt, kind: 'verify', path: [src, `kr:${j.keyResultId}`] });
+    }
+    const apprs: any[] = await p.approvalRequest.findMany({
+      where: { updatedAt: { gte: from, lt: to }, status: 'APPROVED' },
+      select: { subjectType: true, subjectId: true, updatedAt: true }, take: 400,
+    });
+    const wlSubjects = apprs.filter((a) => String(a.subjectType).toUpperCase() === 'WORKLOG').map((a) => String(a.subjectId));
+    if (wlSubjects.length) {
+      const sub: any[] = await p.worklog.findMany({ where: { id: { in: wlSubjects } }, select: { id: true, activityId: true } });
+      for (const w of sub) { const d = domOf.get(String(w.activityId || '')); if (d) domOfWorklog.set(String(w.id), d); }
+    }
+    for (const a of apprs) {
+      const dom = domOfWorklog.get(String(a.subjectId));
+      // 일지 결재는 그 일지의 대분류까지 간다. 근태·배차처럼 활동에 걸리지 않는 결재는 원천에서 깜빡이기만 한다.
+      events.push({ at: a.updatedAt, kind: 'verify', path: dom ? ['src:APPROVAL', dom] : ['src:APPROVAL'] });
+    }
+
+    // ④ 정의 밖으로 샌 업무 — 창 안에서 실제로 일어난 전이만
+    const month = new Date(to.getTime() + 9 * 3600000).toISOString().slice(0, 7);
+    const undef: any[] = await p.observedTransition.findMany({
+      where: { month, level: 'DOMAIN', defined: false }, select: { fromKey: true, toKey: true },
+    });
+    const undefSet = new Set(undef.map((t) => `${t.fromKey}>${t.toKey}`));
+    if (undefSet.size) {
+      const lookback = new Date(from.getTime() - 14 * 86400000);
+      const rows: any[] = await p.$queryRawUnsafe(`
+        WITH w AS (
+          SELECT we."entityId" AS eid, wl.date AS at, wl."createdAt" AS wrote_at,
+                 COALESCE(a.domain, '(미분류 대분류)') AS dom
+          FROM "WorklogEntity" we
+          JOIN "Worklog" wl ON wl.id = we."worklogId"
+          JOIN "Activity" a ON a.id = wl."activityId"
+          WHERE wl.date >= $1 AND wl.date < $2 AND wl."activityId" IS NOT NULL
+        ), seq AS (
+          SELECT eid, at, dom,
+                 LEAD(dom)      OVER (PARTITION BY eid ORDER BY at) AS nxt,
+                 LEAD(at)       OVER (PARTITION BY eid ORDER BY at) AS nxt_at,
+                 LEAD(wrote_at) OVER (PARTITION BY eid ORDER BY at) AS nxt_wrote
+          FROM w
+        )
+        SELECT dom AS "fromKey", nxt AS "toKey", COALESCE(nxt_wrote, nxt_at) AS "at"
+        FROM seq
+        WHERE nxt IS NOT NULL AND nxt <> dom AND nxt_at - at < interval '14 days'
+          AND COALESCE(nxt_wrote, nxt_at) >= $3 AND COALESCE(nxt_wrote, nxt_at) < $2
+        ORDER BY 3 ASC
+        LIMIT 400
+      `, lookback, to, from);
+      for (const r of rows) {
+        const key = `${r.fromKey}>${r.toKey}`;
+        if (!undefSet.has(key)) continue;
+        events.push({ at: r.at, kind: 'ghost', path: [`dom:${r.fromKey}`, `dom:${r.toKey}`] });
+      }
+    }
+
+    events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+    const trimmed = events.length > CAP
+      ? events.filter((_, i) => i % Math.ceil(events.length / CAP) === 0)
+      : events;
+
+    const n = (k: string) => events.filter((e) => e.kind === k).length;
+    const up = n('record'), ghost = n('ghost');
+    return {
+      from, to, hours,
+      events: trimmed.map((e) => ({ at: e.at, kind: e.kind, path: e.path })),
+      sampled: trimmed.length < events.length,
+      counters: {
+        up, down: n('intent'), verify: n('verify'), ghost,
+        ghostRatio: up + ghost ? Math.round((ghost / (up + ghost)) * 100) : 0,
+        total: events.length,
+      },
+    };
+  }
+
   async scan(month: string) {
     const p: any = this.prisma;
     const { start, end } = monthRange(month);
