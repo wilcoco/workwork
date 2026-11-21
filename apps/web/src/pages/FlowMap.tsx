@@ -90,11 +90,12 @@ export function FlowMap() {
     const byCol: Node[][] = [[], [], [], [], [], []];
     for (const n of g.nodes) byCol[Math.min(5, Math.max(0, n.col))].push(n);
     const maxRows = Math.max(...byCol.map((c) => c.length), 1);
-    const h = Math.max(620, Math.min(1500, 90 + maxRows * 34));
+    // 한 열에 100개가 넘으면 라벨이 겹친다 → 행 간격 26px을 확보하고 캔버스를 길게(스크롤)
+    const h = Math.max(620, Math.min(2600, 110 + maxRows * 26));
     const w = 1200;
     const xs = [95, 330, 605, 850, 1035, 1150];
     byCol.forEach((arr, c) => {
-      const top = 92, bottom = h - 40;
+      const top = 96, bottom = h - 36;
       const gap = arr.length > 1 ? (bottom - top) / (arr.length - 1) : 0;
       arr.forEach((n, i) => {
         n.x = c === 5 ? xs[5] : xs[c];
@@ -116,6 +117,8 @@ export function FlowMap() {
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const byId = new Map(g.nodes.map((n) => [n.id, n]));
+    const byCol: Node[][] = [[], [], [], [], [], []];
+    for (const n of g.nodes) byCol[Math.min(5, Math.max(0, n.col))].push(n);
     const font = '"IBM Plex Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif';
 
     const neighbors = (n: Node) => {
@@ -191,7 +194,11 @@ export function FlowMap() {
       if (n.type === 'app') ctx.rect(n.x - rad, n.y! - rad, rad * 2, rad * 2);
       else ctx.arc(n.x, n.y!, rad, 0, 7);
       ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
-      // 글자 — 촘촘한 열(KPI·목표)은 작게
+      // 글자 — 간격이 좁으면 겹쳐서 읽을 수 없다. 선택했거나 이웃일 때만 쓴다.
+      const rowsInCol = byCol[n.col]?.length || 1;
+      const spacing = rowsInCol > 1 ? (h - 132) / (rowsInCol - 1) : 99;
+      const showLabel = spacing >= 13 || !!nb || sel?.id === n.id || n.type === 'ceo' || n.type === 'pillar';
+      if (!showLabel) { ctx.globalAlpha = 1; continue; }
       const dense = n.col === 2 || n.col === 3;
       ctx.font = `${n.type === 'ceo' || n.type === 'pillar' ? '700' : '500'} ${dense ? 10.5 : 12}px ${font}`;
       ctx.fillStyle = n.status === 'cand' ? C.muted : C.ink;
@@ -255,9 +262,9 @@ export function FlowMap() {
 
       {!g ? <div style={{ padding: 30, color: '#94a3b8' }}>그리는 중…</div> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 12, alignItems: 'start' }}>
-          <div style={{ background: '#fff', border: `1px solid ${C.rule}`, borderRadius: 10, overflowX: 'auto' }}>
+          <div style={{ background: '#fff', border: `1px solid ${C.rule}`, borderRadius: 10, overflow: 'auto', maxHeight: '78vh' }}>
             <canvas ref={cvRef} onClick={onCanvasClick}
-              style={{ display: 'block', width: '100%', minWidth: 900, height: 'auto', cursor: 'pointer' }} />
+              style={{ display: 'block', width: layout.w, maxWidth: 'none', height: layout.h, cursor: 'pointer' }} />
           </div>
 
           <aside style={{ background: '#fff', border: `1px solid ${C.rule}`, borderRadius: 10, padding: 14, display: 'grid', gap: 10, maxHeight: '78vh', overflowY: 'auto' }}>
